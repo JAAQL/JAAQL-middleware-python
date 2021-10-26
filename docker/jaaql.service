@@ -1,0 +1,13 @@
+[Unit]
+Description=Gunicorn instance to serve JAAQL-middleware-python
+After=network.target
+
+[Service]
+User=ubuntu
+Group=www-data
+WorkingDirectory=/JAAQL-middleware-python
+Environment="PATH=/JAAQL-middleware-python"
+ExecStart=gunicorn --bind unix:jaaql.sock -m 007 --config /JAAQL-middleware-python/gunicorn_config wsgi:app
+
+[Install]
+WantedBy=multi-user.target
