@@ -1,10 +1,7 @@
-from psycopg2cffi import compat
 from logging import StreamHandler
-from jaaql.mvc.controller import JAAQLController
-from jaaql.mvc.model import JAAQLModel
 import re
 import logging
-import types
+import pkgutil
 from os.path import exists, join
 import configparser
 from jaaql.openapi.swagger_documentation import produce_all_documentation
@@ -12,9 +9,10 @@ from jaaql.utilities.options import *
 import sys
 import os
 import jaaql.documentation as documentation
-from gevent import monkey
-from psycogreen import gevent
 from jaaql.utilities.utils import get_jaaql_root
+from jaaql.mvc.controller import JAAQLController
+from jaaql.mvc.model import JAAQLModel
+from jaaql.mvc.controller_interface import JAAQLControllerInterface
 
 DIR__config = "config"
 FILE__config = "config.ini"
@@ -48,16 +46,27 @@ class SensitiveHandler(StreamHandler):
 
 
 def dir_non_builtins(folder):
-    dirs = [getattr(documentation, sub) for sub in dir(folder) if isinstance(getattr(documentation, sub),
-                                                                             types.ModuleType)]
+    pkgpath = os.path.dirname(folder.__file__)
+    pre_dirs = [(loader, name) for loader, name, _ in pkgutil.walk_packages([pkgpath])]
+    dirs = []
+    for sub_dir in pre_dirs:
+        if sub_dir[1] in dir(folder):
+            dirs.append(getattr(folder, sub_dir[1]))
+        else:
+            dirs.append(sub_dir[0].find_module(sub_dir[1]).load_module(sub_dir[1]))
     return [doc for doc in dirs if doc.__name__ != "builtins"]
 
 
-def create_app(is_gunicorn: bool = False, override_config_path: str = None, **options):
-    if is_gunicorn:
-        compat.register()
-        monkey.patch_all()
-        gevent.patch_psycopg()
+def create_app(is_gunicorn: bool = False, override_config_path: str = None, migration_db_interface=None,
+               migration_project_name: str = None, migration_folder: str = None, supplied_documentation = None,
+               controllers: [JAAQLControllerInterface] = None, **options):
+    if controllers is None:
+        controllers = []
+
+    if supplied_documentation is None:
+        supplied_documentation = []
+    if not isinstance(supplied_documentation, list):
+        supplied_documentation = [supplied_documentation]
 
     if len(options) == 0 and not is_gunicorn:
         options = parse_options(sys.argv, False)
@@ -105,11 +114,18 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, **op
     if not use_mfa:
         print(WARNING__mfa_off, file=sys.stderr)
 
-    model = JAAQLModel(config, vault_key)
+    model = JAAQLModel(config, vault_key, migration_db_interface, migration_project_name, migration_folder,
+                       reboot_on_install=is_gunicorn)
     controller = JAAQLController(model)
     controller.create_app()
 
+    for sub_controller in controllers:
+        sub_controller.route(controller)
+
     doc_modules = dir_non_builtins(documentation)
+    all_docs = []
+    for doc in supplied_documentation:
+        all_docs.extend(dir_non_builtins(doc))
 
     base_path = None
     url = config[CONFIG_KEY__swagger][CONFIG_KEY_SWAGGER__url]
@@ -117,7 +133,7 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, **op
         base_path = "www"
         url += "/api/"
 
-    produce_all_documentation(doc_modules, url, is_prod=is_gunicorn, base_path=base_path)
+    produce_all_documentation(doc_modules + all_docs, url, is_prod=is_gunicorn, base_path=base_path)
 
     if is_gunicorn:
         return controller.app

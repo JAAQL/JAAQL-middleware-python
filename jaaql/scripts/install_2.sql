@@ -6,7 +6,8 @@ create table jaaql__user (
     created timestamptz not null default current_timestamp,
     mobile   bigint,                 -- with null [allows for SMS-based 2FA login later] )
     deleted timestamptz,
-    enc_totp_iv varchar(254) not null
+    enc_totp_iv varchar(254) not null,
+    last_totp varchar(6)
 );
 CREATE UNIQUE INDEX jaaql__user_unq_email ON jaaql__user (email) WHERE (deleted is null);
 
@@ -45,7 +46,8 @@ create view jaaql__user_latest_password as (
         us.id,
         us.email,
         password_hash,
-        us.enc_totp_iv
+        us.enc_totp_iv,
+        us.last_totp
     FROM
         (SELECT
             the_user,
@@ -163,7 +165,7 @@ CREATE UNIQUE INDEX jaaql__authorization_database_unq
 
 create table jaaql__log (
     id uuid primary key not null default gen_random_uuid(),
-    the_user uuid not null,
+    the_user uuid,
     occurred timestamptz not null default current_timestamp,
     duration_ms integer not null,
     encrypted_exception text,
@@ -198,7 +200,7 @@ create view jaaql__my_logs as (
          jaaql__log log
     INNER JOIN jaaql__user us ON us.id = log.the_user AND us.deleted is null AND us.email = current_user
     INNER JOIN jaaql__user_ip ip ON log.ip = ip.id
-    LEFT JOIN jaaql__user_ua ua ON log.ip = ua.id
+    LEFT JOIN jaaql__user_ua ua ON log.ua = ua.id
     ORDER BY occurred DESC
 );
 grant select on jaaql__my_logs to public;

@@ -29,21 +29,22 @@ Make the directories you will use as bind mounts within the root JAAQL-middlewar
     mkdir -p www
 
 ## Running docker image
-Please replace the _POSTGRES_PASSWORD_ and _JAAQL_VAULT_PASSWORD_ with different secure passwords of your choosing  
+Please replace the _POSTGRES_PASSWORD_ and _JAAQL_VAULT_PASS__WORD_ with different secure passwords of your choosing  
 Please replace the _SERVER_ADDRESS_ build arg with your server's ip e.g. 93.184.216.34  
 Alternatively if your server has a domain name, please replace it with that e.g. example.com. DO NOT USE www. in the URL. If using https, everything will be forced to www.example.com, else only example.com will be available  
 If using https you must use a domain name  
 
     sudo docker run -d \
         --mount type=bind,source="$(pwd)"/log,target=/JAAQL-middleware-python/log \
-        --mount type=bind,source="$(pwd)"/log/nginx,target=/var/log/nginx \
         --mount type=bind,source="$(pwd)"/www,target=/JAAQL-middleware-python/www \
+        --mount type=bind,source="$(pwd)"/log/nginx,target=/var/log/nginx \
         --name jaaql-middleware-container \
         -p 80:80 \
         -e IS_HTTPS=FALSE \
         -e POSTGRES_PASSWORD=123456 \
         -e JAAQL_VAULT_PASSWORD=pa55word \
         -e SERVER_ADDRESS=YOUR_SERVER_ADDRESS \
+        -e MFA_LABEL=YOUR_APP_NAME
         jaaql-middleware-python
 
 For those wishing that this container boots when your system boots (on startup), please add the following argument to the above
@@ -70,6 +71,21 @@ Which will output something like the following
 
 Here you will see the installation key. You can access swagger via http(s)://your_address/swagger/jaaql_internal_api.html
 
+## Allowing db access outside the container
+If you wish to gain access to the database outside of your container then please add the argument
+
+    -p 5432:5432 \
+
+This will open up the database port to be accessible outside. You can use psql to hook up to the database, we recommend installing on centos as follows
+
+    dnf install postgresql
+
+And then accessing the database as such
+
+    psql -U postgres -h 127.0.0.1 -p 5432 -d jaaql
+
+You will then be prompted for a password
+
 ## Using HTTPS
 If you wish to use https please adjust the 'docker run' command to have the following arguments. The email is used by certbot for registration and recovery contact. An email will also be sent if the certificates cannot auto renew. Please do not remove the -p 80:80 argument as we require port 80 open so those accessing the website with http are redirected to https
 
@@ -78,6 +94,17 @@ If you wish to use https please adjust the 'docker run' command to have the foll
     -e HTTPS_EMAIL=mail@example.com \
 
 If you take a container that has been ran using IS_HTTPS=TRUE and run it with IS_HTTPS=FALSE you will lose the certificates and need to reconfigure
+
+## Extending JAAQL
+For those who wish to use JAAQL as a package, there is an example Dockerfile (Dockerfile-extend) that when built will run your app in the same way as JAAQL is ran (gunicorn, nginx, pypy, https etc.). Please make sure there is a wsgi.py in your project base which has a build_app function that returns a flask object. For example  
+  
+    from jaaql.jaaql import create_app
+
+    def build_app(*args, **kwargs):
+        return create_app(is_gunicorn=True, **kwargs)
+    
+For a better example please see the example application at https://github.com/JAAQL/JAAQL-example-app  
+Please note the use of INSTALL_PATH in the Dockerfile. Setting this correctly is essential. Please place any requirements in requirement.txt in your projects base file and they will be installed. Using pip will not work as the image is based on pypy  
 
 # Troubleshooting
 If you are seeing a 404 when trying to access http(s)://your_address/swagger/jaaql_internal_api.html, you have likely not replaced the server address in the run command

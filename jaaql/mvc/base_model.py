@@ -6,14 +6,11 @@ from jaaql.migrations.migrations import run_migrations
 from jaaql.constants import *
 
 import uuid
-import time
 import traceback
-import threading
+import json
 
-from datetime import datetime
 
 from jaaql.exceptions.http_status_exception import *
-from jaaql.mvc.deletion_key import DeletionKey
 from typing import Union
 
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
@@ -67,12 +64,21 @@ VAULT_KEY__jwt_obj_crypt_key = "jwt_obj_crypt_key"
 VAULT_KEY__jaaql_lookup_connection = "jaaql_lookup_connection"
 VAULT_KEY__jaaql_db_id = "jaaql_db_id"
 DIR__vault = "vault"
+FILE__was_installed = "was_installed"
+
+JWT__purpose = "purpose"
+JWT__data = "data"
 
 
 class BaseJAAQLModel:
 
-    def __init__(self, config, vault_key: str):
+    def __init__(self, config, vault_key: str, migration_db_interface=None, migration_project_name: str = None,
+                 migration_folder: str = None, reboot_on_install: bool = False):
         self.config = config
+        self.migration_db_interface = migration_db_interface
+        self.migration_project_name = migration_project_name
+        self.migration_folder = migration_folder
+        self.reboot_on_install = reboot_on_install
 
         self.use_mfa = config[CONFIG_KEY_security][CONFIG_KEY_SECURITY__use_mfa]
 
@@ -100,15 +106,12 @@ class BaseJAAQLModel:
             self.jaaql_lookup_connection = DBInterface.create_interface(self.config, address, port, db, username,
                                                                         password, is_jaaql_user=True)
             run_migrations(self.jaaql_lookup_connection)
+            if self.migration_db_interface is not None:
+                run_migrations(self.jaaql_lookup_connection, migration_project_name, migration_folder=migration_folder,
+                               update_db_interface=migration_db_interface)
         else:
             self.install_key = str(uuid.uuid4())
             print("INSTALL KEY: " + self.install_key)
-
-        self.deletion_lookups = {}
-        self.deletion_timings = {}
-        threading.Thread(target=self.remove_deletion_lookups).start()
-
-        self.last_totp = {}
 
     def get_db_crypt_key(self):
         return self.vault.get_obj(VAULT_KEY__db_crypt_key).encode(crypt_utils.ENCODING__ascii)
@@ -128,16 +131,6 @@ class BaseJAAQLModel:
             paging_dict[SQL__where] = existing + SEPARATOR__space + SQL__and + SEPARATOR__space + deleted_condition
 
         return paging_dict, parameters
-
-    def thread_safe_pop_deletion_key(self, key: datetime):
-        try:
-            self.deletion_lookups.pop(self.deletion_timings[key])
-        except KeyError:
-            pass  # Race condition. User has used the key
-        try:
-            self.deletion_timings.pop(key)
-        except KeyError:
-            pass  # Same as above
 
     def execute_paging_query(self, jaaql_connection: DBInterface, full_query: str, count_query: str, parameters: dict,
                              where_query: str, where_parameters: dict, decrypt_columns: list = None,
@@ -365,47 +358,28 @@ class BaseJAAQLModel:
 
         return parse_parameters["cur_search"] if len(parse_parameters["cur_search"]) != 0 else None
 
-    def remove_deletion_lookups(self):
-        """
-        A threaded method that will remove items in the deletion lookups list to prevent a memory leak
-        :return:
-        """
-        while True:
-            expired_keys = [key for key in sorted(self.deletion_timings.keys()) if key < datetime.now()]
-            for key in expired_keys:
-                self.thread_safe_pop_deletion_key(key)
-            time.sleep(DELETION_KEY__cooldown_removal)
-
     def request_deletion_key(self, purpose: str, input_args: dict,
                              expiry_seconds: int = DELETION_KEY__default_expiry_seconds):
-        expiry_time = None
-        key = None
-        deletion_key = None
+        jwt_obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
+        jwt_key = self.vault.get_obj(VAULT_KEY__jwt_crypt_key)
 
-        while expiry_time is None or expiry_time in self.deletion_timings:
-            key = str(uuid.uuid4())
-            deletion_key = DeletionKey(purpose, expiry_seconds, input_args)
-            expiry_time = deletion_key.expires_at
+        decoded = {
+            JWT__purpose: purpose,
+            JWT__data: crypt_utils.encrypt(jwt_obj_key, json.dumps(input_args))
+        }
 
-        self.deletion_lookups[key] = deletion_key
-        self.deletion_timings[expiry_time] = key
+        return crypt_utils.jwt_encode(jwt_key, decoded, expiry_ms=expiry_seconds * 1000)
 
-        return key
+    def validate_deletion_key(self, key: str, purpose: str) -> dict:
+        jwt_obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
+        jwt_key = self.vault.get_obj(VAULT_KEY__jwt_crypt_key)
 
-    def validate_deletion_key(self, key: uuid, purpose: str) -> dict:
-        if key not in self.deletion_lookups:
-            raise HttpStatusException(ERR__deletion_invalid_key)
-        elif self.deletion_lookups[key].purpose != purpose:
+        key = crypt_utils.jwt_decode(jwt_key, key)
+        if key[JWT__purpose] != purpose:
             raise HttpStatusException(ERR__deletion_invalid_purpose)
-        elif datetime.now() > self.deletion_lookups[key].expires_at:
-            raise HttpStatusException(ERR__deletion_key_expired)
 
-        try:
-            ret: DeletionKey = self.deletion_lookups[key]
-            self.thread_safe_pop_deletion_key(ret.expires_at)
-            return ret.input_args
-        except KeyError:
-            raise HttpStatusException(ERR__deletion_invalid_key)  # Duped logic to manage race condition with removal thread
+        data = json.loads(crypt_utils.decrypt(jwt_obj_key, key[JWT__data]))
+        return data
 
     def _execute_supplied_statement_singleton(self, db_interface: DBInterface, query, parameters: dict = None,
                                               as_objects: bool = False, encrypt_parameters: list = None,
@@ -482,7 +456,8 @@ class BaseJAAQLModel:
             raise HttpStatusException(ERR__missing_encrypt_parameter % missing)
 
         for col in encrypt_parameters:
-            parameters[col] = BaseJAAQLModel.jaaql__encrypt(parameters[col], encryption_key,
+            if parameters[col] is not None:
+                parameters[col] = BaseJAAQLModel.jaaql__encrypt(parameters[col], encryption_key,
                                                             BaseJAAQLModel.try_encode(encryption_salts.get(col, None)))
 
         statement = {
@@ -498,7 +473,8 @@ class BaseJAAQLModel:
 
         if len(decrypt_columns) != 0:
             data["rows"] = [
-                [BaseJAAQLModel.jaaql__decrypt(val, encryption_key) if col in decrypt_columns else val for val, col in
+                [BaseJAAQLModel.jaaql__decrypt(
+                    val, encryption_key) if col in decrypt_columns and val is not None else val for val, col in
                  zip(row, data["columns"])] for row in data["rows"]]
 
         if as_objects:

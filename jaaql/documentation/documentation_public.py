@@ -4,7 +4,6 @@ from jaaql.documentation.documentation_shared import ARG_RES__totp_mfa, ARG_RES_
     gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__mfa_key, RES__oauth_token, RES__deletion_key,\
     ARG_RES__deletion_key
 
-VERSION = "1.0.0"
 TITLE = "JAAQL API"
 DESCRIPTION = "Collection of methods in the JAAQL API"
 FILENAME = "jaaql_api"

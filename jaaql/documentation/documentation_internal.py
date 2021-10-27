@@ -3,7 +3,6 @@ from jaaql.constants import *
 from jaaql.documentation.documentation_shared import ARG_RES__jaaql_password, ARG_RES__totp_mfa, ARG_RES__email,\
     JWT__invite, gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__deletion_key, RES__deletion_key
 
-VERSION = "1.0.0"
 TITLE = "JAAQL Internal API"
 DESCRIPTION = "Collection of methods in the JAAQL internal API"
 FILENAME = "jaaql_internal_api"
@@ -14,7 +13,8 @@ DOCUMENTATION__install = SwaggerDocumentation(
     security=False,  # This method is not secured as the system is not setup yet. It uses a OTP token system via logs
     methods=SwaggerMethod(
         name="Install JAAQL",
-        description="Installs JAAQL to the configured database",
+        description="Installs JAAQL to the configured database. Please allow a minute after running for the server to "
+        "refresh and reload",
         method=REST__POST,
         body=[
             SwaggerArgumentResponse(
@@ -39,6 +39,7 @@ DOCUMENTATION__install = SwaggerDocumentation(
 )
 
 # Not unused. Used to generate html files
+from jaaql.documentation.documentation_shared import DOCUMENTATION__oauth_token, DOCUMENTATION__oauth_refresh
 
 KEY__application_name = "name"
 EXAMPLE__application_name = "Library Browser"

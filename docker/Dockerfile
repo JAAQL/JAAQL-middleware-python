@@ -11,7 +11,7 @@ ENV INSTALL_PATH /JAAQL-middleware-python
 COPY . $INSTALL_PATH
 
 RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini
-RUN mv $INSTALL_PATH/jaaql/config/config-docker.ini $INSTALL_PATH/config/config.ini
+RUN mv $INSTALL_PATH/jaaql/config/config-docker.ini $INSTALL_PATH/jaaql/config/config.ini
 
 RUN mkdir -p $INSTALL_PATH/www
 RUN mkdir -p $INSTALL_PATH/log

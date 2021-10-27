@@ -7,6 +7,7 @@ import shutil
 import yaml as yaml_utils
 import json
 from jaaql.utilities.utils import get_jaaql_root
+from jaaql.constants import VERSION
 
 
 ERR__empty_example_list = "Empty examples list for argument '%s'"
@@ -28,7 +29,6 @@ TYPE__example = Union[List[Any], Any]
 
 T = TypeVar('T')
 
-ATTR__version = "VERSION"
 ATTR__description = "DESCRIPTION"
 ATTR__title = "TITLE"
 ATTR__output = "OUTPUT"
@@ -524,10 +524,6 @@ def _produce_documentation(docs: ModuleType, url: str, base_path: str, is_prod: 
     except AttributeError:
         raise Exception(ERR__documentation_variable_expected % (ATTR__description, docs.__name__))
     try:
-        version = str(getattr(docs, ATTR__version))
-    except AttributeError:
-        raise Exception(ERR__documentation_variable_expected % (ATTR__version, docs.__name__))
-    try:
         filename = str(getattr(docs, ATTR__filename))
     except AttributeError:
         raise Exception(ERR__documentation_variable_expected % (ATTR__filename, docs.__name__))
@@ -536,7 +532,7 @@ def _produce_documentation(docs: ModuleType, url: str, base_path: str, is_prod: 
     yaml = _build_yaml(yaml, 0, OPEN_API__info)
     yaml = _build_yaml(yaml, 1, OPEN_API__title, title)
     yaml = _build_yaml(yaml, 1, OPEN_API__description, description)
-    yaml = _build_yaml(yaml, 1, OPEN_API__version, version)
+    yaml = _build_yaml(yaml, 1, OPEN_API__version, VERSION)
     yaml = _insert_yaml_line(yaml)
 
     yaml = _build_yaml(yaml, 0, OPEN_API__servers)
