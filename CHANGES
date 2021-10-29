@@ -1,3 +1,13 @@
+1.1.0 (2021-10-27)
+-----------------
+
+* Docker features and usability upgrades
+- Allowed users to create a derivative docker project
+- Allowed users to pass their own migration folders
+- Allowed users to pass their own documentation folders
+- Made server stateless
+
+
 1.0.0 (2021-10-24)
 -----------------
 

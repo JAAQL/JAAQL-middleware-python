@@ -48,7 +48,7 @@ def run_migrations(db_interface: DBInterface, project_name: str = None, migratio
     statement_load_table = {"query": QUERY_LOAD_TABLE, "parameters": {ATTR_PROJECT_NAME: project_name}}
 
     try:
-        migration_history = ij.transform(statement_load_table, conn=conn)
+        migration_history = db_interface.objectify(ij.transform(statement_load_table, conn=conn))
     except HttpStatusException:
         print("Migration history table does not exist. Creating")
         db_interface.execute_script_file(conn, join(migration_folder, SCRIPT_MIGRATION_HISTORY))

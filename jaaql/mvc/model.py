@@ -1,12 +1,13 @@
 from jaaql.db.db_interface import DBInterface
 from jaaql.mvc.base_model import BaseJAAQLModel, VAULT_KEY__jaaql_lookup_connection, CONFIG_KEY_security,\
     CONFIG_KEY_SECURITY__mfa_label, CONFIG_KEY_SECURITY__mfa_issuer, VAULT_KEY__jwt_obj_crypt_key,\
-    VAULT_KEY__jwt_crypt_key, VAULT_KEY__jaaql_db_id, run_migrations
+    VAULT_KEY__jwt_crypt_key, VAULT_KEY__jaaql_db_id, DIR__vault, FILE__was_installed
 from jaaql.exceptions.http_status_exception import HttpStatusException, HTTPStatus
 from typing import Optional
 from jaaql.mvc.response import JAAQLResponse
 from collections import Counter
 from jaaql.utilities import crypt_utils
+import os, errno
 import uuid
 import pyotp
 import qrcode
@@ -18,6 +19,8 @@ from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
 from jaaql.constants import *
 from os.path import join
 from jaaql.utilities.utils import get_jaaql_root
+import time
+import threading
 
 
 ERR__already_installed = "JAAQL has already been installed!"
@@ -66,12 +69,13 @@ QUERY__database_authorization_sel_one = "SELECT d.port, d.name, d.address, ad.da
 QUERY__database_authorization_count = "SELECT COUNT(*) FROM jaaql__authorization_database"
 QUERY__user_ins = "INSERT INTO jaaql__user (email, mobile, enc_totp_iv) VALUES (lower(:email), :mobile, :totp_iv) RETURNING id"
 QUERY__user_del = "UPDATE jaaql__user SET deleted = current_timestamp WHERE id = :the_user"
+QUERY__user_totp_upd = "UPDATE jaaql__user SET last_totp = :last_totp WHERE id = :user_id"
 QUERY__user_ip_sel = "SELECT encrypted_address as address, first_use, most_recent_use FROM jaaql__my_ips"
 QUERY__user_ip_count = "SELECT COUNT(*) FROM jaaql__my_ips"
 QUERY__user_ip_ins = "INSERT INTO jaaql__user_ip (the_user, address_hash, encrypted_address) VALUES (:id, :address_hash, :ip_address) ON CONFLICT ON CONSTRAINT jaaql__user_ip_unq DO UPDATE SET most_recent_use = current_timestamp RETURNING most_recent_use <> first_use as existed, id"
 QUERY__user_ua_ins = "INSERT INTO jaaql__user_ua (the_user, ua_hash, encrypted_ua) VALUES (:id, :ua_hash, :ua) ON CONFLICT ON CONSTRAINT jaaql__user_ua_unq DO UPDATE SET most_recent_use = current_timestamp RETURNING most_recent_use <> first_use as existed, id"
 QUERY__user_password_ins = "INSERT INTO jaaql__user_password (the_user, password_hash) VALUES (:the_user, :password_hash)"
-QUERY__fetch_user_latest_password = "SELECT id, email, password_hash, enc_totp_iv as totp_iv FROM jaaql__user_latest_password WHERE email = :username"
+QUERY__fetch_user_latest_password = "SELECT id, email, password_hash, enc_totp_iv as totp_iv, last_totp FROM jaaql__user_latest_password WHERE email = :username"
 QUERY__user_create_role = "SELECT jaaql__create_role(:username, :password)"
 QUERY__log_ins = "INSERT INTO jaaql__log (the_user, occurred, duration_ms, encrypted_exception, encrypted_input, ip, ua, status, endpoint) VALUES (:user_id, :occurred, :duration_ms, :exception, :input, :ip, :ua, :status, :endpoint)"
 QUERY__user_log_sel = "SELECT occurred, encrypted_address as address, encrypted_ua as user_agent, status, endpoint, duration_ms, encrypted_exception as exception FROM jaaql__my_logs"
@@ -123,7 +127,8 @@ DELETION_PURPOSE__database = "database"
 DESCRIPTION__jaaql_db = "The core jaaql database, used to store user information, logs and application/auth configs"
 DATABASE__jaaql_internal_name = "jaaql db"
 
-URI__otp_auth = "otpauth://totp/%s?secret=%s&issuer=%s"
+URI__otp_auth = "otpauth://totp/%s?secret=%s"
+URI__otp_issuer_clause = "&issuer=%s"
 HTML__base64_png = "data:image/png;base64,"
 FORMAT__png = "png"
 
@@ -136,8 +141,10 @@ JWT__ip = "ip"
 
 class JAAQLModel(BaseJAAQLModel):
 
-    def __init__(self, config, vault_key: str):
-        super().__init__(config, vault_key)
+    def __init__(self, config, vault_key: str, migration_db_interface=None, migration_project_name: str = None,
+                 migration_folder: str = None, reboot_on_install: bool = False):
+        super().__init__(config, vault_key, migration_db_interface, migration_project_name, migration_folder,
+                         reboot_on_install)
 
     def verify_user(self, username: str, ip_address: str, user_agent: str):
         username = username.lower()
@@ -187,7 +194,7 @@ class JAAQLModel(BaseJAAQLModel):
             existed_ua = resp[ATTR__existed]
             ua_id = resp[KEY__id]
 
-        return user, existed_ip, existed_ua, ip_id, ua_id
+        return user, existed_ip, existed_ua, ip_id, ua_id, user[KEY__last_totp]
 
     def refresh(self, oauth_token: str):
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), oauth_token, allow_expired=True)
@@ -212,25 +219,29 @@ class JAAQLModel(BaseJAAQLModel):
         return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data,
                                       expiry_ms=self.token_expiry_ms)
 
-    def verify_mfa(self, mfa_key: int, totp_iv: str, username: str):
+    def verify_mfa(self, mfa_key: str, totp_iv: str, last_totp: str, user_id: str):
         totp = pyotp.TOTP(totp_iv)
-        verified = totp.verify(str(mfa_key))
+        verified = totp.verify(mfa_key)
         if not verified and self.use_mfa:
             raise HttpStatusException(ERR__incorrect_credentials, HTTPStatus.UNAUTHORIZED)
 
-        if self.last_totp.get(username, None) == mfa_key:
+        if last_totp == mfa_key:
             raise HttpStatusException(ERR__mfa_reused, HTTPStatus.UNAUTHORIZED)
-        self.last_totp[username] = mfa_key
 
-    def authenticate(self, username: str, password: str, mfa_key: int, ip_address: str, user_agent: str,
+        self._execute_supplied_statement(self.jaaql_lookup_connection, QUERY__user_totp_upd, {
+            KEY__user_id: user_id,
+            KEY__last_totp: mfa_key
+        })
+
+    def authenticate(self, username: str, password: str, mfa_key: str, ip_address: str, user_agent: str,
                      response: JAAQLResponse):
-        user, _, _, ip_id, ua_id = self.verify_user(username, ip_address, user_agent)
+        user, _, _, ip_id, ua_id, last_totp = self.verify_user(username, ip_address, user_agent)
         if not crypt_utils.verify_password_hash(user[ATTR__password_hash], password,
                                                 salt=user[KEY__id].encode(crypt_utils.ENCODING__ascii)):
             raise HttpStatusException(ERR__incorrect_credentials, HTTPStatus.UNAUTHORIZED)
 
         totp_iv = user[KEY__totp_iv]
-        self.verify_mfa(mfa_key, totp_iv, username)
+        self.verify_mfa(mfa_key, totp_iv, last_totp, user[KEY__id])
 
         jwt_obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
         jwt_data = {
@@ -269,8 +280,6 @@ class JAAQLModel(BaseJAAQLModel):
             self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), "scripts", "install_2.sql"))
             self.jaaql_lookup_connection.put_conn(conn)
 
-            run_migrations(self.jaaql_lookup_connection)
-
             database_id = self.add_database({
                 KEY__database_name: db,
                 KEY__description: DESCRIPTION__jaaql_db,
@@ -289,9 +298,22 @@ class JAAQLModel(BaseJAAQLModel):
             response.ip_id = ip_id
             response.ua_id = ua_id
 
+            if self.reboot_on_install:
+                print("Rebooting to allow JAAQL config to be shared among workers")
+                threading.Thread(target=self.exit_jaaql).start()
             return qr
         else:
             raise HttpStatusException(ERR__already_installed)
+
+    def exit_jaaql(self):
+        """
+        Will terminate the worker forcefully which fires a hook in gunicorn_config.py
+        This hook reloads all workers if the file exists in vault
+        :return:
+        """
+        time.sleep(1)
+        open(join(DIR__vault, FILE__was_installed), 'a').close()
+        os._exit(0)
 
     def log(self, user_id: str, occurred: datetime, duration_ms: int, exception: str, contr_input: str, ip: str,
             ua: Optional[str], status: int, endpoint: str, databases: list = None):
@@ -327,7 +349,7 @@ class JAAQLModel(BaseJAAQLModel):
         double_hashed_password = crypt_utils.decrypt(self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key),
                                                      decoded[JWT__password])
 
-        user, _, _, ip_id, ua_id = self.verify_user(username, ip_address, user_agent)
+        user, _, _, ip_id, ua_id, last_totp = self.verify_user(username, ip_address, user_agent)
         if not crypt_utils.verify_password_hash(double_hashed_password, user[ATTR__password_hash]):
             raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
@@ -355,7 +377,7 @@ class JAAQLModel(BaseJAAQLModel):
         iv = user[KEY__totp_iv]
         return DBInterface.create_interface(self.config, auth[KEY__address], auth[KEY__port], auth[KEY__database_name],
                                             auth[KEY__username], auth[KEY__password]
-                                            ), user[KEY__id], ip_id, ua_id, iv, user[ATTR__password_hash]
+                                            ), user[KEY__id], ip_id, ua_id, iv, user[ATTR__password_hash], last_totp
 
     def add_application(self, inputs: dict, jaaql_connection: DBInterface):
         self._execute_supplied_statement(jaaql_connection, QUERY__application_ins, inputs)
@@ -551,7 +573,9 @@ class JAAQLModel(BaseJAAQLModel):
 
         mfa_issuer = self.config[CONFIG_KEY_security][CONFIG_KEY_SECURITY__mfa_issuer]
         mfa_label = self.config[CONFIG_KEY_security][CONFIG_KEY_SECURITY__mfa_label]
-        totp_uri = URI__otp_auth % (mfa_label, totp_iv, mfa_issuer)
+        totp_uri = URI__otp_auth % (mfa_label, totp_iv)
+        if mfa_issuer != "None" and mfa_issuer is not None:
+            totp_uri += URI__otp_issuer_clause % mfa_issuer
 
         self.add_database_authorization({
             KEY__database: database_id,
@@ -575,7 +599,7 @@ class JAAQLModel(BaseJAAQLModel):
         img_str = b64e(buffered.getvalue())
         totp_b64_qr = HTML__base64_png + img_str.decode("ASCII")
 
-        user, _, _, ip_id, ua_id = self.verify_user(username, ip_address, user_agent)
+        user, _, _, ip_id, ua_id, _ = self.verify_user(username, ip_address, user_agent)
 
         return {
             KEY__otp_uri: totp_uri,
@@ -603,16 +627,15 @@ class JAAQLModel(BaseJAAQLModel):
         return self._execute_supplied_statement(jaaql_connection, QUERY__my_configs, as_objects=True)
 
     def change_password(self, http_inputs: dict, totp_iv: str, oauth_token: str, password_hash: str, user_id: str,
-                        jaaql_connection: DBInterface):
+                        last_totp: str, jaaql_connection: DBInterface):
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), oauth_token)
         jwt_obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
-        username = crypt_utils.decrypt(jwt_obj_key, decoded[JWT__username])
 
         if not crypt_utils.verify_password_hash(password_hash, http_inputs[KEY__password],
                                                 salt=user_id.encode(crypt_utils.ENCODING__ascii)):
             raise HttpStatusException(ERR__password_incorrect, HTTPStatus.UNAUTHORIZED)
 
-        self.verify_mfa(http_inputs[KEY__mfa_key], totp_iv, username)
+        self.verify_mfa(http_inputs[KEY__mfa_key], totp_iv, last_totp, user_id)
 
         new_password = http_inputs[KEY__new_password]
         new_password_confirm = http_inputs[KEY__new_password_confirm]
@@ -635,16 +658,13 @@ class JAAQLModel(BaseJAAQLModel):
         return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), decoded,
                                       expiry_ms=self.token_expiry_ms)
 
-    def close_account(self, http_inputs: dict, totp_iv: str, password_hash: str, oauth_token: str, user_id: str):
-        decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), oauth_token)
-        jwt_obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
-        username = crypt_utils.decrypt(jwt_obj_key, decoded[JWT__username])
-
+    def close_account(self, http_inputs: dict, totp_iv: str, password_hash: str, user_id: str,
+                      last_totp: str):
         if not crypt_utils.verify_password_hash(password_hash, http_inputs[KEY__password],
                                                 salt=user_id.encode(crypt_utils.ENCODING__ascii)):
             raise HttpStatusException(ERR__password_incorrect, HTTPStatus.UNAUTHORIZED)
 
-        self.verify_mfa(http_inputs[KEY__mfa_key], totp_iv, username)
+        self.verify_mfa(http_inputs[KEY__mfa_key], totp_iv, last_totp, user_id)
 
         return {KEY__deletion_key: self.request_deletion_key(DELETION_PURPOSE__account, {})}
 

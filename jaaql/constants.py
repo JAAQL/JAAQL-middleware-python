@@ -1,4 +1,5 @@
 KEY__id = "id"
+KEY__last_totp = "last_totp"
 KEY__application = "application"
 KEY__application_description = "application_description"
 KEY__configuration = "configuration"
@@ -65,3 +66,5 @@ JAAQL__arg_marker = ":"
 
 ENCODING__utf = "UTF-8"
 EXAMPLE__jwt = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.e30.yXvILkvUUCBqAFlAv6wQ1Q-QRAjfe3eSosO949U73Vo"
+
+VERSION = "1.1.0"

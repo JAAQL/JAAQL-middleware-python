@@ -142,14 +142,15 @@ class JAAQLController(BaseJAAQLController):
             return self.model.my_ips(http_inputs, jaaql_connection)
 
         @self.cors_route('/account/password', DOCUMENTATION__password)
-        def change_password(http_inputs: dict, totp_iv: int, oauth_token: str, password_hash: str, user_id: str,
-                            jaaql_connection: DBInterface):
+        def change_password(http_inputs: dict, totp_iv: str, oauth_token: str, password_hash: str, user_id: str,
+                            last_totp: str, jaaql_connection: DBInterface):
             return self.model.change_password(http_inputs, totp_iv, oauth_token, password_hash, user_id,
-                                              jaaql_connection)
+                                              last_totp, jaaql_connection)
 
         @self.cors_route('/account/close', DOCUMENTATION__account_close)
-        def close_account(http_inputs: dict, totp_iv: int, oauth_token: str, password_hash: str, user_id: str):
-            return self.model.close_account(http_inputs, totp_iv, password_hash, oauth_token, user_id)
+        def close_account(http_inputs: dict, totp_iv: str, password_hash: str, user_id: str,
+                          last_totp: str):
+            return self.model.close_account(http_inputs, totp_iv, password_hash, user_id, last_totp)
 
         @self.cors_route('/account/confirm-close', DOCUMENTATION__account_close_confirm)
         def close_account_confirm(http_inputs: dict, user_id: str):

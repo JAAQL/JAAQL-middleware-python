@@ -3,8 +3,6 @@ from functools import wraps
 from werkzeug.exceptions import HTTPException
 import inspect
 import json
-import time
-import threading
 from datetime import datetime
 
 from flask import Response, Flask, request, jsonify
@@ -27,13 +25,13 @@ ARG__ip_address = "ip_address"
 ARG__response = "response"
 ARG__oauth_token = "oauth_token"
 ARG__password_hash = "password_hash"
+ARG__last_totp = "last_totp"
 
 CONTENT__encoding = "charset=utf-8"
 CONTENT__json = "application/json"
 
 CORS__WILDCARD = "*"
 
-ERR__too_many_requests = "Too many requests!"
 ERR__argument_wrong_type = "Argument '%s' is of type '%s' but should be of type '%s'"
 ERR__duplicated_field = "Field duplicated in request"
 ERR__expected_argument = "Expected argument '%s'"
@@ -62,6 +60,7 @@ FLASK__max_content_length = "MAX_CONTENT_LENGTH"
 HEADER__allow_headers = "Access-Control-Allow-Headers"
 HEADER__allow_origin = "Access-Control-Allow-Origin"
 HEADER__allow_methods = "Access-Control-Allow-Methods"
+HEADER__real_ip = "X-Real-IP"
 
 BOOL__allowed = {
     "True": True,
@@ -79,45 +78,10 @@ class BaseJAAQLController:
         self.app.config[FLASK__json_sort_keys] = False
         self.app.config[FLASK__max_content_length] = 1024 * 8  # 8kB
         self._init_error_handlers(self.app)
-        self.app.before_request(self.rate_limiter)
         self.model = model
-
-        self.rate_limit_ips_recent_calls = {}
-        self.rate_limit_ips_recent_calls_duplicate = {}
-
-        threading.Thread(target=self.rate_limiter_cleaner).start()
-
-        self.rate_limit_max_calls = 5
-        self.rate_limit_within_ms = 1000
 
     def diff_ms(self, start, now):
         return round((now - start).total_seconds() * 1000)
-
-    def rate_limiter_cleaner(self):
-        # Why the duplicate? As time progresses, the default rate_limit dictionary essentially has a memory leak. As
-        # more and more unique ips are used, the dictionary will swell in size. It is non-trivial for an algorithm to
-        # efficiently lookup and prune only old ips. The easiest way (at least I could think of) was to just swap a
-        # copy over every 5 minutes. As new ips only will be in the duplicate, old ips will be pruned out
-        # Whilst I'm sure race conditions exist, I can only see benign ones
-        while True:
-            self.rate_limit_ips_recent_calls = self.rate_limit_ips_recent_calls_duplicate
-            self.rate_limit_ips_recent_calls_duplicate = {}
-            time.sleep(60 * 5)  # Every 5 minutes
-
-    def rate_limiter(self):
-        ip_addr = request.remote_addr
-        call_time = datetime.now()
-        if ip_addr not in self.rate_limit_ips_recent_calls:
-            self.rate_limit_ips_recent_calls[ip_addr] = [call_time]
-            self.rate_limit_ips_recent_calls_duplicate[ip_addr] = [call_time]
-        else:
-            existing = self.rate_limit_ips_recent_calls[ip_addr]
-            existing = [cur_time for cur_time in existing if self.diff_ms(cur_time, call_time) <=
-                        self.rate_limit_within_ms] + [call_time]
-            if len(existing) > self.rate_limit_max_calls:
-                raise HttpStatusException(ERR__too_many_requests, HTTPStatus.TOO_MANY_REQUESTS)
-            self.rate_limit_ips_recent_calls[ip_addr] = existing
-            self.rate_limit_ips_recent_calls_duplicate[ip_addr] = existing
 
     @staticmethod
     def enforce_content_type_json():
@@ -306,10 +270,13 @@ class BaseJAAQLController:
                     ua_id = None
                     totp_iv = None
                     password_hash = None
+                    l_totp = None
+
+                    ip_addr = request.headers.get(HEADER__real_ip, request.remote_addr).split(",")[0]
 
                     if swagger_documentation.security:
-                        jaaql_connection, user_id, ip_id, ua_id, totp_iv, password_hash = self.model.verify_jwt(
-                            request.headers.get(HEADER__security), request.remote_addr, user_agent,
+                        jaaql_connection, user_id, ip_id, ua_id, totp_iv, password_hash, l_totp = self.model.verify_jwt(
+                            request.headers.get(HEADER__security), ip_addr, user_agent,
                             route == ENDPOINT__refresh)
 
                     supply_dict = {}
@@ -317,7 +284,6 @@ class BaseJAAQLController:
                     throw_ex = None
                     ex_msg = None
                     method_input = None
-                    success = False
                     try:
                         if ARG__http_inputs in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__http_inputs] = BaseJAAQLController.get_input_as_dictionary(method)
@@ -338,11 +304,16 @@ class BaseJAAQLController:
                                 raise Exception(ERR__method_required_password_hash)
                             supply_dict[ARG__password_hash] = password_hash
 
+                        if ARG__last_totp in inspect.getfullargspec(view_func_local).args:
+                            if not swagger_documentation.security:
+                                raise Exception(ERR__method_required_password_hash)
+                            supply_dict[ARG__last_totp] = l_totp
+
                         if ARG__user_agent in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__user_agent] = user_agent
 
                         if ARG__ip_address in inspect.getfullargspec(view_func_local).args:
-                            supply_dict[ARG__ip_address] = request.remote_addr
+                            supply_dict[ARG__ip_address] = ip_addr
 
                         has_jaaql_connection = ARG__jaaql_connection in inspect.getfullargspec(view_func_local).args
                         if ARG__jaaql_connection in inspect.getfullargspec(view_func_local).args:
@@ -375,7 +346,6 @@ class BaseJAAQLController:
                         if not do_allow_all:
                             resp = BaseJAAQLController.validate_output(method_response, resp)
                         ret_status = status
-                        success = True
                     except Exception as ex:
                         if not isinstance(ex, HttpStatusException):
                             ret_status = RESP__default_err_code
@@ -384,9 +354,6 @@ class BaseJAAQLController:
                             ret_status = ex.response_code
                             ex_msg = ex.message
                         throw_ex = ex
-
-                    if user_id is None and success:
-                        raise Exception(ERR__missing_user_id)
 
                     duration = round((datetime.now() - start_time).total_seconds() * 1000)
                     if user_id is not None:
