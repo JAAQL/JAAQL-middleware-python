@@ -20,7 +20,7 @@ Please run the following commands to clone the repository and navigate to it
 
     git clone https://github.com/JAAQL/JAAQL-middleware-python.git
     cd JAAQL-middleware-python
-    sudo docker build -t jaaql-middleware-python -f docker/Dockerfile .
+    sudo docker build -t jaaql/jaaql-middleware-python -f docker/Dockerfile .
     
 ## Setup mount directories
 Make the directories you will use as bind mounts within the root JAAQL-middleware-python directory. These offer accessible volumes which persist after your container shuts down. The database is dealt with as a separate anonymous docker volume
@@ -45,7 +45,7 @@ If using https you must use a domain name
         -e JAAQL_VAULT_PASSWORD=pa55word \
         -e SERVER_ADDRESS=YOUR_SERVER_ADDRESS \
         -e MFA_LABEL=YOUR_APP_NAME
-        jaaql-middleware-python
+        jaaql/jaaql-middleware-python
 
 For those wishing that this container boots when your system boots (on startup), please add the following argument to the above
 
