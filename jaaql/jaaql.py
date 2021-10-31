@@ -81,9 +81,13 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
 
     logging.getLogger("werkzeug").handlers.append(SensitiveHandler())
 
+    config_root = get_jaaql_root()
+    if is_gunicorn:
+        config_root = "/JAAQL-middleware-python/jaaql"
+
     config = configparser.ConfigParser()
     config.sections()
-    config_path = join(get_jaaql_root(), DIR__config, FILE__config)
+    config_path = join(config_root, DIR__config, FILE__config)
     if not exists(config_path):
         raise Exception("Could not find config. Please check working directory has access to '" + config_path + "'")
     config.read(config_path)
@@ -92,7 +96,7 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
     if override_config_path is not None:
         override_config = configparser.ConfigParser()
         override_config.sections()
-        override_config_path = join(get_jaaql_root(), DIR__config, FILE__config)
+        override_config_path = join(config_root, DIR__config, FILE__config)
         if not exists(override_config_path):
             raise Exception("Could not find override config. Please check working directory has access to '"
                             + override_config_path + "'")

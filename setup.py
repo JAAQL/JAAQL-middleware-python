@@ -5,7 +5,7 @@ REQUIREMENTS = [i.strip().replace("==", "~=") for i in open("requirements.txt").
 
 setup(
     name='jaaql-middleware-python',
-    packages=find_packages(include=['jaaql']),
+    packages=find_packages(include=['jaaql.*', 'jaaql']),
     version=VERSION,
     url='https://github.com/JAAQL/JAAQL-middleware-python',
     description='The jaaql package, allowing for rapid development and deployment of RESTful HTTP applications',
@@ -14,5 +14,6 @@ setup(
     author='Software Quality Measurement and Improvement bv',
     author_email="aaron.tasker@sqmi.nl",
     license='Mozilla Public License Version 2.0 with Commons Clause',
-    install_requires=REQUIREMENTS + ["psycopg2~=2.9.1"]
+    install_requires=REQUIREMENTS + ["psycopg2~=2.9.1"],
+    package_data={'': ['config/*.ini', 'scripts/*.sql', 'migrations/*.sql', 'scripts/*.html']},
 )

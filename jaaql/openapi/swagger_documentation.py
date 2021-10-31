@@ -563,7 +563,7 @@ def _produce_documentation(docs: ModuleType, url: str, base_path: str, is_prod: 
     swagger_output_file.close()
     swagger_json_output_file = open(os.path.join(base_path, filename + EXTENSION__json), "w")
     swagger_json_output_file.write(json.dumps(yaml))
-    swagger_output_file.close()
+    swagger_json_output_file.close()
 
 
 def produce_all_documentation(all_docs: List[ModuleType], url: str, is_prod: bool = False, base_path: str = None):
