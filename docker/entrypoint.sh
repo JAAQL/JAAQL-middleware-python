@@ -65,7 +65,7 @@ if [ "$IS_HTTPS" = "TRUE" ] ; then
 fi
 
 if [ "$INSTALL_PATH" != "/JAAQL-middleware-python" ] ; then
-  ./pypy3.7-v7.3.5-linux64/bin/pypy -mpip install -r $INSTALL_PATH/requirements.txt
+  ./pypy3.7-v7.3.5-linux64/bin/pypy -mpip install --no-dependencies -r $INSTALL_PATH/requirements.txt
 fi
 
 sed -i 's/{{SERVER_ADDRESS}}/'$SERVER_PROTOCOL':\/\/'$SERVER_ADDRESS'/g' /JAAQL-middleware-python/jaaql/config/config.ini
