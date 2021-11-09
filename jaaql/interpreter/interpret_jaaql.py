@@ -204,6 +204,8 @@ class InterpretJAAQL:
         # There is not an error below. psycopg2 _requires_ that the format is always string
         if isinstance(value, str):
             return PYFORMAT_str
+        elif isinstance(value, bytes):
+            return PYFORMAT_str
         elif isinstance(value, int):
             return PYFORMAT_str
         elif isinstance(value, float):

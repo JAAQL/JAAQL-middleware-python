@@ -70,7 +70,85 @@ JWT__purpose = "purpose"
 JWT__data = "data"
 
 
+class JAAQLPivotData:
+    def __init__(self, level_data: list, matching: list = None):
+        self.matching = matching
+        self.level_data = level_data
+        self.matching = matching
+
+        self.copy_from_idx = None
+        self.copy_to_idx = None
+
+        self.check_idxs = None
+
+
+class JAAQLPivotInfo:
+    def __init__(self, name, keys: [str], on: str):
+        self.name = name
+        self.keys = keys
+        if isinstance(keys, str):
+            self.keys = [keys]
+        self.on = on
+        if not self.on.startswith(self.name + "_"):
+            self.on = self.name + "_" + self.on
+
+
 class BaseJAAQLModel:
+
+    def splice_into(self, x: [dict], y: [dict]):
+        for i in range(len(x)):
+            missing_dict_fields = [key for key in y[i].keys() if key not in x[i]]
+            matching_dict_fields = [key for key in y[i].keys() if key in x[i]]
+            for missing in missing_dict_fields:
+                x[i][missing] = y[i][missing]
+            for matching in matching_dict_fields:
+                if isinstance(x[i][matching], list):
+                    self.splice_into(x[i][matching], y[i][matching])
+
+    def pivot(self, data: [dict], pivot_info: [JAAQLPivotInfo]):
+        if len(data) == 0:
+            return data
+        if not isinstance(pivot_info, list):
+            pivot_info = [pivot_info]
+
+        ret = []
+        stack = [JAAQLPivotData(ret)]
+        cols = list(data[0].keys())
+
+        for row in data:
+            copy_from_idx = 0
+            last_pivot_length = -1
+            for pivot, pivot_idx in zip(pivot_info, range(len(pivot_info))):
+                copy_to_idx = cols.index(pivot.on)
+
+                level_data = {key[last_pivot_length + 1:]: val for key, val in row.items() if copy_from_idx <=
+                              cols.index(key) < copy_to_idx}
+                matching = [level_data[key[last_pivot_length + 1:]] for key in pivot.keys]
+                is_empty = len([match for match in matching if match is not None]) == 0
+
+                cur = stack[pivot_idx]
+                sub_list = cur.level_data
+                if cur.matching != matching:
+                    if not is_empty:
+                        sub_list.append(level_data)
+                    cur.matching = matching
+                    stack = stack[0:pivot_idx + 1]
+
+                    new_data = []
+                    level_data[pivot.name] = new_data
+                    stack.append(JAAQLPivotData(new_data))
+
+                copy_from_idx = copy_to_idx
+                last_pivot_length = len(pivot.name)
+
+            cur = stack[-1]
+            final_data = {key[last_pivot_length + 1:]: val for key, val in row.items() if copy_from_idx <=
+                          cols.index(key)}
+            is_empty = len([key for key in final_data if final_data[key] is not None]) == 0
+            if not is_empty:
+                cur.level_data.append(final_data)
+
+        return ret
 
     def __init__(self, config, vault_key: str, migration_db_interface=None, migration_project_name: str = None,
                  migration_folder: str = None, reboot_on_install: bool = False):
@@ -106,9 +184,12 @@ class BaseJAAQLModel:
             self.jaaql_lookup_connection = DBInterface.create_interface(self.config, address, port, db, username,
                                                                         password, is_jaaql_user=True)
             run_migrations(self.jaaql_lookup_connection)
-            if self.migration_db_interface is not None:
-                run_migrations(self.jaaql_lookup_connection, migration_project_name, migration_folder=migration_folder,
-                               update_db_interface=migration_db_interface)
+
+            if self.migration_db_interface is None:
+                self.migration_db_interface = self.jaaql_lookup_connection
+
+            run_migrations(self.jaaql_lookup_connection, migration_project_name, migration_folder=migration_folder,
+                           update_db_interface=self.migration_db_interface)
         else:
             self.install_key = str(uuid.uuid4())
             print("INSTALL KEY: " + self.install_key)
@@ -135,12 +216,12 @@ class BaseJAAQLModel:
     def execute_paging_query(self, jaaql_connection: DBInterface, full_query: str, count_query: str, parameters: dict,
                              where_query: str, where_parameters: dict, decrypt_columns: list = None,
                              encryption_key: bytes = None):
-        data = self._execute_supplied_statement(jaaql_connection, full_query, parameters=parameters,
+        data = self.execute_supplied_statement(jaaql_connection, full_query, parameters=parameters,
                                                 as_objects=True, decrypt_columns=decrypt_columns,
                                                 encryption_key=encryption_key)
-        total = self._execute_supplied_statement(jaaql_connection, count_query, as_objects=True)
+        total = self.execute_supplied_statement(jaaql_connection, count_query, as_objects=True)
         total = total[0]["count"]
-        total_filtered = self._execute_supplied_statement(jaaql_connection, count_query + where_query,
+        total_filtered = self.execute_supplied_statement(jaaql_connection, count_query + where_query,
                                                           parameters=where_parameters,
                                                           as_objects=True)[0]["count"]
         return self.paged_collection(total, total_filtered, data)
@@ -381,11 +462,11 @@ class BaseJAAQLModel:
         data = json.loads(crypt_utils.decrypt(jwt_obj_key, key[JWT__data]))
         return data
 
-    def _execute_supplied_statement_singleton(self, db_interface: DBInterface, query, parameters: dict = None,
+    def execute_supplied_statement_singleton(self, db_interface: DBInterface, query, parameters: dict = None,
                                               as_objects: bool = False, encrypt_parameters: list = None,
                                               decrypt_columns: list = None, encryption_key: bytes = None,
                                               encryption_salts: dict = None):
-        data = self._execute_supplied_statement(db_interface, query, parameters, as_objects, encrypt_parameters,
+        data = self.execute_supplied_statement(db_interface, query, parameters, as_objects, encrypt_parameters,
                                                 decrypt_columns, encryption_key, encryption_salts)
 
         was_no_singleton = False
@@ -417,7 +498,7 @@ class BaseJAAQLModel:
         return salt
 
     @staticmethod
-    def _execute_supplied_statement(db_interface: DBInterface, query: str, parameters: dict = None,
+    def execute_supplied_statement(db_interface: DBInterface, query: str, parameters: dict = None,
                                     as_objects: bool = False, encrypt_parameters: list = None,
                                     decrypt_columns: list = None, encryption_key: bytes = None,
                                     encryption_salts: dict = None):
@@ -483,7 +564,7 @@ class BaseJAAQLModel:
         return data
 
     @staticmethod
-    def _execute_supplied_statements(db_interface: DBInterface, queries: Union[str, list],
+    def execute_supplied_statements(db_interface: DBInterface, queries: Union[str, list],
                                      parameters: Union[dict, list] = None, as_objects: bool = False):
         if not isinstance(queries, list):
             queries = [queries]

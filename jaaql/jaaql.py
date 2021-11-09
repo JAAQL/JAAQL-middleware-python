@@ -13,6 +13,7 @@ from jaaql.utilities.utils import get_jaaql_root
 from jaaql.mvc.controller import JAAQLController
 from jaaql.mvc.model import JAAQLModel
 from jaaql.mvc.controller_interface import JAAQLControllerInterface
+from jaaql.mvc.model_interface import JAAQLModelInterface
 
 DIR__config = "config"
 FILE__config = "config.ini"
@@ -59,9 +60,15 @@ def dir_non_builtins(folder):
 
 def create_app(is_gunicorn: bool = False, override_config_path: str = None, migration_db_interface=None,
                migration_project_name: str = None, migration_folder: str = None, supplied_documentation = None,
-               controllers: [JAAQLControllerInterface] = None, **options):
+               controllers: [JAAQLControllerInterface] = None, models: [JAAQLModelInterface] = None, **options):
     if controllers is None:
         controllers = []
+    if models is None:
+        models = []
+    if not isinstance(controllers, list):
+        controllers = [controllers]
+    if not isinstance(models, list):
+        models = [models]
 
     if supplied_documentation is None:
         supplied_documentation = []
@@ -96,7 +103,6 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
     if override_config_path is not None:
         override_config = configparser.ConfigParser()
         override_config.sections()
-        override_config_path = join(config_root, DIR__config, FILE__config)
         if not exists(override_config_path):
             raise Exception("Could not find override config. Please check working directory has access to '"
                             + override_config_path + "'")
@@ -107,6 +113,8 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
                 for sub_each, val in override_config[each].items():
                     if sub_each in config[each]:
                         config[each][sub_each] = val
+            else:
+                config[each] = override_config[each]
 
     mfa_name = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__mfa_label]
     if mfa_name == DEFAULT__mfa_label:
@@ -125,6 +133,9 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
 
     for sub_controller in controllers:
         sub_controller.route(controller)
+
+    for sub_model in models:
+        sub_model.set_model(model)
 
     doc_modules = dir_non_builtins(documentation)
     all_docs = []

@@ -1,5 +1,5 @@
 from jaaql.mvc.model import JAAQLModel
-from jaaql.mvc.base_controller import BaseJAAQLController
+from jaaql.mvc.base_controller import BaseJAAQLController, ERR__expected_argument, ERR__unexpected_argument
 from jaaql.documentation.documentation_internal import *
 from jaaql.documentation.documentation_public import *
 from jaaql.documentation.documentation_shared import *
@@ -16,6 +16,12 @@ class JAAQLController(BaseJAAQLController):
 
         @self.cors_route('/oauth/token', DOCUMENTATION__oauth_token)
         def fetch_oauth_token(http_inputs: dict, ip_address: str, user_agent: str, response: JAAQLResponse):
+            if self.model.use_mfa and KEY__mfa_key not in http_inputs:
+                raise HttpStatusException(ERR__expected_argument % KEY__mfa_key, HTTPStatus.BAD_REQUEST)
+            elif not self.model.use_mfa and http_inputs.get(KEY__mfa_key, None) is not None:
+                raise HttpStatusException(ERR__unexpected_argument % KEY__mfa_key, HTTPStatus.BAD_REQUEST)
+            elif not self.model.use_mfa:
+                http_inputs[KEY__mfa_key] = None
             return self.model.authenticate(**http_inputs, ip_address=ip_address, user_agent=user_agent,
                                            response=response)
 

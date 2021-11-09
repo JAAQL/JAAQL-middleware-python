@@ -5,7 +5,7 @@ import inspect
 import json
 from datetime import datetime
 
-from flask import Response, Flask, request, jsonify
+from flask import Response, Flask, request, jsonify, current_app
 from jaaql.documentation.documentation_shared import ENDPOINT__refresh
 from jaaql.constants import *
 from jaaql.mvc.model import JAAQLModel
@@ -17,6 +17,7 @@ from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMet
 from jaaql.exceptions.http_status_exception import *
 
 ARG__http_inputs = "http_inputs"
+ARG__sql_inputs = "sql_inputs"
 ARG__totp_iv = "totp_iv"
 ARG__user_id = "user_id"
 ARG__user_agent = "user_agent"
@@ -88,11 +89,11 @@ class BaseJAAQLController:
         if request.content_type.split(";")[0] != CONTENT__json:
             raise HttpStatusException(ERR__expected_json, HTTPStatus.BAD_REQUEST)
         if len(request.content_type.split(";")) > 1:
-            if request.content_type.split(";")[1].strip() != CONTENT__encoding:
+            if request.content_type.split(";")[1].strip().lower() != CONTENT__encoding:
                 raise HttpStatusException(ERR__expected_utf8, HTTPStatus.BAD_REQUEST)
 
     @staticmethod
-    def validate_data(method: SwaggerMethod, data: dict):
+    def validate_data(method: SwaggerMethod, data: dict, fill_missing: bool = True):
         for arg in method.arguments + method.body:
             if arg.required is True and arg.name not in data:
                 raise HttpStatusException(ERR__expected_argument % arg.name, HTTPStatus.BAD_REQUEST)
@@ -126,7 +127,7 @@ class BaseJAAQLController:
                 if was_err:
                     raise HttpStatusException(ERR__argument_wrong_type % (arg.name, str(type(data[arg.name])),
                                                                     str(arg.arg_type)), HTTPStatus.BAD_REQUEST)
-            elif arg.name not in data:
+            elif arg.name not in data and fill_missing:
                 data[arg.name] = None
 
         for key, _ in data.items():
@@ -215,7 +216,7 @@ class BaseJAAQLController:
         return real_resp
 
     @staticmethod
-    def get_input_as_dictionary(method: SwaggerMethod):
+    def get_input_as_dictionary(method: SwaggerMethod, fill_missing: bool = True):
         data = {}
 
         was_allow_all = False
@@ -236,7 +237,7 @@ class BaseJAAQLController:
             raise HttpStatusException(ERR__duplicated_field, HTTPStatus.BAD_REQUEST)
 
         if not was_allow_all:
-            BaseJAAQLController.validate_data(method, combined_data)
+            BaseJAAQLController.validate_data(method, combined_data, fill_missing)
 
         return combined_data
 
@@ -258,6 +259,9 @@ class BaseJAAQLController:
             def routed_function(view_func_local):
                 start_time = datetime.now()
                 resp = None
+                resp_type = current_app.config["JSONIFY_MIMETYPE"]
+                jaaql_resp = JAAQLResponse()
+                jaaql_resp.response_type = resp_type
 
                 if not BaseJAAQLController.is_options():
                     method = BaseJAAQLController.get_method(swagger_documentation)
@@ -288,6 +292,11 @@ class BaseJAAQLController:
                         if ARG__http_inputs in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__http_inputs] = BaseJAAQLController.get_input_as_dictionary(method)
                             method_input = json.dumps(supply_dict[ARG__http_inputs])
+
+                        if ARG__sql_inputs in inspect.getfullargspec(view_func_local).args:
+                            supply_dict[ARG__sql_inputs] = BaseJAAQLController.get_input_as_dictionary(
+                                method, fill_missing=False)
+                            method_input = json.dumps(supply_dict[ARG__sql_inputs])
 
                         if ARG__totp_iv in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:
@@ -321,7 +330,6 @@ class BaseJAAQLController:
                         if has_jaaql_connection and jaaql_connection is None:
                             raise Exception(ERR__method_required_security)
 
-                        jaaql_resp = JAAQLResponse()
                         if ARG__response in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__response] = jaaql_resp
 
@@ -363,7 +371,10 @@ class BaseJAAQLController:
                     if throw_ex is not None:
                         raise throw_ex
 
-                resp = jsonify(resp)
+                if jaaql_resp.response_type == resp_type:
+                    resp = jsonify(resp)
+                else:
+                    resp = Response(resp, mimetype=jaaql_resp.response_type)
 
                 self._cors(resp)
                 return resp

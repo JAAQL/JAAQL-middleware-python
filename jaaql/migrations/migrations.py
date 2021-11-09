@@ -34,7 +34,7 @@ def run_migrations(db_interface: DBInterface, project_name: str = None, migratio
     if migration_folder is None:
         migration_folder = join(get_jaaql_root(), PATH_MIGRATIONS)
 
-    if update_db_interface:
+    if update_db_interface is None:
         update_db_interface = db_interface
 
     if project_name is None:
@@ -87,7 +87,8 @@ def run_migrations(db_interface: DBInterface, project_name: str = None, migratio
                 }, conn=conn)
                 cur_installed_rank += 1
             else:
-                existing_checksum = loc(migration_history, ATTR_SCRIPT, full_name)["checksum"]
+                existing_checksum = loc(migration_history, ATTR_SCRIPT, full_name)
+                existing_checksum = loc(existing_checksum, ATTR_PROJECT_NAME, project_name)[0][ATTR_CHECKSUM]
                 if checksum != existing_checksum:
                     raise Exception("Migration mismatch for " + script_file + ". Locally calculated checksum " + str(
                         checksum) + " yet in db table found " + str(existing_checksum))

@@ -7,3 +7,4 @@ class JAAQLResponse:
         self.user_id = None
         self.ip_id = None
         self.ua_id = None
+        self.response_type = None

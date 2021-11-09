@@ -32,6 +32,7 @@ T = TypeVar('T')
 ATTR__description = "DESCRIPTION"
 ATTR__title = "TITLE"
 ATTR__output = "OUTPUT"
+ATTR__version = "VERSION"
 ATTR__filename = "FILENAME"
 
 PATH__empty = ""
@@ -520,6 +521,10 @@ def _produce_documentation(docs: ModuleType, url: str, base_path: str, is_prod: 
     except AttributeError:
         raise Exception(ERR__documentation_variable_expected % (ATTR__title, docs.__name__))
     try:
+        version = str(getattr(docs, ATTR__version))
+    except AttributeError:
+        version = VERSION
+    try:
         description = str(getattr(docs, ATTR__description))
     except AttributeError:
         raise Exception(ERR__documentation_variable_expected % (ATTR__description, docs.__name__))
@@ -532,7 +537,7 @@ def _produce_documentation(docs: ModuleType, url: str, base_path: str, is_prod: 
     yaml = _build_yaml(yaml, 0, OPEN_API__info)
     yaml = _build_yaml(yaml, 1, OPEN_API__title, title)
     yaml = _build_yaml(yaml, 1, OPEN_API__description, description)
-    yaml = _build_yaml(yaml, 1, OPEN_API__version, VERSION)
+    yaml = _build_yaml(yaml, 1, OPEN_API__version, version)
     yaml = _insert_yaml_line(yaml)
 
     yaml = _build_yaml(yaml, 0, OPEN_API__servers)
