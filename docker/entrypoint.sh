@@ -57,7 +57,7 @@ else
   sed -i 's/^    server_name .*/    server_name '$SERVER_ADDRESS';/g' $SITE_FILE
 fi
 
-rm -rf /etc/nginx/sites-enabled/$SITE_FILE  # Not strictly necessary but helps stuck containers
+rm -rf /etc/nginx/sites-enabled/jaaql  # Not strictly necessary but helps stuck containers
 ln -s $SITE_FILE /etc/nginx/sites-enabled
 
 SERVER_PROTOCOL="http"
