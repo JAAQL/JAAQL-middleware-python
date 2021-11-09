@@ -14,6 +14,6 @@ setup(
     author='Software Quality Measurement and Improvement bv',
     author_email="aaron.tasker@sqmi.nl",
     license='Mozilla Public License Version 2.0 with Commons Clause',
-    install_requires=REQUIREMENTS + ["psycopg2~=2.9.1"],
+    install_requires=REQUIREMENTS,
     package_data={'': ['config/*.ini', 'scripts/*.sql', 'migrations/*.sql', 'scripts/*.html']},
 )
