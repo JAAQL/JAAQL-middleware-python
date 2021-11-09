@@ -11,7 +11,7 @@ For ease of use, you can pull our pre-built docker image to get you started quic
 
     mkdir JAAQL-middleware-python
     cd JAAQL-middleware-python
-    docker pull jaaql/jaaql-middleware-python
+    docker pull jaaql/jaaql-middleware-python:latest
 
 Please now jump to the 'Running docker image section'
 
