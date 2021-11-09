@@ -51,7 +51,7 @@ def run_migrations(db_interface: DBInterface, project_name: str = None, migratio
         migration_history = db_interface.objectify(ij.transform(statement_load_table, conn=conn))
     except HttpStatusException:
         print("Migration history table does not exist. Creating")
-        db_interface.execute_script_file(conn, join(migration_folder, SCRIPT_MIGRATION_HISTORY))
+        db_interface.execute_script_file(conn, join(get_jaaql_root(), PATH_MIGRATIONS, SCRIPT_MIGRATION_HISTORY))
         migration_history = db_interface.objectify(ij.transform(statement_load_table, conn=conn))
 
     installed_scripts = [cur[ATTR_SCRIPT] for cur in migration_history]
