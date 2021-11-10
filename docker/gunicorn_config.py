@@ -15,5 +15,8 @@ def child_exit(server, worker):
         if os.path.exists(os.path.join("vault", "was_installed")):
             os.unlink(os.path.join("vault", "was_installed"))
             has_checked_for_install = True
+            print("Halting server. If this step fails, make sure you haven't started any non daemonic threads. When "
+                  "creating your threads. Set daemon=True in the constructor to make sure the server can properly "
+                  "restart")
             server.halt()
     has_checked_for_install = True
