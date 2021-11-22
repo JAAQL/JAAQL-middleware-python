@@ -68,6 +68,12 @@ fi
 sed -i 's/{{SERVER_ADDRESS}}/'$SERVER_PROTOCOL':\/\/'$SERVER_ADDRESS'/g' /JAAQL-middleware-python/jaaql/config/config.ini
 sed -i 's/{{MFA_LABEL}}/'$MFA_LABEL'/g' /JAAQL-middleware-python/jaaql/config/config.ini
 
+if [ "$USE_MFA" = "FALSE" ] ; then
+  sed -i 's/{{USE_MFA}}/false/g' /JAAQL-middleware-python/jaaql/config/config.ini
+else
+  sed -i 's/{{USE_MFA}}/true/g' /JAAQL-middleware-python/jaaql/config/config.ini
+fi
+
 if [ -z "$MFA_ISSUER" ] ; then
   sed -i 's/{{MFA_ISSUER}}/'$MFA_ISSUER'/g' /JAAQL-middleware-python/jaaql/config/config.ini
 else
