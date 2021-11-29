@@ -669,7 +669,7 @@ DOCUMENTATION__deploy = SwaggerDocumentation(
     tags="Deployment",
     methods=[
         SwaggerMethod(
-            name="Redeploy the JAAQL service",
+            name="Redeploys the JAAQL service",
             description="Will redeploy the JAAQL service, loading the latest version from git. In the future will "
             "support loading a specific tagged version",
             method=REST__POST
