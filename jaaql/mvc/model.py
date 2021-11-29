@@ -295,7 +295,8 @@ class JAAQLModel(BaseJAAQLModel):
                 KEY__description: DESCRIPTION__jaaql_db,
                 KEY__port: port,
                 KEY__address: address,
-                KEY__jaaql_name: DATABASE__jaaql_internal_name
+                KEY__jaaql_name: DATABASE__jaaql_internal_name,
+                KEY__is_console_level: False
             }, self.jaaql_lookup_connection)
             self.vault.insert_obj(VAULT_KEY__jaaql_db_id, database_id)
             self.vault.insert_obj(VAULT_KEY__jaaql_lookup_connection, db_connection_string)
@@ -498,12 +499,12 @@ class JAAQLModel(BaseJAAQLModel):
     def delete_application_authorization_confirm(self, inputs: dict, jaaql_connection: DBInterface):
         parameters = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__application_authorization)
         self.execute_supplied_statement(jaaql_connection, QUERY__application_authorization_del, parameters,
-                                         as_objects=True)
+                                        as_objects=True)
 
     def add_database_authorization(self, inputs: dict, connection: DBInterface):
         self.execute_supplied_statement(connection, QUERY__database_authorization_ins, inputs,
-                                         encrypt_parameters=[KEY__username, KEY__password],
-                                         encryption_key=self.get_db_crypt_key())
+                                        encrypt_parameters=[KEY__username, KEY__password],
+                                        encryption_key=self.get_db_crypt_key())
 
     def get_database_authorizations(self, inputs: dict, jaaql_connection: DBInterface):
         paging_dict, parameters = self.setup_paging_parameters(inputs)
@@ -721,8 +722,8 @@ class JAAQLModel(BaseJAAQLModel):
             db_url = crypt_utils.jwt_decode(jwt_key, database)[KEY__db_url]
             db_url = crypt_utils.decrypt(obj_key, db_url)
             db_parts = db_url.split("##")
-            db_url = db_url[0]
-            is_console_level = db_url[1] == "True"
+            db_url = db_parts[0]
+            is_console_level = db_parts[1] == "True"
             address, port, database, username, password = DBInterface.fracture_uri(db_url)
 
             if KEY__db_name in http_inputs and is_console_level:

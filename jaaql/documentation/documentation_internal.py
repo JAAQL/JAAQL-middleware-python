@@ -113,10 +113,10 @@ ARG_RES__database_base = [
         name=KEY__is_console_level,
         description="Set to true if the database can be overwrote on a submit command with the db_name argument. "
         "For example, if the argument '" + KEY__database_name + "' is set to public and the db_name argument is set "
-        "with sqmi on submit, the queries will be executed against the sqmi database",
+        "with sqmi on submit, the queries will be executed against the sqmi database. We recommend leaving on False",
         condition="If missing, set to false",
         arg_type=bool,
-        example=[True, False],
+        example=[False, True],
         required=False
     )
 ]

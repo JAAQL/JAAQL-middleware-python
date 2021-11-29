@@ -15,7 +15,7 @@ RUN mv $INSTALL_PATH/jaaql/config/config-docker.ini $INSTALL_PATH/jaaql/config/c
 
 RUN mkdir -p $INSTALL_PATH/www
 RUN mkdir -p $INSTALL_PATH/log
-RUN chcon -R -h -t httpd_sys_content_t $INSTALL_PATH/www
+RUN chown -R "$USER":www-data $INSTALL_PATH/www
 
 RUN mkdir -p /etc/letsencrypt
 
