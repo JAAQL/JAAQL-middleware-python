@@ -103,6 +103,8 @@ echo "from wsgi import build_app" >> wsgi_patch.py
 while :
 do
   /pypy3.7-v7.3.5-linux64/bin/gunicorn --bind unix:jaaql.sock -m 777 --config /JAAQL-middleware-python/docker/gunicorn_config.py --log-file $INSTALL_PATH/log/gunicorn.log --capture-output --log-level info 'wsgi_patch:build_app()'
+  chmod +777 /JAAQL-middleware-python/base_reboot.sh
+  ./JAAQL-middleware-python/base_reboot.sh
   if [ -f "reboot.sh" ] ; then
     chmod +777 reboot.sh
     ./reboot.sh

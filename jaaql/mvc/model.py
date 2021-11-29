@@ -7,7 +7,6 @@ from typing import Optional
 from jaaql.mvc.response import JAAQLResponse
 from collections import Counter
 from jaaql.utilities import crypt_utils
-import os, errno
 import uuid
 import pyotp
 import qrcode
@@ -42,7 +41,7 @@ QUERY__application_del = "DELETE FROM jaaql__application WHERE name = :name"
 QUERY__application_sel = "SELECT * FROM jaaql__application"
 QUERY__application_count = "SELECT COUNT(*) FROM jaaql__application"
 QUERY__application_upd = "UPDATE jaaql__application SET name = coalesce(:new_name, name), description = coalesce(:new_description, description), url = coalesce(:new_url, url) WHERE name = :name"
-QUERY__database_ins = "INSERT INTO jaaql__database (name, description, port, address, jaaql_name, interface_class) VALUES (:name, :description, :port, :address, :jaaql_name, 'DBPGInterface') RETURNING id"
+QUERY__database_ins = "INSERT INTO jaaql__database (name, description, port, address, jaaql_name, interface_class, is_console_level) VALUES (:name, :description, :port, :address, :jaaql_name, 'DBPGInterface', :is_console_level) RETURNING id"
 QUERY__database_sel = "SELECT * FROM jaaql__database"
 QUERY__database_del = "UPDATE jaaql__database SET deleted = current_timestamp WHERE id = :id AND deleted is null"
 QUERY__database_count = "SELECT COUNT(*) FROM jaaql__database"
@@ -81,7 +80,7 @@ QUERY__log_ins = "INSERT INTO jaaql__log (the_user, occurred, duration_ms, encry
 QUERY__user_log_sel = "SELECT occurred, encrypted_address as address, encrypted_ua as user_agent, status, endpoint, duration_ms, encrypted_exception as exception FROM jaaql__my_logs"
 QUERY__user_log_count = "SELECT COUNT(*) FROM jaaql__my_logs"
 QUERY__my_configs = "SELECT * FROM jaaql__my_configurations"
-QUERY__authorized_configuration = """SELECT parameter_name, parameter_description, username, password, name, port, address, database FROM jaaql__their_authorized_configurations WHERE application = :application AND configuration = :configuration AND pg_has_role(:username, application_role, 'MEMBER') AND pg_has_role(:username, database_role, 'MEMBER')
+QUERY__authorized_configuration = """SELECT parameter_name, parameter_description, username, password, name, port, address, database, is_console_level FROM jaaql__their_authorized_configurations WHERE application = :application AND configuration = :configuration AND pg_has_role(:username, application_role, 'MEMBER') AND pg_has_role(:username, database_role, 'MEMBER')
         AND precedence IN (
             SELECT
                 MAX(jad.precedence)
@@ -114,6 +113,7 @@ KEY__ip = "ip"
 KEY__ua = "ua"
 KEY__status = "status"
 KEY__endpoint = "endpoint"
+KEY__is_console_level = "is_console_level"
 
 DELETION_PURPOSE__account = "account"
 DELETION_PURPOSE__application = "application"
@@ -137,6 +137,8 @@ JWT__password = "password"
 JWT__created = "created"
 JWT__ua = "ua"
 JWT__ip = "ip"
+
+KEY__db_name = "db_name"
 
 
 class JAAQLModel(BaseJAAQLModel):
@@ -233,6 +235,14 @@ class JAAQLModel(BaseJAAQLModel):
             KEY__last_totp: mfa_key
         })
 
+    def redeploy(self):
+        f = open(join(get_jaaql_root(), "redeploy"), "w")
+        f.write("Will be detected and redeployment will now happen")
+        f.close()
+
+        print("Redeploying JAAQL")
+        self.exit_jaaql()
+
     def authenticate(self, username: str, password: str, mfa_key: str, ip_address: str, user_agent: str,
                      response: JAAQLResponse):
         user, _, _, ip_id, ua_id, last_totp = self.verify_user(username, ip_address, user_agent)
@@ -304,16 +314,6 @@ class JAAQLModel(BaseJAAQLModel):
             return qr
         else:
             raise HttpStatusException(ERR__already_installed)
-
-    def exit_jaaql(self):
-        """
-        Will terminate the worker forcefully which fires a hook in gunicorn_config.py
-        This hook reloads all workers if the file exists in vault
-        :return:
-        """
-        time.sleep(1)
-        open(join(DIR__vault, FILE__was_installed), 'a').close()
-        os._exit(0)
 
     def log(self, user_id: str, occurred: datetime, duration_ms: int, exception: str, contr_input: str, ip: str,
             ua: Optional[str], status: int, endpoint: str, databases: list = None):
@@ -704,7 +704,8 @@ class JAAQLModel(BaseJAAQLModel):
         # Combines the existing row, overriding KEY__database with a JWT containing the encrypted database UUID
         ret = [{KEY__parameter_description: row[KEY__parameter_description], KEY__parameter_name: row[
             KEY__parameter_name], KEY__database: crypt_utils.jwt_encode(
-            jwt_key, {KEY__db_url: crypt_utils.encrypt(obj_key, JAAQLModel.build_db_addr(row))})} for row in data]
+            jwt_key, {KEY__db_url: crypt_utils.encrypt(obj_key, JAAQLModel.build_db_addr(
+                row) + "##" + str(row[KEY__is_console_level]))})} for row in data]
 
         return ret
 
@@ -719,7 +720,16 @@ class JAAQLModel(BaseJAAQLModel):
         else:
             db_url = crypt_utils.jwt_decode(jwt_key, database)[KEY__db_url]
             db_url = crypt_utils.decrypt(obj_key, db_url)
+            db_parts = db_url.split("##")
+            db_url = db_url[0]
+            is_console_level = db_url[1] == "True"
             address, port, database, username, password = DBInterface.fracture_uri(db_url)
+
+            if KEY__db_name in http_inputs and is_console_level:
+                database = http_inputs[KEY__db_name]
+            elif KEY__db_name in http_inputs:
+                raise HttpStatusException("Cannot override DB", HTTPStatus.UNAUTHORIZED)
+
             database = DBInterface.create_interface(self.config, address, port, database, username, password)
 
         if KEY__database in http_inputs:

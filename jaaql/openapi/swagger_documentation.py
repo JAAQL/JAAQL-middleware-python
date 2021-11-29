@@ -134,10 +134,40 @@ class SwaggerResponseException:
 TYPE__exceptions = Optional[Union[List[SwaggerResponseException], SwaggerResponseException]]
 
 
+class SwaggerSimpleList:
+
+    def __init__(self, arg_type: type, description: str, example: Optional[TYPE__example] = None,
+                 required: bool = False, condition: str = None):
+        self.arg_type = arg_type
+        self.description = description
+        self.example = example
+        self.required= required
+        self.condition = condition
+
+        if not required and condition is None:
+            raise SwaggerException(ERR__condition_needed % "simple list")
+
+        self._validate_example(arg_type, self.example)
+
+    @staticmethod
+    def _validate_example(arg_type: type, example: Optional[TYPE__example] = None):
+        if example is None:
+            raise SwaggerException(ERR__null_example % "simple list")
+        if len(example) == 0:
+            raise SwaggerException(ERR__empty_example_list % "simple list")
+
+        for ex, ex_id in zip(example, range(len(example))):
+            if not isinstance(ex, arg_type):
+                raise SwaggerException(ERR__example_type % (str(type(ex)), ex_id + 1, "simple list", str(arg_type)))
+
+        if len(example) != len(set(example)):
+            raise SwaggerException(ERR__duplicated_example % "simple list")
+
+
 class SwaggerArgumentResponse:
 
     def __init__(self, name: str, description: str,
-                 arg_type: Union[type, List['SwaggerArgumentResponse'], 'SwaggerList'],
+                 arg_type: Union[type, List['SwaggerArgumentResponse'], 'SwaggerList', SwaggerSimpleList],
                  example: Optional[TYPE__example] = None, required: bool = False, condition: str = None):
         self.name = name
         self.description = description
@@ -175,7 +205,7 @@ class SwaggerArgumentResponse:
 
 class SwaggerList:
 
-    def __init__(self, *args: SwaggerArgumentResponse):
+    def __init__(self, *args: Union[SwaggerArgumentResponse, 'SwaggerList']):
         self.responses = list(args)
 
 
@@ -194,15 +224,18 @@ def validate_argument_responses(arg_responses: TYPE__argument_response):
     if arg_responses is not None and isinstance(arg_responses, List):
         found_names = []
         for arg_resp in arg_responses:
-            is_list = isinstance(arg_resp.arg_type, SwaggerList)
-            is_resp = isinstance(arg_resp.arg_type, SwaggerArgumentResponse)
-            is_resp_list = isinstance(arg_resp.arg_type, List)
-            if is_list or is_resp or is_resp_list:
-                validate_argument_responses(arg_resp.arg_type)
+            if isinstance(arg_resp, SwaggerList):
+                validate_argument_responses(arg_resp.responses)
+            else:
+                is_list = isinstance(arg_resp.arg_type, SwaggerList)
+                is_resp = isinstance(arg_resp.arg_type, SwaggerArgumentResponse)
+                is_resp_list = isinstance(arg_resp.arg_type, List)
+                if is_list or is_resp or is_resp_list:
+                    validate_argument_responses(arg_resp.arg_type)
 
-            if arg_resp.name in found_names:
-                raise SwaggerException(ERR__duplicated_argument_response_name % arg_resp.name)
-            found_names.append(arg_resp.name)
+                if arg_resp.name in found_names:
+                    raise SwaggerException(ERR__duplicated_argument_response_name % arg_resp.name)
+                found_names.append(arg_resp.name)
 
 
 class SwaggerFlatResponse:
@@ -361,16 +394,19 @@ def _generate_examples(yaml: str, depth: int, response: TYPE__listed_argument_re
         depth += 1
 
     for response_property in response:
-        is_complex = isinstance(response_property.arg_type, List)
+        if isinstance(response_property, SwaggerList):
+            yaml = _generate_examples(yaml, depth + 1, response_property)
+        else:
+            is_complex = isinstance(response_property.arg_type, List)
 
-        if is_complex or isinstance(response_property.arg_type, SwaggerList):
-            yaml = _build_yaml(yaml, depth, response_property.name)
-            yaml = _generate_examples(yaml, depth + 1, response_property.arg_type)
-        elif len(response_property.example) != 0:
-            raw_example = response_property.example[0]
-            if response_property.arg_type == str:
-                raw_example = YAML__double_quote + raw_example + YAML__double_quote
-            yaml = _build_yaml(yaml, depth, response_property.name, raw_example)
+            if is_complex or isinstance(response_property.arg_type, SwaggerList):
+                yaml = _build_yaml(yaml, depth, response_property.name)
+                yaml = _generate_examples(yaml, depth + 1, response_property.arg_type)
+            elif len(response_property.example) != 0:
+                raw_example = response_property.example[0]
+                if response_property.arg_type == str:
+                    raw_example = YAML__double_quote + raw_example + YAML__double_quote
+                yaml = _build_yaml(yaml, depth, response_property.name, raw_example)
 
     return yaml
 
@@ -382,20 +418,28 @@ def _generate_properties(yaml: str, depth: int, response: TYPE__listed_argument_
         depth += 1
 
     required = YAML__array_separator.join([YAML__double_quote + response_property.name + YAML__double_quote
-                                          for response_property in response if response_property.required])
-    yaml = _build_yaml(yaml, depth, OPEN_API__required, YAML__array_open + required + YAML__array_close)
-    yaml = _build_yaml(yaml, depth, OPEN_API__properties)
+                                          for response_property in response if not isinstance(response_property,
+                                                                                          SwaggerList)
+                                           and response_property.required])
+
+    if len(response) == 0 or not isinstance(response[0], SwaggerList):
+        yaml = _build_yaml(yaml, depth, OPEN_API__required, YAML__array_open + required + YAML__array_close)
+        yaml = _build_yaml(yaml, depth, OPEN_API__properties)
 
     for response_property in response:
-        yaml = _build_yaml(yaml, depth + 1, response_property.name)
-        yaml = _build_yaml(yaml, depth + 2, OPEN_API__description, response_property.description)
+        if isinstance(response_property, SwaggerList):
+            yaml = _generate_properties(yaml, depth, response_property)
+        else:
+            yaml = _build_yaml(yaml, depth + 1, response_property.name)
+            yaml = _build_yaml(yaml, depth + 2, OPEN_API__description, response_property.description)
 
-        is_complex = isinstance(response_property.arg_type, List) or isinstance(response_property.arg_type, SwaggerList)
+            is_complex = isinstance(response_property.arg_type, List) or isinstance(response_property.arg_type,
+                                                                                    SwaggerList)
 
-        yaml = _build_yaml(yaml, depth + 2, OPEN_API__type, _to_openapi_type(response_property.arg_type))
+            yaml = _build_yaml(yaml, depth + 2, OPEN_API__type, _to_openapi_type(response_property.arg_type))
 
-        if is_complex:
-            yaml = _generate_properties(yaml, depth + 2, response_property.arg_type)
+            if is_complex:
+                yaml = _generate_properties(yaml, depth + 2, response_property.arg_type)
 
     return yaml
 
@@ -485,7 +529,10 @@ def _produce_path(doc: SwaggerDocumentation, yaml: str) -> str:
                     yaml = _build_yaml(yaml, 8, OPEN_API__example)
                     yaml = _generate_examples(yaml, 9, response.responses)
                     yaml = _build_yaml(yaml, 8, OPEN_API__items)
-                    yaml = _build_yaml(yaml, 9, OPEN_API__type, OPEN_API__object)
+                    if isinstance(response.responses.responses[0], SwaggerList):
+                        yaml = _build_yaml(yaml, 9, OPEN_API__type, OPEN_API__array)
+                    else:
+                        yaml = _build_yaml(yaml, 9, OPEN_API__type, OPEN_API__object)
                     use_depth = 9
                     use_response = response.responses.responses
                 else:

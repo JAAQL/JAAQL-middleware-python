@@ -8,6 +8,9 @@ from jaaql.constants import *
 import uuid
 import traceback
 import json
+import time
+import os
+from os.path import join
 
 
 from jaaql.exceptions.http_status_exception import *
@@ -104,6 +107,16 @@ class BaseJAAQLModel:
             for matching in matching_dict_fields:
                 if isinstance(x[i][matching], list):
                     self.splice_into(x[i][matching], y[i][matching])
+
+    def exit_jaaql(self):
+        """
+        Will terminate the worker forcefully which fires a hook in gunicorn_config.py
+        This hook reloads all workers if the file exists in vault
+        :return:
+        """
+        time.sleep(1)
+        open(join(DIR__vault, FILE__was_installed), 'a').close()
+        os._exit(0)
 
     def pivot(self, data: [dict], pivot_info: [JAAQLPivotInfo]):
         if len(data) == 0:

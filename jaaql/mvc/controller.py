@@ -25,6 +25,10 @@ class JAAQLController(BaseJAAQLController):
             return self.model.authenticate(**http_inputs, ip_address=ip_address, user_agent=user_agent,
                                            response=response)
 
+        @self.cors_route('/redeploy', DOCUMENTATION__deploy)
+        def redeploy():
+            return self.model.redeploy()
+
         @self.cors_route(ENDPOINT__refresh, DOCUMENTATION__oauth_refresh)
         def refresh_oauth_token(oauth_token: str):
             return self.model.refresh(oauth_token)

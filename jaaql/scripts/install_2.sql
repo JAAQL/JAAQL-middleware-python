@@ -69,6 +69,7 @@ create table jaaql__database (
 	address varchar(256) not null,
 	jaaql_name varchar(64) not null,
 	interface_class varchar(20) not null,
+	is_console_level boolean not null,
 	deleted timestamptz
 );
 CREATE UNIQUE INDEX jaaql__database_unq
@@ -275,6 +276,7 @@ create view jaaql__their_authorized_configurations as (
         jd.address,
         jd.id as database,
         jad.precedence,
+        jd.is_console_level,
         ac.database_role,
         ac.application_role
     FROM

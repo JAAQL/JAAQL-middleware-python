@@ -71,6 +71,8 @@ ARG_RES__application_uri = SwaggerArgumentResponse(
 EXAMPLE__db = "library"
 EXAMPLE__address = "mydb.abbcdcec9afd.eu-west-1.rds.amazonaws.com"
 
+KEY__is_console_level = "is_console_level"
+
 ARG_RES__database_base = [
     SwaggerArgumentResponse(
         name=KEY__database_name,
@@ -106,6 +108,16 @@ ARG_RES__database_base = [
         arg_type=str,
         example=["Library database PROD", "Meeting database QA"],
         required=True
+    ),
+    SwaggerArgumentResponse(
+        name=KEY__is_console_level,
+        description="Set to true if the database can be overwrote on a submit command with the db_name argument. "
+        "For example, if the argument '" + KEY__database_name + "' is set to public and the db_name argument is set "
+        "with sqmi on submit, the queries will be executed against the sqmi database",
+        condition="If missing, set to false",
+        arg_type=bool,
+        example=[True, False],
+        required=False
     )
 ]
 
@@ -651,4 +663,16 @@ DOCUMENTATION__user_invite = SwaggerDocumentation(
             body=JWT__invite
         )
     )
+)
+
+DOCUMENTATION__deploy = SwaggerDocumentation(
+    tags="Deploy",
+    methods=[
+        SwaggerMethod(
+            name="Redeploy the JAAQL service",
+            description="Will redeploy the JAAQL service, loading the latest version from git. In the future will "
+            "support loading a specific tagged version",
+            method=REST__POST
+        )
+    ]
 )
