@@ -13,6 +13,9 @@ if [ -f "/JAAQL-middleware-python/redeploy" ] ; then
     echo "Overwrote files"
     rm -rf /JAAQL-middleware-python/JAAQL-middleware-python
     echo "Deleted copy"
+    rm -rf /JAAQL-middleware-python/jaaql/config/config.ini
+    mv /JAAQL-middleware-python/jaaql/config/config-docker.ini /JAAQL-middleware-python/jaaql/config/config.ini
+    echo "Moved config"
     rm -rf /JAAQL-middleware-python/redeploy
     echo "Finished redeploy"
 fi
