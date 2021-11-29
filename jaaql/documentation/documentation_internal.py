@@ -666,7 +666,7 @@ DOCUMENTATION__user_invite = SwaggerDocumentation(
 )
 
 DOCUMENTATION__deploy = SwaggerDocumentation(
-    tags="Deploy",
+    tags="Deployment",
     methods=[
         SwaggerMethod(
             name="Redeploy the JAAQL service",
