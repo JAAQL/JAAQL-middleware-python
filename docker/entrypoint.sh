@@ -65,20 +65,24 @@ if [ "$IS_HTTPS" = "TRUE" ] ; then
   SERVER_PROTOCOL="https"
 fi
 
-sed -i 's/{{SERVER_ADDRESS}}/'$SERVER_PROTOCOL':\/\/'$SERVER_ADDRESS'/g' /JAAQL-middleware-python/jaaql/config/config.ini
-sed -i 's/{{MFA_LABEL}}/'$MFA_LABEL'/g' /JAAQL-middleware-python/jaaql/config/config.ini
+replace_config() {
+  sed -i 's/{{SERVER_ADDRESS}}/'$SERVER_PROTOCOL':\/\/'$SERVER_ADDRESS'/g' /JAAQL-middleware-python/jaaql/config/config.ini
+  sed -i 's/{{MFA_LABEL}}/'$MFA_LABEL'/g' /JAAQL-middleware-python/jaaql/config/config.ini
 
-if [ "$USE_MFA" = "FALSE" ] ; then
-  sed -i 's/{{USE_MFA}}/false/g' /JAAQL-middleware-python/jaaql/config/config.ini
-else
-  sed -i 's/{{USE_MFA}}/true/g' /JAAQL-middleware-python/jaaql/config/config.ini
-fi
+  if [ "$USE_MFA" = "FALSE" ] ; then
+    sed -i 's/{{USE_MFA}}/false/g' /JAAQL-middleware-python/jaaql/config/config.ini
+  else
+    sed -i 's/{{USE_MFA}}/true/g' /JAAQL-middleware-python/jaaql/config/config.ini
+  fi
 
-if [ -z "$MFA_ISSUER" ] ; then
-  sed -i 's/{{MFA_ISSUER}}/'$MFA_ISSUER'/g' /JAAQL-middleware-python/jaaql/config/config.ini
-else
-  sed -i 's/{{MFA_ISSUER}}/None/g' /JAAQL-middleware-python/jaaql/config/config.ini
-fi
+  if [ -z "$MFA_ISSUER" ] ; then
+    sed -i 's/{{MFA_ISSUER}}/'$MFA_ISSUER'/g' /JAAQL-middleware-python/jaaql/config/config.ini
+  else
+    sed -i 's/{{MFA_ISSUER}}/None/g' /JAAQL-middleware-python/jaaql/config/config.ini
+  fi
+}
+
+replace_config
 
 CERT_DIR=/etc/letsencrypt/live/$SERVER_ADDRESS
 if [[ "$IS_HTTPS" = "TRUE" && ! -d "$CERT_DIR" ]] ; then
@@ -105,6 +109,7 @@ do
   /pypy3.7-v7.3.5-linux64/bin/gunicorn --bind unix:jaaql.sock -m 777 --config /JAAQL-middleware-python/docker/gunicorn_config.py --log-file $INSTALL_PATH/log/gunicorn.log --capture-output --log-level info 'wsgi_patch:build_app()'
   chmod +777 /JAAQL-middleware-python/base_reboot.sh
   /JAAQL-middleware-python/base_reboot.sh
+  replace_config
   if [ -f "reboot.sh" ] ; then
     chmod +777 reboot.sh
     ./reboot.sh
