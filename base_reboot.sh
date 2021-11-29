@@ -16,3 +16,4 @@ if [ -f "/JAAQL-middleware-python/redeploy" ] ; then
     rm -rf /JAAQL-middleware-python/redeploy
     echo "Finished redeploy"
 fi
+echo "Exiting base reboot script"
