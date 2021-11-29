@@ -4,6 +4,7 @@ LABEL maintainer="jaaql.io"
 EXPOSE 80
 EXPOSE 443
 
+RUN apt-get install -y git
 RUN apt-get update && apt-get install -y build-essential
 RUN apt install -y libpq-dev
 
