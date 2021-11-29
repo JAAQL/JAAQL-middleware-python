@@ -6,6 +6,7 @@ from jaaql.exceptions.http_status_exception import HttpStatusException, HTTPStat
 from typing import Optional
 from jaaql.mvc.response import JAAQLResponse
 from collections import Counter
+from os.path import dirname
 from jaaql.utilities import crypt_utils
 import uuid
 import pyotp
@@ -236,12 +237,13 @@ class JAAQLModel(BaseJAAQLModel):
         })
 
     def redeploy(self):
-        f = open(join(get_jaaql_root(), "redeploy"), "w")
+        f = open(join(dirname(get_jaaql_root()), "redeploy"), "w")
         f.write("Will be detected and redeployment will now happen")
         f.close()
 
         print("Redeploying JAAQL")
-        self.exit_jaaql()
+
+        threading.Thread(target=self.exit_jaaql, daemon=True).start()
 
     def authenticate(self, username: str, password: str, mfa_key: str, ip_address: str, user_agent: str,
                      response: JAAQLResponse):
