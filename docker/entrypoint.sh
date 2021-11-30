@@ -94,7 +94,7 @@ service nginx restart
 docker-entrypoint.sh postgres &
 
 if [ "$IS_HTTPS" = "TRUE" ] ; then
-  certbot renew --dry-run
+  /pypy3.7-v7.3.5-linux64/bin/certbot renew --dry-run
 fi
 
 cd $INSTALL_PATH
