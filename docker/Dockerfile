@@ -18,7 +18,7 @@ RUN mkdir -p $INSTALL_PATH/www
 RUN mkdir -p $INSTALL_PATH/log
 RUN chown -R "$USER":www-data $INSTALL_PATH/www
 
-RUN mkdir -p /etc/letsencrypt
+RUN mkdir -p /etc/letsencrypt/live
 
 VOLUME /etc/letsencrypt
 VOLUME /etc/cron.d
