@@ -13,7 +13,7 @@ from jaaql.mvc.response import JAAQLResponse
 
 from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, TYPE__response,\
     SwaggerFlatResponse, REST__DELETE, REST__GET, REST__OPTIONS, REST__POST, REST__PUT, SwaggerList, SwaggerResponse,\
-    MOCK__description, ARG_RESP__allow_all, RES__allow_all
+    MOCK__description, ARG_RESP__allow_all, RES__allow_all, SwaggerArgumentResponse
 from jaaql.exceptions.http_status_exception import *
 
 ARG__http_inputs = "http_inputs"
@@ -93,12 +93,18 @@ class BaseJAAQLController:
                 raise HttpStatusException(ERR__expected_utf8, HTTPStatus.BAD_REQUEST)
 
     @staticmethod
-    def validate_data(method: SwaggerMethod, data: dict, fill_missing: bool = True):
-        for arg in method.arguments + method.body:
+    def validate_data_rec(arguments: [SwaggerArgumentResponse], data: dict, fill_missing: bool = True):
+        for arg in arguments:
             if arg.required is True and arg.name not in data:
                 raise HttpStatusException(ERR__expected_argument % arg.name, HTTPStatus.BAD_REQUEST)
 
-            if arg.name in data and not isinstance(data[arg.name], arg.arg_type):
+            if isinstance(arg.arg_type, SwaggerList):
+                if not isinstance(data[arg.name], list):
+                    raise HttpStatusException(ERR__argument_wrong_type % (arg.name, str(type(data[arg.name])),
+                                                                          str(type(list)), HTTPStatus.BAD_REQUEST))
+                for itm in data[arg.name]:
+                    BaseJAAQLController.validate_data_rec(arg.arg_type.responses, itm, fill_missing)
+            elif arg.name in data and not isinstance(data[arg.name], arg.arg_type):
                 was_err = True
                 if arg.arg_type == int:
                     try:
@@ -126,14 +132,18 @@ class BaseJAAQLController:
 
                 if was_err:
                     raise HttpStatusException(ERR__argument_wrong_type % (arg.name, str(type(data[arg.name])),
-                                                                    str(arg.arg_type)), HTTPStatus.BAD_REQUEST)
+                                                                          str(arg.arg_type)), HTTPStatus.BAD_REQUEST)
             elif arg.name not in data and fill_missing:
                 data[arg.name] = None
 
         for key, _ in data.items():
-            found = any([arg.name == key for arg in method.arguments + method.body])
+            found = any([arg.name == key for arg in arguments])
             if not found:
                 raise HttpStatusException(ERR__unexpected_argument % key, HTTPStatus.BAD_REQUEST)
+
+    @staticmethod
+    def validate_data(method: SwaggerMethod, data: dict, fill_missing: bool = True):
+        BaseJAAQLController.validate_data_rec(method.arguments + method.body, data, fill_missing)
 
     @staticmethod
     def get_method(swagger_documentation: SwaggerDocumentation):
