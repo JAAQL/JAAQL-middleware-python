@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 import logging
 from jaaql.exceptions.http_status_exception import *
 from jaaql import db
@@ -147,7 +148,10 @@ class DBInterface(ABC):
             new_parameters = {}
             for key, value in parameters.items():
                 if value is not None:
-                    new_parameters[key] = value
+                    if isinstance(value, datetime):
+                        new_parameters[key] = str(value)
+                    else:
+                        new_parameters[key] = value
             columns, rows = self.execute_query(conn, query, new_parameters)
 
             ret = {

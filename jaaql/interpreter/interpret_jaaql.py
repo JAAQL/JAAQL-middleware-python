@@ -1,4 +1,5 @@
 from jaaql.exceptions.http_status_exception import *
+from datetime import datetime
 import re
 from jaaql.db.db_interface import DBInterface, ECHO__none
 
@@ -209,6 +210,8 @@ class InterpretJAAQL:
         elif isinstance(value, int):
             return PYFORMAT_str
         elif isinstance(value, float):
+            return PYFORMAT_str
+        elif isinstance(value, datetime):
             return PYFORMAT_str
         else:
             raise HttpStatusException(ERR_mistyped_parameter % (type(value).__name__, key), HTTPStatus.BAD_REQUEST)
