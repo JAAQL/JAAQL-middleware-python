@@ -1,6 +1,13 @@
 #!/bin/bash
 set -e
 
+LOG_FILE=$INSTALL_PATH/log/gunicorn.log
+
+if [ "$LOG_TO_OUTPUT" = "TRUE" ] ; then
+  LOG_FILE='-'
+  ln -sf /dev/stdout /var/log/nginx/access.log && ln -sf /dev/stderr /var/log/nginx/error.log
+fi
+
 DO_OVERWRITE=TRUE
 SITE_FILE=/etc/nginx/sites-available/jaaql
 
@@ -107,12 +114,6 @@ export PYTHONUNBUFFERED=TRUE
 echo "from jaaql.patch import monkey_patch" >> wsgi_patch.py
 echo "monkey_patch()" >> wsgi_patch.py
 echo "from wsgi import build_app" >> wsgi_patch.py
-
-LOG_FILE=$INSTALL_PATH/log/gunicorn.log
-
-if [ "$LOG_TO_OUTPUT" = "TRUE" ] ; then
-  LOG_FILE='-'
-fi
 
 while :
 do
