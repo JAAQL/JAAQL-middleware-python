@@ -101,6 +101,7 @@ if [[ "$IS_HTTPS" = "TRUE" && -d "$CERT_DIR" ]] ; then
   /pypy3.7-v7.3.5-linux64/bin/certbot --nginx
 fi
 
+rm -rf /etc/nginx/sites-available/default
 service nginx restart
 docker-entrypoint.sh postgres &
 
