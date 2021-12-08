@@ -124,6 +124,8 @@ class InterpretJAAQL:
 
             past_parameters = {}
 
+            conn.set_session(autocommit=len(operation) != 1)
+
             for query, parameters, echo, cur_assert in zip(query_list, parameters_list, echo_list, assert_list):
                 last_echo = echo
                 last_query = query

@@ -9,8 +9,8 @@ from jaaql.db.db_interface import DBInterface
 
 class JAAQLController(BaseJAAQLController):
 
-    def __init__(self, model: JAAQLModel):
-        super().__init__(model)
+    def __init__(self, model: JAAQLModel, is_prod: bool):
+        super().__init__(model, is_prod)
 
     def create_app(self):
 
@@ -65,6 +65,19 @@ class JAAQLController(BaseJAAQLController):
         def confirm_database_deletion(http_inputs: dict, jaaql_connection: DBInterface):
             self.model.delete_database_confirm(http_inputs, jaaql_connection)
 
+        @self.cors_route('/internal/nodes', DOCUMENTATION__nodes)
+        def nodes(sql_inputs: dict, jaaql_connection: DBInterface):
+            if self.is_post():
+                return self.model.add_node(sql_inputs, jaaql_connection)
+            elif self.is_get():
+                return self.model.get_nodes(sql_inputs, jaaql_connection)
+            else:  # self.is_delete()
+                return self.model.delete_node(sql_inputs, jaaql_connection)
+
+        @self.cors_route('/internal/nodes/confirm-deletion', DOCUMENTATION__nodes_confirm_deletion)
+        def confirm_node_deletion(http_inputs: dict, jaaql_connection: DBInterface):
+            self.model.delete_node_confirm(http_inputs, jaaql_connection)
+
         @self.cors_route('/internal/application-parameters', DOCUMENTATION__application_parameters)
         def application_parameters(http_inputs: dict, jaaql_connection: DBInterface):
             if self.is_post():
@@ -94,13 +107,13 @@ class JAAQLController(BaseJAAQLController):
             self.model.delete_application_configuration_confirm(http_inputs, jaaql_connection)
 
         @self.cors_route('/internal/application-arguments', DOCUMENTATION__application_arguments)
-        def application_arguments(http_inputs: dict, jaaql_connection: DBInterface):
+        def application_arguments(sql_inputs: dict, jaaql_connection: DBInterface):
             if self.is_post():
-                self.model.add_application_argument(http_inputs, jaaql_connection)
+                self.model.add_application_argument(sql_inputs, jaaql_connection)
             elif self.is_get():
-                return self.model.get_application_arguments(http_inputs, jaaql_connection)
+                return self.model.get_application_arguments(sql_inputs, jaaql_connection)
             else:  # self.is_delete()
-                return self.model.delete_application_argument(http_inputs, jaaql_connection)
+                return self.model.delete_application_argument(sql_inputs, jaaql_connection)
 
         @self.cors_route('/internal/application-arguments/confirm-deletion',
                          DOCUMENTATION__application_arguments_confirm_deletion)
@@ -121,19 +134,28 @@ class JAAQLController(BaseJAAQLController):
         def confirm_application_authorization_deletion(http_inputs: dict, jaaql_connection: DBInterface):
             self.model.delete_application_authorization_confirm(http_inputs, jaaql_connection)
 
-        @self.cors_route('/internal/authorization/database', DOCUMENTATION__authorization_database)
-        def database_authorization(http_inputs: dict, jaaql_connection: DBInterface):
+        @self.cors_route('/internal/authorization/node', DOCUMENTATION__authorization_node)
+        def node_authorization(http_inputs: dict, jaaql_connection: DBInterface):
             if self.is_post():
-                self.model.add_database_authorization(http_inputs, jaaql_connection)
+                return self.model.add_node_authorization(http_inputs, jaaql_connection)
             elif self.is_get():
-                return self.model.get_database_authorizations(http_inputs, jaaql_connection)
+                return self.model.get_node_authorizations(http_inputs, jaaql_connection)
             else:  # self.is_delete()
-                return self.model.delete_database_authorization(http_inputs, jaaql_connection)
+                return self.model.delete_node_authorization(http_inputs, jaaql_connection)
+
+        @self.cors_route('/internal/authorization/node/databases', DOCUMENTATION__authorization_node_databases)
+        def node_authorization(http_inputs: dict, jaaql_connection: DBInterface):
+            if self.is_put():
+                self.model.refresh_node_database_authorizations(http_inputs, jaaql_connection)
+            elif self.is_post():
+                self.model.add_node_database_authorization(http_inputs, jaaql_connection)
+            elif self.is_get():
+                return self.model.get_node_database_authorizations(http_inputs, jaaql_connection)
 
         @self.cors_route('/internal/authorization/database/confirm-deletion',
-                         DOCUMENTATION__authorization_database_confirm_deletion)
-        def confirm_database_authorization_deletion(http_inputs: dict, jaaql_connection: DBInterface):
-            self.model.delete_database_authorization_confirm(http_inputs, jaaql_connection)
+                         DOCUMENTATION__authorization_node_confirm_deletion)
+        def confirm_node_authorization_deletion(http_inputs: dict, jaaql_connection: DBInterface):
+            self.model.delete_node_authorization_confirm(http_inputs, jaaql_connection)
 
         @self.cors_route('/internal/users/invite', DOCUMENTATION__user_invite)
         def user_invite(http_inputs: dict):
@@ -170,10 +192,14 @@ class JAAQLController(BaseJAAQLController):
         def my_configs(jaaql_connection: DBInterface):
             return self.model.my_configs(jaaql_connection)
 
-        @self.cors_route('/configurations/databases', DOCUMENTATION__config_databases)
+        @self.cors_route('/configurations/arguments', DOCUMENTATION__config_arguments)
         def config_databases(http_inputs: dict, jaaql_connection: DBInterface, user_id: str):
-            return self.model.config_databases(http_inputs, jaaql_connection, user_id)
+            return self.model.config_arguments(http_inputs, jaaql_connection, user_id)
 
         @self.cors_route('/submit', DOCUMENTATION__submit)
         def submit(http_inputs: dict, jaaql_connection: DBInterface):
             return self.model.submit(http_inputs, jaaql_connection)
+
+        @self.cors_route('/submit-file', DOCUMENTATION__submit_file)
+        def submit():
+            raise HttpStatusException(HTTPStatus.NOT_IMPLEMENTED.description, HTTPStatus.NOT_IMPLEMENTED)

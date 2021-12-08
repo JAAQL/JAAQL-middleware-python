@@ -36,6 +36,8 @@ INTERFACE__postgres_class = "DBPGInterface"
 FILE__read = "r"
 FILE__query_separator = ";"
 
+ERR__missing_database = "The database name was missing from the connection"
+
 
 class DBInterface(ABC):
 
@@ -48,11 +50,17 @@ class DBInterface(ABC):
         self.address = address
 
     @staticmethod
-    def fracture_uri(uri: str) -> (str, int, str, str, str):
+    def fracture_uri(uri: str, allow_missing_database: bool = False) -> (str, int, str, str, str):
         if DIVIDER__protocol in uri:
             uri = uri.split(DIVIDER__protocol)[1]
 
-        address, db_name = uri.split(DIVIDER__address)[-1].split(DIVIDER__db)
+        db_split = uri.split(DIVIDER__address)[-1].split(DIVIDER__db)
+        address = db_split[0]
+        db_name = db_split[1] if len(db_split) > 1 else None
+
+        if not allow_missing_database and db_name is None:
+            raise HttpStatusException(ERR__missing_database)
+
         username, password = DIVIDER__address.join(uri.split(DIVIDER__address)[:-1]).split(DIVIDER__password)
         address, port = address.split(DIVIDER__port)
 

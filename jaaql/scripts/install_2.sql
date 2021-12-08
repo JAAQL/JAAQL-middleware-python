@@ -1,4 +1,4 @@
-CREATE DOMAIN jaaql__email AS varchar(254) CHECK ((VALUE ~* '^[A-Za-z0-9._%-]+@[A-Za-z0-9.-]+[.][A-Za-z]+$' OR VALUE = 'jaaql') AND lower(VALUE) = VALUE);
+CREATE DOMAIN jaaql__email AS varchar(254) CHECK ((VALUE ~* '^[A-Za-z0-9._%-]+@[A-Za-z0-9.-]+[.][A-Za-z]+$' OR VALUE IN ('jaaql', 'superjaaql')) AND lower(VALUE) = VALUE);
 
 create table jaaql__user (
     id uuid primary key not null default gen_random_uuid(),
@@ -7,7 +7,8 @@ create table jaaql__user (
     mobile   bigint,                 -- with null [allows for SMS-based 2FA login later] )
     deleted timestamptz,
     enc_totp_iv varchar(254) not null,
-    last_totp varchar(6)
+    last_totp varchar(6),
+    alias varchar(32)
 );
 CREATE UNIQUE INDEX jaaql__user_unq_email ON jaaql__user (email) WHERE (deleted is null);
 
@@ -61,19 +62,29 @@ create view jaaql__user_latest_password as (
         sub.change_count <= 1 AND us.deleted is null
 );
 
-create table jaaql__database (
+create table jaaql__node (
     id uuid primary key not null default gen_random_uuid(),
-	name varchar(256) not null,
-	description varchar(256) not null,
-	port varchar(256) not null,
-	address varchar(256) not null,
-	jaaql_name varchar(64) not null,
+    name varchar(255) not null,
+    description varchar(255) not null,
+    port integer not null,
+	address varchar(255) not null,
 	interface_class varchar(20) not null,
-	is_console_level boolean not null,
 	deleted timestamptz
 );
+CREATE UNIQUE INDEX jaaql__node_unq_name
+    ON jaaql__node (name) WHERE (deleted is null);
+CREATE UNIQUE INDEX jaaql__node_unq
+    ON jaaql__node (address, port) WHERE (deleted is null);
+
+create table jaaql__database (
+    id uuid primary key not null default gen_random_uuid(),
+    node uuid not null references jaaql__node,
+	name varchar(255) not null,
+	deleted timestamptz
+);
+--Cannot duplicate name on node
 CREATE UNIQUE INDEX jaaql__database_unq
-    ON jaaql__database (jaaql_name) WHERE (deleted is null);
+    ON jaaql__database (name, node) WHERE (deleted is null);
 
 create table jaaql__application (
     name varchar(64) not null primary key,
@@ -82,15 +93,20 @@ create table jaaql__application (
     created timestamptz not null default current_timestamp
 );
 
-create table jaaql__application_database_parameter (
+INSERT INTO jaaql__application (name, description, url) VALUES ('console', 'The console application', '');
+
+create table jaaql__application_parameter (
     application varchar(64) not null,
     name varchar(64) not null,
     description varchar(255) not null,
-    PRIMARY KEY (application, name),
+    is_node boolean not null default false,
+    PRIMARY KEY (application, name, is_node),  -- Fake primary key used for checking node match
     FOREIGN KEY (application) references jaaql__application on delete cascade on update cascade
 );
+-- Real primary key here. Alternative solution is to use a trigger which is messy
+CREATE UNIQUE INDEX jaaql__application_parameter_unq ON jaaql__application_parameter (application, name);
 
-create table jaaql__application_database_configuration (
+create table jaaql__application_configuration (
     application varchar(64) not null,
     name varchar(64) not null,
     description varchar(256) not null,
@@ -98,17 +114,24 @@ create table jaaql__application_database_configuration (
     FOREIGN KEY (application) references jaaql__application on delete cascade on update cascade
 );
 
-create table jaaql__application_database_argument (
+create table jaaql__application_argument (
     application varchar(64) not null,
     configuration varchar(64) not null,
-    database uuid not null,
+    database uuid,
+    node uuid,
+
+    -- generated column to avoid trigger. Can now use a foreign key
+    is_node boolean GENERATED ALWAYS AS (node is not null) STORED,
+
+    CHECK ((database is null) <> (node is null)),
     parameter varchar(64) not null,
     PRIMARY KEY (application, parameter, configuration),
-    FOREIGN KEY (application, configuration) references jaaql__application_database_configuration
+    FOREIGN KEY (application, configuration) references jaaql__application_configuration
         on delete cascade on update cascade,
-    FOREIGN KEY (application, parameter) references jaaql__application_database_parameter
-        on delete cascade on update cascade,
-    FOREIGN KEY (database) references jaaql__database
+    FOREIGN KEY (application, parameter) references jaaql__application_parameter(application, name) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (application, parameter, is_node) references jaaql__application_parameter(application, name, is_node),
+    FOREIGN KEY (database) references jaaql__database,
+    FOREIGN KEY (node) references jaaql__node
 );
 
 --Configurations with any missing parameters highlighted
@@ -118,16 +141,17 @@ create view jaaql__configuration_argument as (
     	db_conf.name as configuration,
     	db_param.name as parameter_name,
         db_param.description as parameter_description,
-    	db_arg.database as database
+    	coalesce(db_arg.database, db_arg.node) as argument,
+        db_arg.is_node
     FROM
-    	jaaql__application_database_configuration db_conf
-    INNER JOIN jaaql__application_database_parameter db_param ON db_conf.application = db_param.application
-    LEFT JOIN jaaql__application_database_argument db_arg
+    	jaaql__application_configuration db_conf
+    INNER JOIN jaaql__application_parameter db_param ON db_conf.application = db_param.application
+    LEFT JOIN jaaql__application_argument db_arg
         ON db_conf.application = db_arg.application AND
            db_conf.name = db_arg.configuration AND
            db_arg.parameter = db_param.name
-    LEFT JOIN jaaql__database jd on db_arg.database = jd.id
-    WHERE jd.deleted is null
+    LEFT JOIN jaaql__database jd on db_arg.database = jd.id AND jd.deleted is null
+    LEFT JOIN jaaql__node jn on db_arg.node = jn.id AND jn.deleted is null
 );
 
 -- Complete configurations. Where each parameter for the application has an associated argument
@@ -138,7 +162,7 @@ create view jaaql__complete_configuration as (
          jaaql__configuration_argument
     WHERE (application, configuration, true) IN (
         SELECT
-            application, configuration, bool_and(database is not null)
+            application, configuration, bool_and(argument is not null)
         FROM
              jaaql__configuration_argument
         GROUP BY
@@ -148,22 +172,37 @@ create view jaaql__complete_configuration as (
 
 create table jaaql__authorization_application (
     application varchar(64) not null references jaaql__application on delete cascade on update cascade,
-    role        varchar(31) not null,
+    role        varchar(254) not null default '',
     primary key (application, role)
 );
 
-create table jaaql__authorization_database (
+INSERT INTO jaaql__authorization_application (application) VALUES ('console');
+
+create table jaaql__authorization_node (
     id uuid PRIMARY KEY not null default gen_random_uuid(),
-    database uuid not null references jaaql__database,
-    role varchar(254) not null,
+    node uuid not null references jaaql__node,
+    role varchar(254),
     deleted timestamptz,
     db_encrypted_username varchar(254) not null,
 	db_encrypted_password varchar(254) not null,
 	precedence int not null default 0
 );
-CREATE UNIQUE INDEX jaaql__authorization_database_unq
-    ON jaaql__authorization_database (database, role) WHERE (deleted is null);
+CREATE UNIQUE INDEX jaaql__authorization_node_unq
+    ON jaaql__authorization_node (node, role) WHERE (deleted is null);
 
+create table jaaql__authorization_node_database (
+    "authorization" uuid not null references jaaql__authorization_node,
+    "database" uuid not null references jaaql__database,
+    PRIMARY KEY ("authorization", "database")
+);
+
+create table jaaql__authorization_node_database_upsert (
+    "authorization" uuid not null references jaaql__authorization_node,
+    "database" uuid not null references jaaql__database,
+    PRIMARY KEY ("authorization", "database")
+);
+
+--TODO add node authorization and nullable db associated
 create table jaaql__log (
     id uuid primary key not null default gen_random_uuid(),
     the_user uuid,
@@ -185,7 +224,7 @@ create table jaaql__log_db_auth (
     auth uuid not null,
     PRIMARY KEY (log, auth),
     FOREIGN KEY (log) REFERENCES jaaql__log,
-    FOREIGN KEY (auth) REFERENCES jaaql__authorization_database
+    FOREIGN KEY (auth) REFERENCES jaaql__authorization_node
 );
 
 create view jaaql__my_logs as (
@@ -220,71 +259,59 @@ grant select on jaaql__my_ips to public;
 
 create view jaaql__my_configurations as (
     SELECT
-        db_conf.application as application,
-        db_conf.name as configuration,
+        sub.application,
+        sub.configuration,
         ap.description as application_description,
         ac.description as configuration_description
     FROM
-         jaaql__application_database_configuration db_conf
-    INNER JOIN jaaql__application ap on ap.name = db_conf.application
-    INNER JOIN jaaql__application_database_configuration ac on ac.name = db_conf.name AND ac.application = db_conf.application
-    WHERE
-        (db_conf.application, db_conf.name, true, true) IN (
-            SELECT conf_arg.application,
-                   conf_arg.configuration,
-                   bool_and(db_auth.database is not null),
-                   bool_and(app_auth.application is not null)
-            FROM jaaql__complete_configuration conf_arg
-            LEFT JOIN jaaql__authorization_database db_auth ON
-                    conf_arg.database = db_auth.database AND pg_has_role(db_auth.role, 'MEMBER')
-            LEFT JOIN jaaql__authorization_application app_auth ON
-                    conf_arg.database = db_auth.database AND pg_has_role(db_auth.role, 'MEMBER')
-            LEFT JOIN jaaql__database db ON db_auth.database = db.id
-            WHERE db_auth.deleted is null AND db.deleted is null
-            GROUP BY conf_arg.application, conf_arg.configuration
-        )
-);
+        (SELECT
+            app_conf.application as application,
+            app_conf.name as configuration
+        FROM
+             jaaql__authorization_application app_auth
+        INNER JOIN jaaql__application_configuration app_conf ON app_auth.application = app_conf.application
+        WHERE
+            (app_conf.application, app_conf.name, true) IN (
+                SELECT conf_arg.application,
+                       conf_arg.configuration,
+                       bool_and(node_auth.id is not null)
+                FROM jaaql__complete_configuration conf_arg
+                LEFT JOIN jaaql__authorization_node_database acd ON
+                    conf_arg.argument = acd.database
+                LEFT JOIN jaaql__authorization_node node_auth ON
+                    ((acd."authorization" is not null AND acd."authorization" = node_auth.id) or
+                    (conf_arg.argument = node_auth.node)) AND node_auth.deleted is null AND (node_auth.role = '' or pg_has_role(node_auth.role, 'MEMBER'))
+                INNER JOIN jaaql__authorization_application app_auth ON app_auth.application = conf_arg.application AND (app_auth.role = '' or pg_has_role(app_auth.role, 'MEMBER'))
+                GROUP BY conf_arg.application, conf_arg.configuration
+            )
+        GROUP BY app_conf.application, app_conf.name) as sub
+    INNER JOIN jaaql__application_configuration ac ON ac.name = sub.configuration
+    INNER JOIN jaaql__application ap on ap.name = sub.application);
 grant select on jaaql__my_configurations to public;
 
-create or replace view jaaql__authorized_configuration as (
+-- Not my. Called through jaaql connection. Need to keep username and password secret
+create view jaaql__their_authorized_configurations as (
     SELECT
         comc.application,
         comc.configuration,
         comc.parameter_name,
         comc.parameter_description,
-        ad.role as database_role,
-        ja.role as application_role,
-        ad.database
-    FROM jaaql__complete_configuration comc
-        INNER JOIN jaaql__authorization_database ad ON comc.database = ad.database
-        INNER JOIN jaaql__database jd on ad.database = jd.id
-        INNER JOIN jaaql__authorization_application ja on comc.application = ja.application
-    WHERE ad.deleted is null AND jd.deleted is null
-);
-
--- Not my. Called through jaaql connection
-create view jaaql__their_authorized_configurations as (
-    SELECT
-        ac.application,
-        ac.configuration,
-        ac.parameter_name,
-        ac.parameter_description,
-        jad.db_encrypted_username as username,
-        jad.db_encrypted_password as password,
-        jd.name,
-        jd.port,
-        jd.address,
+        jand.db_encrypted_username as username,
+        jand.db_encrypted_password as password,
         jd.id as database,
-        jad.precedence,
-        jd.is_console_level,
-        ac.database_role,
-        ac.application_role
-    FROM
-        jaaql__authorized_configuration ac
-    INNER JOIN
-        jaaql__authorization_database jad on ac.database = jad.database AND pg_has_role(ac.database_role, jad.role, 'MEMBER')
-    INNER JOIN
-        jaaql__database jd on jad.database = jd.id
+        jd.name as name,
+        jand.node as node,
+        jn.port,
+        jn.address,
+        jand.precedence,
+        jand.role as node_role,
+        ja.role as application_role
+    FROM jaaql__complete_configuration comc
+        LEFT JOIN jaaql__authorization_node_database jandat ON comc.argument = jandat.database
+        LEFT JOIN jaaql__database jd ON jandat.database = jd.id
+        INNER JOIN jaaql__authorization_node jand ON (jand.node = comc.argument or jand.id = jandat."authorization") AND jand.deleted is null
+        INNER JOIN jaaql__authorization_application ja on comc.application = ja.application
+        INNER JOIN jaaql__node jn on jand.node = jn.id
 );
 
 -- DO NOT CHANGE FUNCTION BELOW WITHOUT CONSIDERING SECURITY!!!
@@ -307,20 +334,44 @@ END
 $$ language plpgsql;
 
 --Same security concerns as above
---Do we even need this?
---create function jaaql__grant_role(perm_role text, to_role text) returns void as
---$$
---BEGIN
---    EXECUTE 'GRANT ' || quote_ident(perm_role) || ' TO ' || quote_ident(to_role);
---END
---$$ language plpgsql;
-
---Same security concerns as above
 create function jaaql__delete_user(delete_email text) returns void as
 $$
 BEGIN
     EXECUTE 'DROP ROLE ' || quote_ident(delete_email);
     UPDATE jaaql__user SET deleted = current_timestamp WHERE email = delete_email;
-    UPDATE jaaql__authorization_database SET deleted = current_timestamp WHERE role = delete_email;
+    UPDATE jaaql__authorization_node SET deleted = current_timestamp WHERE role = delete_email;
+END
+$$ language plpgsql;
+
+create function jaaql__fetch_alias(username text) returns text as
+$$
+DECLARE
+    actual_alias text;
+BEGIN
+    SELECT coalesce(alias, email) into actual_alias FROM jaaql__user WHERE email = username;
+    return actual_alias;
+END
+$$ language plpgsql;
+
+create function jaaql__fetch_alias_from_id(userid text) returns text as
+$$
+DECLARE
+    actual_alias text;
+BEGIN
+    SELECT coalesce(alias, email) into actual_alias FROM jaaql__user WHERE id = userid;
+    return actual_alias;
+END
+$$ language plpgsql;
+
+create function jaaql__create_node(node_name text, node_address text, node_port integer, node_description text) returns uuid as
+$$
+DECLARE
+    node_id uuid;
+BEGIN
+    INSERT INTO jaaql__node (name, description, port, address, interface_class) VALUES (node_name, coalesce(node_description, 'The ' || node_name || ' node'), node_port, node_address, 'DBPGInterface') RETURNING id into node_id;
+    INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('console', 'Console ' || node_name || ' node', 'Console access to the ' || node_name || ' node');
+    INSERT INTO jaaql__application_parameter (application, name, description, is_node) VALUES ('console', 'node', 'The node which the console will run against', true);
+    INSERT INTO jaaql__application_argument (application, configuration, node, parameter) SELECT 'console', 'Console ' || node_name || ' node', id, 'node' FROM jaaql__node;
+    return node_id;
 END
 $$ language plpgsql;

@@ -1,6 +1,7 @@
 vault/*
 swagger/*
 log/*
+letsencrypt/*
 
 docker.md
 examples.md
