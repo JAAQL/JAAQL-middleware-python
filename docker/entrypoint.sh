@@ -92,10 +92,10 @@ replace_config() {
 replace_config
 
 CERT_DIR=/etc/letsencrypt/live/$SERVER_ADDRESS
-if [[ "$IS_HTTPS" = "TRUE" && ! -d "$CERT_DIR" ]] ; then
+if [ "$IS_HTTPS" = "TRUE" && ! -d "$CERT_DIR" ] ; then
   echo "Initialising certbot"
   /pypy3.7-v7.3.5-linux64/bin/certbot --nginx -d $SERVER_ADDRESS -d www.$SERVER_ADDRESS --redirect --noninteractive --no-eff-email --email $HTTPS_EMAIL --agree-tos -w $INSTALL_PATH/www
-elif [[ "$IS_HTTPS" = "TRUE" && -d "$CERT_DIR" ]] ; then
+elif [ "$IS_HTTPS" = "TRUE" && -d "$CERT_DIR" ] ; then
   echo "Found existing certificates. Installing"
   printf "1\n" | /pypy3.7-v7.3.5-linux64/bin/certbot --nginx
 fi
