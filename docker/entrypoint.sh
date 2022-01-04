@@ -67,13 +67,13 @@ fi
 rm -rf /etc/nginx/sites-enabled/jaaql  # Not strictly necessary but helps stuck containers
 ln -s $SITE_FILE /etc/nginx/sites-enabled
 
-SERVER_PROTOCOL="http"
+SERVER_PROTOCOL="http://"
 if [ "$IS_HTTPS" = "TRUE" ] ; then
-  SERVER_PROTOCOL="https"
+  SERVER_PROTOCOL="https://www."
 fi
 
 replace_config() {
-  sed -i 's/{{SERVER_ADDRESS}}/'$SERVER_PROTOCOL':\/\/'$SERVER_ADDRESS'/g' /JAAQL-middleware-python/jaaql/config/config.ini
+  sed -i 's/{{SERVER_ADDRESS}}/'$SERVER_PROTOCOL$SERVER_ADDRESS'/g' /JAAQL-middleware-python/jaaql/config/config.ini
   sed -i 's/{{MFA_LABEL}}/'$MFA_LABEL'/g' /JAAQL-middleware-python/jaaql/config/config.ini
 
   if [ "$USE_MFA" = "FALSE" ] ; then
