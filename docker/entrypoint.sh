@@ -67,9 +67,9 @@ fi
 rm -rf /etc/nginx/sites-enabled/jaaql  # Not strictly necessary but helps stuck containers
 ln -s $SITE_FILE /etc/nginx/sites-enabled
 
-SERVER_PROTOCOL="http://"
+SERVER_PROTOCOL="http:\/\/"
 if [ "$IS_HTTPS" = "TRUE" ] ; then
-  SERVER_PROTOCOL="https://www."
+  SERVER_PROTOCOL="https:\/\/www."
 fi
 
 replace_config() {
