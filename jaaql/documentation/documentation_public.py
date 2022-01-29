@@ -79,21 +79,21 @@ DOCUMENTATION__my_configs = SwaggerDocumentation(
     )
 )
 
-JWT__database = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IiQwTUcxYzNZVVkwR0NMd0J5UWFwbVNlIn0.-lzAl33gMBiAMtMq4s_" \
-                "xzKk0QzL_bpX6pnAOhGZsyM0"
+JWT__connection = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IiQwTUcxYzNZVVkwR0NMd0J5UWFwbVNlIn0.-lzAl33gMBiAMtMq4" \
+                  "s_xzKk0QzL_bpX6pnAOhGZsyM0"
 
-DOCUMENTATION__config_databases = SwaggerDocumentation(
+DOCUMENTATION__config_arguments = SwaggerDocumentation(
     tags="Configuration",
     methods=SwaggerMethod(
-        name="Fetch databases for configuration",
-        description="Fetches the parameters for a configuration and a JWT token describing the database object",
+        name="Fetch arguments for configuration",
+        description="Fetches the arguments for a configuration and a JWT token describing the argument",
         method=REST__GET,
         arguments=[
             ARG_RES__application,
             ARG_RES__configuration
         ],
         response=SwaggerResponse(
-            description="List of configurations and applications",
+            description="List of parameters and their arguments for the configuration",
             response=SwaggerList(
                 SwaggerArgumentResponse(
                     name=KEY__parameter_name,
@@ -110,10 +110,10 @@ DOCUMENTATION__config_databases = SwaggerDocumentation(
                     required=True
                 ),
                 SwaggerArgumentResponse(
-                    name=KEY__database,
-                    description="A JWT representing the database",
+                    name=KEY__connection,
+                    description="A JWT representing the authenticated connection between user and database/node",
                     arg_type=str,
-                    example=[JWT__database],
+                    example=[JWT__connection],
                     required=True
                 )
             )
@@ -300,6 +300,17 @@ DOCUMENTATION__submit = SwaggerDocumentation(
     methods=SwaggerMethod(
         name="Execute JAAQL query",
         description="Executes a JAAQL query which is either a single SQL query or a list of queries. Returns results",
+        method=REST__POST,
+        arguments=ARG_RESP__allow_all,
+        response=RES__allow_all
+    )
+)
+
+DOCUMENTATION__submit_file = SwaggerDocumentation(
+    tags="JAAQL",
+    methods=SwaggerMethod(
+        name="Submits a file for execution",
+        description="Submits a full script file",
         method=REST__POST,
         arguments=ARG_RESP__allow_all,
         response=RES__allow_all

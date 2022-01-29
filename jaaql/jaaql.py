@@ -126,9 +126,11 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
     if not use_mfa:
         print(WARNING__mfa_off, file=sys.stderr)
 
+    url = config[CONFIG_KEY__swagger][CONFIG_KEY_SWAGGER__url]
+
     model = JAAQLModel(config, vault_key, migration_db_interface, migration_project_name, migration_folder,
-                       reboot_on_install=is_gunicorn)
-    controller = JAAQLController(model)
+                       is_container=is_gunicorn, url=url)
+    controller = JAAQLController(model, is_gunicorn)
     controller.create_app()
 
     for sub_controller in controllers:
@@ -143,7 +145,6 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
         all_docs.extend(dir_non_builtins(doc))
 
     base_path = None
-    url = config[CONFIG_KEY__swagger][CONFIG_KEY_SWAGGER__url]
     if is_gunicorn:
         base_path = "www"
         url += "/api/"

@@ -1,7 +1,7 @@
 from jaaql.db.db_interface import DBInterface
 from jaaql.mvc.base_model import BaseJAAQLModel, VAULT_KEY__jaaql_lookup_connection, CONFIG_KEY_security,\
     CONFIG_KEY_SECURITY__mfa_label, CONFIG_KEY_SECURITY__mfa_issuer, VAULT_KEY__jwt_obj_crypt_key,\
-    VAULT_KEY__jwt_crypt_key, VAULT_KEY__jaaql_db_id, DIR__vault, FILE__was_installed
+    VAULT_KEY__jwt_crypt_key, VAULT_KEY__jaaql_node_id
 from jaaql.exceptions.http_status_exception import HttpStatusException, HTTPStatus
 from typing import Optional
 from jaaql.mvc.response import JAAQLResponse
@@ -9,6 +9,7 @@ from collections import Counter
 from os.path import dirname
 from jaaql.utilities import crypt_utils
 import uuid
+import os
 import pyotp
 import qrcode
 import qrcode.image.svg
@@ -19,8 +20,8 @@ from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
 from jaaql.constants import *
 from os.path import join
 from jaaql.utilities.utils import get_jaaql_root
-import time
 import threading
+import shutil
 
 
 ERR__already_installed = "JAAQL has already been installed!"
@@ -35,39 +36,49 @@ ERR__new_ua = "Token being used from a different browser. Please refresh it"
 ERR__refresh_expired = "Token too old to be used for refresh. Please authenticate again"
 ERR__duplicated_database = "User %s has a duplicate database precedence with databases '%s'"
 
-JAAQL__username = "jaaql"
+USERNAME__jaaql = "jaaql"
+USERNAME__superjaaql = "superjaaql"
+USERNAME__postgres = "postgres"
 
+QUERY__application_console_set_url = "UPDATE jaaql__application SET url = :url"
 QUERY__application_ins = "INSERT INTO jaaql__application (name, description, url) VALUES (:name, :description, :url)"
 QUERY__application_del = "DELETE FROM jaaql__application WHERE name = :name"
 QUERY__application_sel = "SELECT * FROM jaaql__application"
 QUERY__application_count = "SELECT COUNT(*) FROM jaaql__application"
 QUERY__application_upd = "UPDATE jaaql__application SET name = coalesce(:new_name, name), description = coalesce(:new_description, description), url = coalesce(:new_url, url) WHERE name = :name"
-QUERY__database_ins = "INSERT INTO jaaql__database (name, description, port, address, jaaql_name, interface_class, is_console_level) VALUES (:name, :description, :port, :address, :jaaql_name, 'DBPGInterface', :is_console_level) RETURNING id"
+QUERY__database_ins = "INSERT INTO jaaql__database (node, name) VALUES (:node, :name) RETURNING id"
+QUERY__node_create = "SELECT jaaql__create_node(:name, :address, :port, :description);"
 QUERY__database_sel = "SELECT * FROM jaaql__database"
+QUERY__node_sel = "SELECT * FROM jaaql__node"
 QUERY__database_del = "UPDATE jaaql__database SET deleted = current_timestamp WHERE id = :id AND deleted is null"
+QUERY__node_del = "UPDATE jaaql__node SET deleted = current_timestamp WHERE id = :id AND deleted is null"
 QUERY__database_count = "SELECT COUNT(*) FROM jaaql__database"
-QUERY__application_parameter_ins = "INSERT INTO jaaql__application_database_parameter (application, name, description) VALUES (:application, :name, :description)"
-QUERY__application_parameter_del = "DELETE FROM jaaql__application_database_parameter WHERE name = :name AND application = :application"
-QUERY__application_parameter_sel = "SELECT * FROM jaaql__application_database_parameter"
-QUERY__application_parameter_count = "SELECT COUNT(*) FROM jaaql__application_database_parameter"
-QUERY__application_configuration_ins = "INSERT INTO jaaql__application_database_configuration (application, name, description) VALUES (:application, :name, :description)"
-QUERY__application_configuration_del = "DELETE FROM jaaql__application_database_configuration WHERE name = :name AND application = :application"
-QUERY__application_configuration_sel = "SELECT * FROM jaaql__application_database_configuration"
-QUERY__application_configuration_count = "SELECT COUNT(*) FROM jaaql__application_database_configuration"
-QUERY__application_argument_ins = "INSERT INTO jaaql__application_database_argument (application, configuration, database, parameter) VALUES (:application, :configuration, :database, :parameter)"
-QUERY__application_argument_del = "DELETE FROM jaaql__application_database_argument WHERE application = :application AND configuration = :configuration AND parameter = :parameter"
-QUERY__application_argument_sel = "SELECT * FROM jaaql__application_database_argument"
-QUERY__application_argument_count = "SELECT COUNT(*) FROM jaaql__application_database_argument"
+QUERY__node_count = "SELECT COUNT(*) FROM jaaql__node"
+QUERY__application_parameter_ins = "INSERT INTO jaaql__application_parameter (application, name, description, is_node) VALUES (:application, :name, :description, :is_node)"
+QUERY__application_parameter_del = "DELETE FROM jaaql__application_parameter WHERE name = :name AND application = :application"
+QUERY__application_parameter_sel = "SELECT * FROM jaaql__application_parameter"
+QUERY__application_parameter_count = "SELECT COUNT(*) FROM jaaql__application_parameter"
+QUERY__application_configuration_ins = "INSERT INTO jaaql__application_configuration (application, name, description) VALUES (:application, :name, :description)"
+QUERY__application_configuration_del = "DELETE FROM jaaql__application_configuration WHERE name = :name AND application = :application"
+QUERY__application_configuration_sel = "SELECT * FROM jaaql__application_configuration"
+QUERY__application_configuration_count = "SELECT COUNT(*) FROM jaaql__application_configuration"
+QUERY__application_argument_ins = "INSERT INTO jaaql__application_argument (application, configuration, database, node, parameter) VALUES (:application, :configuration, :database, :node, :parameter)"
+QUERY__application_argument_del = "DELETE FROM jaaql__application_argument WHERE application = :application AND configuration = :configuration AND parameter = :parameter"
+QUERY__application_argument_sel = "SELECT * FROM jaaql__application_argument"
+QUERY__application_argument_count = "SELECT COUNT(*) FROM jaaql__application_argument"
 QUERY__application_authorization_ins = "INSERT INTO jaaql__authorization_application (application, role) VALUES (:application, :role)"
 QUERY__application_authorization_del = "DELETE FROM jaaql__authorization_application WHERE application = :application AND role = :role"
 QUERY__application_authorization_sel = "SELECT * FROM jaaql__authorization_application"
 QUERY__application_authorization_count = "SELECT COUNT(*) FROM jaaql__authorization_application"
-QUERY__database_authorization_ins = "INSERT INTO jaaql__authorization_database (database, role, db_encrypted_username, db_encrypted_password, precedence) VALUES (:database, :role, :username, :password, coalesce(:precedence, 0))"
-QUERY__database_authorization_del = "UPDATE jaaql__authorization_database SET deleted = current_timestamp WHERE id = :id AND deleted is null"
-QUERY__database_authorization_sel = "SELECT id, database, role, db_encrypted_username as username, db_encrypted_password as password, deleted FROM jaaql__authorization_database"
-QUERY__database_authorization_sel_one = "SELECT d.port, d.name, d.address, ad.database, ad.db_encrypted_username as username, ad.db_encrypted_password as password FROM jaaql__authorization_database ad INNER JOIN jaaql__database d ON d.id = ad.database WHERE role = :role AND ad.database = :database AND d.deleted is null and ad.deleted is null"
-QUERY__database_authorization_count = "SELECT COUNT(*) FROM jaaql__authorization_database"
-QUERY__user_ins = "INSERT INTO jaaql__user (email, mobile, enc_totp_iv) VALUES (lower(:email), :mobile, :totp_iv) RETURNING id"
+QUERY__node_authorization_ins = "INSERT INTO jaaql__authorization_node (node, role, db_encrypted_username, db_encrypted_password, precedence) VALUES (:node, :role, :username, :password, coalesce(:precedence, 0)) RETURNING id"
+QUERY__node_authorization_del = "UPDATE jaaql__authorization_node SET deleted = current_timestamp WHERE id = :id AND deleted is null"
+QUERY__node_authorization_sel = "SELECT id, node, role, deleted FROM jaaql__authorization_node"
+QUERY__role_connection_sel = "SELECT ad.id as id, ad.db_encrypted_username as username, ad.db_encrypted_password as password, nod.address, nod.port FROM jaaql__authorization_node ad INNER JOIN jaaql__node nod ON nod.id = ad.node WHERE role = (SELECT coalesce(alias, email) FROM jaaql__user WHERE email = :role) AND node = :node AND ad.deleted is null AND nod.deleted is null;"
+QUERY__role_connection_auth_sel = "SELECT ad.id as id, ad.db_encrypted_username as username, ad.db_encrypted_password as password, nod.address, nod.port, nod.id as node FROM jaaql__authorization_node ad INNER JOIN jaaql__node nod ON nod.id = ad.node WHERE ad.id = :authorization AND ad.deleted is null AND nod.deleted is null;"
+QUERY__node_authorization_count = "SELECT COUNT(*) FROM jaaql__authorization_node"
+QUERY__node_authorization_database_sel = "SELECT jd.id, jd.name FROM jaaql__authorization_node_database jand INNER JOIN jaaql__database jd ON jd.id = jand.database WHERE jand.\"authorization\" = :authorization"
+QUERY__node_authorization_database_ins = "INSERT INTO jaaql__authorization_node_database VALUES (:authorization, :database)"
+QUERY__user_ins = "INSERT INTO jaaql__user (email, mobile, enc_totp_iv, alias) VALUES (lower(:email), :mobile, :totp_iv, :alias) RETURNING id"
 QUERY__user_del = "UPDATE jaaql__user SET deleted = current_timestamp WHERE id = :the_user"
 QUERY__user_totp_upd = "UPDATE jaaql__user SET last_totp = :last_totp WHERE id = :user_id"
 QUERY__user_ip_sel = "SELECT encrypted_address as address, first_use, most_recent_use FROM jaaql__my_ips"
@@ -81,20 +92,48 @@ QUERY__log_ins = "INSERT INTO jaaql__log (the_user, occurred, duration_ms, encry
 QUERY__user_log_sel = "SELECT occurred, encrypted_address as address, encrypted_ua as user_agent, status, endpoint, duration_ms, encrypted_exception as exception FROM jaaql__my_logs"
 QUERY__user_log_count = "SELECT COUNT(*) FROM jaaql__my_logs"
 QUERY__my_configs = "SELECT * FROM jaaql__my_configurations"
-QUERY__authorized_configuration = """SELECT parameter_name, parameter_description, username, password, name, port, address, database, is_console_level FROM jaaql__their_authorized_configurations WHERE application = :application AND configuration = :configuration AND pg_has_role(:username, application_role, 'MEMBER') AND pg_has_role(:username, database_role, 'MEMBER')
-        AND precedence IN (
-            SELECT
-                MAX(jad.precedence)
-            FROM jaaql__authorized_configuration ac
-            INNER JOIN
-                 jaaql__authorization_database jad on ac.database = jad.database
-            INNER JOIN
-                 jaaql__database jd on jad.database = jd.id
-            WHERE pg_has_role(:username, ac.application_role, 'MEMBER')
-                AND pg_has_role(:username, ac.database_role, 'MEMBER')
-            GROUP BY ac.parameter_name
-        )
+QUERY__my_configs_where = "SELECT * FROM jaaql__my_configurations WHERE application = :application AND configuration = :configuration"
+
+QUERY__authorized_configuration = """
+SELECT
+    *
+FROM jaaql__their_authorized_configurations jtac
+LEFT JOIN jaaql__authorization_node_database jand on jtac.database = jand.database
+WHERE
+      application = :application AND configuration = :configuration AND
+      (jtac.application_role = '' or pg_has_role(jaaql__fetch_alias_from_id(:user_id), application_role, 'MEMBER')) AND
+      CASE WHEN jand.database is not null THEN
+         (jtac.node, jand.database, jtac.precedence) in (
+             SELECT
+                 jan.node,
+                 jdata.database,
+                 MAX(precedence)
+             FROM
+                 jaaql__authorization_node jan
+             INNER JOIN
+                 jaaql__authorization_node_database jdata on jan.id = jdata."authorization"
+             WHERE pg_has_role(jaaql__fetch_alias_from_id(:user_id), jan.role, 'MEMBER')
+             GROUP BY jan.node, jdata.database
+         )
+      ELSE
+          (jtac.node, jtac.precedence) in (
+             SELECT
+                 jan.node,
+                 MAX(precedence)
+             FROM
+                 jaaql__authorization_node jan
+             WHERE pg_has_role(jaaql__fetch_alias_from_id(:user_id), jan.role, 'MEMBER')
+             GROUP BY jan.node
+         )
+      END;
 """
+QUERY__upsert_jaaql_database = "INSERT INTO jaaql__database (node, name) VALUES (:node, :name) ON CONFLICT (name, node) WHERE deleted is null DO UPDATE set node = EXCLUDED.node RETURNING id;"
+QUERY__authorization_database_ins = 'INSERT INTO jaaql__authorization_node_database_upsert("authorization", "database") VALUES (:authorization, :database);'
+QUERY__authorization_database_copy = 'INSERT INTO jaaql__authorization_node_database ("authorization", "database") SELECT "authorization", "database" FROM jaaql__authorization_node_database_upsert ON CONFLICT DO NOTHING;'
+QUERY__authorization_database_del = 'DELETE FROM jaaql__authorization_node_database WHERE "authorization" = :authorization AND ("authorization", "database") not in (SELECT "authorization", "database" FROM jaaql__authorization_node_database_upsert);'
+QUERY__authorization_database_reset = 'DELETE FROM jaaql__authorization_node_database_upsert WHERE "authorization" = :authorization;'
+QUERY__postgres_fetch_my_databases = "select pgd.datname from pg_database pgd where has_database_privilege(current_user, pgd.datname, 'CONNECT') and pgd.datname not in ('template0', 'template1');"
+FUNC__jaaql_create_node = "jaaql__create_node"
 
 ATTR__email = "email"
 ATTR__mobile = "mobile"
@@ -105,6 +144,7 @@ ATTR__address_hash = "address_hash"
 ATTR__ip_address = "ip_address"
 ATTR__ua_hash = "ua_hash"
 ATTR__ua = "ua"
+ATTR__alias = "alias"
 KEY__totp_iv = "totp_iv"
 KEY__user_id = "user_id"
 KEY__occurred = "occurred"
@@ -114,7 +154,8 @@ KEY__ip = "ip"
 KEY__ua = "ua"
 KEY__status = "status"
 KEY__endpoint = "endpoint"
-KEY__is_console_level = "is_console_level"
+KEY__dat_name = "datname"
+KEY__authorization = "authorization"
 
 DELETION_PURPOSE__account = "account"
 DELETION_PURPOSE__application = "application"
@@ -122,8 +163,9 @@ DELETION_PURPOSE__application_parameter = "application_parameter"
 DELETION_PURPOSE__application_configuration = "application_configuration"
 DELETION_PURPOSE__application_argument = "application_argument"
 DELETION_PURPOSE__application_authorization = "application_authorization"
-DELETION_PURPOSE__database_authorization = "database_authorization"
+DELETION_PURPOSE__node_authorization = "node_authorization"
 DELETION_PURPOSE__database = "database"
+DELETION_PURPOSE__node = "node"
 
 DESCRIPTION__jaaql_db = "The core jaaql database, used to store user information, logs and application/auth configs"
 DATABASE__jaaql_internal_name = "jaaql db"
@@ -139,24 +181,40 @@ JWT__created = "created"
 JWT__ua = "ua"
 JWT__ip = "ip"
 
-KEY__db_name = "db_name"
+NAME__host_node = "host"
+
+PG__default_connection_string = "postgresql://postgres:%s@localhost:5432/jaaql"
+PG_ENV__password = "POSTGRES_PASSWORD"
+
+DIR__scripts = "scripts"
+DIR__apps = "apps"
+SEPARATOR__dir = "/"
+DIR__www = "www"
+_DIR__console = "console"
+DIR__console = join(DIR__apps, _DIR__console)
+DB__empty = ""
+DB__jaaql = "jaaql"
+
+MFA__null_issuer = "None"
+
+PRECEDENCE__super_user = 999
 
 
 class JAAQLModel(BaseJAAQLModel):
 
     def __init__(self, config, vault_key: str, migration_db_interface=None, migration_project_name: str = None,
-                 migration_folder: str = None, reboot_on_install: bool = False):
+                 migration_folder: str = None, is_container: bool = False, url: str = None):
         super().__init__(config, vault_key, migration_db_interface, migration_project_name, migration_folder,
-                         reboot_on_install)
+                         is_container, url)
 
     def verify_user(self, username: str, ip_address: str, user_agent: str):
         username = username.lower()
 
         inputs = {KEY__username: username}
         users = self.execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_user_latest_password,
-                                                 inputs, as_objects=True,
-                                                 decrypt_columns=[ATTR__password_hash, KEY__totp_iv],
-                                                 encryption_key=self.get_db_crypt_key())
+                                                inputs, as_objects=True,
+                                                decrypt_columns=[ATTR__password_hash, KEY__totp_iv],
+                                                encryption_key=self.get_db_crypt_key())
 
         if len(users) == 0:
             raise HttpStatusException(ERR__incorrect_credentials, HTTPStatus.UNAUTHORIZED)
@@ -171,10 +229,10 @@ class JAAQLModel(BaseJAAQLModel):
         }
 
         resp = self.execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__user_ip_ins, inputs,
-                                                          as_objects=True,
-                                                          encrypt_parameters=[ATTR__address_hash, ATTR__ip_address],
-                                                          encryption_key=self.get_db_crypt_key(),
-                                                          encryption_salts={ATTR__address_hash: user[KEY__id]})
+                                                         as_objects=True,
+                                                         encrypt_parameters=[ATTR__address_hash, ATTR__ip_address],
+                                                         encryption_key=self.get_db_crypt_key(),
+                                                         encryption_salts={ATTR__address_hash: user[KEY__id]})
         existed_ip = resp[ATTR__existed]
         ip_id = resp[KEY__id]
 
@@ -190,10 +248,10 @@ class JAAQLModel(BaseJAAQLModel):
             }
 
             resp = self.execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__user_ua_ins, inputs,
-                                                              as_objects=True,
-                                                              encrypt_parameters=[ATTR__ua_hash, ATTR__ua],
-                                                              encryption_key=self.get_db_crypt_key(),
-                                                              encryption_salts={ATTR__ua_hash: user[KEY__id]})
+                                                             as_objects=True,
+                                                             encrypt_parameters=[ATTR__ua_hash, ATTR__ua],
+                                                             encryption_key=self.get_db_crypt_key(),
+                                                             encryption_salts={ATTR__ua_hash: user[KEY__id]})
             existed_ua = resp[ATTR__existed]
             ua_id = resp[KEY__id]
 
@@ -271,50 +329,85 @@ class JAAQLModel(BaseJAAQLModel):
         return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data,
                                       expiry_ms=self.token_expiry_ms)
 
-    def install(self, db_connection_string: str, password: str, install_key: str, ip_address: str, user_agent: str,
-                response: JAAQLResponse):
+    def copy_console_app(self):
+        console_dir = join(DIR__www, DIR__console) if self.is_container else DIR__console
+        if not os.path.exists(DIR__apps):
+            os.makedirs(DIR__apps)
+        if os.path.exists(console_dir):
+            shutil.rmtree(console_dir)
+        shutil.copytree(join(get_jaaql_root(), DIR__console), console_dir)
+
+    def install(self, db_connection_string: str, superjaaql_password: str, password: str, install_key: str,
+                ip_address: str, user_agent: str, response: JAAQLResponse):
         if self.jaaql_lookup_connection is None:
             if install_key != self.install_key:
                 raise HttpStatusException(ERR__incorrect_install_key, HTTPStatus.UNAUTHORIZED)
+
+            if db_connection_string is None:
+                db_connection_string = PG__default_connection_string % os.environ[PG_ENV__password]
+
             address, port, db, username, db_password = DBInterface.fracture_uri(db_connection_string)
 
             db_interface = DBInterface.create_interface(self.config, address, port, db, username, db_password)
             conn = db_interface.get_conn()
-            resp = db_interface.execute_script_file(conn, join(get_jaaql_root(), "scripts", "install_1.sql"))
+            resp = db_interface.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "install_1.sql"))
             db_interface.put_conn(conn)
             db_interface.close()
 
             jaaql_password = resp['rows'][0][0]
-            self.jaaql_lookup_connection = DBInterface.create_interface(self.config, address, port, db, JAAQL__username,
+            self.jaaql_lookup_connection = DBInterface.create_interface(self.config, address, port, db, USERNAME__jaaql,
                                                                         jaaql_password)
 
             conn = self.jaaql_lookup_connection.get_conn()
-            self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), "scripts", "install_2.sql"))
+            self.jaaql_lookup_connection.execute_script_file(conn,
+                                                             join(get_jaaql_root(), DIR__scripts, "install_2.sql"))
             self.jaaql_lookup_connection.put_conn(conn)
 
-            database_id = self.add_database({
-                KEY__database_name: db,
-                KEY__description: DESCRIPTION__jaaql_db,
+            node_id = self.add_node({
+                KEY__node_name: NAME__host_node,
+                KEY__description: None,
                 KEY__port: port,
                 KEY__address: address,
-                KEY__jaaql_name: DATABASE__jaaql_internal_name,
-                KEY__is_console_level: False
             }, self.jaaql_lookup_connection)
-            self.vault.insert_obj(VAULT_KEY__jaaql_db_id, database_id)
+            self.vault.insert_obj(VAULT_KEY__jaaql_node_id, node_id)
             self.vault.insert_obj(VAULT_KEY__jaaql_lookup_connection, db_connection_string)
 
-            qr, user_id, ip_id, ua_id = self.add_and_setup_user(JAAQL__username, password, None,
-                                                                self.jaaql_lookup_connection, database_id,
-                                                                jaaql_password, ip_address, user_agent)
+            otp_uri, otp_qr, user_id, ip_id, ua_id = self.add_and_setup_user(USERNAME__jaaql, password, None,
+                                                                             self.jaaql_lookup_connection, node_id,
+                                                                             jaaql_password, ip_address, user_agent)
+
+            superjaaql_db_password = db_password
+            super_otp_uri = None
+            super_otp_qr = None
+            if superjaaql_password is not None:
+                # Because we are setting this user up as postgres, it has a role of every user. Therefore we set this
+                # precedence as higher to override them
+                super_otp_uri, super_otp_qr, _, _, _ = self.add_and_setup_user(USERNAME__superjaaql,
+                                                                               superjaaql_password, None,
+                                                                               self.jaaql_lookup_connection, node_id,
+                                                                               superjaaql_db_password, ip_address,
+                                                                               user_agent, attach_as=USERNAME__postgres,
+                                                                               precedence=PRECEDENCE__super_user)
 
             response.user_id = user_id
             response.ip_id = ip_id
             response.ua_id = ua_id
 
-            if self.reboot_on_install:
-                print("Rebooting to allow JAAQL config to be shared among workers")
-                threading.Thread(target=self.exit_jaaql).start()
-            return qr
+            self.copy_console_app()
+
+            self.execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_console_set_url,
+                                            {KEY__application_url:
+                                                self.url + SEPARATOR__dir + DIR__apps + SEPARATOR__dir + _DIR__console})
+
+            print("Rebooting to allow JAAQL config to be shared among workers")
+            threading.Thread(target=self.exit_jaaql).start()
+
+            return {
+                KEY__jaaql_otp_uri: otp_uri,
+                KEY__jaaql_otp_qr: otp_qr,
+                KEY__superjaaql_otp_uri: super_otp_uri,
+                KEY__superjaaql_otp_qr: super_otp_qr
+            }
         else:
             raise HttpStatusException(ERR__already_installed)
 
@@ -336,8 +429,8 @@ class JAAQLModel(BaseJAAQLModel):
         }
 
         self.execute_supplied_statement(self.jaaql_lookup_connection, QUERY__log_ins, parameters,
-                                         encrypt_parameters=[KEY__exception, KEY__input],
-                                         encryption_key=self.get_db_crypt_key())
+                                        encrypt_parameters=[KEY__exception, KEY__input],
+                                        encryption_key=self.get_db_crypt_key())
 
         # TODO do databases. Link the used database auth with the log
 
@@ -368,21 +461,22 @@ class JAAQLModel(BaseJAAQLModel):
 
         params = {
             KEY__role: username,
-            KEY__database: self.vault.get_obj(VAULT_KEY__jaaql_db_id)
+            KEY__node: self.vault.get_obj(VAULT_KEY__jaaql_node_id)
         }
         auth = self.execute_supplied_statement_singleton(self.jaaql_lookup_connection,
-                                                          QUERY__database_authorization_sel_one, params,
-                                                          as_objects=True,
-                                                          decrypt_columns=[KEY__username, KEY__password, KEY__port,
-                                                                           KEY__database_name, KEY__address],
-                                                          encryption_key=self.get_db_crypt_key())
+                                                         QUERY__role_connection_sel, params,
+                                                         as_objects=True,
+                                                         decrypt_columns=[KEY__username, KEY__password],
+                                                         encryption_key=self.get_db_crypt_key())
 
         iv = user[KEY__totp_iv]
-        return DBInterface.create_interface(self.config, auth[KEY__address], auth[KEY__port], auth[KEY__database_name],
+        return DBInterface.create_interface(self.config, auth[KEY__address], auth[KEY__port], DB__jaaql,
                                             auth[KEY__username], auth[KEY__password]
                                             ), user[KEY__id], ip_id, ua_id, iv, user[ATTR__password_hash], last_totp
 
     def add_application(self, inputs: dict, jaaql_connection: DBInterface):
+        # TODO add a use_box_base_url or similar that will take the CONFIG swagger url (set in self.url) and then only
+        # accept things like /console, assuming using the default app directory
         self.execute_supplied_statement(jaaql_connection, QUERY__application_ins, inputs)
 
     def delete_application(self, inputs: dict):
@@ -391,7 +485,7 @@ class JAAQLModel(BaseJAAQLModel):
     def delete_application_confirm(self, inputs: dict, jaaql_connection: DBInterface):
         parameters = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__application)
         self.execute_supplied_statement(jaaql_connection, QUERY__application_del, parameters,
-                                         as_objects=True)
+                                        as_objects=True)
 
     def delete_database(self, inputs: dict):
         return {KEY__deletion_key: self.request_deletion_key(DELETION_PURPOSE__database, inputs)}
@@ -399,7 +493,7 @@ class JAAQLModel(BaseJAAQLModel):
     def delete_database_confirm(self, inputs: dict, jaaql_connection: DBInterface):
         parameters = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__database)
         self.execute_supplied_statement(jaaql_connection, QUERY__database_del, parameters,
-                                         as_objects=True)
+                                        as_objects=True)
 
     def get_applications(self, inputs: dict, jaaql_connection: DBInterface):
         paging_query, where_query, where_parameters, parameters = self.construct_paging_queries(inputs)
@@ -408,15 +502,29 @@ class JAAQLModel(BaseJAAQLModel):
         return self.execute_paging_query(jaaql_connection, full_query, QUERY__application_count, parameters,
                                          where_query, where_parameters)
 
+    def add_node(self, inputs: dict, jaaql_connection: DBInterface):
+        return self.execute_supplied_statement(jaaql_connection, QUERY__node_create, inputs,
+                                               as_objects=True)[0][FUNC__jaaql_create_node]
+
+    def get_nodes(self, inputs: dict, jaaql_connection: DBInterface):
+        paging_dict, parameters = self.setup_paging_parameters(inputs)
+
+        paging_query, where_query, where_parameters = self.construct_formatted_paging_queries(paging_dict, parameters)
+        full_query = QUERY__node_sel + paging_query
+
+        return self.execute_paging_query(jaaql_connection, full_query, QUERY__node_count, parameters, where_query,
+                                         where_parameters)
+
+    def delete_node(self, inputs: dict):
+        return {KEY__deletion_key: self.request_deletion_key(DELETION_PURPOSE__node, inputs)}
+
+    def delete_node_confirm(self, inputs: dict, jaaql_connection: DBInterface):
+        parameters = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__node)
+        self.execute_supplied_statement(jaaql_connection, QUERY__node_del, parameters, as_objects=True)
+
     def add_database(self, inputs: dict, jaaql_connection: DBInterface):
-        return self.execute_supplied_statement(jaaql_connection,
-                                                QUERY__database_ins, inputs, as_objects=True,
-                                                encryption_key=self.get_db_crypt_key(),
-                                                encrypt_parameters=[
-                                                    KEY__database_name,
-                                                    KEY__address,
-                                                    KEY__port
-                                                ])[0][KEY__id]
+        return self.execute_supplied_statement(jaaql_connection, QUERY__database_ins, inputs,
+                                               as_objects=True)[0][KEY__id]
 
     def update_application(self, inputs: dict, jaaql_connection: DBInterface):
         self.execute_supplied_statement(jaaql_connection, QUERY__application_upd, inputs)
@@ -428,8 +536,7 @@ class JAAQLModel(BaseJAAQLModel):
         full_query = QUERY__database_sel + paging_query
 
         return self.execute_paging_query(jaaql_connection, full_query, QUERY__database_count, parameters, where_query,
-                                         where_parameters, encryption_key=self.get_db_crypt_key(),
-                                         decrypt_columns=[KEY__port, KEY__address, KEY__database_name])
+                                         where_parameters)
 
     def add_application_parameter(self, inputs: dict, jaaql_connection: DBInterface):
         self.execute_supplied_statement(jaaql_connection, QUERY__application_parameter_ins, inputs)
@@ -447,7 +554,7 @@ class JAAQLModel(BaseJAAQLModel):
     def delete_application_parameter_confirm(self, inputs: dict, jaaql_connection: DBInterface):
         parameters = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__application_parameter)
         self.execute_supplied_statement(jaaql_connection, QUERY__application_parameter_del, parameters,
-                                         as_objects=True)
+                                        as_objects=True)
 
     def add_application_configuration(self, inputs: dict, jaaql_connection: DBInterface):
         self.execute_supplied_statement(jaaql_connection, QUERY__application_configuration_ins, inputs)
@@ -465,7 +572,7 @@ class JAAQLModel(BaseJAAQLModel):
     def delete_application_configuration_confirm(self, inputs: dict, jaaql_connection: DBInterface):
         parameters = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__application_configuration)
         self.execute_supplied_statement(jaaql_connection, QUERY__application_configuration_del, parameters,
-                                         as_objects=True)
+                                        as_objects=True)
 
     def add_application_argument(self, inputs: dict, jaaql_connection: DBInterface):
         self.execute_supplied_statement(jaaql_connection, QUERY__application_argument_ins, inputs)
@@ -483,7 +590,7 @@ class JAAQLModel(BaseJAAQLModel):
     def delete_application_argument_confirm(self, inputs: dict, jaaql_connection: DBInterface):
         parameters = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__application_argument)
         self.execute_supplied_statement(jaaql_connection, QUERY__application_argument_del, parameters,
-                                         as_objects=True)
+                                        as_objects=True)
 
     def add_application_authorization(self, inputs: dict, jaaql_connection: DBInterface):
         self.execute_supplied_statement(jaaql_connection, QUERY__application_authorization_ins, inputs)
@@ -503,27 +610,65 @@ class JAAQLModel(BaseJAAQLModel):
         self.execute_supplied_statement(jaaql_connection, QUERY__application_authorization_del, parameters,
                                         as_objects=True)
 
-    def add_database_authorization(self, inputs: dict, connection: DBInterface):
-        self.execute_supplied_statement(connection, QUERY__database_authorization_ins, inputs,
-                                        encrypt_parameters=[KEY__username, KEY__password],
-                                        encryption_key=self.get_db_crypt_key())
+    def add_node_authorization(self, inputs: dict, connection: DBInterface):
+        ret = self.execute_supplied_statement(connection, QUERY__node_authorization_ins, inputs,
+                                              encrypt_parameters=[KEY__username, KEY__password],
+                                              encryption_key=self.get_db_crypt_key(),
+                                              as_objects=True)[0][KEY__id]
 
-    def get_database_authorizations(self, inputs: dict, jaaql_connection: DBInterface):
+        self.refresh_node_database_authorizations({KEY__authorization: ret}, connection)
+
+        return ret
+
+    def get_node_authorizations(self, inputs: dict, jaaql_connection: DBInterface):
         paging_dict, parameters = self.setup_paging_parameters(inputs)
         paging_query, where_query, where_parameters = self.construct_formatted_paging_queries(paging_dict, parameters)
-        full_query = QUERY__database_authorization_sel + paging_query
+        full_query = QUERY__node_authorization_sel + paging_query
 
-        return self.execute_paging_query(jaaql_connection, full_query, QUERY__database_authorization_count, parameters,
-                                         where_query, where_parameters, decrypt_columns=[KEY__username, KEY__password],
-                                         encryption_key=self.get_db_crypt_key())
+        return self.execute_paging_query(jaaql_connection, full_query, QUERY__node_authorization_count, parameters,
+                                         where_query, where_parameters, encryption_key=self.get_db_crypt_key())
 
-    def delete_database_authorization(self, inputs: dict):
-        return {KEY__deletion_key: self.request_deletion_key(DELETION_PURPOSE__database_authorization, inputs)}
+    def delete_node_authorization(self, inputs: dict):
+        return {KEY__deletion_key: self.request_deletion_key(DELETION_PURPOSE__node_authorization, inputs)}
 
-    def delete_database_authorization_confirm(self, inputs: dict, jaaql_connection: DBInterface):
-        parameters = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__database_authorization)
-        self.execute_supplied_statement(jaaql_connection, QUERY__database_authorization_del, parameters,
-                                         as_objects=True)
+    def delete_node_authorization_confirm(self, inputs: dict, jaaql_connection: DBInterface):
+        parameters = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__node_authorization)
+        self.execute_supplied_statement(jaaql_connection, QUERY__node_authorization_del, parameters,
+                                        as_objects=True)
+
+    def refresh_node_database_authorizations(self, inputs: dict, jaaql_connection: DBInterface):
+        resp = self.execute_supplied_statement_singleton(jaaql_connection, QUERY__role_connection_auth_sel, inputs,
+                                                         decrypt_columns=[KEY__username, KEY__password],
+                                                         encryption_key=self.get_db_crypt_key(), as_objects=True)
+        refresh_interface = DBInterface.create_interface(self.config, resp[KEY__address], resp[KEY__port], DB__empty,
+                                                         resp[KEY__username], resp[KEY__password])
+        self.refresh_node_database_authorizations_with_credentials(jaaql_connection, refresh_interface, resp[KEY__id],
+                                                                   resp[KEY__node])
+
+    def refresh_node_database_authorizations_with_credentials(self, jaaql_connection: DBInterface,
+                                                              refresh_interface: DBInterface, authorization: str,
+                                                              node: str):
+        dats = self.execute_supplied_statement(refresh_interface, QUERY__postgres_fetch_my_databases, as_objects=True)
+
+        for dat in dats:
+            db_id = self.execute_supplied_statement(jaaql_connection, QUERY__upsert_jaaql_database,
+                                                    {KEY__node: node, KEY__database_name: dat[KEY__dat_name]},
+                                                    as_objects=True)[0][KEY__id]
+            self.execute_supplied_statement(jaaql_connection, QUERY__authorization_database_ins,
+                                            {KEY__authorization: authorization, KEY__database: db_id})
+
+        self.execute_supplied_statement(jaaql_connection, QUERY__authorization_database_copy)
+        self.execute_supplied_statement(jaaql_connection, QUERY__authorization_database_del,
+                                        {KEY__authorization: authorization})
+        self.execute_supplied_statement(jaaql_connection, QUERY__authorization_database_reset,
+                                        {KEY__authorization: authorization})
+
+    def add_node_database_authorization(self, inputs: dict, jaaql_connection: DBInterface):
+        self.execute_supplied_statement(jaaql_connection, QUERY__node_authorization_database_ins, inputs)
+
+    def get_node_database_authorizations(self, inputs: dict, jaaql_connection: DBInterface):
+        return self.execute_supplied_statement(jaaql_connection, QUERY__node_authorization_database_sel,
+                                               inputs, as_objects=True)
 
     def user_invite(self, inputs: dict):
         # TODO Make sure that we can't invite a user that already exists
@@ -538,18 +683,26 @@ class JAAQLModel(BaseJAAQLModel):
         email = token[KEY__email]
         password = http_inputs[KEY__password]
 
-        qr, user_id, ip_id, ua_id = self.add_and_setup_user(email, password, None, self.jaaql_lookup_connection,
-                                                            self.vault.get_obj(VAULT_KEY__jaaql_db_id),
-                                                            str(uuid.uuid4()), ip_address, user_agent)
+        otp_uri, otp_qr, user_id, ip_id, ua_id = self.add_and_setup_user(email, password, None,
+                                                                         self.jaaql_lookup_connection,
+                                                                         self.vault.get_obj(VAULT_KEY__jaaql_node_id),
+                                                                         str(uuid.uuid4()), ip_address, user_agent)
 
         response.user_id = user_id
         response.ip_id = ip_id
         response.ua_id = ua_id
 
-        return qr
+        return {
+            KEY__otp_uri: otp_uri,
+            KEY__otp_qr: otp_qr
+        }
 
     def add_and_setup_user(self, username: str, password: str, mobile: Optional[str], jaaql_connection: DBInterface,
-                           database_id: str, jaaql_password: str, ip_address: str, user_agent: str):
+                           node_id: str, db_password: str, ip_address: str, user_agent: str,
+                           attach_as: str = None, precedence: int = None):
+        if attach_as is None:
+            attach_as = username
+
         crypt_utils.validate_password(password)
 
         _, totp_iv = crypt_utils.key_stretcher(str(uuid.uuid4()))
@@ -558,11 +711,12 @@ class JAAQLModel(BaseJAAQLModel):
         parameters = {
             ATTR__email: username,
             ATTR__mobile: mobile,
-            KEY__totp_iv: totp_iv
+            KEY__totp_iv: totp_iv,
+            ATTR__alias: attach_as if attach_as != username else None
         }
         user_id = self.execute_supplied_statement(jaaql_connection, QUERY__user_ins, parameters, as_objects=True,
-                                                   encrypt_parameters=[KEY__totp_iv],
-                                                   encryption_key=self.get_db_crypt_key())
+                                                  encrypt_parameters=[KEY__totp_iv],
+                                                  encryption_key=self.get_db_crypt_key())
         user_id = user_id[0][KEY__id]
 
         password = crypt_utils.hash_password(password, user_id.encode(crypt_utils.ENCODING__ascii))
@@ -571,27 +725,27 @@ class JAAQLModel(BaseJAAQLModel):
             ATTR__password_hash: password
         }
         self.execute_supplied_statement(jaaql_connection, QUERY__user_password_ins, parameters,
-                                         encrypt_parameters=[ATTR__password_hash],
-                                         encryption_key=self.get_db_crypt_key(),
-                                         encryption_salts={ATTR__password_hash: user_id})
+                                        encrypt_parameters=[ATTR__password_hash],
+                                        encryption_key=self.get_db_crypt_key(),
+                                        encryption_salts={ATTR__password_hash: user_id})
 
         mfa_issuer = self.config[CONFIG_KEY_security][CONFIG_KEY_SECURITY__mfa_issuer]
         mfa_label = self.config[CONFIG_KEY_security][CONFIG_KEY_SECURITY__mfa_label]
         totp_uri = URI__otp_auth % (mfa_label, totp_iv)
-        if mfa_issuer != "None" and mfa_issuer is not None:
+        if mfa_issuer != MFA__null_issuer and mfa_issuer is not None:
             totp_uri += URI__otp_issuer_clause % mfa_issuer
 
-        self.add_database_authorization({
-            KEY__database: database_id,
-            KEY__role: username,
-            KEY__username: username,
-            KEY__password: jaaql_password,
-            KEY__precedence: None
+        self.add_node_authorization({
+            KEY__node: node_id,
+            KEY__role: attach_as,
+            KEY__username: attach_as,
+            KEY__password: db_password,
+            KEY__precedence: precedence
         }, self.jaaql_lookup_connection)
 
         inputs = {
             KEY__username: username,
-            KEY__password: jaaql_password
+            KEY__password: db_password
         }
         self.execute_supplied_statement(self.jaaql_lookup_connection, QUERY__user_create_role, inputs)
 
@@ -605,10 +759,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         user, _, _, ip_id, ua_id, _ = self.verify_user(username, ip_address, user_agent)
 
-        return {
-            KEY__otp_uri: totp_uri,
-            KEY__otp_qr: totp_b64_qr
-        }, user[KEY__id], ip_id, ua_id
+        return totp_uri, totp_b64_qr, user[KEY__id], ip_id, ua_id
 
     def my_logs(self, inputs: dict, jaaql_connection: DBInterface):
         paging_query, where_query, where_parameters, parameters = self.construct_paging_queries(inputs)
@@ -653,9 +804,9 @@ class JAAQLModel(BaseJAAQLModel):
             ATTR__password_hash: new_password
         }
         self.execute_supplied_statement(jaaql_connection, QUERY__user_password_ins, parameters,
-                                         encrypt_parameters=[KEY__totp_iv],
-                                         encryption_key=self.get_db_crypt_key(),
-                                         encryption_salts={ATTR__password_hash: user_id})
+                                        encrypt_parameters=[KEY__totp_iv],
+                                        encryption_key=self.get_db_crypt_key(),
+                                        encryption_salts={ATTR__password_hash: user_id})
 
         decoded[JWT__password] = crypt_utils.encrypt(jwt_obj_key, crypt_utils.hash_password(new_password))
 
@@ -678,22 +829,31 @@ class JAAQLModel(BaseJAAQLModel):
 
     @staticmethod
     def build_db_addr(row: dict):
-        return row[KEY__username] + ":" + row[KEY__password] + "@" + row[KEY__address] + ":" + row[
-            KEY__port] + "/" + row[KEY__database_name]
+        db_name = "" if row[KEY__database_name] is None else ("/" + row[KEY__database_name])
+        return row[KEY__username] + ":" + row[KEY__password] + "@" + row[KEY__address] + ":" + str(row[
+            KEY__port]) + db_name
 
-    def config_databases(self, http_inputs: dict, jaaql_connection: DBInterface, user_id: str):
-        http_inputs[KEY__username] = jaaql_connection.username
+    def config_arguments(self, inputs: dict, jaaql_connection: DBInterface, user_id: str):
+        inputs[KEY__user_id] = user_id
+
+        # Only 1 result will be returned by this query, proving the user has access to the _full_ configuration
+        # This prevents the system returning parts of configurations they are partially allowed access to without
+        # adding additional SQL complexity. It is not really a security risk that the user is returned only the part
+        # of the configuration they have access to, but I can forsee some cases where it might want to be prevented
+        # If 1 result is not returned then this method will throw an exception
+        inputs_config_check = {
+            KEY__application: inputs[KEY__application],
+            KEY__configuration: inputs[KEY__configuration]
+        }
+        self.execute_supplied_statement_singleton(jaaql_connection, QUERY__my_configs_where, inputs_config_check)
 
         # It is not a mistake to use the jaaql_lookup_connection rather than the user's connection here
         data = self.execute_supplied_statement(self.jaaql_lookup_connection, QUERY__authorized_configuration,
-                                                http_inputs, as_objects=True, encryption_key=self.get_db_crypt_key(),
-                                                decrypt_columns=[
-                                                    KEY__username,
-                                                    KEY__password,
-                                                    KEY__address,
-                                                    KEY__database_name,
-                                                    KEY__port
-                                                ])
+                                               inputs, as_objects=True, encryption_key=self.get_db_crypt_key(),
+                                               decrypt_columns=[
+                                                   KEY__username,
+                                                   KEY__password,
+                                               ])
 
         jwt_key = self.vault.get_obj(VAULT_KEY__jwt_crypt_key)
         obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
@@ -705,37 +865,41 @@ class JAAQLModel(BaseJAAQLModel):
             raise Exception(ERR__duplicated_database % (user_id, SEPARATOR__comma_space.join(duplicates)))
 
         # Combines the existing row, overriding KEY__database with a JWT containing the encrypted database UUID
-        ret = [{KEY__parameter_description: row[KEY__parameter_description], KEY__parameter_name: row[
-            KEY__parameter_name], KEY__database: crypt_utils.jwt_encode(
-            jwt_key, {KEY__db_url: crypt_utils.encrypt(obj_key, JAAQLModel.build_db_addr(
-                row) + "##" + str(row[KEY__is_console_level]))})} for row in data]
+        ret = [{
+            KEY__parameter_description: row[KEY__parameter_description],
+            KEY__parameter_name: row[KEY__parameter_name],
+            KEY__connection: crypt_utils.jwt_encode(jwt_key, {
+                KEY__is_node: row[KEY__database_name] is None,
+                KEY__db_url: crypt_utils.encrypt(obj_key, JAAQLModel.build_db_addr(row))
+            })
+        } for row in data]
 
         return ret
 
     def submit(self, http_inputs: dict, jaaql_connection: DBInterface):
-        database = http_inputs.get(KEY__database, None)
+        connection = http_inputs.get(KEY__connection, None)
 
         jwt_key = self.vault.get_obj(VAULT_KEY__jwt_crypt_key)
         obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
 
-        if database is None:
-            database = jaaql_connection
+        if connection is None:
+            connection = jaaql_connection
         else:
-            db_url = crypt_utils.jwt_decode(jwt_key, database)[KEY__db_url]
+            jwt_decoded = crypt_utils.jwt_decode(jwt_key, connection)
+            is_node = jwt_decoded[KEY__is_node]
+            db_url = jwt_decoded[KEY__db_url]
             db_url = crypt_utils.decrypt(obj_key, db_url)
-            db_parts = db_url.split("##")
-            db_url = db_parts[0]
-            is_console_level = db_parts[1] == "True"
-            address, port, database, username, password = DBInterface.fracture_uri(db_url)
+            address, port, database, username, password = DBInterface.fracture_uri(db_url,
+                                                                                   allow_missing_database=is_node)
 
-            if KEY__db_name in http_inputs and is_console_level:
-                database = http_inputs[KEY__db_name]
-            elif KEY__db_name in http_inputs:
+            if is_node:
+                database = http_inputs[KEY__database] if KEY__database in http_inputs else DB__empty
+            elif KEY__database in http_inputs:
                 raise HttpStatusException("Cannot override DB", HTTPStatus.UNAUTHORIZED)
 
-            database = DBInterface.create_interface(self.config, address, port, database, username, password)
+            connection = DBInterface.create_interface(self.config, address, port, database, username, password)
 
         if KEY__database in http_inputs:
             http_inputs.pop(KEY__database)
 
-        return InterpretJAAQL(database).transform(http_inputs)
+        return InterpretJAAQL(connection).transform(http_inputs)

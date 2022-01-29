@@ -91,6 +91,7 @@ YAML__new_line = '\n'
 YAML__separator = ":"
 
 DIR__swagger = "swagger"
+DIR__apps = "apps"
 DIR__scripts = "scripts"
 FILE__swagger_template = "swagger_template.html"
 EXTENSION__html = ".html"
@@ -168,13 +169,15 @@ class SwaggerArgumentResponse:
 
     def __init__(self, name: str, description: str,
                  arg_type: Union[type, List['SwaggerArgumentResponse'], 'SwaggerList', SwaggerSimpleList],
-                 example: Optional[TYPE__example] = None, required: bool = False, condition: str = None):
+                 example: Optional[TYPE__example] = None, required: bool = False, condition: str = None,
+                 local_only: bool = False):
         self.name = name
         self.description = description
         self.example = force_list(example)
         self.required = required
         self.arg_type = arg_type
         self.condition = condition
+        self.local_only = local_only
 
         if not required and condition is None and name != DOCUMENTATION__allow_all:
             raise SwaggerException(ERR__condition_needed % name)
@@ -444,7 +447,11 @@ def _generate_properties(yaml: str, depth: int, response: TYPE__listed_argument_
     return yaml
 
 
-def _build_parameter(yaml: str, depth: int, doc: SwaggerDocumentation, arg: SwaggerArgumentResponse) -> str:
+def _build_parameter(yaml: str, depth: int, doc: SwaggerDocumentation, arg: SwaggerArgumentResponse,
+                     is_prod: bool) -> str:
+    if is_prod and arg.local_only:
+        return yaml
+
     path_var = OPEN_API__path_var_open + arg.name + OPEN_API__path_var_close
     is_path = path_var in doc.path
 
@@ -461,7 +468,7 @@ def _build_parameter(yaml: str, depth: int, doc: SwaggerDocumentation, arg: Swag
     return yaml
 
 
-def _produce_path(doc: SwaggerDocumentation, yaml: str) -> str:
+def _produce_path(doc: SwaggerDocumentation, yaml: str, is_prod: bool) -> str:
     if doc.path == PATH__empty:
         raise Exception(ERR__empty_path)
 
@@ -485,7 +492,7 @@ def _produce_path(doc: SwaggerDocumentation, yaml: str) -> str:
             if not doc.security:
                 yaml = _build_yaml(yaml, 3, OPEN_API__parameters)
             for arg in method.arguments:
-                yaml = _build_parameter(yaml, 4, doc, arg)
+                yaml = _build_parameter(yaml, 4, doc, arg, is_prod)
         if isinstance(method.body, SwaggerList) or len(method.body) != 0:
             yaml = _build_yaml(yaml, 3, OPEN_API__request_body)
             yaml = _build_yaml(yaml, 4, OPEN_API__required, str(True))
@@ -550,7 +557,7 @@ def _produce_path(doc: SwaggerDocumentation, yaml: str) -> str:
     return yaml
 
 
-def _produce_documentation(docs: ModuleType, url: str, base_path: str, is_prod: bool = False):
+def  _produce_documentation(docs: ModuleType, url: str, base_path: str, is_prod: bool = False):
     title: str
     description: str
     version: str
@@ -596,7 +603,7 @@ def _produce_documentation(docs: ModuleType, url: str, base_path: str, is_prod: 
     all_docs = [getattr(docs, item) for item in docs.__dict__ if isinstance(getattr(docs, item), SwaggerDocumentation)]
 
     for documentation in all_docs:
-        yaml = _produce_path(documentation, yaml)
+        yaml = _produce_path(documentation, yaml, is_prod)
 
     swagger_output_file = open(os.path.join(base_path, filename + EXTENSION__yaml), "w")
     swagger_output_file.write(yaml)

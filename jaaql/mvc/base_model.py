@@ -65,7 +65,7 @@ VAULT_KEY__db_crypt_key = "db_crypt_key"
 VAULT_KEY__jwt_crypt_key = "jwt_crypt_key"
 VAULT_KEY__jwt_obj_crypt_key = "jwt_obj_crypt_key"
 VAULT_KEY__jaaql_lookup_connection = "jaaql_lookup_connection"
-VAULT_KEY__jaaql_db_id = "jaaql_db_id"
+VAULT_KEY__jaaql_node_id = "jaaql_node_id"
 DIR__vault = "vault"
 FILE__was_installed = "was_installed"
 
@@ -115,7 +115,8 @@ class BaseJAAQLModel:
         :return:
         """
         time.sleep(1)
-        open(join(DIR__vault, FILE__was_installed), 'a').close()
+        if self.is_container:
+            open(join(DIR__vault, FILE__was_installed), 'a').close()
         os._exit(0)
 
     def pivot(self, data: [dict], pivot_info: [JAAQLPivotInfo]):
@@ -164,12 +165,14 @@ class BaseJAAQLModel:
         return ret
 
     def __init__(self, config, vault_key: str, migration_db_interface=None, migration_project_name: str = None,
-                 migration_folder: str = None, reboot_on_install: bool = False):
+                 migration_folder: str = None, is_container: bool = False, url: str = None):
         self.config = config
         self.migration_db_interface = migration_db_interface
         self.migration_project_name = migration_project_name
         self.migration_folder = migration_folder
-        self.reboot_on_install = reboot_on_install
+        self.is_container = is_container
+
+        self.url = url
 
         self.use_mfa = config[CONFIG_KEY_security][CONFIG_KEY_SECURITY__use_mfa]
 

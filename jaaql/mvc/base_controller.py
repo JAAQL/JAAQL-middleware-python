@@ -73,13 +73,14 @@ BOOL__allowed = {
 
 class BaseJAAQLController:
 
-    def __init__(self, model: JAAQLModel):
+    def __init__(self, model: JAAQLModel, is_prod):
         super().__init__()
         self.app = Flask(__name__, instance_relative_config=True)
         self.app.config[FLASK__json_sort_keys] = False
         self.app.config[FLASK__max_content_length] = 1024 * 8  # 8kB
         self._init_error_handlers(self.app)
         self.model = model
+        self.is_prod = is_prod
 
     def diff_ms(self, start, now):
         return round((now - start).total_seconds() * 1000)
@@ -93,9 +94,12 @@ class BaseJAAQLController:
                 raise HttpStatusException(ERR__expected_utf8, HTTPStatus.BAD_REQUEST)
 
     @staticmethod
-    def validate_data_rec(arguments: [SwaggerArgumentResponse], data: dict, fill_missing: bool = True):
+    def validate_data_rec(arguments: [SwaggerArgumentResponse], data: dict, is_prod: bool, fill_missing: bool = True):
         for arg in arguments:
             if arg.required is True and arg.name not in data:
+                if arg.local_only and is_prod:
+                    data[arg.name] = None
+                    return
                 raise HttpStatusException(ERR__expected_argument % arg.name, HTTPStatus.BAD_REQUEST)
 
             if isinstance(arg.arg_type, SwaggerList):
@@ -142,8 +146,8 @@ class BaseJAAQLController:
                 raise HttpStatusException(ERR__unexpected_argument % key, HTTPStatus.BAD_REQUEST)
 
     @staticmethod
-    def validate_data(method: SwaggerMethod, data: dict, fill_missing: bool = True):
-        BaseJAAQLController.validate_data_rec(method.arguments + method.body, data, fill_missing)
+    def validate_data(method: SwaggerMethod, data: dict, is_prod: bool = False, fill_missing: bool = True):
+        BaseJAAQLController.validate_data_rec(method.arguments + method.body, data, is_prod, fill_missing)
 
     @staticmethod
     def get_method(swagger_documentation: SwaggerDocumentation):
@@ -226,7 +230,7 @@ class BaseJAAQLController:
         return real_resp
 
     @staticmethod
-    def get_input_as_dictionary(method: SwaggerMethod, fill_missing: bool = True):
+    def get_input_as_dictionary(method: SwaggerMethod, is_prod: bool, fill_missing: bool = True):
         data = {}
 
         was_allow_all = False
@@ -247,7 +251,7 @@ class BaseJAAQLController:
             raise HttpStatusException(ERR__duplicated_field, HTTPStatus.BAD_REQUEST)
 
         if not was_allow_all:
-            BaseJAAQLController.validate_data(method, combined_data, fill_missing)
+            BaseJAAQLController.validate_data(method, combined_data, is_prod, fill_missing)
 
         return combined_data
 
@@ -300,12 +304,13 @@ class BaseJAAQLController:
                     method_input = None
                     try:
                         if ARG__http_inputs in inspect.getfullargspec(view_func_local).args:
-                            supply_dict[ARG__http_inputs] = BaseJAAQLController.get_input_as_dictionary(method)
+                            supply_dict[ARG__http_inputs] = BaseJAAQLController.get_input_as_dictionary(method,
+                                                                                                        self.is_prod)
                             method_input = json.dumps(supply_dict[ARG__http_inputs])
 
                         if ARG__sql_inputs in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__sql_inputs] = BaseJAAQLController.get_input_as_dictionary(
-                                method, fill_missing=False)
+                                method, self.is_prod, fill_missing=False)
                             method_input = json.dumps(supply_dict[ARG__sql_inputs])
 
                         if ARG__totp_iv in inspect.getfullargspec(view_func_local).args:

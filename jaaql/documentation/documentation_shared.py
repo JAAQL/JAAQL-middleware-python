@@ -40,6 +40,28 @@ ARG_RES__filtered_records = [
 ]
 
 
+def rename_arg(arg_res: SwaggerArgumentResponse, new_name: str):
+    return SwaggerArgumentResponse(
+        new_name,
+        arg_res.description,
+        arg_res.arg_type,
+        arg_res.example,
+        arg_res.required,
+        arg_res.condition
+    )
+
+
+def set_nullable(arg_res: SwaggerArgumentResponse, condition: str = None, new_name: str = None):
+    return SwaggerArgumentResponse(
+        arg_res.name if new_name is None else new_name,
+        arg_res.description,
+        arg_res.arg_type,
+        arg_res.example,
+        False,
+        condition=condition
+    )
+
+
 def gen_filtered_records(name: str, data: [SwaggerArgumentResponse]):
     wrapper = SwaggerArgumentResponse(
         name=KEY__data,
@@ -114,7 +136,7 @@ ARG_RES__totp_mfa = SwaggerResponse(
     response=[
         SwaggerArgumentResponse(
             name=KEY__otp_uri,
-            description="OTP Url",
+            description="OTP URI",
             arg_type=str,
             example=["otpauth://totp/%test?secret=supersecret&issuer=JAAQL",
                      "otpauth://totp/%mylabel?secret=pa55word&issuer=MyIssuer"],
@@ -129,6 +151,14 @@ ARG_RES__totp_mfa = SwaggerResponse(
             required=True
         )
     ]
+)
+
+ARG_RES__is_node = SwaggerArgumentResponse(
+    name=KEY__is_node,
+    description="Is the parameter a node or a database within a node",
+    arg_type=bool,
+    example=[True, False],
+    required=True
 )
 
 RES__oauth_token = SwaggerFlatResponse(
