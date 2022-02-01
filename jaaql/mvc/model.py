@@ -876,6 +876,9 @@ class JAAQLModel(BaseJAAQLModel):
 
         return ret
 
+    def get_login_details(self):
+        return [KEY__username, KEY__password, KEY__mfa_key] if self.is_container else [KEY__username, KEY__password]
+
     def submit(self, http_inputs: dict, jaaql_connection: DBInterface):
         connection = http_inputs.get(KEY__connection, None)
 

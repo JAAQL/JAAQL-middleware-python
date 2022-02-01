@@ -47,7 +47,8 @@ DOCUMENTATION__sign_up = SwaggerDocumentation(
 )
 
 # Not unused. Used to generate html files
-from jaaql.documentation.documentation_shared import DOCUMENTATION__oauth_token, DOCUMENTATION__oauth_refresh
+from jaaql.documentation.documentation_shared import DOCUMENTATION__login_details, DOCUMENTATION__oauth_token,\
+    DOCUMENTATION__oauth_refresh
 
 DOCUMENTATION__my_configs = SwaggerDocumentation(
     tags="Configuration",

@@ -13,7 +13,7 @@ from jaaql.mvc.response import JAAQLResponse
 
 from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, TYPE__response,\
     SwaggerFlatResponse, REST__DELETE, REST__GET, REST__OPTIONS, REST__POST, REST__PUT, SwaggerList, SwaggerResponse,\
-    MOCK__description, ARG_RESP__allow_all, RES__allow_all, SwaggerArgumentResponse
+    MOCK__description, ARG_RESP__allow_all, RES__allow_all, SwaggerArgumentResponse, SwaggerSimpleList
 from jaaql.exceptions.http_status_exception import *
 
 ARG__http_inputs = "http_inputs"
@@ -164,6 +164,25 @@ class BaseJAAQLController:
         raise Exception(ERR__unexpected_response_code % status.value)
 
     @staticmethod
+    def bi_cast(real_resp, name, arg_type: type):
+        """
+        Attempt to cast a response to it's intended type. Then check equality when casting back. If this can happen e.g.
+        '5' can be cast to 5 and then back to '5' it's considered equal and the cast is performed
+        :return:
+        """
+        err_mess = ERR__response_wrong_type % (str(name), str(type(real_resp[name])), str(arg_type))
+        bi_cast = None
+        try:
+            # Bi directional cast. Cast to expected type and then cast back
+            bi_cast = type(real_resp[name])(arg_type(real_resp[name]))
+        except:
+            pass
+        if real_resp[name] == bi_cast:
+            real_resp[name] = arg_type(real_resp[name])
+        else:
+            raise Exception(err_mess)
+
+    @staticmethod
     def validate_output(response: TYPE__response, real_resp: any) -> any:
         if isinstance(response, SwaggerFlatResponse):
             check_resp = response.body
@@ -185,6 +204,14 @@ class BaseJAAQLController:
                 for idx in range(len(real_resp)):
                     mock_resp = SwaggerResponse(MOCK__description, response=response.responses.responses)
                     real_resp[idx] = BaseJAAQLController.validate_output(mock_resp, real_resp[idx])
+        elif isinstance(response.responses, SwaggerSimpleList):
+            if not isinstance(real_resp, list):
+                raise Exception(ERR__expected_response_list)
+            else:
+                for idx in range(len(real_resp)):
+                    if isinstance(real_resp[idx], datetime):
+                        real_resp[idx] = str(real_resp[idx])
+                    BaseJAAQLController.bi_cast(real_resp, idx, response.responses.arg_type)
         else:
             if not isinstance(real_resp, dict):
                 raise Exception(ERR__expected_response_dict)
@@ -200,20 +227,8 @@ class BaseJAAQLController:
                 if isinstance(real_resp[swag_resp.name], datetime):
                     real_resp[swag_resp.name] = str(real_resp[swag_resp.name])
                 if not is_complex and not isinstance(real_resp[swag_resp.name], swag_resp.arg_type):
-                    err_mess = ERR__response_wrong_type % (swag_resp.name, str(type(real_resp[swag_resp.name])),
-                                                           str(swag_resp.arg_type))
-
                     if real_resp[swag_resp.name] is not None or swag_resp.required:
-                        bi_cast = None
-                        try:
-                            # Bi directional cast. Cast to expected type and then cast back
-                            bi_cast = type(real_resp[swag_resp.name])(swag_resp.arg_type(real_resp[swag_resp.name]))
-                        except:
-                            pass
-                        if real_resp[swag_resp.name] == bi_cast:
-                            real_resp[swag_resp.name] = swag_resp.arg_type(real_resp[swag_resp.name])
-                        else:
-                            raise Exception(err_mess)
+                        BaseJAAQLController.bi_cast(real_resp, swag_resp.name, swag_resp.arg_type)
 
                 if is_complex:
                     mock_resp = SwaggerResponse(MOCK__description, response=swag_resp.arg_type)

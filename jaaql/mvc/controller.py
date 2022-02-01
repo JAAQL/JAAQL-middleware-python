@@ -201,5 +201,10 @@ class JAAQLController(BaseJAAQLController):
             return self.model.submit(http_inputs, jaaql_connection)
 
         @self.cors_route('/submit-file', DOCUMENTATION__submit_file)
-        def submit():
+        def submit_file():
+            # Will treat as a single query and _not_ use the autocommit mode
             raise HttpStatusException(HTTPStatus.NOT_IMPLEMENTED.description, HTTPStatus.NOT_IMPLEMENTED)
+
+        @self.cors_route('/login-details', DOCUMENTATION__login_details)
+        def login_details():
+            return self.model.get_login_details()
