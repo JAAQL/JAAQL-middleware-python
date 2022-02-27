@@ -25,7 +25,7 @@ class JAAQLController(BaseJAAQLController):
             return self.model.authenticate(**http_inputs, ip_address=ip_address, user_agent=user_agent,
                                            response=response)
 
-        @self.cors_route('/redeploy', DOCUMENTATION__deploy)
+        @self.cors_route('/internal/redeploy', DOCUMENTATION__deploy)
         def redeploy():
             return self.model.redeploy()
 
@@ -37,7 +37,7 @@ class JAAQLController(BaseJAAQLController):
         def install(http_inputs: dict, ip_address: str, user_agent: str, response: JAAQLResponse):
             return self.model.install(**http_inputs, ip_address=ip_address, user_agent=user_agent, response=response)
 
-        @self.cors_route('/internal/applications', DOCUMENTATION__applications)
+        @self.cors_route('/internal/applications', [DOCUMENTATION__applications, DOCUMENTATION__fetch_applications])
         def applications(http_inputs: dict, jaaql_connection: DBInterface):
             if self.is_post():
                 self.model.add_application(http_inputs, jaaql_connection)
@@ -189,8 +189,8 @@ class JAAQLController(BaseJAAQLController):
             return self.model.close_account_confirm(http_inputs, user_id)
 
         @self.cors_route('/configurations', DOCUMENTATION__my_configs)
-        def my_configs(jaaql_connection: DBInterface):
-            return self.model.my_configs(jaaql_connection)
+        def my_configs(jaaql_connection: DBInterface, http_inputs: dict):
+            return self.model.my_configs(jaaql_connection, http_inputs)
 
         @self.cors_route('/configurations/arguments', DOCUMENTATION__config_arguments)
         def config_databases(http_inputs: dict, jaaql_connection: DBInterface, user_id: str):
@@ -208,3 +208,7 @@ class JAAQLController(BaseJAAQLController):
         @self.cors_route('/login-details', DOCUMENTATION__login_details)
         def login_details():
             return self.model.get_login_details()
+
+        @self.cors_route('/databases', DOCUMENTATION__my_databases)
+        def my_databases(http_inputs: dict, jaaql_connection: DBInterface):
+            return self.model.fetch_my_databases(http_inputs, jaaql_connection)

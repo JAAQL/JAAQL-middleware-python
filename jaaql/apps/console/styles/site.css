@@ -1,0 +1,40 @@
+body {
+    background-color: black;
+    color: #00ff00;
+    font-family: Lucida Console,Lucida Sans Typewriter,monaco,Bitstream Vera Sans Mono,monospace;
+}
+input:focus {
+    outline:none;
+}
+.line-text-container {
+    float: left;
+}
+textarea {
+    background-color: black;
+    color: #00ff00;
+    -webkit-box-shadow: none;
+    box-shadow: none;
+    border: none;
+    outline: none;
+    font-family: Lucida Console,Lucida Sans Typewriter,monaco,Bitstream Vera Sans Mono,monospace;
+    font-size: 1em;
+    width: 84%;
+    resize: none;
+    line-height: 1em;
+    float: left;
+}
+.command {
+    color: #00ffff;
+}
+.argument {
+    color: #ff00ff;
+}
+#welcome {
+    text-align: center;
+}
+.line_input {
+    color: white !important;
+}
+hr {
+    color: #00ff00;
+}

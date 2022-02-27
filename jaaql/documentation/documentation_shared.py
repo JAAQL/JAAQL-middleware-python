@@ -9,6 +9,15 @@ JWT__invite = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFhcm9uQGphYXFs
 
 ENDPOINT__refresh = "/oauth/refresh"
 
+EXAMPLE__db = "meeting"
+ARG_RES__database_name = SwaggerArgumentResponse(
+    name=KEY__database_name,
+    description="The name of the database on the database server",
+    arg_type=str,
+    example=[EXAMPLE__db],
+    required=True
+)
+
 ARG_RES__deletion_key = SwaggerArgumentResponse(
     name=KEY__deletion_key,
     description="Single use deletion key",
@@ -190,6 +199,62 @@ DOCUMENTATION__login_details = SwaggerDocumentation(
                 description="A list of fields required to login",
                 example=[KEY__username, KEY__password, KEY__mfa_key],
                 required=True
+            )
+        )
+    )
+)
+
+KEY__application_name = "name"
+EXAMPLE__application_name = "Library Browser"
+EXAMPLE__application_url = "https://jaaql.com/demos/library-application"
+
+ARG_RES__application_name = SwaggerArgumentResponse(
+    name=KEY__application_name,
+    description="Application name",
+    arg_type=str,
+    example=[EXAMPLE__application_name, "Meeting Room Scheduling Assistant"],
+    required=True
+)
+ARG_RES__application_description = SwaggerArgumentResponse(
+    name="description",
+    description="Application description",
+    arg_type=str,
+    example=["Browses books in the library", "Helps book meetings"],
+    required=True
+)
+ARG_RES__application_uri = SwaggerArgumentResponse(
+    name=KEY__application_url,
+    description="Application url",
+    arg_type=str,
+    example=[EXAMPLE__application_url, "https://jaaql.com/demos/meeting-application"],
+    required=True
+)
+
+
+DOCUMENTATION__fetch_applications = SwaggerDocumentation(
+    tags="Applications",
+    methods=SwaggerMethod(
+        name="Fetch applications",
+        description="Fetches a list of all the applications in the system",
+        method=REST__GET,
+        arguments=gen_arg_res_sort_pageable(KEY__application_name, KEY__application_url, EXAMPLE__application_name,
+                                            EXAMPLE__application_url),
+        response=SwaggerResponse(
+            description="List of applications",
+            response=gen_filtered_records(
+                "application",
+                [
+                    ARG_RES__application_name,
+                    ARG_RES__application_description,
+                    ARG_RES__application_uri,
+                    SwaggerArgumentResponse(
+                        name="created",
+                        description="Application creation timestamp",
+                        arg_type=str,
+                        example=["2021-08-07 19:05:07.763189+01:00", "2021-08-07 18:04:41.156935+01:00"],
+                        required=True
+                    )
+                ]
             )
         )
     )

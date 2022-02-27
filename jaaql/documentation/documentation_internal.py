@@ -2,7 +2,8 @@ from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
 from jaaql.documentation.documentation_shared import ARG_RES__jaaql_password, ARG_RES__email,\
     JWT__invite, gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__deletion_key, RES__deletion_key,\
-    set_nullable, rename_arg, ARG_RES__is_node
+    set_nullable, rename_arg, ARG_RES__is_node, ARG_RES__database_name, EXAMPLE__db, ARG_RES__application_name,\
+    ARG_RES__application_description, ARG_RES__application_uri, EXAMPLE__application_name
 
 TITLE = "JAAQL Internal API"
 DESCRIPTION = "Collection of methods in the JAAQL internal API"
@@ -94,38 +95,11 @@ DOCUMENTATION__install = SwaggerDocumentation(
 
 # Not unused. Used to generate html files
 from jaaql.documentation.documentation_shared import DOCUMENTATION__login_details, DOCUMENTATION__oauth_token,\
-    DOCUMENTATION__oauth_refresh
+    DOCUMENTATION__oauth_refresh, DOCUMENTATION__fetch_applications
 
-KEY__application_name = "name"
-EXAMPLE__application_name = "Library Browser"
-EXAMPLE__application_url = "https://jaaql.com/demos/library-application"
-
-ARG_RES__application_name = SwaggerArgumentResponse(
-    name=KEY__application_name,
-    description="Application name",
-    arg_type=str,
-    example=[EXAMPLE__application_name, "Meeting Room Scheduling Assistant"],
-    required=True
-)
-ARG_RES__application_description = SwaggerArgumentResponse(
-    name="description",
-    description="Application description",
-    arg_type=str,
-    example=["Browses books in the library", "Helps book meetings"],
-    required=True
-)
-ARG_RES__application_uri = SwaggerArgumentResponse(
-    name=KEY__application_url,
-    description="Application url",
-    arg_type=str,
-    example=[EXAMPLE__application_url, "https://jaaql.com/demos/meeting-application"],
-    required=True
-)
 
 EXAMPLE__node = "PROD library"
 EXAMPLE__address = "mydb.abbcdcec9afd.eu-west-1.rds.amazonaws.com"
-
-EXAMPLE__db = "meeting"
 
 ARG_RES__node_base = [
     SwaggerArgumentResponse(
@@ -250,14 +224,6 @@ DOCUMENTATION__nodes_confirm_deletion = SwaggerDocumentation(
 
 EXAMPLE__database_id = "31f295d4-1be4-4534-9fb8-164c6c53c985"
 
-
-ARG_RES__database_name = SwaggerArgumentResponse(
-    name=KEY__database_name,
-    description="The name of the database on the database server",
-    arg_type=str,
-    example=[EXAMPLE__db],
-    required=True
-)
 ARG_RES__database_base = [
     ARG_RES__database_name,
     SwaggerArgumentResponse(
@@ -346,31 +312,6 @@ DOCUMENTATION__applications = SwaggerDocumentation(
                 ARG_RES__application_description,
                 ARG_RES__application_uri
             ]
-        ),
-        SwaggerMethod(
-            name="Fetch applications",
-            description="Fetches a list of all the applications in the system",
-            method=REST__GET,
-            arguments=gen_arg_res_sort_pageable(KEY__application_name, KEY__application_url, EXAMPLE__application_name,
-                                                EXAMPLE__application_url),
-            response=SwaggerResponse(
-                description="List of applications",
-                response=gen_filtered_records(
-                    "application",
-                    [
-                        ARG_RES__application_name,
-                        ARG_RES__application_description,
-                        ARG_RES__application_uri,
-                        SwaggerArgumentResponse(
-                            name="created",
-                            description="Application creation timestamp",
-                            arg_type=str,
-                            example=["2021-08-07 19:05:07.763189+01:00", "2021-08-07 18:04:41.156935+01:00"],
-                            required=True
-                        )
-                    ]
-                )
-            )
         ),
         SwaggerMethod(
             name="Update application",

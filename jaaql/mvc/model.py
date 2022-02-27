@@ -23,6 +23,7 @@ from jaaql.utilities.utils import get_jaaql_root
 import threading
 import shutil
 
+HTTP_STATUS_CONNECTION_EXPIRED = 419
 
 ERR__already_installed = "JAAQL has already been installed!"
 ERR__incorrect_install_key = "Incorrect install key!"
@@ -35,6 +36,7 @@ ERR__new_ip = "Token being used from an ip address not associated with these cre
 ERR__new_ua = "Token being used from a different browser. Please refresh it"
 ERR__refresh_expired = "Token too old to be used for refresh. Please authenticate again"
 ERR__duplicated_database = "User %s has a duplicate database precedence with databases '%s'"
+ERR__non_node_connection_object = "Cannot request a list of databases for a non-node connection object"
 
 USERNAME__jaaql = "jaaql"
 USERNAME__superjaaql = "superjaaql"
@@ -49,6 +51,7 @@ QUERY__application_upd = "UPDATE jaaql__application SET name = coalesce(:new_nam
 QUERY__database_ins = "INSERT INTO jaaql__database (node, name) VALUES (:node, :name) RETURNING id"
 QUERY__node_create = "SELECT jaaql__create_node(:name, :address, :port, :description);"
 QUERY__database_sel = "SELECT * FROM jaaql__database"
+QUERY__my_databases_sel = "SELECT jd.name FROM jaaql__authorization_node_database jand INNER JOIN jaaql__database jd ON jand.database = jd.id WHERE jand.authorization = :auth_id AND jd.node = :node ORDER by jd.name;"
 QUERY__node_sel = "SELECT * FROM jaaql__node"
 QUERY__database_del = "UPDATE jaaql__database SET deleted = current_timestamp WHERE id = :id AND deleted is null"
 QUERY__node_del = "UPDATE jaaql__node SET deleted = current_timestamp WHERE id = :id AND deleted is null"
@@ -91,7 +94,7 @@ QUERY__user_create_role = "SELECT jaaql__create_role(:username, :password)"
 QUERY__log_ins = "INSERT INTO jaaql__log (the_user, occurred, duration_ms, encrypted_exception, encrypted_input, ip, ua, status, endpoint) VALUES (:user_id, :occurred, :duration_ms, :exception, :input, :ip, :ua, :status, :endpoint)"
 QUERY__user_log_sel = "SELECT occurred, encrypted_address as address, encrypted_ua as user_agent, status, endpoint, duration_ms, encrypted_exception as exception FROM jaaql__my_logs"
 QUERY__user_log_count = "SELECT COUNT(*) FROM jaaql__my_logs"
-QUERY__my_configs = "SELECT * FROM jaaql__my_configurations"
+QUERY__my_configs = "SELECT * FROM jaaql__my_configurations WHERE application = :application or :application is null"
 QUERY__my_configs_where = "SELECT * FROM jaaql__my_configurations WHERE application = :application AND configuration = :configuration"
 
 QUERY__authorized_configuration = """
@@ -132,7 +135,7 @@ QUERY__authorization_database_ins = 'INSERT INTO jaaql__authorization_node_datab
 QUERY__authorization_database_copy = 'INSERT INTO jaaql__authorization_node_database ("authorization", "database") SELECT "authorization", "database" FROM jaaql__authorization_node_database_upsert ON CONFLICT DO NOTHING;'
 QUERY__authorization_database_del = 'DELETE FROM jaaql__authorization_node_database WHERE "authorization" = :authorization AND ("authorization", "database") not in (SELECT "authorization", "database" FROM jaaql__authorization_node_database_upsert);'
 QUERY__authorization_database_reset = 'DELETE FROM jaaql__authorization_node_database_upsert WHERE "authorization" = :authorization;'
-QUERY__postgres_fetch_my_databases = "select pgd.datname from pg_database pgd where has_database_privilege(current_user, pgd.datname, 'CONNECT') and pgd.datname not in ('template0', 'template1');"
+QUERY__postgres_fetch_my_databases = "SELECT pgd.datname FROM pg_database pgd WHERE has_database_privilege(current_user, pgd.datname, 'CONNECT') AND pgd.datname not in ('template0', 'template1');"
 FUNC__jaaql_create_node = "jaaql__create_node"
 
 ATTR__email = "email"
@@ -156,6 +159,7 @@ KEY__status = "status"
 KEY__endpoint = "endpoint"
 KEY__dat_name = "datname"
 KEY__authorization = "authorization"
+KEY__auth_id = "auth_id"
 
 DELETION_PURPOSE__account = "account"
 DELETION_PURPOSE__application = "application"
@@ -330,7 +334,7 @@ class JAAQLModel(BaseJAAQLModel):
                                       expiry_ms=self.token_expiry_ms)
 
     def copy_console_app(self):
-        console_dir = join(DIR__www, DIR__console) if self.is_container else DIR__console
+        console_dir = join(DIR__www, DIR__console) if self.use_mfa else DIR__console
         if not os.path.exists(DIR__apps):
             os.makedirs(DIR__apps)
         if os.path.exists(console_dir):
@@ -529,6 +533,20 @@ class JAAQLModel(BaseJAAQLModel):
     def update_application(self, inputs: dict, jaaql_connection: DBInterface):
         self.execute_supplied_statement(jaaql_connection, QUERY__application_upd, inputs)
 
+    def fetch_my_databases(self, inputs: dict, jaaql_connection: DBInterface):
+        connection = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), inputs[KEY__connection])
+        obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
+
+        if not connection[KEY__is_node]:
+            raise HttpStatusException(ERR__non_node_connection_object)
+
+        ret = self.execute_supplied_statement(jaaql_connection, QUERY__my_databases_sel, {
+            KEY__node: crypt_utils.decrypt(obj_key, connection[KEY__node]),
+            KEY__auth_id: crypt_utils.decrypt(obj_key, connection[KEY__auth_id])
+        }, as_objects=True)
+
+        return ret
+
     def get_databases(self, inputs: dict, jaaql_connection: DBInterface):
         paging_dict, parameters = self.setup_paging_parameters(inputs)
 
@@ -663,6 +681,8 @@ class JAAQLModel(BaseJAAQLModel):
         self.execute_supplied_statement(jaaql_connection, QUERY__authorization_database_reset,
                                         {KEY__authorization: authorization})
 
+        return dats
+
     def add_node_database_authorization(self, inputs: dict, jaaql_connection: DBInterface):
         self.execute_supplied_statement(jaaql_connection, QUERY__node_authorization_database_ins, inputs)
 
@@ -778,8 +798,8 @@ class JAAQLModel(BaseJAAQLModel):
                                          where_parameters, decrypt_columns=[KEY__address],
                                          encryption_key=self.get_db_crypt_key())
 
-    def my_configs(self, jaaql_connection: DBInterface):
-        return self.execute_supplied_statement(jaaql_connection, QUERY__my_configs, as_objects=True)
+    def my_configs(self, jaaql_connection: DBInterface, inputs: dict):
+        return self.execute_supplied_statement(jaaql_connection, QUERY__my_configs, inputs, as_objects=True)
 
     def change_password(self, http_inputs: dict, totp_iv: str, oauth_token: str, password_hash: str, user_id: str,
                         last_totp: str, jaaql_connection: DBInterface):
@@ -870,6 +890,8 @@ class JAAQLModel(BaseJAAQLModel):
             KEY__parameter_name: row[KEY__parameter_name],
             KEY__connection: crypt_utils.jwt_encode(jwt_key, {
                 KEY__is_node: row[KEY__database_name] is None,
+                KEY__node: crypt_utils.encrypt(obj_key, row[KEY__node]),
+                KEY__auth_id: crypt_utils.encrypt(obj_key, row[KEY__auth_id]),
                 KEY__db_url: crypt_utils.encrypt(obj_key, JAAQLModel.build_db_addr(row))
             })
         } for row in data]
@@ -889,6 +911,8 @@ class JAAQLModel(BaseJAAQLModel):
             connection = jaaql_connection
         else:
             jwt_decoded = crypt_utils.jwt_decode(jwt_key, connection)
+            if not jwt_decoded:
+                raise HttpStatusException("Connection expired", HTTP_STATUS_CONNECTION_EXPIRED)
             is_node = jwt_decoded[KEY__is_node]
             db_url = jwt_decoded[KEY__db_url]
             db_url = crypt_utils.decrypt(obj_key, db_url)

@@ -299,6 +299,7 @@ create view jaaql__their_authorized_configurations as (
         jand.db_encrypted_username as username,
         jand.db_encrypted_password as password,
         jd.id as database,
+        jand.id as auth_id,
         jd.name as name,
         jand.node as node,
         jn.port,
@@ -358,7 +359,7 @@ $$
 DECLARE
     actual_alias text;
 BEGIN
-    SELECT coalesce(alias, email) into actual_alias FROM jaaql__user WHERE id = userid;
+    SELECT coalesce(alias, email) into actual_alias FROM jaaql__user WHERE id = userid::uuid;
     return actual_alias;
 END
 $$ language plpgsql;

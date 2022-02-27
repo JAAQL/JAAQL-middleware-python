@@ -10,6 +10,8 @@ from jaaql.documentation.documentation_shared import ENDPOINT__refresh
 from jaaql.constants import *
 from jaaql.mvc.model import JAAQLModel
 from jaaql.mvc.response import JAAQLResponse
+from argparse import Namespace
+from typing import Union
 
 from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, TYPE__response,\
     SwaggerFlatResponse, REST__DELETE, REST__GET, REST__OPTIONS, REST__POST, REST__PUT, SwaggerList, SwaggerResponse,\
@@ -87,7 +89,7 @@ class BaseJAAQLController:
 
     @staticmethod
     def enforce_content_type_json():
-        if request.content_type.split(";")[0] != CONTENT__json:
+        if request.content_type is None or request.content_type.split(";")[0] != CONTENT__json:
             raise HttpStatusException(ERR__expected_json, HTTPStatus.BAD_REQUEST)
         if len(request.content_type.split(";")) > 1:
             if request.content_type.split(";")[1].strip().lower() != CONTENT__encoding:
@@ -156,7 +158,7 @@ class BaseJAAQLController:
                 return method
 
     @staticmethod
-    def get_response(method: SwaggerMethod, status: HTTPStatus) -> TYPE__response:
+    def get_response(method: SwaggerMethod, status: Union[HTTPStatus, Namespace]) -> TYPE__response:
         for resp in method.responses:
             if resp.code == status:
                 return resp
@@ -277,8 +279,12 @@ class BaseJAAQLController:
         resp.headers.add(HEADER__allow_methods, CORS__WILDCARD)
         return resp
 
-    def cors_route(self, route: str, swagger_documentation: SwaggerDocumentation):
+    def cors_route(self, route: str, swagger_documentation: Union[list, SwaggerDocumentation]):
         swagger_documentation.path = route
+
+        documentation_as_lists = swagger_documentation
+        if not isinstance(documentation_as_lists, list):
+            documentation_as_lists = [documentation_as_lists]
 
         methods = [method.method for method in swagger_documentation.methods]
         methods.append(REST__OPTIONS)
@@ -391,6 +397,22 @@ class BaseJAAQLController:
                         else:
                             ret_status = ex.response_code
                             ex_msg = ex.message
+
+                        do_allow_all = False
+                        if len(method.responses) != 0:
+                            if method.responses[0] == RES__allow_all:
+                                do_allow_all = True
+
+                        if not do_allow_all:
+                            try:
+                                self.get_response(method, Namespace(value=ret_status))
+                            except Exception as sub_ex:
+                                # The expected response code was not allowed
+                                traceback.print_exc()
+                                ret_status = RESP__default_err_code
+                                ex_msg = RESP__default_err_message
+                                ex = sub_ex
+
                         throw_ex = ex
 
                     duration = round((datetime.now() - start_time).total_seconds() * 1000)
