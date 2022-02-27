@@ -37,16 +37,18 @@ class JAAQLController(BaseJAAQLController):
         def install(http_inputs: dict, ip_address: str, user_agent: str, response: JAAQLResponse):
             return self.model.install(**http_inputs, ip_address=ip_address, user_agent=user_agent, response=response)
 
-        @self.cors_route('/internal/applications', [DOCUMENTATION__applications, DOCUMENTATION__fetch_applications])
+        @self.cors_route('/internal/applications', DOCUMENTATION__applications)
         def applications(http_inputs: dict, jaaql_connection: DBInterface):
             if self.is_post():
                 self.model.add_application(http_inputs, jaaql_connection)
-            elif self.is_get():
-                return self.model.get_applications(http_inputs, jaaql_connection)
             elif self.is_put():
                 self.model.update_application(http_inputs, jaaql_connection)
             else:  # self.is_delete()
                 return self.model.delete_application(http_inputs, jaaql_connection)
+
+        @self.cors_route('/applications', DOCUMENTATION__fetch_applications)
+        def public_applications(http_inputs: dict, jaaql_connection: DBInterface):
+            return self.model.get_applications(http_inputs, jaaql_connection)
 
         @self.cors_route('/internal/applications/confirm-deletion', DOCUMENTATION__applications_confirm_deletion)
         def confirm_application_deletion(http_inputs: dict, jaaql_connection: DBInterface):
@@ -210,5 +212,8 @@ class JAAQLController(BaseJAAQLController):
             return self.model.get_login_details()
 
         @self.cors_route('/databases', DOCUMENTATION__my_databases)
-        def my_databases(http_inputs: dict, jaaql_connection: DBInterface):
-            return self.model.fetch_my_databases(http_inputs, jaaql_connection)
+        def my_databases(http_inputs: dict, jaaql_connection: DBInterface, user_id: str):
+            if self.is_get():
+                return self.model.fetch_my_databases(http_inputs, jaaql_connection)
+            elif self.is_put():
+                self.model.update_my_databases(http_inputs, user_id)

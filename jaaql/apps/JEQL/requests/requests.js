@@ -1,6 +1,7 @@
 import * as spinner from "../spinner/spinner.js"
 
 let ERR_UNEXPECTED_CRED_CHALLENGE = "Unexpected credential challenge for request type simple";
+let HTTP_STATUS_DEFAULT = "DEFAULT"; export {HTTP_STATUS_DEFAULT};
 
 export class RequestConfig {
     constructor(applicationName, base, authAction, refreshAction, loginFunc, refreshFunc, setXHttpAuth,
@@ -59,6 +60,15 @@ export function jsonToUrlEncoded(element, key, list){
     return list.join('&');
 }
 
+export function urlEncodedToJson(urlEncoded) {
+    let encodeList = Array.from(urlEncoded.split("&"));
+    let json = {};
+    for (let idx in encodeList) {
+        json[encodeList[idx].split("=")[0]] = decodeURIComponent(encodeList[idx].split("=")[1])
+    }
+    return json;
+}
+
 function parseResponse(toParse) {
     if (toParse.getResponseHeader('Content-Type').startsWith("application/json")) {
         return JSON.parse(toParse.response);
@@ -95,7 +105,7 @@ function getResponseCodeHandler(renderFunc, status) {
     }
 }
 
-function make(config, action, renderFunc, body, json) {
+export function make(config, action, renderFunc, body, json) {
     let resource = action.split(" ")[1];
     let url = config.base + resource;
     let method = action.split(" ")[0];
@@ -141,7 +151,12 @@ function make(config, action, renderFunc, body, json) {
             } else if (renderFunc !== null) {
                 renderFunc(res, config, action, origRenderFunc, body, json);
             } else {
-                console.error("Unexpected response code from server: " + this.status + " response: " + this.response);
+                if (HTTP_STATUS_DEFAULT in origRenderFunc) {
+                    origRenderFunc[HTTP_STATUS_DEFAULT](res, config, action, origRenderFunc, body, json);
+                } else {
+                    console.error("Unexpected response code from server: " + this.status + " response: " +
+                        this.response);
+                }
             }
         }
     };

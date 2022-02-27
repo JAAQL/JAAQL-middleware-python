@@ -127,16 +127,48 @@ DOCUMENTATION__config_arguments = SwaggerDocumentation(
 
 DOCUMENTATION__my_databases = SwaggerDocumentation(
     tags="Configuration",
-    methods=SwaggerMethod(
-        name="Fetch databases for node config argument",
-        description="Fetches a list of databases associated with a node configuration argument",
-        method=REST__GET,
-        arguments=ARG_RES__connection,
-        response=SwaggerResponse(
-            description="A list of databases associated with a node configuration argument",
-            response=SwaggerList(ARG_RES__database_name)
+    methods=[
+        SwaggerMethod(
+            name="Fetch databases for node config argument",
+            description="Fetches a list of databases associated with a node configuration argument",
+            method=REST__GET,
+            arguments=ARG_RES__connection,
+            response=[
+                SwaggerResponse(
+                    description="A list of databases associated with a node configuration argument",
+                    response=SwaggerList(ARG_RES__database_name)
+                ),
+                SwaggerFlatResponse(
+                    description=ERR__connection_expired,
+                    code=HTTP_STATUS_CONNECTION_EXPIRED,
+                    body=ERR__connection_expired
+                ),
+                SwaggerFlatResponse(
+                    description=ERR__non_node_connection_object,
+                    code=HTTPStatus.UNPROCESSABLE_ENTITY,
+                    body=ERR__non_node_connection_object
+                )
+            ]
+        ),
+        SwaggerMethod(
+            name="Refresh databases for node config argument",
+            description="Refreshes the internal databases associated with a configuration",
+            method=REST__PUT,
+            arguments=ARG_RES__connection,
+            response=[
+                SwaggerFlatResponse(
+                    description=ERR__connection_expired,
+                    code=HTTP_STATUS_CONNECTION_EXPIRED,
+                    body=ERR__connection_expired
+                ),
+                SwaggerFlatResponse(
+                    description=ERR__non_node_connection_object,
+                    code=HTTPStatus.UNPROCESSABLE_ENTITY,
+                    body=ERR__non_node_connection_object
+                )
+            ]
         )
-    )
+    ]
 )
 
 KEY__address = "address"
@@ -213,7 +245,14 @@ DOCUMENTATION__password = SwaggerDocumentation(
             ),
             ARG_RES__mfa_key
         ],
-        response=RES__oauth_token
+        response=[
+            RES__oauth_token,
+            SwaggerFlatResponse(
+                description=ERR__passwords_do_not_match,
+                code=HTTPStatus.UNPROCESSABLE_ENTITY,
+                body=ERR__passwords_do_not_match
+            )
+        ]
     )
 )
 

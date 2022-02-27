@@ -89,7 +89,14 @@ DOCUMENTATION__install = SwaggerDocumentation(
                 arg_type=str
             )
         ],
-        response=ARG_RES__double_mfa
+        response=[
+            ARG_RES__double_mfa,
+            SwaggerFlatResponse(
+                description=ERR__already_installed,
+                code=HTTPStatus.UNPROCESSABLE_ENTITY,
+                body=ERR__already_installed
+            )
+        ]
     )
 )
 

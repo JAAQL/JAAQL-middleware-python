@@ -33,7 +33,7 @@ textarea {
     text-align: center;
 }
 .line_input {
-    color: white !important;
+    color: white;
 }
 hr {
     color: #00ff00;

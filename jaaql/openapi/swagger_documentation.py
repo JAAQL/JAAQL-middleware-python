@@ -533,8 +533,13 @@ def _produce_path(doc: SwaggerDocumentation, yaml: str, is_prod: bool) -> str:
         yaml = _build_yaml(yaml, 3, OPEN_API__description, method.description)
         yaml = _build_yaml(yaml, 3, OPEN_API__responses)
 
-        if len(method.responses) == 0:
+        if not any([resp.code == HTTPStatus.OK for resp in method.responses]):
             method.responses.append(SwaggerFlatResponse(RESPONSE__200_ok))
+
+        if not any([resp.code == RESP__default_err_code for resp in method.responses]):
+            method.responses.append(SwaggerFlatResponse(description=RESP__default_err_message,
+                                                        code=RESP__default_err_code,
+                                                        body=RESP__default_err_message))
 
         for response in method.responses:
             yaml = _build_yaml(yaml, 4, YAML__quote + str(_http_status_to_integer(response.code)) + YAML__quote)

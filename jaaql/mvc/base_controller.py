@@ -158,9 +158,12 @@ class BaseJAAQLController:
                 return method
 
     @staticmethod
-    def get_response(method: SwaggerMethod, status: Union[HTTPStatus, Namespace]) -> TYPE__response:
+    def get_response(method: SwaggerMethod, status: Union[HTTPStatus, Namespace, int]) -> TYPE__response:
+        match_value = status
+        if not isinstance(status, int):
+            match_value = status.value
         for resp in method.responses:
-            if resp.code == status:
+            if resp.code.value == match_value:
                 return resp
 
         raise Exception(ERR__unexpected_response_code % status.value)
@@ -280,14 +283,18 @@ class BaseJAAQLController:
         return resp
 
     def cors_route(self, route: str, swagger_documentation: Union[list, SwaggerDocumentation]):
-        swagger_documentation.path = route
-
         documentation_as_lists = swagger_documentation
         if not isinstance(documentation_as_lists, list):
             documentation_as_lists = [documentation_as_lists]
 
-        methods = [method.method for method in swagger_documentation.methods]
+        methods = []
+        for cur_documentation in documentation_as_lists:
+            cur_documentation.path = route
+            for method in cur_documentation.methods:
+                methods.append(method.method)
+
         methods.append(REST__OPTIONS)
+        swagger_documentation = documentation_as_lists[0]
 
         def wrap_func(view_func):
             @wraps(view_func)
@@ -403,9 +410,10 @@ class BaseJAAQLController:
                             if method.responses[0] == RES__allow_all:
                                 do_allow_all = True
 
-                        if not do_allow_all:
+                        if not do_allow_all and ret_status != HTTPStatus.UNAUTHORIZED and ret_status !=\
+                                HTTPStatus.NOT_IMPLEMENTED and ret_status != HTTPStatus.BAD_REQUEST:
                             try:
-                                self.get_response(method, Namespace(value=ret_status))
+                                self.get_response(method, ret_status)
                             except Exception as sub_ex:
                                 # The expected response code was not allowed
                                 traceback.print_exc()
@@ -451,6 +459,8 @@ class BaseJAAQLController:
 
         @app.errorhandler(HttpStatusException)
         def handle_pipeline_exception(error: HttpStatusException):
+            if not isinstance(error.response_code, int):
+                error.response_code = error.response_code.value
             return BaseJAAQLController._cors(Response(error.message, error.response_code))
 
     @staticmethod

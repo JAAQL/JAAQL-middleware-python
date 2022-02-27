@@ -139,4 +139,5 @@ vault
 www
 log
 
+/apps
 wsgi_patch.py

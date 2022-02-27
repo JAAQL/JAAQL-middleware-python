@@ -1,22 +1,26 @@
 import "./css_loader.js"  // Will import the CSS
 import * as requests from "./requests/requests.js"; export {requests}
+let HTTP_STATUS_DEFAULT = requests.HTTP_STATUS_DEFAULT; export {HTTP_STATUS_DEFAULT};
 
 let VERSION = "1.0.0";
 console.log("Loaded JEQL library, version " + VERSION);
 
 let HTTP_STATUS_CONNECTION_EXPIRED = 419;
-let HTTP_STATUS_OK = 200;
+let HTTP_STATUS_OK = 200; export {HTTP_STATUS_OK};
 
 let STORAGE_JAAQL_TOKENS = "JAAQL_TOKENS";
 let STORAGE_JAAQL_CONFIGS = "JAAQL_CONFIGS";
 
 let ACTION_LOGIN = "POST /oauth/token";
+let ACTION_FETCH_APPLICATIONS = "GET /applications";
 let ACTION_REFRESH = "POST /oauth/refresh";
 let ACTION_SUBMIT = "POST /submit";
+let ACTION_SUBMIT_FILE = "POST /submit-file";
 let ACTION_CONFIGURATIONS = "GET /configurations";
 let ACTION_CONFIGURATIONS_ARGUMENTS = "GET /configurations/arguments";
 let ACTION_FETCH_LOGIN_DETAILS = "GET /login-details";
 let ACTION_GET_CONNECTION_DATABASES = "GET /databases";
+let ACTION_UPDATE_CONNECTION_DATABASES = "PUT /databases";
 
 let PARAMETER_JAAQL = "jaaql";
 let PARAMETER_CONFIGURATION = "configuration";
@@ -27,6 +31,7 @@ let ERR_WIPING_CONFIG = "Error when loading app config, wiping config";
 let ERR_IMPERATIVE_APP_CONFIG_FAILED = "Tried to get app config in an imperative manner yet app config was not set";
 let ERR_NO_FOUND_CONFIGURATION_FOR_USER = "No configuration found for user";
 let ERR_COULD_NOT_REFRESH_APP_CONFIG = "Could not refresh app config connection token";
+let ERR_COULD_NOT_FIND_APPLICATION_WITH_NAME = "Could not find application with name ";
 
 let KEY_QUERY = "query";
 let KEY_PARAMETERS = "parameters";
@@ -40,6 +45,9 @@ let KEY_APPLICATION = "application";
 let KEY_PARAMETER_NAME = "parameter_name";
 let KEY_CONNECTIONS = "connections";
 let KEY_NAME = "name";
+let KEY_DATA = "data";
+let KEY_URL = "url";
+let KEY_SEARCH = "search";
 
 let PROTOCOL_FILE = "file:";
 let LOCAL_DEBUGGING_URL = "http://127.0.0.1:6060";
@@ -126,7 +134,23 @@ export function elemBuilder(tag) {
 export function getConnectionDatabases(config, renderFunc, parameter = null) {
     let data = {};
     data[KEY_CONNECTION] = fetchConnection(config, parameter);
-    return requests.makeBody(config, ACTION_GET_CONNECTION_DATABASES, renderFunc, data);
+    let renderFuncs = {};
+    renderFuncs[HTTP_STATUS_OK] = renderFunc;
+    renderFuncs[HTTP_STATUS_CONNECTION_EXPIRED] = expiredConnectionHandler;
+    return requests.makeBody(config, ACTION_GET_CONNECTION_DATABASES, renderFuncs, data);
+}
+
+export function updateConnectionDatabases(config, renderFunc, parameter = null) {
+    let data = {};
+    data[KEY_CONNECTION] = fetchConnection(config, parameter);
+    let renderFuncs = {};
+    if (renderFunc.constructor === Object) {
+        renderFuncs = renderFunc;
+    } else {
+        renderFuncs[HTTP_STATUS_OK] = renderFunc;
+    }
+    renderFuncs[HTTP_STATUS_CONNECTION_EXPIRED] = expiredConnectionHandler;
+    return requests.makeBody(config, ACTION_UPDATE_CONNECTION_DATABASES, renderFuncs, data);
 }
 
 function xHttpSetAuth(config, xhttp) {
@@ -299,8 +323,6 @@ function rendererLogin(modal, config, callback, errMsg, renderMFA) {
     if (renderMFA) {
         bindButton(ID_MFA_5, ID_LOGIN_BUTTON);
     }
-
-    // TODO add remember me
 }
 
 function showLoginModal(config, callback, errMsg) {
@@ -429,26 +451,27 @@ function selectAppConfig(config, callback, chosenConfig) {
     let callData = {};
     callData[KEY_APPLICATION] = config.getApplicationName();
     callData[KEY_CONFIGURATION] = chosenConfig;
+
+    let updateStoredAppConfigs = function(config, callback, chosenConfig, connections) {
+        let connectionLookup = {};
+        for (let idx in connections) {
+            connectionLookup[connections[idx][KEY_PARAMETER_NAME]] = connections[idx][KEY_CONNECTION];
+        }
+
+        let configObj = {};
+        configObj[KEY_CONNECTIONS] = connectionLookup;
+        configObj[KEY_NAME] = chosenConfig;
+        let storedAppConfigs = getJsonArrayFromStorage(config.getStorage(), STORAGE_JAAQL_CONFIGS);
+        storedAppConfigs[config.base][config.getApplicationName()] = configObj;
+        config.getStorage().setItem(STORAGE_JAAQL_CONFIGS, JSON.stringify(storedAppConfigs));
+
+        callback(config);
+    };
+
     requests.makeBody(config, ACTION_CONFIGURATIONS_ARGUMENTS,
-        function(connections) { onSelectAppConfig(config, callback, chosenConfig, connections); },
+        function(connections) { updateStoredAppConfigs(config, callback, chosenConfig, connections); },
         callData);
 
-}
-
-function onSelectAppConfig(config, callback, chosenConfig, connections) {
-    let connectionLookup = {};
-    for (let idx in connections) {
-        connectionLookup[connections[idx][KEY_PARAMETER_NAME]] = connections[idx][KEY_CONNECTION];
-    }
-
-    let configObj = {};
-    configObj[KEY_CONNECTIONS] = connectionLookup;
-    configObj[KEY_NAME] = chosenConfig;
-    let storedAppConfigs = getJsonArrayFromStorage(config.getStorage(), STORAGE_JAAQL_CONFIGS);
-    storedAppConfigs[config.base][config.getApplicationName()] = configObj;
-    config.getStorage().setItem(STORAGE_JAAQL_CONFIGS, JSON.stringify(storedAppConfigs));
-
-    callback(configObj);
 }
 
 function resetAppConfig(config, afterSelectAppConfig = null) {
@@ -474,7 +497,7 @@ export function getOrSelectAppConfig(config, afterSelectAppConfig = null, allowF
     if (appConfig !== null && appConfig.constructor === Object && KEY_CONNECTIONS in appConfig &&
         KEY_NAME in appConfig) {
         if (afterSelectAppConfig !== null) {
-            afterSelectAppConfig();
+            afterSelectAppConfig(config);
             return;
         } else {
             return appConfig;
@@ -545,8 +568,20 @@ export function initAsPublic() {
     // TODO initialise with supplied credentials, do not render account banner
 }
 
-export function getAppUrl(appName) {
-    // TODO
+export function getAppUrl(config, appName) {
+    let data = {};
+    data[KEY_SEARCH] = `%${KEY_APPLICATION} LIKE '%${appName}'`;
+    requests.makeBody(config, ACTION_FETCH_APPLICATIONS,
+        function(data) {
+            data = data[KEY_DATA];
+            for (let idx in data) {
+                if (data[idx][KEY_NAME] === appName) {
+                    return data[idx][KEY_URL];
+                }
+            }
+            throw ERR_COULD_NOT_FIND_APPLICATION_WITH_NAME + `'${appName}'`;
+        },
+    );
 }
 
 export function init(application, onLoad, doRenderAccountBanner = true, jaaqlUrl = null) {
@@ -606,6 +641,10 @@ function fetchConnection(config, appParameter = null) {
     }
 }
 
+function callbackDoNotRefreshConnections(res, config) {
+    resetAppConfig(config, function() { console.error(ERR_COULD_NOT_REFRESH_APP_CONFIG); })
+}
+
 function expiredConnectionHandler(res, config, action, renderFunc, body, json) {
     let appConfig = getOrSelectAppConfig(config);
     let reverseMap = {};
@@ -614,8 +653,14 @@ function expiredConnectionHandler(res, config, action, renderFunc, body, json) {
     }
 
     selectAppConfig(config,
-        function(newAppConfig) {
-            json = JSON.parse(json);
+        function() {
+            let newAppConfig = getOrSelectAppConfig(config);
+            if (json) {
+                json = JSON.parse(json);
+            } else {
+                json = requests.urlEncodedToJson(body);
+            }
+
             let wasArray = true;
             if (!Array.isArray(json)) {
                 wasArray = false;
@@ -629,7 +674,16 @@ function expiredConnectionHandler(res, config, action, renderFunc, body, json) {
             if (!wasArray) {
                 json = json[0];
             }
-            submit(config, json, renderFunc[200], true);
+
+            if (body) {
+                body = requests.jsonToUrlEncoded(json);
+                json = undefined;
+            }
+
+            let newRenderFuncs = {...renderFunc};
+            newRenderFuncs[HTTP_STATUS_CONNECTION_EXPIRED] = callbackDoNotRefreshConnections;
+
+            requests.make(config, action, newRenderFuncs, body, json);
         },
         appConfig[KEY_NAME]);
 }
@@ -647,14 +701,14 @@ export function formQuery(config, query, queryParameters = null, appParameter = 
     return formed;
 }
 
-export function submit(config, input, renderFunc, doNotRefresh = false) {
+export function submit(config, input, renderFunc, doNotRefresh = false, asFile = false) {
     let oldRenderFunc = renderFunc;
-    renderFunc = {};
-    renderFunc[HTTP_STATUS_OK] = oldRenderFunc;
+    if (renderFunc.constructor !== Object) {
+        renderFunc = {};
+        renderFunc[HTTP_STATUS_OK] = oldRenderFunc;
+    }
     renderFunc[HTTP_STATUS_CONNECTION_EXPIRED] = doNotRefresh ?
-        function(res, config) {
-            resetAppConfig(config, function() { console.error(ERR_COULD_NOT_REFRESH_APP_CONFIG); })
-        } :
+        callbackDoNotRefreshConnections :
         expiredConnectionHandler;
-    requests.makeJson(config, ACTION_SUBMIT, renderFunc, input);
+    requests.makeJson(config, asFile ? ACTION_SUBMIT_FILE : ACTION_SUBMIT, renderFunc, input);
 }

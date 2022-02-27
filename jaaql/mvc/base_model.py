@@ -233,13 +233,13 @@ class BaseJAAQLModel:
                              where_query: str, where_parameters: dict, decrypt_columns: list = None,
                              encryption_key: bytes = None):
         data = self.execute_supplied_statement(jaaql_connection, full_query, parameters=parameters,
-                                                as_objects=True, decrypt_columns=decrypt_columns,
-                                                encryption_key=encryption_key)
+                                               as_objects=True, decrypt_columns=decrypt_columns,
+                                               encryption_key=encryption_key)
         total = self.execute_supplied_statement(jaaql_connection, count_query, as_objects=True)
         total = total[0]["count"]
         total_filtered = self.execute_supplied_statement(jaaql_connection, count_query + where_query,
-                                                          parameters=where_parameters,
-                                                          as_objects=True)[0]["count"]
+                                                         parameters=where_parameters,
+                                                         as_objects=True)[0]["count"]
         return self.paged_collection(total, total_filtered, data)
 
     @staticmethod
@@ -478,13 +478,7 @@ class BaseJAAQLModel:
         data = json.loads(crypt_utils.decrypt(jwt_obj_key, key[JWT__data]))
         return data
 
-    def execute_supplied_statement_singleton(self, db_interface: DBInterface, query, parameters: dict = None,
-                                              as_objects: bool = False, encrypt_parameters: list = None,
-                                              decrypt_columns: list = None, encryption_key: bytes = None,
-                                              encryption_salts: dict = None):
-        data = self.execute_supplied_statement(db_interface, query, parameters, as_objects, encrypt_parameters,
-                                                decrypt_columns, encryption_key, encryption_salts)
-
+    def force_singleton(self, data, as_objects: bool = False):
         was_no_singleton = False
         if as_objects:
             if len(data) != 1:
@@ -492,12 +486,22 @@ class BaseJAAQLModel:
         else:
             if len(data["rows"]) != 1:
                 was_no_singleton = True
-            data["rows"] = data["rows"][0]
+            if len(data["rows"] != 0):
+                data["rows"] = data["rows"][0]
 
         if was_no_singleton:
             raise HttpStatusException(ERR__expected_single_row % len(data))
 
         return data[0] if as_objects else data
+
+    def execute_supplied_statement_singleton(self, db_interface: DBInterface, query, parameters: dict = None,
+                                             as_objects: bool = False, encrypt_parameters: list = None,
+                                             decrypt_columns: list = None, encryption_key: bytes = None,
+                                             encryption_salts: dict = None):
+        data = self.execute_supplied_statement(db_interface, query, parameters, as_objects, encrypt_parameters,
+                                               decrypt_columns, encryption_key, encryption_salts)
+
+        return self.force_singleton(data, as_objects)
 
     @staticmethod
     def jaaql__encrypt(dec_input: str, encryption_key: bytes, salt: bytes = None) -> str:
@@ -515,9 +519,9 @@ class BaseJAAQLModel:
 
     @staticmethod
     def execute_supplied_statement(db_interface: DBInterface, query: str, parameters: dict = None,
-                                    as_objects: bool = False, encrypt_parameters: list = None,
-                                    decrypt_columns: list = None, encryption_key: bytes = None,
-                                    encryption_salts: dict = None):
+                                   as_objects: bool = False, encrypt_parameters: list = None,
+                                   decrypt_columns: list = None, encryption_key: bytes = None,
+                                   encryption_salts: dict = None):
         if parameters is None:
             parameters = {}
 
@@ -555,7 +559,8 @@ class BaseJAAQLModel:
         for col in encrypt_parameters:
             if parameters[col] is not None:
                 parameters[col] = BaseJAAQLModel.jaaql__encrypt(parameters[col], encryption_key,
-                                                            BaseJAAQLModel.try_encode(encryption_salts.get(col, None)))
+                                                                BaseJAAQLModel.try_encode(
+                                                                    encryption_salts.get(col, None)))
 
         statement = {
             "query": query,
@@ -581,7 +586,7 @@ class BaseJAAQLModel:
 
     @staticmethod
     def execute_supplied_statements(db_interface: DBInterface, queries: Union[str, list],
-                                     parameters: Union[dict, list] = None, as_objects: bool = False):
+                                    parameters: Union[dict, list] = None, as_objects: bool = False):
         if not isinstance(queries, list):
             queries = [queries]
         if not isinstance(parameters, list) and parameters is not None:
