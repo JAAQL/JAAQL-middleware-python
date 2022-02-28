@@ -12,6 +12,8 @@ let COMMAND_REFRESH = "refresh";
 let COMMAND_FILE = "file";
 let COMMAND_HELP = "help";
 
+let ID_CONSOLE_SQL_FILE = "console-sql-file";
+
 let HISTORY_IDX = "idx";
 let HISTORY_LIST = "list";
 let HISTORY_USED_CONSOLE = "used_console";
@@ -95,6 +97,35 @@ function renderResponse(data, isErr = false) {
     addConsoleLine(window.jeqlConfig);
 }
 
+function getDefaultResponseHandler() {
+    let responseHandlers = {};
+    responseHandlers[JEQL.HTTP_STATUS_DEFAULT] = function(data) { renderResponse(data, true); };
+    responseHandlers[JEQL.HTTP_STATUS_OK] = renderResponse;
+    return responseHandlers;
+}
+
+function handleFileInput(config) {
+    let fileInput = document.getElementById(ID_CONSOLE_SQL_FILE);
+    fileInput.onchange = f => {
+        let file = f.target.files[0];
+        let reader = new FileReader();
+        config.createSpinner();
+        reader.onload = readerEvent => {
+            config.destroySpinner();
+            let content = readerEvent.target.result;
+            let formedQuery = JEQL.formQuery(config, content, null, null, window.curDatabase);
+            formedQuery[JEQL.KEY_FORCE_TRANSACTIONAL] = true;
+            JEQL.submit(
+                config,
+                formedQuery,
+                getDefaultResponseHandler()
+            );
+        };
+        reader.readAsText(file);
+    };
+    fileInput.click();
+}
+
 function onSendConsole() {
     let consoleInput = window.lineInput.value.trimEnd();
     if (window.lineInput.value === "") { return; }
@@ -147,7 +178,7 @@ function onSendConsole() {
             renderFuncs[JEQL.HTTP_STATUS_DEFAULT] = function(data) { renderResponse(data, true); };
             JEQL.updateConnectionDatabases(window.jeqlConfig, renderFuncs);
         } else if (consoleInput === COMMAND_START + COMMAND_FILE) {
-            // TODO
+            handleFileInput(window.jeqlConfig);
         } else {
             addConsoleLine(window.jeqlConfig);
             window.lineInput.value = "Unknown console command: '" + consoleInput.substr(1) + "'";
@@ -155,14 +186,10 @@ function onSendConsole() {
             addConsoleLine(window.jeqlConfig);
         }
     } else {
-        let responseHandlers = {};
-        responseHandlers[JEQL.HTTP_STATUS_DEFAULT] = function(data) { renderResponse(data, true); };
-        responseHandlers[JEQL.HTTP_STATUS_OK] = renderResponse;
-
         JEQL.submit(
             window.jeqlConfig,
             JEQL.formQuery(window.jeqlConfig, window.lineInput.value, null, null, window.curDatabase),
-            responseHandlers
+            getDefaultResponseHandler()
         );
     }
 }

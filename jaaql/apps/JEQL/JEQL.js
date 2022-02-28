@@ -35,6 +35,7 @@ let ERR_COULD_NOT_FIND_APPLICATION_WITH_NAME = "Could not find application with 
 
 let KEY_QUERY = "query";
 let KEY_PARAMETERS = "parameters";
+let KEY_FORCE_TRANSACTIONAL = "force_transactional"; export {KEY_FORCE_TRANSACTIONAL};
 let KEY_DATABASE = "database";
 let KEY_CONNECTION = "connection";
 let KEY_USERNAME = "username";
@@ -52,7 +53,6 @@ let KEY_SEARCH = "search";
 let PROTOCOL_FILE = "file:";
 let LOCAL_DEBUGGING_URL = "http://127.0.0.1:6060";
 
-let CLS_LOGIN_MODAL = "jeql-login-modal";
 let CLS_MODAL_OUTER = "jeql-modal-outer";
 let CLS_MODAL = "jeql-modal";
 let CLS_MODAL_WIDE = "jeql-modal-wide";
@@ -471,7 +471,6 @@ function selectAppConfig(config, callback, chosenConfig) {
     requests.makeBody(config, ACTION_CONFIGURATIONS_ARGUMENTS,
         function(connections) { updateStoredAppConfigs(config, callback, chosenConfig, connections); },
         callData);
-
 }
 
 function resetAppConfig(config, afterSelectAppConfig = null) {
@@ -628,8 +627,10 @@ function fetchConnection(config, appParameter = null) {
     let appConfig = getOrSelectAppConfig(config)[KEY_CONNECTIONS];
 
     if (appParameter === null) {
-        if (Object.keys(appConfig).length !== 1) {
+        if (Object.keys(appConfig).length > 1) {
             throw new Error("Must supply parameter as multiple parameters exist");
+        } else if (appConfig.length === 0) {
+            resetAppConfig(config);
         }
         return appConfig[Object.keys(appConfig)[0]];
     } else {

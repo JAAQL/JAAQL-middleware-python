@@ -486,8 +486,11 @@ class BaseJAAQLModel:
         else:
             if len(data["rows"]) != 1:
                 was_no_singleton = True
-            if len(data["rows"] != 0):
-                data["rows"] = data["rows"][0]
+            try:
+                if len(data["rows"] != 0):
+                    data["rows"] = data["rows"][0]
+            except:
+                print("here")
 
         if was_no_singleton:
             raise HttpStatusException(ERR__expected_single_row % len(data))
