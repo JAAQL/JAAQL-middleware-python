@@ -16,7 +16,7 @@ let ID_CONSOLE_SQL_FILE = "console-sql-file";
 
 let HISTORY_IDX = "idx";
 let HISTORY_LIST = "list";
-let HISTORY_USED_CONSOLE = "used_console";
+let HISTORY_HAS_TEMP = "has_temp";
 
 let CLS_LINE_TEXT_CONTAINER = "line-text-container";
 let CLS_LINE_TEXT_PARENT = "line-text-parent";
@@ -46,8 +46,22 @@ function renderConsoleLine(newLine, db_name) {
     window.newLine = newLine;
     window.lineInput.focus();
     window.wasConsole = null;
-    window.lineInput.addEventListener("change", function() {
+    window.lineInput.addEventListener("keyup", function(event) {
+        if (event.which === 38 || event.which === 40) { return; }
         window.wasConsole = false;
+        let history = getHistory(window.jeqlConfig);
+        let historyList = history[HISTORY_LIST];
+        if (window.curHistoryLine === historyList.length - 1 && history[HISTORY_HAS_TEMP]) {
+            let isEmpty = window.lineInput.value.length === 0;
+            history[HISTORY_HAS_TEMP] = !isEmpty;
+            historyList.pop();
+            if (!isEmpty) {
+                historyList.push(window.lineInput.value);
+            } else {
+                window.curHistoryLine -= 1;
+            }
+            updateHistory(window.jeqlConfig, history);
+        }
     });
 }
 
@@ -60,28 +74,36 @@ function addConsoleLine(config) {
     window.curHistoryLine = getHistory(config)[HISTORY_IDX];
 }
 
+function processUpDownKey(history, historyList) {
+    if (historyList.length !== 1 || window.lineInput.value === "") {
+        if (window.lineInput.value.length !== 0 && !window.wasConsole && !history[HISTORY_HAS_TEMP]) {
+            historyList.push(window.lineInput.value);
+            history[HISTORY_HAS_TEMP] = true;
+            updateHistory(window.jeqlConfig, history);
+        }
+        window.lineInput.value = historyList[window.curHistoryLine];
+        window.wasConsole = true;
+    }
+}
+
 function keyDownBody(e) {
     window.lineInput.focus();
     if (window.curHistoryLine !== null) {
-        let historyList = getHistory(window.jeqlConfig)[HISTORY_LIST];
+        let history = getHistory(window.jeqlConfig);
+        let historyList = history[HISTORY_LIST];
         if (e.which === 38 && (window.curHistoryLine > 0 || historyList.length === 1 ||
             window.lineInput.value === "")) {
-            if (historyList.length !== 1 && window.wasConsole !== null) {
+            if ((historyList.length !== 1 && window.wasConsole && window.lineInput.value.length !== 0) ||
+                (history[HISTORY_HAS_TEMP] && !window.wasConsole)) {
                 window.curHistoryLine -= 1;
             }
-            if (historyList.length !== 1 || window.lineInput.value === "") {
-                window.lineInput.value = historyList[window.curHistoryLine];
-                window.wasConsole = true;
-            }
+            processUpDownKey(history, historyList);
         } else if (e.which === 40 && (window.curHistoryLine < historyList.length - 1 || historyList.length === 1 ||
             window.lineInput.value === "")) {
-            if (historyList.length !== 1 && window.wasConsole !== null) {
+            if (historyList.length !== 1 && window.wasConsole && window.lineInput.value.length !== 0) {
                 window.curHistoryLine += 1;
             }
-            if (historyList.length !== 1 || window.lineInput.value === "") {
-                window.lineInput.value = historyList[window.curHistoryLine];
-                window.wasConsole = true;
-            }
+            processUpDownKey(history, historyList);
         }
     }
 }
@@ -131,11 +153,16 @@ function onSendConsole() {
     if (window.lineInput.value === "") { return; }
 
     let history = getHistory(window.jeqlConfig);
-    history[HISTORY_LIST].push(window.lineInput.value);
+    if (history[HISTORY_HAS_TEMP]) {
+        history[HISTORY_LIST].pop();
+    }
+    if (history[HISTORY_LIST].length === 0 ||
+        history[HISTORY_LIST][history[HISTORY_LIST].length - 1] !== window.lineInput.value.trim()) {
+        history[HISTORY_LIST].push(window.lineInput.value.trim());
+    }
     if (window.wasConsole) {
         history[HISTORY_IDX] = window.curHistoryLine;
-        history[HISTORY_USED_CONSOLE] = true;
-    } else if (history[HISTORY_USED_CONSOLE] === false) {
+    } else {
         history[HISTORY_IDX] = history[HISTORY_LIST].length - 1;
     }
     updateHistory(window.jeqlConfig, history);
@@ -212,7 +239,7 @@ function getHistory(config) {
         history = {};
         history[HISTORY_IDX] = null;
         history[HISTORY_LIST] = [];
-        history[HISTORY_USED_CONSOLE] = false;
+        history[HISTORY_HAS_TEMP] = false;
         updateHistory(config, history);
     } else {
         history = JSON.parse(history);
