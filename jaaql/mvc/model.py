@@ -50,7 +50,7 @@ APPLICATION__application_manager = "Application Manager"
 
 QUERY__application_set_url = "UPDATE jaaql__application SET url = :url WHERE name = :name"
 QUERY__application_ins = "INSERT INTO jaaql__application (name, description, url) VALUES (:name, :description, :url)"
-QUERY__application_setup_host = "INSERT INTO jaaql__application_argument (application, configuration, database, node, parameter) VALUES (:application, 'host', %s, %s, 'node')" % (DB__jaaql, NODE__host_node)
+QUERY__application_setup_host = "INSERT INTO jaaql__application_argument (application, configuration, database, node, parameter) VALUES (:application, 'host', '%s', '%s', 'node')" % (DB__jaaql, NODE__host_node)
 QUERY__application_del = "DELETE FROM jaaql__application WHERE name = :name"
 QUERY__application_sel = "SELECT * FROM jaaql__application"
 QUERY__application_count = "SELECT COUNT(*) FROM jaaql__application"
@@ -359,6 +359,7 @@ class JAAQLModel(BaseJAAQLModel):
                 KEY__address: address,
             }, self.jaaql_lookup_connection)
             self.vault.insert_obj(VAULT_KEY__jaaql_lookup_connection, db_connection_string)
+            self.add_database({KEY__node: NODE__host_node, KEY__database_name: DB__jaaql}, self.jaaql_lookup_connection)
 
             otp_uri, otp_qr, user_id, ip_id, ua_id = self.add_and_setup_user(USERNAME__jaaql, password, None,
                                                                              self.jaaql_lookup_connection,
@@ -387,10 +388,11 @@ class JAAQLModel(BaseJAAQLModel):
 
             base_url = self.url + SEPARATOR__dir + DIR__apps + SEPARATOR__dir
             self.execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_set_url,
-                                            {KEY__application_url: base_url + DIR__console})
+                                            {KEY__application_url: base_url + DIR__console,
+                                             KEY__application_name: APPLICATION__console})
             self.execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_set_url,
                                             {KEY__application_url: base_url + DIR__application_manager,
-                                             KEY__application_name: APPLICATION__console})
+                                             KEY__application_name: APPLICATION__application_manager})
             self.execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_setup_host,
                                             {KEY__application: APPLICATION__application_manager})
 

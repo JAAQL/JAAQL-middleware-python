@@ -89,7 +89,7 @@ create table jaaql__application (
 );
 
 INSERT INTO jaaql__application (name, description, url) VALUES ('console', 'The console application', '');
-INSERT INTO jaaql__application (name, description, url) VALUES ('Application Creator', 'Creates applications easily', '');
+INSERT INTO jaaql__application (name, description, url) VALUES ('Application Manager', 'Creates applications easily', '');
 
 create table jaaql__application_parameter (
     application varchar(64) not null,
@@ -99,7 +99,7 @@ create table jaaql__application_parameter (
     FOREIGN KEY (application) references jaaql__application on delete cascade on update cascade
 );
 INSERT INTO jaaql__application_parameter (application, name, description) VALUES ('console', 'node', 'The node which the console will run against');
-INSERT INTO jaaql__application_parameter (application, name, description) VALUES ('Application Creator', 'node', 'A jaaql node which the app can create new apps on');
+INSERT INTO jaaql__application_parameter (application, name, description) VALUES ('Application Manager', 'node', 'A jaaql node which the app can create new apps on');
 
 create table jaaql__application_configuration (
     application varchar(64) not null,
@@ -108,7 +108,7 @@ create table jaaql__application_configuration (
     PRIMARY KEY (application, name),
     FOREIGN KEY (application) references jaaql__application on delete cascade on update cascade
 );
-INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('Application Creator', 'host', 'The host jaaql node');
+INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('Application Manager', 'host', 'The host jaaql node');
 
 create table jaaql__application_argument (
     application varchar(64) not null,
@@ -329,7 +329,7 @@ BEGIN
 END
 $$ language plpgsql;
 
-create function jaaql__delete_node(node_name text) as
+create function jaaql__delete_node(node_name text) returns void as
 $$
 BEGIN
     UPDATE jaaql__node SET name = left(name, 180) || '_deleted_' + current_timestamp, deleted = current_timestamp WHERE name = node_name;
