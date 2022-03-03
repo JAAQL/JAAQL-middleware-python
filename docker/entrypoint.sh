@@ -82,6 +82,12 @@ replace_config() {
     sed -i 's/{{USE_MFA}}/true/g' /JAAQL-middleware-python/jaaql/config/config.ini
   fi
 
+  if [ "$DO_AUDIT" = "FALSE" ] ; then
+    sed -i 's/{{DO_AUDIT}}/false/g' /JAAQL-middleware-python/jaaql/config/config.ini
+  else
+    sed -i 's/{{DO_AUDIT}}/true/g' /JAAQL-middleware-python/jaaql/config/config.ini
+  fi
+
   if [ -z "$MFA_ISSUER" ] ; then
     sed -i 's/{{MFA_ISSUER}}/'$MFA_ISSUER'/g' /JAAQL-middleware-python/jaaql/config/config.ini
   else

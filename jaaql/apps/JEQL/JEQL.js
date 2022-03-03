@@ -120,14 +120,44 @@ function buildHTML(elem, html) {
     return elem;
 }
 
+export function tableRenderer(data) {
+    let table = elemBuilder("table");
+    document.body.appendChild(table);
+    let header = table.buildChild("tr");
+    for (let idx in Object.keys(data["columns"])) {
+        header.buildChild("th").buildText(formatAsTableHeader(data["columns"][idx]));
+    }
+    header.buildChild("th");
+    for (let idx in data["rows"]) {
+        let row = table.buildChild("tr");
+        for (let key in data["rows"][idx]) {
+            row.buildChild("td").buildText(data["rows"][idx][key]);
+        }
+    }
+}
+
+export function tableBodyRenderer(data, tableBody) {
+    makeBuildable(tableBody);
+    for (let idx in data["rows"]) {
+        let row = tableBody.buildChild("tr");
+        for (let key in data["rows"][idx]) {
+            row.buildChild("td").buildText(data["rows"][idx][key]);
+        }
+    }
+}
+
+export function makeBuildable(elem) {
+    elem.buildClass = function(classOrClasses) { return buildClass(elem, classOrClasses); };
+    elem.buildAttr = function(attr, value) { return buildAttr(elem, attr, value); };
+    elem.buildText = function(text) { return buildText(elem, text); };
+    elem.buildHTML = function(html) { return buildHTML(elem, html); };
+    elem.buildChild = function(tag) { return buildChild(elem, tag); };
+    elem.buildSibling = function(tag) { return buildSibling(elem, tag); };
+}
+
 export function elemBuilder(tag) {
     let ret = document.createElement(tag);
-    ret.buildClass = function(classOrClasses) { return buildClass(ret, classOrClasses); };
-    ret.buildAttr = function(attr, value) { return buildAttr(ret, attr, value); };
-    ret.buildText = function(text) { return buildText(ret, text); };
-    ret.buildHTML = function(html) { return buildHTML(ret, html); };
-    ret.buildChild = function(tag) { return buildChild(ret, tag); };
-    ret.buildSibling = function(tag) { return buildSibling(ret, tag); };
+    makeBuildable(ret);
     return ret;
 }
 
@@ -338,7 +368,7 @@ function onRefreshToken(config, callback) {
     requests.makeEmpty(config, config.refreshAction, callback);
 }
 
-function formatAsTableHeader(inStr) {
+export function formatAsTableHeader(inStr) {
     let formatted = "";
     let lastChar = "_";
     for (let i = 0; i < inStr.length; i ++) {

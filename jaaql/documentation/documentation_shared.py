@@ -163,14 +163,6 @@ ARG_RES__totp_mfa = SwaggerResponse(
     ]
 )
 
-ARG_RES__is_node = SwaggerArgumentResponse(
-    name=KEY__is_node,
-    description="Is the parameter a node or a database within a node",
-    arg_type=bool,
-    example=[True, False],
-    required=True
-)
-
 RES__oauth_token = SwaggerFlatResponse(
     description="A temporary JWT token that can be used to authenticate with the server",
     body=EXAMPLE__jwt
@@ -204,7 +196,6 @@ DOCUMENTATION__login_details = SwaggerDocumentation(
     )
 )
 
-KEY__application_name = "name"
 EXAMPLE__application_name = "Library Browser"
 EXAMPLE__application_url = "https://jaaql.com/demos/library-application"
 
@@ -224,7 +215,8 @@ ARG_RES__application_description = SwaggerArgumentResponse(
 )
 ARG_RES__application_uri = SwaggerArgumentResponse(
     name=KEY__application_url,
-    description="Application url",
+    description="Application url. Please use '{{DEFAULT}}/myappurl' if you want to host it in the same place as jaaql. "
+    "For example '{{DEFAULT}}/console' would be the URL for the console",
     arg_type=str,
     example=[EXAMPLE__application_url, "https://jaaql.com/demos/meeting-application"],
     required=True

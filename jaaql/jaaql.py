@@ -24,6 +24,7 @@ DEFAULT__mfa_label = "test"
 CONFIG_KEY__security = "SECURITY"
 CONFIG_KEY_SECURITY__mfa_label = "mfa_label"
 CONFIG_KEY_SECURITY__use_mfa = "use_mfa"
+CONFIG_KEY_SECURITY__do_audit = "do_audit"
 CONFIG_KEY__swagger = "SWAGGER"
 CONFIG_KEY_SWAGGER__url = "url"
 CONFIG_KEY__server = "SERVER"
@@ -34,6 +35,8 @@ WARNING__vault_key_stdin = "MAJOR SECURITY ISSUE! Passing vault key via program 
 
 WARNING__mfa_off = "MAJOR SECURITY ISSUE! config SECURITY->use_mfa is set to false. Please enable it for PROD (it wil" \
                    "l be enabled using the default docker configuration"
+
+WARNING__audit_off = "Audit trail is off. Logs will still be kept by the internal postgres instance"
 
 
 class SensitiveHandler(StreamHandler):
@@ -122,9 +125,13 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
               "authenticator apps via QR codes. You can change in the config")
 
     use_mfa = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__use_mfa] in ("true", "True", True)
+    do_audit = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__do_audit] in ("true", "True", True)
     config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__use_mfa] = use_mfa
+    config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__do_audit] = do_audit
     if not use_mfa:
         print(WARNING__mfa_off, file=sys.stderr)
+    if not do_audit:
+        print(WARNING__audit_off, file=sys.stderr)
 
     url = config[CONFIG_KEY__swagger][CONFIG_KEY_SWAGGER__url]
 

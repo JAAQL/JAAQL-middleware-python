@@ -2,7 +2,7 @@ from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
 from jaaql.documentation.documentation_shared import ARG_RES__totp_mfa, ARG_RES__jaaql_password, JWT__invite,\
     gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__mfa_key, RES__oauth_token, RES__deletion_key,\
-    ARG_RES__deletion_key, set_nullable, ARG_RES__database_name
+    ARG_RES__deletion_key, set_nullable
 
 TITLE = "JAAQL API"
 DESCRIPTION = "Collection of methods in the JAAQL API"
@@ -123,52 +123,6 @@ DOCUMENTATION__config_arguments = SwaggerDocumentation(
             )
         )
     )
-)
-
-DOCUMENTATION__my_databases = SwaggerDocumentation(
-    tags="Configuration",
-    methods=[
-        SwaggerMethod(
-            name="Fetch databases for node config argument",
-            description="Fetches a list of databases associated with a node configuration argument",
-            method=REST__GET,
-            arguments=ARG_RES__connection,
-            response=[
-                SwaggerResponse(
-                    description="A list of databases associated with a node configuration argument",
-                    response=SwaggerList(ARG_RES__database_name)
-                ),
-                SwaggerFlatResponse(
-                    description=ERR__connection_expired,
-                    code=HTTP_STATUS_CONNECTION_EXPIRED,
-                    body=ERR__connection_expired
-                ),
-                SwaggerFlatResponse(
-                    description=ERR__non_node_connection_object,
-                    code=HTTPStatus.UNPROCESSABLE_ENTITY,
-                    body=ERR__non_node_connection_object
-                )
-            ]
-        ),
-        SwaggerMethod(
-            name="Refresh databases for node config argument",
-            description="Refreshes the internal databases associated with a configuration",
-            method=REST__PUT,
-            arguments=ARG_RES__connection,
-            response=[
-                SwaggerFlatResponse(
-                    description=ERR__connection_expired,
-                    code=HTTP_STATUS_CONNECTION_EXPIRED,
-                    body=ERR__connection_expired
-                ),
-                SwaggerFlatResponse(
-                    description=ERR__non_node_connection_object,
-                    code=HTTPStatus.UNPROCESSABLE_ENTITY,
-                    body=ERR__non_node_connection_object
-                )
-            ]
-        )
-    ]
 )
 
 KEY__address = "address"

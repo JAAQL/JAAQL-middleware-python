@@ -50,6 +50,13 @@ If using https you must use a domain name
 For those wishing that this container boots when your system boots (on startup), please add the following argument to the above
 
     --restart unless-stopped \
+
+Additional lines can be used
+
+    --e DO_AUDIT=FALSE
+    --e USE_MFA=FALSE
+
+To disable logging and MFA respectively
     
 ## Usage
 Please use the command

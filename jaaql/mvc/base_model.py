@@ -22,6 +22,7 @@ CONFIG_KEY_security = "SECURITY"
 CONFIG_KEY_SECURITY__mfa_label = "mfa_label"
 CONFIG_KEY_SECURITY__mfa_issuer = "mfa_issuer"
 CONFIG_KEY_SECURITY__use_mfa = "use_mfa"
+CONFIG_KEY_SECURITY__do_audit = "do_audit"
 CONFIG_KEY_SECURITY__token_expiry_ms = "token_expiry_ms"
 CONFIG_KEY_SECURITY__token_refresh_expiry_ms = "token_refresh_expiry_ms"
 
@@ -65,7 +66,6 @@ VAULT_KEY__db_crypt_key = "db_crypt_key"
 VAULT_KEY__jwt_crypt_key = "jwt_crypt_key"
 VAULT_KEY__jwt_obj_crypt_key = "jwt_obj_crypt_key"
 VAULT_KEY__jaaql_lookup_connection = "jaaql_lookup_connection"
-VAULT_KEY__jaaql_node_id = "jaaql_node_id"
 DIR__vault = "vault"
 FILE__was_installed = "was_installed"
 
@@ -175,6 +175,7 @@ class BaseJAAQLModel:
         self.url = url
 
         self.use_mfa = config[CONFIG_KEY_security][CONFIG_KEY_SECURITY__use_mfa]
+        self.do_audit = config[CONFIG_KEY_security][CONFIG_KEY_SECURITY__do_audit]
 
         self.vault = Vault(vault_key, DIR__vault)
         self.jaaql_lookup_connection = None

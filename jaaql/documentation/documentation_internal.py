@@ -2,7 +2,7 @@ from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
 from jaaql.documentation.documentation_shared import ARG_RES__jaaql_password, ARG_RES__email,\
     JWT__invite, gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__deletion_key, RES__deletion_key,\
-    set_nullable, rename_arg, ARG_RES__is_node, ARG_RES__database_name, EXAMPLE__db, ARG_RES__application_name,\
+    set_nullable, rename_arg, ARG_RES__database_name, EXAMPLE__db, ARG_RES__application_name,\
     ARG_RES__application_description, ARG_RES__application_uri, EXAMPLE__application_name
 
 TITLE = "JAAQL Internal API"
@@ -105,17 +105,18 @@ from jaaql.documentation.documentation_shared import DOCUMENTATION__login_detail
     DOCUMENTATION__oauth_refresh, DOCUMENTATION__fetch_applications
 
 
-EXAMPLE__node = "PROD library"
 EXAMPLE__address = "mydb.abbcdcec9afd.eu-west-1.rds.amazonaws.com"
 
+EXAMPLE__node_label = "lion"
+ARG_RES__node_label = SwaggerArgumentResponse(
+    name=KEY__node_name,
+    description="The label of the node, provides real world semantic meaning",
+    arg_type=str,
+    example=[EXAMPLE__node_label],
+    required=True
+)
+
 ARG_RES__node_base = [
-    SwaggerArgumentResponse(
-        name=KEY__node_name,
-        description="The internal name used to identify the node",
-        arg_type=str,
-        example=[EXAMPLE__node, "office QA"],
-        required=True
-    ),
     SwaggerArgumentResponse(
         name=KEY__port,
         description="Port on which the node runs",
@@ -150,46 +151,36 @@ ARG_RES__when_deleted = SwaggerArgumentResponse(
     example=["2021-08-07 19:05:07.763189+01:00", "2021-08-07 18:04:41.156935+01:00"]
 )
 
-EXAMPLE__node_id = "aaa901f2-fc92-4b8a-8a30-d35d36b9189e"
-ARG_RES__node_id = SwaggerArgumentResponse(
-    name="id",
-    description="The internal id of the node",
-    arg_type=str,
-    example=[EXAMPLE__node_id],
-    required=True
-)
-
 DOCUMENTATION__nodes = SwaggerDocumentation(
     tags="Nodes",
     methods=[
         SwaggerMethod(
             name="Add node",
             description="Adds a new node",
-            arguments=ARG_RES__node_base + [SwaggerArgumentResponse(
-                name=KEY__description,
-                description="Description of the node",
-                arg_type=str,
-                condition="Imputed from the node name if not required",
-                example=["The PROD library node", "The office QA node"],
-                required=False,
-            )],
-            method=REST__POST,
-            response=SwaggerFlatResponse(
-                description="The node UUID",
-                body=EXAMPLE__node_id
-            )
+            body=[set_nullable(ARG_RES__node_label, condition="If not provided will be automatically generated")] +
+                 ARG_RES__node_base + [
+                SwaggerArgumentResponse(
+                    name=KEY__description,
+                    description="Description of the node",
+                    arg_type=str,
+                    condition="Imputed from the node name if not required",
+                    example=["The PROD library node", "The office QA node"],
+                    required=False,
+                )
+            ],
+            method=REST__POST
         ),
         SwaggerMethod(
             name="Fetch nodes",
             description="Fetch a list of nodes",
             method=REST__GET,
-            arguments=gen_arg_res_sort_pageable(KEY__node_name, KEY__address, EXAMPLE__node, EXAMPLE__address),
+            arguments=gen_arg_res_sort_pageable(KEY__node_name, KEY__address, EXAMPLE__node_label, EXAMPLE__address),
             response=SwaggerResponse(
                 description="List of nodes",
                 response=gen_filtered_records(
-                    "node",
+                    KEY__node,
                     [
-                        ARG_RES__node_id,
+                        ARG_RES__node_label,
                         ARG_RES__when_deleted
                     ] + ARG_RES__node_base + [
                         SwaggerArgumentResponse(
@@ -207,13 +198,7 @@ DOCUMENTATION__nodes = SwaggerDocumentation(
             name="Delete node",
             description="Deletes a node",
             method=REST__DELETE,
-            arguments=SwaggerArgumentResponse(
-                name="id",
-                description="node id",
-                arg_type=str,
-                example=[EXAMPLE__node_id],
-                required=True
-            ),
+            arguments=ARG_RES__node_label,
             response=RES__deletion_key
         )
     ]
@@ -229,26 +214,12 @@ DOCUMENTATION__nodes_confirm_deletion = SwaggerDocumentation(
     )
 )
 
-EXAMPLE__database_id = "31f295d4-1be4-4534-9fb8-164c6c53c985"
+ARG_RES__reference_node = rename_arg(ARG_RES__node_label, KEY__node)
 
 ARG_RES__database_base = [
     ARG_RES__database_name,
-    SwaggerArgumentResponse(
-        name=KEY__node,
-        description="The internal id of the node",
-        arg_type=str,
-        example=[EXAMPLE__node_id],
-        required=True
-    )
+    ARG_RES__reference_node
 ]
-
-ARG_RES__database_id = SwaggerArgumentResponse(
-    name="id",
-    description="The internal id of the database",
-    arg_type=str,
-    example=[EXAMPLE__database_id],
-    required=True
-)
 
 DOCUMENTATION__databases = SwaggerDocumentation(
     tags="Databases",
@@ -257,27 +228,20 @@ DOCUMENTATION__databases = SwaggerDocumentation(
             name="Add Database",
             description="Add a new database",
             arguments=ARG_RES__database_base,
-            method=REST__POST,
-            response=SwaggerFlatResponse(
-                description="The database UUID",
-                body=EXAMPLE__database_id
-            )
+            method=REST__POST
         ),
         SwaggerMethod(
             name="Fetch Databases",
             description="Fetch a list of databases",
             method=REST__GET,
-            arguments=gen_arg_res_sort_pageable(KEY__database_name, KEY__id, EXAMPLE__db, EXAMPLE__database_id) + [
+            arguments=gen_arg_res_sort_pageable(KEY__database_name, KEY__node, EXAMPLE__db, EXAMPLE__node_label) + [
                 ARG_RES__deleted
             ],
             response=SwaggerResponse(
                 description="List of databases",
                 response=gen_filtered_records(
-                    "database",
-                    [
-                        ARG_RES__database_id,
-                        ARG_RES__when_deleted
-                    ] + ARG_RES__database_base
+                    KEY__database,
+                    [ARG_RES__when_deleted] + ARG_RES__database_base
                 )
             )
         ),
@@ -285,13 +249,7 @@ DOCUMENTATION__databases = SwaggerDocumentation(
             name="Delete Database",
             description="Deletes a database",
             method=REST__DELETE,
-            arguments=SwaggerArgumentResponse(
-                name="id",
-                description="Database id",
-                arg_type=str,
-                example=[EXAMPLE__database_id],
-                required=True
-            ),
+            arguments=[ARG_RES__reference_node, ARG_RES__database_name],
             response=RES__deletion_key
         )
     ]
@@ -383,15 +341,18 @@ ARG__application_name = SwaggerArgumentResponse(
 KEY__application_parameter_name = "name"
 EXAMPLE__application_parameter_db = "library_db"
 
+ARG_RES__application_parameter_name = SwaggerArgumentResponse(
+    name=KEY__application_parameter_name,
+    description="The name of the parameter",
+    arg_type=str,
+    example=[EXAMPLE__application_parameter_db, "meeting_db"],
+    required=True
+)
+ARG_RES__reference_application_parameter = rename_arg(ARG_RES__application_name, KEY__parameter)
+
 ARG_RES__application_parameter_key = [
     ARG__application_name,
-    SwaggerArgumentResponse(
-        name=KEY__application_parameter_name,
-        description="The name of the parameter",
-        arg_type=str,
-        example=[EXAMPLE__application_parameter_db, "meeting_db"],
-        required=True
-    )
+    ARG_RES__application_parameter_name
 ]
 
 ARG_RES__application_parameter = ARG_RES__application_parameter_key + [
@@ -401,12 +362,20 @@ ARG_RES__application_parameter = ARG_RES__application_parameter_key + [
         arg_type=str,
         example=["The library book database", "The meeting room spaces database"],
         required=True
-    ),
-    ARG_RES__is_node
+    )
 ]
 
 KEY__configuration_name = "name"
 EXAMPLE__configuration_name = "Library QA"
+
+ARG_RES__configuration_name = SwaggerArgumentResponse(
+    name=KEY__configuration_name,
+    description="The name of the configuration",
+    arg_type=str,
+    example=[EXAMPLE__configuration_name, "Meeting DEV"],
+    required=True
+)
+ARG_RES__reference_configuration = rename_arg(ARG_RES__configuration_name, KEY__configuration)
 
 ARG_RES__application_configuration_key = [
     SwaggerArgumentResponse(
@@ -416,13 +385,7 @@ ARG_RES__application_configuration_key = [
         example=[EXAMPLE__application_name, "Meeting Room"],
         required=True
     ),
-    SwaggerArgumentResponse(
-        name=KEY__configuration_name,
-        description="The name of the configuration",
-        arg_type=str,
-        example=[EXAMPLE__configuration_name, "Meeting DEV"],
-        required=True
-    )
+    ARG_RES__configuration_name
 ]
 
 ARG_RES__application_configuration = ARG_RES__application_configuration_key + [
@@ -523,43 +486,15 @@ DOCUMENTATION__application_configurations_confirm_deletion = SwaggerDocumentatio
 
 ARG_RES__application_argument_key = [
     ARG__application_name,
-    SwaggerArgumentResponse(
-        name=KEY__configuration,
-        description="The name of the configuration which this argument is associated with",
-        arg_type=str,
-        example=[EXAMPLE__configuration_name, "Meeting DEV"],
-        required=True
-    ),
-    SwaggerArgumentResponse(
-        name="parameter",
-        description="The name of the parameter which this argument is supplied for",
-        arg_type=str,
-        example=["library_db", "meeting_db"],
-        required=True
-    )
+    ARG_RES__reference_configuration,
+    ARG_RES__reference_application_parameter
 ]
 
-EXAMPLE__database = "0c44fc9b-d2de-4279-b686-1ce98f9a2ba4"
-
-ARG_RES__database = SwaggerArgumentResponse(
-    name=KEY__database,
-    description="The associated database argument",
-    arg_type=str,
-    example=[EXAMPLE__database, "a289ce95-2e46-4944-af19-72c9b75c717e"],
-    required=True
-)
-
-ARG_RES__node = SwaggerArgumentResponse(
-    name=KEY__node,
-    description="The internal id of the node",
-    arg_type=str,
-    example=[EXAMPLE__node_id],
-    required=True
-)
+ARG_RES__reference_database = rename_arg(ARG_RES__database_name, KEY__database)
 
 ARG_RES__application_argument = ARG_RES__application_argument_key + [
-    set_nullable(ARG_RES__database, "Is this parameter a database"),
-    set_nullable(ARG_RES__node, "Is this parameter a node")
+    ARG_RES__reference_database,
+    ARG_RES__reference_node
 ]
 
 DOCUMENTATION__application_arguments = SwaggerDocumentation(
@@ -615,62 +550,53 @@ ARG_RES__role = SwaggerArgumentResponse(
     required=True
 )
 
-ARG_RES__authorization_application = [
-    ARG__application_name,
+ARG_RES__authorization_configuration = [
+    ARG_RES__reference_configuration,
     ARG_RES__role
 ]
 
-DOCUMENTATION__authorization_application = SwaggerDocumentation(
-    tags="App Authorization",
+DOCUMENTATION__authorization_configuration = SwaggerDocumentation(
+    tags="Authorization",
     methods=[
         SwaggerMethod(
-            name="Add application authorized role",
-            description="Add an authorized role to the application",
+            name="Add configuration authorized role",
+            description="Add an authorized role to the application configuration",
             method=REST__POST,
-            body=ARG_RES__authorization_application
+            body=ARG_RES__authorization_configuration
         ),
         SwaggerMethod(
-            name="Fetch Applications authorized Roles",
-            description="Fetch a list of roles which have been authorized to use application",
+            name="Fetch Configuration authorized Roles",
+            description="Fetch a list of roles which have been authorized to use an application configuration",
             method=REST__GET,
-            arguments=gen_arg_res_sort_pageable(KEY__application, KEY__role, EXAMPLE__application_name, EXAMPLE__role),
+            arguments=gen_arg_res_sort_pageable(KEY__configuration, KEY__role, EXAMPLE__configuration_name,
+                                                EXAMPLE__role),
             response=SwaggerResponse(
-                description="A list of roles authorized for an application",
+                description="A list of roles authorized for a configuration",
                 response=gen_filtered_records(
                     "application authorized role",
-                    ARG_RES__authorization_application
+                    ARG_RES__authorization_configuration
                 )
             )
         ),
         SwaggerMethod(
             name="Revoke role auth for application",
-            description="Requests the revoke of a role authorization for an application, returning a confirmation key",
+            description="Requests the revoke of a role authorization for an application configuration, returning a "
+            "confirmation key",
             method=REST__DELETE,
-            arguments=ARG_RES__authorization_application,
+            arguments=ARG_RES__authorization_configuration,
             response=RES__deletion_key
         )
     ]
 )
 
-DOCUMENTATION__authorization_application_confirm_deletion = SwaggerDocumentation(
-    tags="App Authorization",
+DOCUMENTATION__authorization_configuration_confirm_deletion = SwaggerDocumentation(
+    tags="Authorization",
     methods=SwaggerMethod(
-        name="Confirm revoke of a role for an application",
-        description="Confirm the revoke of a role for an application, providing a single use deletion key",
+        name="Confirm revoke of a authorization configuration",
+        description="Confirm the revoke of a authorization for a configuration, providing a single use deletion key",
         method=REST__POST,
         body=ARG_RES__deletion_key
     )
-)
-
-EXAMPLE__node_auth_id = "2d4f88f7-c133-4a0f-8593-59b179fafab7"
-DESC__node_auth_id = "An id representing the relationship between role and node"
-
-ARG_RES__authorization_node_id = SwaggerArgumentResponse(
-    name="id",
-    description=DESC__node_auth_id,
-    arg_type=str,
-    example=[EXAMPLE__node_auth_id],
-    required=True
 )
 
 ARG_RES__authorization_node_credentials = [
@@ -690,43 +616,41 @@ ARG_RES__authorization_node_credentials = [
     ),
 ]
 
-ARG_RES__authorization_node_input = [
-    ARG_RES__node,
-    ARG_RES__role,
-    SwaggerArgumentResponse(
-        name=KEY__precedence,
-        description="The precedence of the authorization. Higher overrides lower",
-        arg_type=int,
-        example=[0, 1],
-        required=False,
-        condition="Defaults to 0"
-    )
+ARG_RES__authorization_node_key = [
+    ARG_RES__reference_node,
+    ARG_RES__role
 ]
 
+ARG_RES__authorization_node_precedence = SwaggerArgumentResponse(
+    name=KEY__precedence,
+    description="The precedence of the authorization. Higher overrides lower",
+    arg_type=int,
+    example=[0, 1],
+    required=False,
+    condition="Defaults to 0"
+)
+
 DOCUMENTATION__authorization_node = SwaggerDocumentation(
-    tags="Node Authorization",
+    tags="Authorization",
     methods=[
         SwaggerMethod(
             name="Add node authorization",
             description="Add a node and it's credentials for use with a specific role",
             method=REST__POST,
-            body=ARG_RES__authorization_node_input + ARG_RES__authorization_node_credentials,
-            response=SwaggerFlatResponse(
-                description=DESC__node_auth_id,
-                body=EXAMPLE__node_auth_id
-            )
+            body=ARG_RES__authorization_node_key + [ARG_RES__authorization_node_precedence] +
+                 ARG_RES__authorization_node_credentials,
         ),
         SwaggerMethod(
             name="Fetch node authorizations",
             description="Fetch a list of roles which have been authorized to use nodes",
             method=REST__GET,
-            arguments=gen_arg_res_sort_pageable(KEY__node, KEY__role, EXAMPLE__node_id, EXAMPLE__role) + [
+            arguments=gen_arg_res_sort_pageable(KEY__node, KEY__role, EXAMPLE__node_label, EXAMPLE__role) + [
                 ARG_RES__deleted],
             response=SwaggerResponse(
                 description="A list of node authorizations and associated roles",
                 response=gen_filtered_records(
                     "node authorization",
-                    [ARG_RES__authorization_node_id] + ARG_RES__authorization_node_input + [ARG_RES__when_deleted]
+                    ARG_RES__authorization_node_key + [ARG_RES__authorization_node_precedence] + [ARG_RES__when_deleted]
                 )
             )
         ),
@@ -734,7 +658,7 @@ DOCUMENTATION__authorization_node = SwaggerDocumentation(
             name="Revoke role auth for node",
             description="Requests the revoke of a node authorization, returning a confirmation key",
             method=REST__DELETE,
-            arguments=ARG_RES__authorization_node_id,
+            arguments=ARG_RES__authorization_node_key,
             response=RES__deletion_key
         )
     ]
@@ -748,35 +672,6 @@ DOCUMENTATION__authorization_node_confirm_deletion = SwaggerDocumentation(
         method=REST__POST,
         body=ARG_RES__deletion_key
     )
-)
-
-DOCUMENTATION__authorization_node_databases = SwaggerDocumentation(
-    tags="Node Authorization",
-    methods=[
-        SwaggerMethod(
-            name="Add node/role DB",
-            description="Adds a database for which a role is authorised to connect to on a node",
-            method=REST__POST,
-            arguments=[rename_arg(ARG_RES__authorization_node_id, KEY__authorization), rename_arg(ARG_RES__database_id,
-                                                                                                  KEY__database)],
-        ),
-        SwaggerMethod(
-            name="Trigger node/role DB refresh",
-            description="Triggers a refresh of available databases on a node for role",
-            method=REST__PUT,
-            arguments=rename_arg(ARG_RES__authorization_node_id, KEY__authorization)
-        ),
-        SwaggerMethod(
-            name="Fetch node/role DBs",
-            description="Fetches the list of databases for which a role is authorized for on a node",
-            method=REST__GET,
-            arguments=rename_arg(ARG_RES__authorization_node_id, KEY__authorization),
-            response=SwaggerResponse(
-                description="A database object, representing a database on a node",
-                response=SwaggerList(ARG_RES__database_id, ARG_RES__database_name)
-            )
-        )
-    ]
 )
 
 DOCUMENTATION__user_invite = SwaggerDocumentation(
