@@ -222,35 +222,7 @@ ARG_RES__application_uri = SwaggerArgumentResponse(
     required=True
 )
 
-
-DOCUMENTATION__fetch_applications = SwaggerDocumentation(
-    tags="Applications",
-    methods=SwaggerMethod(
-        name="Fetch applications",
-        description="Fetches a list of all the applications in the system",
-        method=REST__GET,
-        arguments=gen_arg_res_sort_pageable(KEY__application_name, KEY__application_url, EXAMPLE__application_name,
-                                            EXAMPLE__application_url),
-        response=SwaggerResponse(
-            description="List of applications",
-            response=gen_filtered_records(
-                "application",
-                [
-                    ARG_RES__application_name,
-                    ARG_RES__application_description,
-                    ARG_RES__application_uri,
-                    SwaggerArgumentResponse(
-                        name="created",
-                        description="Application creation timestamp",
-                        arg_type=str,
-                        example=["2021-08-07 19:05:07.763189+01:00", "2021-08-07 18:04:41.156935+01:00"],
-                        required=True
-                    )
-                ]
-            )
-        )
-    )
-)
+ARG_RES__application_body = [ARG_RES__application_name, ARG_RES__application_description, ARG_RES__application_uri]
 
 DOCUMENTATION__oauth_token = SwaggerDocumentation(
     tags="OAuth",

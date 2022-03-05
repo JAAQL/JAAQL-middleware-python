@@ -141,7 +141,8 @@ export function make(config, action, renderFunc, body, json) {
                 renderFunc("Credentials incorrect. Please try again");
             } else if (isRefresh) {
                 config.resetAuthToken();
-                config.loginFunc(config, callback, "Credentials expired. Please login again");
+                config.loginFunc(config, function() { make(config, action, origRenderFunc, body, json); },
+                    "Credentials expired. Please login again");
             } else {
                 config.refreshFunc(config, function() { make(config, action, origRenderFunc, body, json); });
             }

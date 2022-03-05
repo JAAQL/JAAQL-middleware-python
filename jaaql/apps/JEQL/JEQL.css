@@ -128,9 +128,22 @@
         rgba(211, 151, 50, .3) 0 0 0 4px;
 }
 
+.jeql-button:hover {
+    filter: brightness(1.1);
+}
+
+.jeql-button-yes {
+    background-color: green;
+}
+
+.jeql-button-no {
+    background-color: red;
+}
+
 .jeql-modal-close {
     position: absolute;
-    top: 3%;
+    top: 4%;
+    padding-top: 0.5%;
     right: 3%;
     color: #888;
     cursor: pointer;
@@ -148,10 +161,6 @@
 
 .jeql-cursor-pointer {
     cursor: pointer;
-}
-
-.jeql-button:hover {
-    filter: brightness(1.1);
 }
 
 .jeql-center {

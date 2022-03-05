@@ -214,19 +214,20 @@ class BaseJAAQLModel:
     def get_db_crypt_key(self):
         return self.vault.get_obj(VAULT_KEY__db_crypt_key).encode(crypt_utils.ENCODING__ascii)
 
-    def setup_paging_parameters(self, inputs: dict):
+    def setup_paging_parameters(self, inputs: dict, has_deleted: bool = True):
         inputs_no_del = inputs.copy()
         if KEY__show_deleted in inputs_no_del:
             inputs_no_del.pop(KEY__show_deleted)
         paging_dict, parameters = self.format_paging_request(inputs_no_del)
 
-        show_deleted = inputs.get(KEY__show_deleted, False)
-        deleted_condition = ATTR__deleted + SEPARATOR__space + SQL__is_null
-        if paging_dict[SQL__where] is None and not show_deleted:
-            paging_dict[SQL__where] = deleted_condition
-        elif paging_dict[SQL__where] is not None and not show_deleted:
-            existing = SQL__paren_open + paging_dict[SQL__where] + SQL__paren_close
-            paging_dict[SQL__where] = existing + SEPARATOR__space + SQL__and + SEPARATOR__space + deleted_condition
+        if has_deleted:
+            show_deleted = inputs.get(KEY__show_deleted, False)
+            deleted_condition = ATTR__deleted + SEPARATOR__space + SQL__is_null
+            if paging_dict[SQL__where] is None and not show_deleted:
+                paging_dict[SQL__where] = deleted_condition
+            elif paging_dict[SQL__where] is not None and not show_deleted:
+                existing = SQL__paren_open + paging_dict[SQL__where] + SQL__paren_close
+                paging_dict[SQL__where] = existing + SEPARATOR__space + SQL__and + SEPARATOR__space + deleted_condition
 
         return paging_dict, parameters
 
@@ -487,11 +488,8 @@ class BaseJAAQLModel:
         else:
             if len(data["rows"]) != 1:
                 was_no_singleton = True
-            try:
-                if len(data["rows"] != 0):
-                    data["rows"] = data["rows"][0]
-            except:
-                print("here")
+            if len(data["rows"]) != 0:
+                data["rows"] = data["rows"][0]
 
         if was_no_singleton:
             raise HttpStatusException(ERR__expected_single_row % len(data))

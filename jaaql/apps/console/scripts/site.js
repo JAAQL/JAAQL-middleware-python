@@ -3,12 +3,10 @@ import * as JEQL from "../../JEQL/JEQL.js"
 let APPLICATION_NAME = "console";
 
 let COMMAND_START = "/";
-let COMMAND_LIST = "list";
 let COMMAND_CLEAR = "clear";
 let COMMAND_CLEARHIS = "clearhis";
 let COMMAND_LOGOUT = "logout";
 let COMMAND_SWITCH = "switch";
-let COMMAND_REFRESH = "refresh";
 let COMMAND_FILE = "file";
 let COMMAND_HELP = "help";
 
@@ -178,8 +176,6 @@ function onSendConsole() {
         } else if (consoleInput.startsWith(COMMAND_START + COMMAND_SWITCH)) {
             window.curDatabase = consoleInput.split(COMMAND_START + COMMAND_SWITCH + " ")[1].trim();
             addConsoleLine(window.jeqlConfig);
-        } else if (consoleInput === COMMAND_START + COMMAND_LIST) {
-            JEQL.getConnectionDatabases(window.jeqlConfig, renderResponse);
         } else if (consoleInput === COMMAND_START + COMMAND_CLEAR) {
             let allLines = Array.from(document.getElementsByClassName(CLS_LINE_TEXT_PARENT));
             allLines.forEach(line => {
@@ -195,15 +191,6 @@ function onSendConsole() {
             window.wasConsole = null;
             getHistory(window.jeqlConfig);
             addConsoleLine(window.jeqlConfig);
-        } else if (consoleInput === COMMAND_START + COMMAND_REFRESH) {
-            let renderFuncs = {};
-            renderFuncs[JEQL.HTTP_STATUS_OK] = function() {
-                addConsoleLine(window.jeqlConfig);
-                window.lineInput.value = "Databases Refreshed";
-                addConsoleLine(window.jeqlConfig);
-            };
-            renderFuncs[JEQL.HTTP_STATUS_DEFAULT] = function(data) { renderResponse(data, true); };
-            JEQL.updateConnectionDatabases(window.jeqlConfig, renderFuncs);
         } else if (consoleInput === COMMAND_START + COMMAND_FILE) {
             handleFileInput(window.jeqlConfig);
         } else {

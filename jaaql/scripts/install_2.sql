@@ -75,7 +75,7 @@ CREATE UNIQUE INDEX jaaql__node_unq
     ON jaaql__node (address, port) WHERE (deleted is null);
 
 create table jaaql__database (
-    node varchar(255) not null references jaaql__node,
+    node varchar(255) not null references jaaql__node on update cascade on delete cascade,
 	name varchar(255) not null,
 	deleted timestamptz,
 	PRIMARY KEY (node, name)
@@ -89,7 +89,7 @@ create table jaaql__application (
 );
 
 INSERT INTO jaaql__application (name, description, url) VALUES ('console', 'The console application', '');
-INSERT INTO jaaql__application (name, description, url) VALUES ('Application Manager', 'Creates applications easily', '');
+INSERT INTO jaaql__application (name, description, url) VALUES ('manager', 'The administration panel for JAAQL', '');
 
 create table jaaql__application_parameter (
     application varchar(64) not null,
@@ -99,7 +99,7 @@ create table jaaql__application_parameter (
     FOREIGN KEY (application) references jaaql__application on delete cascade on update cascade
 );
 INSERT INTO jaaql__application_parameter (application, name, description) VALUES ('console', 'node', 'The node which the console will run against');
-INSERT INTO jaaql__application_parameter (application, name, description) VALUES ('Application Manager', 'node', 'A jaaql node which the app can create new apps on');
+INSERT INTO jaaql__application_parameter (application, name, description) VALUES ('manager', 'node', 'A jaaql node which the app can manage');
 
 create table jaaql__application_configuration (
     application varchar(64) not null,
@@ -108,7 +108,7 @@ create table jaaql__application_configuration (
     PRIMARY KEY (application, name),
     FOREIGN KEY (application) references jaaql__application on delete cascade on update cascade
 );
-INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('Application Manager', 'host', 'The host jaaql node');
+INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('manager', 'host', 'The host jaaql node');
 
 create table jaaql__application_argument (
     application varchar(64) not null,
@@ -120,8 +120,8 @@ create table jaaql__application_argument (
     FOREIGN KEY (application, configuration) references jaaql__application_configuration(application, name)
         on delete cascade on update cascade,
     FOREIGN KEY (application, parameter) references jaaql__application_parameter(application, name) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (database, node) references jaaql__database(name, node),
-    FOREIGN KEY (node) references jaaql__node (name)
+    FOREIGN KEY (database, node) references jaaql__database(name, node) on delete cascade on update cascade,
+    FOREIGN KEY (node) references jaaql__node (name) on delete cascade on update cascade
 );
 
 create view jaaql__configuration_argument as (
@@ -234,15 +234,27 @@ grant select on jaaql__my_ips to public;
 
 create view jaaql__my_configurations as (
     SELECT
+        DISTINCT
         ac.application,
         ac.name as configuration,
         ap.description as application_description,
         ac.description as configuration_description
     FROM
          jaaql__application_configuration ac
-    INNER JOIN jaaql__authorization_configuration auth_conf ON ac.name = auth_conf.configuration AND (auth_conf.role = '' or pg_has_role(auth_conf.role, 'MEMBER'))
+    INNER JOIN jaaql__authorization_configuration auth_conf ON ac.name = auth_conf.configuration AND ac.application = auth_conf.application AND (auth_conf.role = '' or pg_has_role(auth_conf.role, 'MEMBER'))
     INNER JOIN jaaql__application ap on ap.name = ac.application);
 grant select on jaaql__my_configurations to public;
+
+create view jaaql__my_applications as (
+    SELECT
+        DISTINCT
+        ap.name,
+        ap.description,
+        ap.url
+    FROM jaaql__application ap
+    INNER JOIN jaaql__my_configurations mc ON mc.application = ap.name
+);
+grant select on jaaql__my_applications to public;
 
 -- Not my. Called through jaaql connection. Need to keep username and password secret
 create view jaaql__their_authorized_configurations as (
@@ -265,6 +277,24 @@ create view jaaql__their_authorized_configurations as (
         INNER JOIN jaaql__credentials_node jcred ON (jcred.node = comc.node) AND jcred.deleted is null
         INNER JOIN jaaql__authorization_configuration auth_conf on comc.application = auth_conf.application AND comc.configuration = auth_conf.configuration
         INNER JOIN jaaql__node jn on comc.node = jn.name
+);
+
+create view jaaql__their_single_authorized_wildcard_node as (
+    SELECT
+        jn.name as node,
+        jn.address,
+        jn.port,
+        cred.role,
+        cred.precedence,
+        cred.db_encrypted_username as username,
+        cred.db_encrypted_password as password
+    FROM
+        jaaql__credentials_node cred
+    INNER JOIN
+        jaaql__database jd on cred.node = jd.node
+    INNER JOIN
+        jaaql__node jn on cred.node = jn.name
+    WHERE jd.name = '*' AND jd.deleted is null AND cred.deleted is null AND jn.deleted is null
 );
 
 -- DO NOT CHANGE FUNCTION BELOW WITHOUT CONSIDERING SECURITY!!!
@@ -323,15 +353,15 @@ DECLARE
 BEGIN
     INSERT INTO jaaql__node (name, description, port, address, interface_class) VALUES (coalesce(node_name, node_address || node_port), coalesce(node_description, 'The ' || node_name || ' node'), node_port, node_address, 'DBPGInterface') RETURNING name into node_id;
     INSERT INTO jaaql__database (node, name) VALUES (node_id, '*');
-    INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('console', 'Console ' || node_id || ' node', 'Console access to the ' || node_id || ' node');
-    INSERT INTO jaaql__application_argument (application, configuration, node, database, parameter) VALUES ('console', 'Console ' || node_id || ' node', node_id, '*', 'node');
+    INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('console', node_id, 'Console access to the ' || node_id || ' node');
+    INSERT INTO jaaql__application_argument (application, configuration, node, database, parameter) VALUES ('console', node_id, node_id, '*', 'node');
     return node_id;
 END
 $$ language plpgsql;
 
-create function jaaql__delete_node(node_name text) returns void as
+create or replace function jaaql__delete_node(node_name text) returns void as
 $$
 BEGIN
-    UPDATE jaaql__node SET name = left(name, 180) || '_deleted_' + current_timestamp, deleted = current_timestamp WHERE name = node_name;
+    UPDATE jaaql__node SET "name" = (left("name", 180) || '_deleted_') || current_timestamp::text, deleted = current_timestamp WHERE name = node_name;
 END
 $$ language plpgsql;

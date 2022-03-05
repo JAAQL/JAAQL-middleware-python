@@ -39,33 +39,35 @@ class JAAQLController(BaseJAAQLController):
 
         @self.cors_route('/internal/applications', DOCUMENTATION__applications)
         def applications(http_inputs: dict, jaaql_connection: DBInterface):
-            if self.is_post():
+            if self.is_get():
+                return self.model.get_applications(http_inputs, jaaql_connection)
+            elif self.is_post():
                 self.model.add_application(http_inputs, jaaql_connection)
             elif self.is_put():
                 self.model.update_application(http_inputs, jaaql_connection)
             else:  # self.is_delete()
-                return self.model.delete_application(http_inputs, jaaql_connection)
+                return self.model.delete_application(http_inputs)
 
-        @self.cors_route('/applications', DOCUMENTATION__fetch_applications)
-        def public_applications(http_inputs: dict, jaaql_connection: DBInterface):
-            return self.model.get_applications(http_inputs, jaaql_connection)
+        @self.cors_route('/applications', DOCUMENTATION__my_applications)
+        def public_applications(jaaql_connection: DBInterface):
+            return self.model.get_my_applications(jaaql_connection)
 
         @self.cors_route('/internal/applications/confirm-deletion', DOCUMENTATION__applications_confirm_deletion)
         def confirm_application_deletion(http_inputs: dict, jaaql_connection: DBInterface):
             self.model.delete_application_confirm(http_inputs, jaaql_connection)
 
         @self.cors_route('/internal/databases', DOCUMENTATION__databases)
-        def databases(http_inputs: dict, jaaql_connection: DBInterface):
+        def databases(http_inputs: dict, user_id: int, jaaql_connection: DBInterface):
             if self.is_post():
-                self.model.add_database(http_inputs, jaaql_connection)
+                self.model.add_database(http_inputs, user_id, jaaql_connection)
             elif self.is_get():
                 return self.model.get_databases(http_inputs, jaaql_connection)
             else:  # self.is_delete()
-                return self.model.delete_database(http_inputs, jaaql_connection)
+                return self.model.delete_database(http_inputs)
 
         @self.cors_route('/internal/databases/confirm-deletion', DOCUMENTATION__databases_confirm_deletion)
-        def confirm_database_deletion(http_inputs: dict, jaaql_connection: DBInterface):
-            self.model.delete_database_confirm(http_inputs, jaaql_connection)
+        def confirm_database_deletion(http_inputs: dict, user_id: int, jaaql_connection: DBInterface):
+            self.model.delete_database_confirm(http_inputs, user_id, jaaql_connection)
 
         @self.cors_route('/internal/nodes', DOCUMENTATION__nodes)
         def nodes(sql_inputs: dict, jaaql_connection: DBInterface):
@@ -74,7 +76,7 @@ class JAAQLController(BaseJAAQLController):
             elif self.is_get():
                 return self.model.get_nodes(sql_inputs, jaaql_connection)
             else:  # self.is_delete()
-                return self.model.delete_node(sql_inputs, jaaql_connection)
+                return self.model.delete_node(sql_inputs)
 
         @self.cors_route('/internal/nodes/confirm-deletion', DOCUMENTATION__nodes_confirm_deletion)
         def confirm_node_deletion(http_inputs: dict, jaaql_connection: DBInterface):
@@ -87,7 +89,7 @@ class JAAQLController(BaseJAAQLController):
             elif self.is_get():
                 return self.model.get_application_parameters(http_inputs, jaaql_connection)
             else:  # self.is_delete()
-                return self.model.delete_application_parameter(http_inputs, jaaql_connection)
+                return self.model.delete_application_parameter(http_inputs)
 
         @self.cors_route('/internal/application-parameters/confirm-deletion',
                          DOCUMENTATION__application_parameters_confirm_deletion)
@@ -101,7 +103,7 @@ class JAAQLController(BaseJAAQLController):
             elif self.is_get():
                 return self.model.get_application_configurations(http_inputs, jaaql_connection)
             else:  # self.is_delete()
-                return self.model.delete_application_configuration(http_inputs, jaaql_connection)
+                return self.model.delete_application_configuration(http_inputs)
 
         @self.cors_route('/internal/application-configurations/confirm-deletion',
                          DOCUMENTATION__application_configurations_confirm_deletion)
@@ -115,7 +117,7 @@ class JAAQLController(BaseJAAQLController):
             elif self.is_get():
                 return self.model.get_application_arguments(sql_inputs, jaaql_connection)
             else:  # self.is_delete()
-                return self.model.delete_application_argument(sql_inputs, jaaql_connection)
+                return self.model.delete_application_argument(sql_inputs)
 
         @self.cors_route('/internal/application-arguments/confirm-deletion',
                          DOCUMENTATION__application_arguments_confirm_deletion)
@@ -129,7 +131,7 @@ class JAAQLController(BaseJAAQLController):
             elif self.is_get():
                 return self.model.get_node_authorizations(http_inputs, jaaql_connection)
             else:  # self.is_delete()
-                return self.model.delete_node_authorization(http_inputs, jaaql_connection)
+                return self.model.delete_node_authorization(http_inputs)
 
         @self.cors_route('/internal/authorization/node/confirm-deletion',
                          DOCUMENTATION__authorization_node_confirm_deletion)
@@ -143,7 +145,7 @@ class JAAQLController(BaseJAAQLController):
             elif self.is_get():
                 return self.model.get_configuration_authorizations(http_inputs, jaaql_connection)
             else:  # self.is_delete()
-                return self.model.delet_configuration_authorization(http_inputs, jaaql_connection)
+                return self.model.delete_configuration_authorization(http_inputs)
 
         @self.cors_route('/internal/authorization/configuration/confirm-deletion',
                          DOCUMENTATION__authorization_configuration_confirm_deletion)

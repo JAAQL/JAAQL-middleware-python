@@ -3,7 +3,7 @@ from jaaql.constants import *
 from jaaql.documentation.documentation_shared import ARG_RES__jaaql_password, ARG_RES__email,\
     JWT__invite, gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__deletion_key, RES__deletion_key,\
     set_nullable, rename_arg, ARG_RES__database_name, EXAMPLE__db, ARG_RES__application_name,\
-    ARG_RES__application_description, ARG_RES__application_uri, EXAMPLE__application_name
+    EXAMPLE__application_name, EXAMPLE__application_url, ARG_RES__application_body
 
 TITLE = "JAAQL Internal API"
 DESCRIPTION = "Collection of methods in the JAAQL internal API"
@@ -102,7 +102,7 @@ DOCUMENTATION__install = SwaggerDocumentation(
 
 # Not unused. Used to generate html files
 from jaaql.documentation.documentation_shared import DOCUMENTATION__login_details, DOCUMENTATION__oauth_token,\
-    DOCUMENTATION__oauth_refresh, DOCUMENTATION__fetch_applications
+    DOCUMENTATION__oauth_refresh
 
 
 EXAMPLE__address = "mydb.abbcdcec9afd.eu-west-1.rds.amazonaws.com"
@@ -180,8 +180,7 @@ DOCUMENTATION__nodes = SwaggerDocumentation(
                 response=gen_filtered_records(
                     KEY__node,
                     [
-                        ARG_RES__node_label,
-                        ARG_RES__when_deleted
+                        ARG_RES__node_label
                     ] + ARG_RES__node_base + [
                         SwaggerArgumentResponse(
                             name=KEY__description,
@@ -189,7 +188,8 @@ DOCUMENTATION__nodes = SwaggerDocumentation(
                             arg_type=str,
                             example=["The PROD library node", "The office QA node"],
                             required=True,
-                        )
+                        ),
+                        ARG_RES__when_deleted
                     ]
                 )
             )
@@ -221,13 +221,29 @@ ARG_RES__database_base = [
     ARG_RES__reference_node
 ]
 
+ARG_RES__database_create = SwaggerArgumentResponse(
+    name=KEY__create,
+    description="Whether or not to create the database on the node",
+    arg_type=bool,
+    example=[True],
+    required=True
+)
+
+ARG_RES__database_drop = SwaggerArgumentResponse(
+    name=KEY__drop,
+    description="Whether or not to drop the database on the node",
+    arg_type=bool,
+    example=[True],
+    required=True
+)
+
 DOCUMENTATION__databases = SwaggerDocumentation(
     tags="Databases",
     methods=[
         SwaggerMethod(
             name="Add Database",
             description="Add a new database",
-            arguments=ARG_RES__database_base,
+            arguments=ARG_RES__database_base + [ARG_RES__database_create],
             method=REST__POST
         ),
         SwaggerMethod(
@@ -249,7 +265,7 @@ DOCUMENTATION__databases = SwaggerDocumentation(
             name="Delete Database",
             description="Deletes a database",
             method=REST__DELETE,
-            arguments=[ARG_RES__reference_node, ARG_RES__database_name],
+            arguments=[ARG_RES__reference_node, ARG_RES__database_name, ARG_RES__database_drop],
             response=RES__deletion_key
         )
     ]
@@ -272,11 +288,29 @@ DOCUMENTATION__applications = SwaggerDocumentation(
             name="Add application",
             description="Add a new application",
             method=REST__POST,
-            body=[
-                ARG_RES__application_name,
-                ARG_RES__application_description,
-                ARG_RES__application_uri
-            ]
+            body=ARG_RES__application_body
+        ),
+        SwaggerMethod(
+            name="Fetch applications",
+            description="Fetches a list of all the applications in the system",
+            method=REST__GET,
+            arguments=gen_arg_res_sort_pageable(KEY__application_name, KEY__application_url, EXAMPLE__application_name,
+                                                EXAMPLE__application_url),
+            response=SwaggerResponse(
+                description="List of applications",
+                response=gen_filtered_records(
+                    "application",
+                    ARG_RES__application_body + [
+                        SwaggerArgumentResponse(
+                            name="created",
+                            description="Application creation timestamp",
+                            arg_type=str,
+                            example=["2021-08-07 19:05:07.763189+01:00", "2021-08-07 18:04:41.156935+01:00"],
+                            required=True
+                        )
+                    ]
+                )
+            )
         ),
         SwaggerMethod(
             name="Update application",
@@ -365,7 +399,6 @@ ARG_RES__application_parameter = ARG_RES__application_parameter_key + [
     )
 ]
 
-KEY__configuration_name = "name"
 EXAMPLE__configuration_name = "Library QA"
 
 ARG_RES__configuration_name = SwaggerArgumentResponse(
@@ -551,6 +584,7 @@ ARG_RES__role = SwaggerArgumentResponse(
 )
 
 ARG_RES__authorization_configuration = [
+    ARG__application_name,
     ARG_RES__reference_configuration,
     ARG_RES__role
 ]

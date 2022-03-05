@@ -411,7 +411,8 @@ class BaseJAAQLController:
                                 do_allow_all = True
 
                         if not do_allow_all and ret_status != HTTPStatus.UNAUTHORIZED and ret_status !=\
-                                HTTPStatus.NOT_IMPLEMENTED and ret_status != HTTPStatus.BAD_REQUEST:
+                                HTTPStatus.NOT_IMPLEMENTED and ret_status != HTTPStatus.BAD_REQUEST and \
+                                ret_status != HTTPStatus.UNPROCESSABLE_ENTITY:
                             try:
                                 self.get_response(method, ret_status)
                             except Exception as sub_ex:
