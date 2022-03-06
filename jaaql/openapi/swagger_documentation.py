@@ -39,7 +39,7 @@ PATH__empty = ""
 
 VERSION__open_api = "3.0.3"
 
-CONTENT_TYPE__json = "application/json"  # This isn't a python constant
+CONTENT_TYPE__json = "application/json"  # This isn't a python constant so it is defined here
 
 TYPE__string = "string"
 
@@ -115,6 +115,10 @@ DESCRIPTION__security = "A JWT token fetched from /oauth/token"
 DOCUMENTATION__allow_all = "ALLOW_ALL"  # Set as the name to allow all input/output
 
 
+def isinstance_union(arg, check: Union) -> bool:
+    return any([isinstance(arg, cls) for cls in check.__args__])
+
+
 def force_list(potential_list: Union[List[T], T]) -> List[T]:
     return potential_list if isinstance(potential_list, list) else ([] if potential_list is None else [potential_list])
 
@@ -142,7 +146,7 @@ class SwaggerSimpleList:
         self.arg_type = arg_type
         self.description = description
         self.example = example
-        self.required= required
+        self.required = required
         self.condition = condition
 
         if not required and condition is None:
@@ -188,7 +192,8 @@ class SwaggerArgumentResponse:
         if arg_type_sub_list:
             arg_type_sub_list = all([isinstance(x, SwaggerArgumentResponse) for x in arg_type])
 
-        if not arg_type_sub_list and not isinstance(arg_type, SwaggerList) and name != DOCUMENTATION__allow_all:
+        if not arg_type_sub_list and not isinstance_union(arg_type,
+                                                          TYPE__swagger_list_like) and name != DOCUMENTATION__allow_all:
             self._validate_example(name, arg_type, self.example)
 
     @staticmethod
@@ -212,12 +217,16 @@ class SwaggerList:
         self.responses = list(args)
 
 
+TYPE__swagger_list_like = Union[SwaggerSimpleList, SwaggerList]
+
+
 ARG_RESP__allow_all = SwaggerArgumentResponse(DOCUMENTATION__allow_all, DOCUMENTATION__allow_all, str)
 
 
-TYPE__argument_response = Optional[Union[List[SwaggerArgumentResponse], SwaggerArgumentResponse, SwaggerList]]
+TYPE__argument_response = Optional[Union[List[SwaggerArgumentResponse], SwaggerArgumentResponse, SwaggerList,
+                                         SwaggerSimpleList]]
 TYPE__flat_argument_response = Optional[Union[List[SwaggerArgumentResponse], SwaggerArgumentResponse]]
-TYPE__listed_argument_response = Union[List[SwaggerArgumentResponse], SwaggerList]
+TYPE__listed_argument_response = Union[List[SwaggerArgumentResponse], SwaggerList, SwaggerSimpleList]
 
 
 def validate_argument_responses(arg_responses: TYPE__argument_response):
@@ -265,7 +274,7 @@ class SwaggerResponse:
 
         validate_argument_responses(response)
 
-        self.responses = response if isinstance(response, SwaggerList) else force_list(response)
+        self.responses = response if isinstance_union(response, TYPE__swagger_list_like) else force_list(response)
 
 
 RES__allow_all = SwaggerResponse(
@@ -292,7 +301,7 @@ class SwaggerMethod:
         self.description = description
         self.method = method
 
-        self.responses = response if isinstance(response, SwaggerList) else force_list(response)
+        self.responses = response if isinstance_union(response, TYPE__swagger_list_like) else force_list(response)
         self.arguments = force_list(arguments)
         self._validate_arguments(arguments)
         self.body = force_list(body)
@@ -395,6 +404,9 @@ def _generate_examples(yaml: str, depth: int, response: TYPE__listed_argument_re
         yaml = yaml + _gen_yaml_indent(depth) + YAML__list_separator + YAML__new_line
         response = response.responses
         depth += 1
+    elif isinstance(response, SwaggerSimpleList):
+        yaml = _build_yaml(yaml, depth, OPEN_API__example, response.example)
+        return yaml
 
     for response_property in response:
         if isinstance(response_property, SwaggerList):
@@ -419,11 +431,15 @@ def _generate_properties(yaml: str, depth: int, response: TYPE__listed_argument_
         yaml = _build_yaml(yaml, depth, OPEN_API__items)
         response = response.responses
         depth += 1
+    elif isinstance(response, SwaggerSimpleList):
+        yaml = _build_yaml(yaml, depth, OPEN_API__items)
+        yaml = _build_yaml(yaml, depth + 1, OPEN_API__type, _to_openapi_type(response.arg_type))
+        return yaml
 
     required = YAML__array_separator.join([YAML__double_quote + response_property.name + YAML__double_quote
                                           for response_property in response if not isinstance(response_property,
-                                                                                          SwaggerList)
-                                           and response_property.required])
+                                                                                              SwaggerList)
+                                          and response_property.required])
 
     if len(response) == 0 or not isinstance(response[0], SwaggerList):
         yaml = _build_yaml(yaml, depth, OPEN_API__required, YAML__array_open + required + YAML__array_close)
@@ -517,8 +533,13 @@ def _produce_path(doc: SwaggerDocumentation, yaml: str, is_prod: bool) -> str:
         yaml = _build_yaml(yaml, 3, OPEN_API__description, method.description)
         yaml = _build_yaml(yaml, 3, OPEN_API__responses)
 
-        if len(method.responses) == 0:
+        if not any([resp.code == HTTPStatus.OK for resp in method.responses]):
             method.responses.append(SwaggerFlatResponse(RESPONSE__200_ok))
+
+        if not any([resp.code == RESP__default_err_code for resp in method.responses]):
+            method.responses.append(SwaggerFlatResponse(description=RESP__default_err_message,
+                                                        code=RESP__default_err_code,
+                                                        body=RESP__default_err_message))
 
         for response in method.responses:
             yaml = _build_yaml(yaml, 4, YAML__quote + str(_http_status_to_integer(response.code)) + YAML__quote)
@@ -542,6 +563,9 @@ def _produce_path(doc: SwaggerDocumentation, yaml: str, is_prod: bool) -> str:
                         yaml = _build_yaml(yaml, 9, OPEN_API__type, OPEN_API__object)
                     use_depth = 9
                     use_response = response.responses.responses
+                elif isinstance(response.responses, SwaggerSimpleList):
+                    yaml = _build_yaml(yaml, 8, OPEN_API__type, OPEN_API__array)
+                    yaml = _generate_examples(yaml, 8, response.responses)
                 else:
                     yaml = _build_yaml(yaml, 8, OPEN_API__type, OPEN_API__object)
                     yaml = _build_yaml(yaml, 8, OPEN_API__example)
@@ -557,7 +581,7 @@ def _produce_path(doc: SwaggerDocumentation, yaml: str, is_prod: bool) -> str:
     return yaml
 
 
-def  _produce_documentation(docs: ModuleType, url: str, base_path: str, is_prod: bool = False):
+def _produce_documentation(docs: ModuleType, url: str, base_path: str, is_prod: bool = False):
     title: str
     description: str
     version: str

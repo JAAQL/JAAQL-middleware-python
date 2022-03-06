@@ -22,6 +22,7 @@ CONFIG_KEY_security = "SECURITY"
 CONFIG_KEY_SECURITY__mfa_label = "mfa_label"
 CONFIG_KEY_SECURITY__mfa_issuer = "mfa_issuer"
 CONFIG_KEY_SECURITY__use_mfa = "use_mfa"
+CONFIG_KEY_SECURITY__do_audit = "do_audit"
 CONFIG_KEY_SECURITY__token_expiry_ms = "token_expiry_ms"
 CONFIG_KEY_SECURITY__token_refresh_expiry_ms = "token_refresh_expiry_ms"
 
@@ -65,7 +66,6 @@ VAULT_KEY__db_crypt_key = "db_crypt_key"
 VAULT_KEY__jwt_crypt_key = "jwt_crypt_key"
 VAULT_KEY__jwt_obj_crypt_key = "jwt_obj_crypt_key"
 VAULT_KEY__jaaql_lookup_connection = "jaaql_lookup_connection"
-VAULT_KEY__jaaql_node_id = "jaaql_node_id"
 DIR__vault = "vault"
 FILE__was_installed = "was_installed"
 
@@ -175,6 +175,7 @@ class BaseJAAQLModel:
         self.url = url
 
         self.use_mfa = config[CONFIG_KEY_security][CONFIG_KEY_SECURITY__use_mfa]
+        self.do_audit = config[CONFIG_KEY_security][CONFIG_KEY_SECURITY__do_audit]
 
         self.vault = Vault(vault_key, DIR__vault)
         self.jaaql_lookup_connection = None
@@ -213,19 +214,20 @@ class BaseJAAQLModel:
     def get_db_crypt_key(self):
         return self.vault.get_obj(VAULT_KEY__db_crypt_key).encode(crypt_utils.ENCODING__ascii)
 
-    def setup_paging_parameters(self, inputs: dict):
+    def setup_paging_parameters(self, inputs: dict, has_deleted: bool = True):
         inputs_no_del = inputs.copy()
         if KEY__show_deleted in inputs_no_del:
             inputs_no_del.pop(KEY__show_deleted)
         paging_dict, parameters = self.format_paging_request(inputs_no_del)
 
-        show_deleted = inputs.get(KEY__show_deleted, False)
-        deleted_condition = ATTR__deleted + SEPARATOR__space + SQL__is_null
-        if paging_dict[SQL__where] is None and not show_deleted:
-            paging_dict[SQL__where] = deleted_condition
-        elif paging_dict[SQL__where] is not None and not show_deleted:
-            existing = SQL__paren_open + paging_dict[SQL__where] + SQL__paren_close
-            paging_dict[SQL__where] = existing + SEPARATOR__space + SQL__and + SEPARATOR__space + deleted_condition
+        if has_deleted:
+            show_deleted = inputs.get(KEY__show_deleted, False)
+            deleted_condition = ATTR__deleted + SEPARATOR__space + SQL__is_null
+            if paging_dict[SQL__where] is None and not show_deleted:
+                paging_dict[SQL__where] = deleted_condition
+            elif paging_dict[SQL__where] is not None and not show_deleted:
+                existing = SQL__paren_open + paging_dict[SQL__where] + SQL__paren_close
+                paging_dict[SQL__where] = existing + SEPARATOR__space + SQL__and + SEPARATOR__space + deleted_condition
 
         return paging_dict, parameters
 
@@ -233,13 +235,13 @@ class BaseJAAQLModel:
                              where_query: str, where_parameters: dict, decrypt_columns: list = None,
                              encryption_key: bytes = None):
         data = self.execute_supplied_statement(jaaql_connection, full_query, parameters=parameters,
-                                                as_objects=True, decrypt_columns=decrypt_columns,
-                                                encryption_key=encryption_key)
+                                               as_objects=True, decrypt_columns=decrypt_columns,
+                                               encryption_key=encryption_key)
         total = self.execute_supplied_statement(jaaql_connection, count_query, as_objects=True)
         total = total[0]["count"]
         total_filtered = self.execute_supplied_statement(jaaql_connection, count_query + where_query,
-                                                          parameters=where_parameters,
-                                                          as_objects=True)[0]["count"]
+                                                         parameters=where_parameters,
+                                                         as_objects=True)[0]["count"]
         return self.paged_collection(total, total_filtered, data)
 
     @staticmethod
@@ -478,13 +480,7 @@ class BaseJAAQLModel:
         data = json.loads(crypt_utils.decrypt(jwt_obj_key, key[JWT__data]))
         return data
 
-    def execute_supplied_statement_singleton(self, db_interface: DBInterface, query, parameters: dict = None,
-                                              as_objects: bool = False, encrypt_parameters: list = None,
-                                              decrypt_columns: list = None, encryption_key: bytes = None,
-                                              encryption_salts: dict = None):
-        data = self.execute_supplied_statement(db_interface, query, parameters, as_objects, encrypt_parameters,
-                                                decrypt_columns, encryption_key, encryption_salts)
-
+    def force_singleton(self, data, as_objects: bool = False):
         was_no_singleton = False
         if as_objects:
             if len(data) != 1:
@@ -492,12 +488,22 @@ class BaseJAAQLModel:
         else:
             if len(data["rows"]) != 1:
                 was_no_singleton = True
-            data["rows"] = data["rows"][0]
+            if len(data["rows"]) != 0:
+                data["rows"] = data["rows"][0]
 
         if was_no_singleton:
             raise HttpStatusException(ERR__expected_single_row % len(data))
 
         return data[0] if as_objects else data
+
+    def execute_supplied_statement_singleton(self, db_interface: DBInterface, query, parameters: dict = None,
+                                             as_objects: bool = False, encrypt_parameters: list = None,
+                                             decrypt_columns: list = None, encryption_key: bytes = None,
+                                             encryption_salts: dict = None):
+        data = self.execute_supplied_statement(db_interface, query, parameters, as_objects, encrypt_parameters,
+                                               decrypt_columns, encryption_key, encryption_salts)
+
+        return self.force_singleton(data, as_objects)
 
     @staticmethod
     def jaaql__encrypt(dec_input: str, encryption_key: bytes, salt: bytes = None) -> str:
@@ -515,9 +521,9 @@ class BaseJAAQLModel:
 
     @staticmethod
     def execute_supplied_statement(db_interface: DBInterface, query: str, parameters: dict = None,
-                                    as_objects: bool = False, encrypt_parameters: list = None,
-                                    decrypt_columns: list = None, encryption_key: bytes = None,
-                                    encryption_salts: dict = None):
+                                   as_objects: bool = False, encrypt_parameters: list = None,
+                                   decrypt_columns: list = None, encryption_key: bytes = None,
+                                   encryption_salts: dict = None):
         if parameters is None:
             parameters = {}
 
@@ -555,7 +561,8 @@ class BaseJAAQLModel:
         for col in encrypt_parameters:
             if parameters[col] is not None:
                 parameters[col] = BaseJAAQLModel.jaaql__encrypt(parameters[col], encryption_key,
-                                                            BaseJAAQLModel.try_encode(encryption_salts.get(col, None)))
+                                                                BaseJAAQLModel.try_encode(
+                                                                    encryption_salts.get(col, None)))
 
         statement = {
             "query": query,
@@ -581,7 +588,7 @@ class BaseJAAQLModel:
 
     @staticmethod
     def execute_supplied_statements(db_interface: DBInterface, queries: Union[str, list],
-                                     parameters: Union[dict, list] = None, as_objects: bool = False):
+                                    parameters: Union[dict, list] = None, as_objects: bool = False):
         if not isinstance(queries, list):
             queries = [queries]
         if not isinstance(parameters, list) and parameters is not None:

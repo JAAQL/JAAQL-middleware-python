@@ -1,0 +1,168 @@
+:root {
+    --main-theme-color-rgb: 255, 165, 0;
+    --main-theme-color: rgb(var(--main-theme-color-rgb));
+    --light-theme-color: #FFEAC4;
+}
+
+.jeql-modal-outer {
+    background-color: rgba(0, 0, 0, 0.5);
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index:6001;
+    transition: transform 0.25s ease-out;
+}
+
+.jeql-modal, .jeql-modal-wide {
+    cursor: auto;
+    font-family: 'Roboto', sans-serif;
+
+    border-radius: 1em;
+    background-color: white;
+    color: black;
+
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+
+    padding: 0.25% 5% 2em 5%;
+}
+
+@media only screen and (max-aspect-ratio : 1/1) {
+    .jeql-modal {
+        width: 60%;
+    }
+    .jeql-modal-wide {
+        width: 85%;
+    }
+}
+
+@media only screen and (min-aspect-ratio : 1/1) and (max-aspect-ratio : 3/2) {
+    .jeql-modal {
+        width: 40%
+    }
+    .jeql-modal-wide {
+        width: 65%;
+    }
+}
+
+@media only screen and (min-aspect-ratio : 3/2) {
+    .jeql-modal {
+        width: 20%
+    }
+    .jeql-modal-wide {
+        width: 50%;
+    }
+}
+
+.jeql-strong {
+    font-weight: 400;
+}
+
+.jeql-input-full {
+    width: 100%;
+}
+
+.jeql-input {
+    padding: 10px 14px;
+    margin: 8px 0;
+    display: inline-block;
+    border-radius: 1px;
+    border: 2px solid #ccc;
+    box-sizing: border-box;
+    outline: none;
+    transition: 0.25s;
+}
+
+.jeql-input-mfa {
+    flex: 1 1 auto;
+    text-align: center;
+    padding: 10px 0px;
+}
+
+.jeql-input:focus {
+    border: 2px solid var(--main-theme-color);
+}
+
+.jeql-selected-app-config {
+    background-color: rgba(var(--main-theme-color-rgb), 0.35);
+}
+
+.jeql-button {
+    backface-visibility: hidden;
+    background-color: var(--main-theme-color);
+    text-transform: uppercase;
+    border-radius: 6px;
+    border-width: 0;
+    box-shadow: rgba(50, 50, 93, .1) 0 0 0 1px inset,rgba(50, 50, 93, .1) 0 2px 5px 0,rgba(0, 0, 0, .07) 0 1px 1px 0;
+    box-sizing: border-box;
+    color: #fff;
+    cursor: pointer;
+    font-size: 100%;
+    height: 44px;
+    line-height: 1.15;
+    margin: 12px 0 0;
+    outline: none;
+    overflow: hidden;
+    padding: 0 25px;
+    position: relative;
+    text-align: center;
+    transform: translateZ(0);
+    transition: filter 0.25s, box-shadow .04s ease-in;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+    width: 100%;}
+
+.jeql-button:disabled {
+    cursor: default;
+}
+
+.jeql-button:active {
+    box-shadow: rgba(93, 50, 50, .1) 0 0 0 1px inset,
+        rgba(93, 50, 50, .2) 0 6px 15px 0,
+        rgba(0, 0, 0, .1) 0 2px 2px 0,
+        rgba(211, 151, 50, .3) 0 0 0 4px;
+}
+
+.jeql-button:hover {
+    filter: brightness(1.1);
+}
+
+.jeql-button-yes {
+    background-color: green;
+}
+
+.jeql-button-no {
+    background-color: red;
+}
+
+.jeql-modal-close {
+    position: absolute;
+    top: 4%;
+    padding-top: 0.5%;
+    right: 3%;
+    color: #888;
+    cursor: pointer;
+    transform: scale(3, 3);
+    transition: color 0.1s;
+}
+
+.jeql-modal-close:hover {
+    color: var(--main-theme-color);
+}
+
+.jeql-modal-close:active {
+    color: #ff0000;
+}
+
+.jeql-cursor-pointer {
+    cursor: pointer;
+}
+
+.jeql-center {
+    text-align: center;
+}

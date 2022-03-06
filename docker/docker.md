@@ -29,7 +29,7 @@ Make the directories you will use as bind mounts within the root JAAQL-middlewar
     mkdir -p www
 
 ## Running docker image
-Please replace the _POSTGRES_PASSWORD_ and _JAAQL_VAULT_PASS__WORD_ with different secure passwords of your choosing  
+Please replace the _POSTGRES_PASSWORD_ and _JAAQL_VAULT_PASSWORD_ with different secure passwords of your choosing  
 Please replace the _SERVER_ADDRESS_ build arg with your server's ip e.g. 93.184.216.34  
 Alternatively if your server has a domain name, please replace it with that e.g. example.com. DO NOT USE www. in the URL. If using https, everything will be forced to www.example.com, else only example.com will be available  
 If using https you must use a domain name  
@@ -50,6 +50,13 @@ If using https you must use a domain name
 For those wishing that this container boots when your system boots (on startup), please add the following argument to the above
 
     --restart unless-stopped \
+
+Additional lines can be used
+
+    --e DO_AUDIT=FALSE
+    --e USE_MFA=FALSE
+
+To disable logging and MFA respectively
     
 ## Usage
 Please use the command

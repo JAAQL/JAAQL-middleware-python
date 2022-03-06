@@ -2,7 +2,7 @@ from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
 from jaaql.documentation.documentation_shared import ARG_RES__totp_mfa, ARG_RES__jaaql_password, JWT__invite,\
     gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__mfa_key, RES__oauth_token, RES__deletion_key,\
-    ARG_RES__deletion_key
+    ARG_RES__deletion_key, set_nullable, ARG_RES__application_body
 
 TITLE = "JAAQL API"
 DESCRIPTION = "Collection of methods in the JAAQL API"
@@ -47,13 +47,28 @@ DOCUMENTATION__sign_up = SwaggerDocumentation(
 )
 
 # Not unused. Used to generate html files
-from jaaql.documentation.documentation_shared import DOCUMENTATION__oauth_token, DOCUMENTATION__oauth_refresh
+from jaaql.documentation.documentation_shared import DOCUMENTATION__login_details, DOCUMENTATION__oauth_token,\
+    DOCUMENTATION__oauth_refresh
+
+DOCUMENTATION__my_applications = SwaggerDocumentation(
+    tags="Applications",
+    methods=SwaggerMethod(
+        name="Fetch my applications",
+        description="Fetches a list of applications for which this user is authorised for",
+        method=REST__GET,
+        response=SwaggerResponse(
+            description="List of applications the user has access to",
+            response=SwaggerList(*ARG_RES__application_body)
+        )
+    )
+)
 
 DOCUMENTATION__my_configs = SwaggerDocumentation(
     tags="Configuration",
     methods=SwaggerMethod(
         name="Fetch authorised applications with configurations",
         description="Fetches the applications with configurations for which this user is authorised for",
+        arguments=set_nullable(ARG_RES__application, "Do you want to search on application name"),
         method=REST__GET,
         response=SwaggerResponse(
             description="List of configurations and applications",
@@ -82,6 +97,14 @@ DOCUMENTATION__my_configs = SwaggerDocumentation(
 JWT__connection = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IiQwTUcxYzNZVVkwR0NMd0J5UWFwbVNlIn0.-lzAl33gMBiAMtMq4" \
                   "s_xzKk0QzL_bpX6pnAOhGZsyM0"
 
+ARG_RES__connection = SwaggerArgumentResponse(
+    name=KEY__connection,
+    description="A JWT representing the authenticated connection between user and database/node",
+    arg_type=str,
+    example=[JWT__connection],
+    required=True
+)
+
 DOCUMENTATION__config_arguments = SwaggerDocumentation(
     tags="Configuration",
     methods=SwaggerMethod(
@@ -109,13 +132,7 @@ DOCUMENTATION__config_arguments = SwaggerDocumentation(
                     example=["The library book database", "The meeting room spaces database"],
                     required=True
                 ),
-                SwaggerArgumentResponse(
-                    name=KEY__connection,
-                    description="A JWT representing the authenticated connection between user and database/node",
-                    arg_type=str,
-                    example=[JWT__connection],
-                    required=True
-                )
+                ARG_RES__connection
             )
         )
     )
@@ -195,7 +212,14 @@ DOCUMENTATION__password = SwaggerDocumentation(
             ),
             ARG_RES__mfa_key
         ],
-        response=RES__oauth_token
+        response=[
+            RES__oauth_token,
+            SwaggerFlatResponse(
+                description=ERR__passwords_do_not_match,
+                code=HTTPStatus.UNPROCESSABLE_ENTITY,
+                body=ERR__passwords_do_not_match
+            )
+        ]
     )
 )
 

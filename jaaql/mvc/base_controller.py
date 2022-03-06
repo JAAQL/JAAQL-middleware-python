@@ -10,10 +10,12 @@ from jaaql.documentation.documentation_shared import ENDPOINT__refresh
 from jaaql.constants import *
 from jaaql.mvc.model import JAAQLModel
 from jaaql.mvc.response import JAAQLResponse
+from argparse import Namespace
+from typing import Union
 
 from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, TYPE__response,\
     SwaggerFlatResponse, REST__DELETE, REST__GET, REST__OPTIONS, REST__POST, REST__PUT, SwaggerList, SwaggerResponse,\
-    MOCK__description, ARG_RESP__allow_all, RES__allow_all, SwaggerArgumentResponse
+    MOCK__description, ARG_RESP__allow_all, RES__allow_all, SwaggerArgumentResponse, SwaggerSimpleList
 from jaaql.exceptions.http_status_exception import *
 
 ARG__http_inputs = "http_inputs"
@@ -87,7 +89,7 @@ class BaseJAAQLController:
 
     @staticmethod
     def enforce_content_type_json():
-        if request.content_type.split(";")[0] != CONTENT__json:
+        if request.content_type is None or request.content_type.split(";")[0] != CONTENT__json:
             raise HttpStatusException(ERR__expected_json, HTTPStatus.BAD_REQUEST)
         if len(request.content_type.split(";")) > 1:
             if request.content_type.split(";")[1].strip().lower() != CONTENT__encoding:
@@ -156,12 +158,34 @@ class BaseJAAQLController:
                 return method
 
     @staticmethod
-    def get_response(method: SwaggerMethod, status: HTTPStatus) -> TYPE__response:
+    def get_response(method: SwaggerMethod, status: Union[HTTPStatus, Namespace, int]) -> TYPE__response:
+        match_value = status
+        if not isinstance(status, int):
+            match_value = status.value
         for resp in method.responses:
-            if resp.code == status:
+            if resp.code.value == match_value:
                 return resp
 
         raise Exception(ERR__unexpected_response_code % status.value)
+
+    @staticmethod
+    def bi_cast(real_resp, name, arg_type: type):
+        """
+        Attempt to cast a response to it's intended type. Then check equality when casting back. If this can happen e.g.
+        '5' can be cast to 5 and then back to '5' it's considered equal and the cast is performed
+        :return:
+        """
+        err_mess = ERR__response_wrong_type % (str(name), str(type(real_resp[name])), str(arg_type))
+        bi_cast = None
+        try:
+            # Bi directional cast. Cast to expected type and then cast back
+            bi_cast = type(real_resp[name])(arg_type(real_resp[name]))
+        except:
+            pass
+        if real_resp[name] == bi_cast:
+            real_resp[name] = arg_type(real_resp[name])
+        else:
+            raise Exception(err_mess)
 
     @staticmethod
     def validate_output(response: TYPE__response, real_resp: any) -> any:
@@ -185,6 +209,14 @@ class BaseJAAQLController:
                 for idx in range(len(real_resp)):
                     mock_resp = SwaggerResponse(MOCK__description, response=response.responses.responses)
                     real_resp[idx] = BaseJAAQLController.validate_output(mock_resp, real_resp[idx])
+        elif isinstance(response.responses, SwaggerSimpleList):
+            if not isinstance(real_resp, list):
+                raise Exception(ERR__expected_response_list)
+            else:
+                for idx in range(len(real_resp)):
+                    if isinstance(real_resp[idx], datetime):
+                        real_resp[idx] = str(real_resp[idx])
+                    BaseJAAQLController.bi_cast(real_resp, idx, response.responses.arg_type)
         else:
             if not isinstance(real_resp, dict):
                 raise Exception(ERR__expected_response_dict)
@@ -200,20 +232,8 @@ class BaseJAAQLController:
                 if isinstance(real_resp[swag_resp.name], datetime):
                     real_resp[swag_resp.name] = str(real_resp[swag_resp.name])
                 if not is_complex and not isinstance(real_resp[swag_resp.name], swag_resp.arg_type):
-                    err_mess = ERR__response_wrong_type % (swag_resp.name, str(type(real_resp[swag_resp.name])),
-                                                           str(swag_resp.arg_type))
-
                     if real_resp[swag_resp.name] is not None or swag_resp.required:
-                        bi_cast = None
-                        try:
-                            # Bi directional cast. Cast to expected type and then cast back
-                            bi_cast = type(real_resp[swag_resp.name])(swag_resp.arg_type(real_resp[swag_resp.name]))
-                        except:
-                            pass
-                        if real_resp[swag_resp.name] == bi_cast:
-                            real_resp[swag_resp.name] = swag_resp.arg_type(real_resp[swag_resp.name])
-                        else:
-                            raise Exception(err_mess)
+                        BaseJAAQLController.bi_cast(real_resp, swag_resp.name, swag_resp.arg_type)
 
                 if is_complex:
                     mock_resp = SwaggerResponse(MOCK__description, response=swag_resp.arg_type)
@@ -262,11 +282,19 @@ class BaseJAAQLController:
         resp.headers.add(HEADER__allow_methods, CORS__WILDCARD)
         return resp
 
-    def cors_route(self, route: str, swagger_documentation: SwaggerDocumentation):
-        swagger_documentation.path = route
+    def cors_route(self, route: str, swagger_documentation: Union[list, SwaggerDocumentation]):
+        documentation_as_lists = swagger_documentation
+        if not isinstance(documentation_as_lists, list):
+            documentation_as_lists = [documentation_as_lists]
 
-        methods = [method.method for method in swagger_documentation.methods]
+        methods = []
+        for cur_documentation in documentation_as_lists:
+            cur_documentation.path = route
+            for method in cur_documentation.methods:
+                methods.append(method.method)
+
         methods.append(REST__OPTIONS)
+        swagger_documentation = documentation_as_lists[0]
 
         def wrap_func(view_func):
             @wraps(view_func)
@@ -376,6 +404,24 @@ class BaseJAAQLController:
                         else:
                             ret_status = ex.response_code
                             ex_msg = ex.message
+
+                        do_allow_all = False
+                        if len(method.responses) != 0:
+                            if method.responses[0] == RES__allow_all:
+                                do_allow_all = True
+
+                        if not do_allow_all and ret_status != HTTPStatus.UNAUTHORIZED and ret_status !=\
+                                HTTPStatus.NOT_IMPLEMENTED and ret_status != HTTPStatus.BAD_REQUEST and \
+                                ret_status != HTTPStatus.UNPROCESSABLE_ENTITY:
+                            try:
+                                self.get_response(method, ret_status)
+                            except Exception as sub_ex:
+                                # The expected response code was not allowed
+                                traceback.print_exc()
+                                ret_status = RESP__default_err_code
+                                ex_msg = RESP__default_err_message
+                                ex = sub_ex
+
                         throw_ex = ex
 
                     duration = round((datetime.now() - start_time).total_seconds() * 1000)
@@ -414,6 +460,8 @@ class BaseJAAQLController:
 
         @app.errorhandler(HttpStatusException)
         def handle_pipeline_exception(error: HttpStatusException):
+            if not isinstance(error.response_code, int):
+                error.response_code = error.response_code.value
             return BaseJAAQLController._cors(Response(error.message, error.response_code))
 
     @staticmethod

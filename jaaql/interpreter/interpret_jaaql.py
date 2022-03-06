@@ -2,6 +2,7 @@ from jaaql.exceptions.http_status_exception import *
 from datetime import datetime
 import re
 from jaaql.db.db_interface import DBInterface, ECHO__none
+from jaaql.documentation.documentation_shared import KEY__force_transactional
 
 ERR_malformed_statement = "Malformed query, expecting string or dictionary"
 ERR_unknown_assert = "Unknown assert type '%s'. Please use one of %s"
@@ -98,6 +99,7 @@ class InterpretJAAQL:
         last_query = None
 
         last_echo = ECHO__none
+        force_transactional = False
 
         try:
             ret_as_arr = False
@@ -116,6 +118,10 @@ class InterpretJAAQL:
                 echo_list = []
                 assert_list = []
                 for op in operation:
+                    if KEY__force_transactional in operation:
+                        if len(operation) != 1:
+                            raise HttpStatusException("Can only use force_transactional for singular queries")
+                        force_transactional = operation[KEY__force_transactional]
                     query, parameters, echo, ret_assert = self.render_cur_operation(op)
                     query_list.append(query)
                     parameters_list.append(parameters)
@@ -124,7 +130,7 @@ class InterpretJAAQL:
 
             past_parameters = {}
 
-            conn.set_session(autocommit=len(operation) != 1)
+            conn.set_session(autocommit=len(operation) == 1 and not force_transactional)
 
             for query, parameters, echo, cur_assert in zip(query_list, parameters_list, echo_list, assert_list):
                 last_echo = echo
