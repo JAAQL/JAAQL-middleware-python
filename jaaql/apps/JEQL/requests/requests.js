@@ -138,7 +138,7 @@ export function make(config, action, renderFunc, body, json) {
             }
         } else if (this.readyState === 4 && this.status === 401) {
             if (isOauth) {
-                renderFunc("Credentials incorrect. Please try again");
+                origRenderFunc("Credentials incorrect. Please try again");
             } else if (isRefresh) {
                 config.resetAuthToken();
                 config.loginFunc(config, function() { make(config, action, origRenderFunc, body, json); },

@@ -568,7 +568,7 @@ class JAAQLModel(BaseJAAQLModel):
         parameters = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__node)
         self.execute_supplied_statement(jaaql_connection, QUERY__node_del, parameters, as_objects=True)
 
-    def add_database(self, inputs: dict, user_id: int, jaaql_connection: DBInterface):
+    def add_database(self, inputs: dict, jaaql_connection: DBInterface, user_id: int = None):
         inputs_create = inputs.copy()
         if KEY__create in inputs:
             inputs.pop(KEY__create)
@@ -895,7 +895,7 @@ class JAAQLModel(BaseJAAQLModel):
         return ret
 
     def get_login_details(self):
-        return [KEY__username, KEY__password, KEY__mfa_key] if self.is_container else [KEY__username, KEY__password]
+        return [KEY__username, KEY__password, KEY__mfa_key] if self.use_mfa else [KEY__username, KEY__password]
 
     def submit(self, http_inputs: dict, jaaql_connection: DBInterface):
         connection = http_inputs.get(KEY__connection, None)

@@ -48,7 +48,7 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
   echo "    }" >> /etc/nginx/sites-available/jaaql
   echo "    location /api {" >> /etc/nginx/sites-available/jaaql
-  echo "        limit_req zone=jaaqllimit burst=12 delay=8;" >> /etc/nginx/sites-available/jaaql
+  echo "        limit_req zone=jaaqllimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
   echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
   echo "        include proxy_params;" >> /etc/nginx/sites-available/jaaql
   echo "        proxy_pass http://unix:$INSTALL_PATH/jaaql.sock:/;" >> /etc/nginx/sites-available/jaaql

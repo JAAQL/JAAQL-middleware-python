@@ -57,9 +57,9 @@ class JAAQLController(BaseJAAQLController):
             self.model.delete_application_confirm(http_inputs, jaaql_connection)
 
         @self.cors_route('/internal/databases', DOCUMENTATION__databases)
-        def databases(http_inputs: dict, user_id: int, jaaql_connection: DBInterface):
+        def databases(http_inputs: dict, jaaql_connection: DBInterface, user_id: int):
             if self.is_post():
-                self.model.add_database(http_inputs, user_id, jaaql_connection)
+                self.model.add_database(http_inputs, jaaql_connection, user_id)
             elif self.is_get():
                 return self.model.get_databases(http_inputs, jaaql_connection)
             else:  # self.is_delete()

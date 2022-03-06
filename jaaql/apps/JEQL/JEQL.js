@@ -743,7 +743,8 @@ function rendererLogin(modal, config, callback, errMsg, renderMFA) {
 function showLoginModal(config, callback, errMsg) {
     requests.makeSimple(config, ACTION_FETCH_LOGIN_DETAILS,
         function(details) {
-            renderModal(function(modal) { rendererLogin(modal, config, callback, errMsg, KEY_MFA_KEY in details); },
+            renderModal(
+                function(modal) { rendererLogin(modal, config, callback, errMsg,details.includes(KEY_MFA_KEY)); },
                 false);
         }
     );

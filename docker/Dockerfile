@@ -31,6 +31,7 @@ RUN apt -y install nginx
 
 VOLUME /etc/nginx/sites-available/
 
+RUN apt-get install dos2unix
 RUN apt -y install bzip2
 RUN apt -y install wget
 RUN wget https://downloads.python.org/pypy/pypy3.7-v7.3.5-linux64.tar.bz2
@@ -42,5 +43,6 @@ RUN ./pypy3.7-v7.3.5-linux64/bin/pypy -mpip install -r $INSTALL_PATH/requirement
 
 RUN mv $INSTALL_PATH/docker/jaaql.sql /docker-entrypoint-initdb.d/jaaql.sql
 RUN mv $INSTALL_PATH/docker/entrypoint.sh entrypoint.sh
+RUN dos2unix entrypoint.sh
 
 ENTRYPOINT ["sh", "entrypoint.sh"]
