@@ -139,7 +139,7 @@ create view jaaql__configuration_argument as (
         ON db_conf.application = db_arg.application AND
            db_conf.name = db_arg.configuration AND
            db_arg.parameter = db_param.name
-    LEFT JOIN jaaql__database jd on db_arg.database = jd.name
+    LEFT JOIN jaaql__database jd on db_arg.database = jd.name AND db_arg.node = jd.node AND jd.deleted is null
 );
 
 -- Complete configurations. Where each parameter for the application has an associated argument
@@ -256,6 +256,15 @@ create view jaaql__my_applications as (
 );
 grant select on jaaql__my_applications to public;
 
+create view jaaql__their_authorized_app_only_configurations as (
+    SELECT
+        comc.application,
+        comc.configuration,
+        auth_conf.role as conf_role
+    FROM jaaql__complete_configuration comc
+    INNER JOIN jaaql__authorization_configuration auth_conf on comc.application = auth_conf.application AND comc.configuration = auth_conf.configuration
+);
+
 -- Not my. Called through jaaql connection. Need to keep username and password secret
 create view jaaql__their_authorized_configurations as (
     SELECT
@@ -271,12 +280,10 @@ create view jaaql__their_authorized_configurations as (
         jn.port,
         jn.address,
         jcred.precedence,
-        jcred.role as node_role,
-        auth_conf.role as conf_role
+        jcred.role as node_role
     FROM jaaql__complete_configuration comc
         INNER JOIN jaaql__credentials_node jcred ON (jcred.node = comc.node) AND jcred.deleted is null
-        INNER JOIN jaaql__authorization_configuration auth_conf on comc.application = auth_conf.application AND comc.configuration = auth_conf.configuration
-        INNER JOIN jaaql__node jn on comc.node = jn.name
+        INNER JOIN jaaql__node jn on comc.node = jn.name AND jn.deleted is null
 );
 
 create view jaaql__their_single_authorized_wildcard_node as (

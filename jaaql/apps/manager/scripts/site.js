@@ -199,7 +199,7 @@ function appConfigRowRenderer(rowElem, data, idx, superRowRenderer) {
     let rowObj = JEQL.tupleToObject(data[JEQL.KEY_ROWS][idx], data[JEQL.KEY_COLUMNS]);
     rowElem.buildChild("td").buildChild("button").buildText("Select").buildEventListener("click", function() {
         JEQL.renderModal(function(modal) { renderConfigModal(modal, rowObj[JEQL.KEY_APPLICATION],
-            rowObj[JEQL.KEY_NAME]); });
+            rowObj[JEQL.KEY_NAME]); }, true, JEQL.CLS_MODAL_AUTO);
     }).getParent().buildSibling("td").buildChild("button").buildText("Delete").buildEventListener("click", function() {
         JEQL.renderModalAreYouSure("Would you like to delete the configuration", function() {
             let data = {};

@@ -118,21 +118,17 @@ WHERE (wn.node, wn.precedence) in
 """
 QUERY__authorized_configuration = """
 SELECT
-    *
+    jtac.*
 FROM jaaql__their_authorized_configurations jtac
-WHERE
-      application = :application AND configuration = :configuration AND
-      (jtac.conf_role = '' or pg_has_role(jaaql__fetch_alias_from_id(:user_id), jtac.conf_role, 'MEMBER')) AND
-      (jtac.node_role = '' or pg_has_role(jaaql__fetch_alias_from_id(:user_id), jtac.node_role, 'MEMBER')) AND
-      (jtac.node, jtac.precedence) in (
-          SELECT
-              cred_non.node,
-              MAX(precedence)
-          FROM
-              jaaql__credentials_node cred_non
-          WHERE pg_has_role(jaaql__fetch_alias_from_id(:user_id), cred_non.role, 'MEMBER')
-          GROUP BY cred_non.node
-      );
+INNER JOIN (
+    SELECT DISTINCT application, configuration FROM jaaql__their_authorized_app_only_configurations WHERE pg_has_role(jaaql__fetch_alias_from_id(:user_id), conf_role, 'MEMBER') AND application = :application AND configuration = :configuration
+) sub ON sub.application = jtac.application AND sub.configuration = jtac.configuration
+WHERE pg_has_role(jaaql__fetch_alias_from_id(:user_id), node_role, 'MEMBER') AND jtac.application = :application AND jtac.configuration = :configuration AND jtac.precedence IN (
+    SELECT
+        MAX(precedence)
+    FROM jaaql__their_authorized_configurations
+    WHERE pg_has_role(jaaql__fetch_alias_from_id(:user_id), node_role, 'MEMBER') AND application = :application AND configuration = :configuration
+);
 """
 FUNC__jaaql_create_node = "jaaql__create_node"
 

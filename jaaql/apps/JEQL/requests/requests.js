@@ -101,7 +101,7 @@ function getResponseCodeHandler(renderFunc, status) {
             return null;
         }
     } else {
-        return renderFunc;
+        return status === 200 ? renderFunc : null;
     }
 }
 

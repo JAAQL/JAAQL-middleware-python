@@ -15,7 +15,7 @@
     transition: transform 0.25s ease-out;
 }
 
-.jeql-modal, .jeql-modal-wide {
+.jeql-modal, .jeql-modal-wide, .jeql-modal-auto {
     cursor: auto;
     font-family: 'Roboto', sans-serif;
 
@@ -56,6 +56,10 @@
     .jeql-modal-wide {
         width: 50%;
     }
+}
+
+.jeql-modal-auto {
+    width: auto;
 }
 
 .jeql-strong {
@@ -138,6 +142,10 @@
 
 .jeql-button-no {
     background-color: red;
+}
+
+.jeql-table-header-sort {
+    cursor: pointer;
 }
 
 .jeql-modal-close {

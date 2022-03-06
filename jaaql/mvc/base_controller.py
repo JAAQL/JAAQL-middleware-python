@@ -4,13 +4,13 @@ from werkzeug.exceptions import HTTPException
 import inspect
 import json
 from datetime import datetime
+from jaaql.exceptions.custom_http_status import CustomHTTPStatus
 
 from flask import Response, Flask, request, jsonify, current_app
 from jaaql.documentation.documentation_shared import ENDPOINT__refresh
 from jaaql.constants import *
 from jaaql.mvc.model import JAAQLModel
 from jaaql.mvc.response import JAAQLResponse
-from argparse import Namespace
 from typing import Union
 
 from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, TYPE__response,\
@@ -460,7 +460,7 @@ class BaseJAAQLController:
 
         @app.errorhandler(HttpStatusException)
         def handle_pipeline_exception(error: HttpStatusException):
-            if not isinstance(error.response_code, int):
+            if not isinstance(error.response_code, int) or isinstance(error.response_code, CustomHTTPStatus):
                 error.response_code = error.response_code.value
             return BaseJAAQLController._cors(Response(error.message, error.response_code))
 

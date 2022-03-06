@@ -103,8 +103,9 @@ let PROTOCOL_FILE = "file:";
 let LOCAL_DEBUGGING_URL = "http://127.0.0.1:6060";
 
 let CLS_MODAL_OUTER = "jeql-modal-outer";
-let CLS_MODAL = "jeql-modal";
+let CLS_MODAL = "jeql-modal"; export {CLS_MODAL};
 let CLS_MODAL_WIDE = "jeql-modal-wide"; export {CLS_MODAL_WIDE};
+let CLS_MODAL_AUTO = "jeql-modal-auto"; export {CLS_MODAL_AUTO};
 let CLS_BUTTON = "jeql-button"; export {CLS_BUTTON};
 let CLS_BUTTON_YES = "jeql-button-yes"; export {CLS_BUTTON_YES};
 let CLS_BUTTON_NO = "jeql-button-no"; export {CLS_BUTTON_NO};
@@ -113,8 +114,17 @@ let CLS_CURSOR_POINTER = "jeql-cursor-pointer";
 let CLS_CENTER = "jeql-center";
 let CLS_INPUT_MFA = "jeql-input-mfa";
 let CLS_SELECTED_APP_CONFIG = "jeql-selected-app-config";
+let CLS_JEQL_TABLE_HEADER = "jeql-table-header";
+let CLS_JEQL_TABLE_HEADER_SORT = "jeql-table-header-sort";
+let CLS_JEQL_TABLE_HEADER_SORT_SPAN = "jeql-table-header-sort-span";
+
+let SORT_DEFAULT = "&nbsp;-";
+let SORT_ASC = "&nbsp;&#9650;";
+let SORT_DESC = "&nbsp;&#9660;";
 
 let ATTR_JEQL_DATA = "jeql-data";
+let ATTR_JEQL_PAGING_TABLE = "jeql-paging-table";
+let ATTR_JEQL_SORT_DIRECTION = "jeql-sort-direction";
 
 let ID_LOGIN_MODAL = "jeql-login-modal";
 let ID_LOGIN_ERROR = "jeql-login-error";
@@ -260,11 +270,16 @@ export function getPagedSearchingTableRefreshButton(tableId) {
     return document.getElementById(tableId + "-" + ID_PAGING_REFRESH_BUTTON);
 }
 
+export function setPagedSearchingTableSortField(tableId, sort) {
+    document.getElementById(tableId + "-" + ID_PAGING_SORT).innerText = sort;
+}
+
 export function pagedSearchingTable(table, onChange, searchTransformer = null) {
     if (!searchTransformer) {
         searchTransformer = function(ret) { return ret; }
     }
     makeBuildable(table);
+    table.buildBoolean(ATTR_JEQL_PAGING_TABLE, true);
     let tableId = table.id;
     let refreshId = tableId + "-" + ID_PAGING_REFRESH_BUTTON;
     let totalId = tableId + "-" + ID_PAGING_TOTAL;
@@ -367,12 +382,12 @@ function buildHTML(elem, html) {
 export function tupleToObject(row, columns) {
     let obj = {};
     for (let i2 = 0; i2 < columns.length; i2 ++) {
-		if (columns[i2].constructor == Object) {
+		if (columns[i2].constructor === Object) {
 			let objKey = Object.keys(columns[i2])[0];
 			let subResponse = {};
 			subResponse[KEY_COLUMNS] = columns[i2][objKey];
 			subResponse[KEY_ROWS] = row[i2];
-			obj[objKey] = tuplesToObject(subResponse);
+			obj[objKey] = tuplesToObjects(subResponse);
 		} else {
 			obj[columns[i2]] = row[i2];
 		}
@@ -410,16 +425,61 @@ export function objectsToTuples(response) {
 }
 
 export function tableRenderer(data, table, rowRenderer) {
+    let oldSortCol = null;
+    let oldSortDir = null;
+
     if (!table) {
         table = elemBuilder(table);
         document.body.appendChild(table);
     } else {
+        let oldHeaders = table.getElementsByClassName(CLS_JEQL_TABLE_HEADER_SORT);
+        for (let i = 0; i < oldHeaders.length; i ++) {
+            let span = oldHeaders[i].getElementsByClassName(CLS_JEQL_TABLE_HEADER_SORT_SPAN)[0];
+            if (span.getAttribute(ATTR_JEQL_SORT_DIRECTION) !== SORT_DEFAULT) {
+                oldSortCol = oldHeaders[i].childNodes[0].data;
+                oldSortDir = span.getAttribute(ATTR_JEQL_SORT_DIRECTION);
+            }
+        }
         table.innerHTML = "";
         makeBuildable(table);
     }
+    let isPagingTable = table.getAttribute(ATTR_JEQL_PAGING_TABLE);
     let header = table.buildChild("tr");
     for (let idx in Object.keys(data[KEY_COLUMNS])) {
-        header.buildChild("th").buildText(formatAsTableHeader(data[KEY_COLUMNS][idx]));
+        let headerText = formatAsTableHeader(data[KEY_COLUMNS][idx]);
+        let th = header.buildChild("th").buildClass(CLS_JEQL_TABLE_HEADER).buildText(headerText);
+        if (isPagingTable) {
+            th.buildClass(CLS_JEQL_TABLE_HEADER_SORT);
+            let span = th.buildChild("span").buildClass(CLS_JEQL_TABLE_HEADER_SORT_SPAN).buildHTML(
+                SORT_DEFAULT).buildAttr(ATTR_JEQL_SORT_DIRECTION, SORT_DEFAULT);
+            if (headerText === oldSortCol) {
+                span.buildAttr(ATTR_JEQL_SORT_DIRECTION, oldSortDir);
+                span.innerHTML = oldSortDir;
+            }
+            th.buildEventListener().buildEventListener("click", function(event) {
+                if (span.getAttribute(ATTR_JEQL_SORT_DIRECTION) === SORT_DEFAULT) {
+                    span.innerHTML = SORT_ASC;
+                    span.setAttribute(ATTR_JEQL_SORT_DIRECTION, SORT_ASC);
+                    let sorts = table.getElementsByClassName(CLS_JEQL_TABLE_HEADER_SORT_SPAN);
+                    for (let i = 0; i < sorts.length; i ++) {
+                        if (sorts[i] !== span) {
+                            sorts[i].setAttribute(ATTR_JEQL_SORT_DIRECTION, SORT_DEFAULT);
+                            sorts[i].innerHTML = SORT_DEFAULT;
+                        }
+                    }
+                    setPagedSearchingTableSortField(table.id, data[KEY_COLUMNS][idx] + " ASC");
+                } else if (span.getAttribute(ATTR_JEQL_SORT_DIRECTION) === SORT_ASC) {
+                    span.innerHTML = SORT_DESC;
+                    span.setAttribute(ATTR_JEQL_SORT_DIRECTION, SORT_DESC);
+                    setPagedSearchingTableSortField(table.id, data[KEY_COLUMNS][idx] + " DESC");
+                } else /*if (span.getAttribute(ATTR_JEQL_SORT_DIRECTION) === SORT_DESC)*/ {
+                    span.innerHTML = SORT_DEFAULT;
+                    span.setAttribute(ATTR_JEQL_SORT_DIRECTION, SORT_DEFAULT);
+                    setPagedSearchingTableSortField(table.id, "");
+                }
+                getPagedSearchingTableRefreshButton(table.id).click();
+            });
+        }
     }
     header.buildChild("th");
     for (let idx in data[KEY_ROWS]) {

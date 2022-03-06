@@ -3,6 +3,7 @@ from psycopg2 import pool, OperationalError
 
 from jaaql.db.db_interface import *
 from jaaql.exceptions.http_status_exception import *
+from jaaql.exceptions.custom_http_status import CustomHTTPStatus
 
 ERR__connect_db = "Could not create connection to database!"
 
@@ -30,7 +31,10 @@ class DBPGInterface(DBInterface):
                 database=db_name
             )
         except OperationalError as ex:
-            raise HttpStatusException(str(ex), HTTPStatus.UNAUTHORIZED)
+            if "does not exist" in str(ex).split("\"")[-1]:
+                raise HttpStatusException(str(ex), CustomHTTPStatus.DATABASE_NO_EXIST)
+            else:
+                raise HttpStatusException(str(ex), HTTPStatus.UNAUTHORIZED)
 
     def get_conn(self):
         try:
