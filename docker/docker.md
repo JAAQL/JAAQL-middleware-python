@@ -27,6 +27,7 @@ Make the directories you will use as bind mounts within the root JAAQL-middlewar
     
     mkdir -p log/nginx
     mkdir -p www
+    mkdir -p letsencrypt/live
 
 ## Running docker image
 Please replace the _POSTGRES_PASSWORD_ and _JAAQL_VAULT_PASSWORD_ with different secure passwords of your choosing  
@@ -101,11 +102,7 @@ If you wish to use https please adjust the 'docker run' command to have the foll
     -e HTTPS_EMAIL=mail@example.com \
     --mount type=bind,source="$(pwd)"/letsencrypt,target=/etc/letsencrypt \
 
-If you take a container that has been ran using IS_HTTPS=TRUE and run it with IS_HTTPS=FALSE you will lose the certificates and need to reconfigure. Please also run
-    
-    mkdir -p letsencrypt/live
-
-To make a place to store your certificates
+If you take a container that has been ran using IS_HTTPS=TRUE and run it with IS_HTTPS=FALSE you will lose the certificates and need to reconfigure. It is recommended that you backup your certificate
 
 ## Extending JAAQL
 For those who wish to use JAAQL as a package, there is an example Dockerfile (Dockerfile-extend) that when built will run your app in the same way as JAAQL is ran (gunicorn, nginx, pypy, https etc.). Please make sure there is a wsgi.py in your project base which has a build_app function that returns a flask object. For example  
