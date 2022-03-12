@@ -39,7 +39,6 @@ class DBPGInterface(DBInterface):
     def get_conn(self):
         try:
             conn = self.pg_pool.getconn()
-            print("Fetched conn")
             if conn is None:
                 raise Exception
         except Exception as ex:
@@ -49,7 +48,6 @@ class DBPGInterface(DBInterface):
         return conn
 
     def put_conn(self, conn):
-        print("Put conn")
         return self.pg_pool.putconn(conn)
 
     def close(self):

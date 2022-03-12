@@ -55,7 +55,7 @@ def run_migrations(db_interface: DBInterface, project_name: str = None, migratio
         migration_history = db_interface.objectify(ij.transform(statement_load_table, conn=conn))
 
     installed_scripts = [cur[ATTR_SCRIPT] for cur in migration_history]
-    cur_installed_rank = ([0] + sorted([cur[ATTR_INSTALLED_RANK] for cur in migration_history]))[-1]
+    cur_installed_rank = ([-1] + sorted([cur[ATTR_INSTALLED_RANK] for cur in migration_history]))[-1]
 
     version_folders = sorted([version_folder for version_folder in listdir(migration_folder) if
                               isdir(join(migration_folder, version_folder)) and '.' in version_folder])
@@ -77,7 +77,7 @@ def run_migrations(db_interface: DBInterface, project_name: str = None, migratio
                     "query": QUERY_INS_TABLE,
                     "parameters": {
                         ATTR_PROJECT_NAME: project_name,
-                        ATTR_INSTALLED_RANK: cur_installed_rank,
+                        ATTR_INSTALLED_RANK: cur_installed_rank + 1,
                         ATTR_VERSION: version,
                         ATTR_DESCRIPTION: description,
                         ATTR_SCRIPT: full_name,

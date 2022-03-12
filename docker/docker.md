@@ -45,7 +45,7 @@ If using https you must use a domain name
         -e POSTGRES_PASSWORD=123456 \
         -e JAAQL_VAULT_PASSWORD=pa55word \
         -e SERVER_ADDRESS=YOUR_SERVER_ADDRESS \
-        -e MFA_LABEL=YOUR_APP_NAME
+        -e MFA_LABEL=YOUR_APP_NAME \
         jaaql/jaaql-middleware-python
 
 For those wishing that this container boots when your system boots (on startup), please add the following argument to the above
@@ -54,8 +54,9 @@ For those wishing that this container boots when your system boots (on startup),
 
 Additional lines can be used
 
-    --e DO_AUDIT=FALSE
-    --e USE_MFA=FALSE
+    -e DO_AUDIT=FALSE \
+    -e FORCE_MFA=FALSE \
+    -e INVITE_ONLY=FALSE \
 
 To disable logging and MFA respectively
     

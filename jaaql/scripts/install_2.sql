@@ -6,7 +6,7 @@ create table jaaql__user (
     created timestamptz not null default current_timestamp,
     mobile   bigint,                 -- with null [allows for SMS-based 2FA login later] )
     deleted timestamptz,
-    enc_totp_iv varchar(254) not null,
+    enc_totp_iv varchar(254),
     last_totp varchar(6),
     alias varchar(32)
 );
@@ -91,15 +91,15 @@ create table jaaql__application (
 INSERT INTO jaaql__application (name, description, url) VALUES ('console', 'The console application', '');
 INSERT INTO jaaql__application (name, description, url) VALUES ('manager', 'The administration panel for JAAQL', '');
 
-create table jaaql__application_parameter (
+create table jaaql__application_dataset (
     application varchar(64) not null,
     name varchar(64) not null,
     description varchar(255) not null,
     PRIMARY KEY (application, name),
     FOREIGN KEY (application) references jaaql__application on delete cascade on update cascade
 );
-INSERT INTO jaaql__application_parameter (application, name, description) VALUES ('console', 'node', 'The node which the console will run against');
-INSERT INTO jaaql__application_parameter (application, name, description) VALUES ('manager', 'node', 'A jaaql node which the app can manage');
+INSERT INTO jaaql__application_dataset (application, name, description) VALUES ('console', 'node', 'The node which the console will run against');
+INSERT INTO jaaql__application_dataset (application, name, description) VALUES ('manager', 'node', 'A jaaql node which the app can manage');
 
 create table jaaql__application_configuration (
     application varchar(64) not null,
@@ -110,49 +110,49 @@ create table jaaql__application_configuration (
 );
 INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('manager', 'host', 'The host jaaql node');
 
-create table jaaql__application_argument (
+create table jaaql__assigned_database (
     application varchar(64) not null,
     configuration varchar(64) not null,
     database varchar(255) not null,
     node varchar(255) not null,
-    parameter varchar(64) not null,
-    PRIMARY KEY (application, parameter, configuration),
+    dataset varchar(64) not null,
+    PRIMARY KEY (application, dataset, configuration),
     FOREIGN KEY (application, configuration) references jaaql__application_configuration(application, name)
         on delete cascade on update cascade,
-    FOREIGN KEY (application, parameter) references jaaql__application_parameter(application, name) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (application, dataset) references jaaql__application_dataset(application, name) ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (database, node) references jaaql__database(name, node) on delete cascade on update cascade,
     FOREIGN KEY (node) references jaaql__node (name) on delete cascade on update cascade
 );
 
-create view jaaql__configuration_argument as (
+create view jaaql__configuration_assigned_database as (
     SELECT
         db_conf.application as application,
     	db_conf.name as configuration,
-    	db_param.name as parameter_name,
-        db_param.description as parameter_description,
+    	db_dataset.name as dataset,
+        db_dataset.description as dataset_description,
     	db_arg.database as database,
         db_arg.node as node
     FROM
     	jaaql__application_configuration db_conf
-    INNER JOIN jaaql__application_parameter db_param ON db_conf.application = db_param.application
-    LEFT JOIN jaaql__application_argument db_arg
+    INNER JOIN jaaql__application_dataset db_dataset ON db_conf.application = db_dataset.application
+    LEFT JOIN jaaql__assigned_database db_arg
         ON db_conf.application = db_arg.application AND
            db_conf.name = db_arg.configuration AND
-           db_arg.parameter = db_param.name
+           db_arg.dataset = db_dataset.name
     LEFT JOIN jaaql__database jd on db_arg.database = jd.name AND db_arg.node = jd.node AND jd.deleted is null
 );
 
--- Complete configurations. Where each parameter for the application has an associated argument
+-- Complete configurations. Where each dataset for the application has an assigned database
 create view jaaql__complete_configuration as (
     SELECT
         *
     FROM
-         jaaql__configuration_argument
+         jaaql__configuration_assigned_database
     WHERE (application, configuration, true) IN (
         SELECT
             application, configuration, bool_and(database is not null)
         FROM
-             jaaql__configuration_argument
+             jaaql__configuration_assigned_database
         GROUP BY
             application, configuration
     )
@@ -164,6 +164,10 @@ create table jaaql__authorization_configuration (
     role        varchar(254) not null default '',
     primary key (application, configuration, role),
     foreign key (application, configuration) references jaaql__application_configuration on delete cascade on update cascade
+);
+
+create table jaaql__default_role (
+    the_role varchar(255) PRIMARY KEY not null
 );
 
 create table jaaql__credentials_node (
@@ -270,8 +274,8 @@ create view jaaql__their_authorized_configurations as (
     SELECT
         comc.application,
         comc.configuration,
-        comc.parameter_name,
-        comc.parameter_description,
+        comc.dataset,
+        comc.dataset_description,
         jcred.db_encrypted_username as username,
         jcred.db_encrypted_password as password,
         comc.database,
@@ -361,7 +365,7 @@ BEGIN
     INSERT INTO jaaql__node (name, description, port, address, interface_class) VALUES (coalesce(node_name, node_address || node_port), coalesce(node_description, 'The ' || node_name || ' node'), node_port, node_address, 'DBPGInterface') RETURNING name into node_id;
     INSERT INTO jaaql__database (node, name) VALUES (node_id, '*');
     INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('console', node_id, 'Console access to the ' || node_id || ' node');
-    INSERT INTO jaaql__application_argument (application, configuration, node, database, parameter) VALUES ('console', node_id, node_id, '*', 'node');
+    INSERT INTO jaaql__assigned_database (application, configuration, node, database, dataset) VALUES ('console', node_id, node_id, '*', 'node');
     return node_id;
 END
 $$ language plpgsql;

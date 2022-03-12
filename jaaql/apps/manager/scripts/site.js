@@ -22,7 +22,7 @@ let ID_ADD_APP = "add-application";
 let ID_ADD_APP_NAME = "add-application-name";
 let ID_ADD_APP_DESCRIPTION = "add-application-description";
 let ID_ADD_APP_URL = "add-application-url";
-let ID_TABLE_ARGUMENTS = "conf-arguments";
+let ID_TABLE_ASSIGNED_DATABASES = "assigned-databases";
 let ID_TABLE_AUTHS = "conf-auths";
 let ID_TABLE_DATABASES = "node-databases";
 let ID_TABLE_NODE_AUTHS = "node-auths";
@@ -53,7 +53,7 @@ function renderAddAuth(modal, appName, config) {
         <label>Application: <input id="${ID_ADD_AUTH_APP}" disabled/></label><br>
         <label>Configuration: <input id="${ID_ADD_AUTH_CONF}" disabled/></label><br>
         <label>Role: <input id="${ID_ADD_AUTH_ROLE}"/></label><br>
-    `).buildChild("button").buildText("Add Argument").buildEventListener("click", function() {
+    `).buildChild("button").buildText("Assign Database").buildEventListener("click", function() {
         let data = {};
         data[JEQL.KEY_APPLICATION] = document.getElementById(ID_ADD_AUTH_APP).value;
         data[JEQL.KEY_CONFIGURATION] = document.getElementById(ID_ADD_AUTH_CONF).value;
@@ -69,25 +69,25 @@ function renderAddAuth(modal, appName, config) {
     document.getElementById(ID_ADD_AUTH_CONF).value = config;
 }
 
-function renderAddArgument(modal, appName, config) {
+function renderAssignDatabase(modal, appName, config) {
     modal.buildHTML(`
-        <h1>Add Argument</h1>
+        <h1>Assign Database</h1>
         <label>Application: <input id="${ID_ADD_ARG_APP}" disabled/></label><br>
         <label>Configuration: <input id="${ID_ADD_ARG_CONF}" disabled/></label><br>
-        <label>Parameter: <input id="${ID_ADD_ARG_PARAM}"/></label><br>
+        <label>Dataset: <input id="${ID_ADD_ARG_PARAM}"/></label><br>
         <label>Node: <input id="${ID_ADD_ARG_NODE}"/></label><br>
         <label>Database: <input id="${ID_ADD_ARG_DATABASE}"/></label><br>
-    `).buildChild("button").buildText("Add Argument").buildEventListener("click", function() {
+    `).buildChild("button").buildText("Perform Assignment").buildEventListener("click", function() {
         let data = {};
         data[JEQL.KEY_APPLICATION] = document.getElementById(ID_ADD_ARG_APP).value;
         data[JEQL.KEY_CONFIGURATION] = document.getElementById(ID_ADD_ARG_CONF).value;
-        data[JEQL.KEY_PARAMETER] = document.getElementById(ID_ADD_ARG_PARAM).value;
+        data[JEQL.KEY_DATASET] = document.getElementById(ID_ADD_ARG_PARAM).value;
         data[JEQL.KEY_NODE] = document.getElementById(ID_ADD_ARG_NODE).value;
         data[JEQL.KEY_DATABASE] = document.getElementById(ID_ADD_ARG_DATABASE).value;
-        JEQL.requests.makeBody(window.JEQL_CONFIG, JEQL.ACTION_INTERNAL_ARG_ADD, function() {
-            JEQL.renderModalOk("Successfully added configuration argument", function() {
+        JEQL.requests.makeBody(window.JEQL_CONFIG, JEQL.ACTION_INTERNAL_DATASETS_ADD, function() {
+            JEQL.renderModalOk("Successfully assigned database to configuration", function() {
                 modal.closeModal();
-                JEQL.getPagedSearchingTableRefreshButton(ID_TABLE_ARGUMENTS).click();
+                JEQL.getPagedSearchingTableRefreshButton(ID_TABLE_ASSIGNED_DATABASES).click();
             });
         }, data);
     });
@@ -95,33 +95,33 @@ function renderAddArgument(modal, appName, config) {
     document.getElementById(ID_ADD_ARG_CONF).value = config;
 }
 
-function argumentTableRowRenderer(rowElem, data, idx, superRowRenderer) {
+function assignedDatabaseTableRowRenderer(rowElem, data, idx, superRowRenderer) {
     superRowRenderer();
     let rowObj = JEQL.tupleToObject(data[JEQL.KEY_ROWS][idx], data[JEQL.KEY_COLUMNS]);
 
     let deleteFunc = function() {
         let delData = {};
         delData[JEQL.KEY_APPLICATION] = rowObj[JEQL.KEY_APPLICATION];
-        delData[JEQL.KEY_PARAMETER] = rowObj[JEQL.KEY_PARAMETER];
+        delData[JEQL.KEY_DATASET] = rowObj[JEQL.KEY_DATASET];
         delData[JEQL.KEY_CONFIGURATION] = rowObj[JEQL.KEY_CONFIGURATION];
-        JEQL.doConfirmDelete(window.JEQL_CONFIG, delData, JEQL.ACTION_INTERNAL_ARG_DEL,
-            JEQL.ACTION_INTERNAL_ARG_DELCONF,
-            function() { JEQL.getPagedSearchingTableRefreshButton(ID_TABLE_ARGUMENTS).click(); }
+        JEQL.doConfirmDelete(window.JEQL_CONFIG, delData, JEQL.ACTION_INTERNAL_ASSIGNED_DATABASE_DEL,
+            JEQL.ACTION_INTERNAL_ASSIGNED_DATABASE_DELCONF,
+            function() { JEQL.getPagedSearchingTableRefreshButton(ID_TABLE_ASSIGNED_DATABASES).click(); }
         );
     };
 
     rowElem.buildChild("td").buildChild("button").buildText("Delete").buildEventListener("click", function() {
-        JEQL.renderModalAreYouSure("Would you like to delete the argument?", function() { deleteFunc(false); });
+        JEQL.renderModalAreYouSure("Would you like to unassign the database?", function() { deleteFunc(false); });
     });
 }
 
-function refreshArgumentsTable(page, size, search, sort) {
+function refreshAssignedDatabaseTable(page, size, search, sort) {
     JEQL.requests.makeBody(window.JEQL_CONFIG,
-        JEQL.ACTION_INTERNAL_ARG,
+        JEQL.ACTION_INTERNAL_DATABASES,
         function(data) {
-            let table = document.getElementById(ID_TABLE_ARGUMENTS);
+            let table = document.getElementById(ID_TABLE_ASSIGNED_DATABASES);
             JEQL.pagedTableUpdate(table, data);
-            JEQL.tableRenderer(JEQL.objectsToTuples(data[JEQL.KEY_DATA]), table, argumentTableRowRenderer);
+            JEQL.tableRenderer(JEQL.objectsToTuples(data[JEQL.KEY_DATA]), table, assignedDatabaseTableRowRenderer);
         },
         JEQL.getSearchObj(page, size, search, sort)
     );
@@ -161,11 +161,11 @@ function refreshConfigAuthsTable(page, size, search, sort) {
 
 function renderConfigModal(modal, appName, config) {
     modal.buildHTML(`
-        <h1>Arguments</h1>
-        <table id="${ID_TABLE_ARGUMENTS}">
+        <h1>Assigned Databases</h1>
+        <table id="${ID_TABLE_ASSIGNED_DATABASES}">
             
         </table>
-        <button id="${ID_ADD_ARG}">Add Argument</button>
+        <button id="${ID_ADD_ARG}">Add Assignment</button>
         <h1>Authorizations</h1>
         <table id="${ID_TABLE_AUTHS}">
             
@@ -173,7 +173,7 @@ function renderConfigModal(modal, appName, config) {
         <button id="${ID_ADD_AUTH}">Add Authorization</button>
     `);
     document.getElementById(ID_ADD_ARG).addEventListener("click", function() {
-        JEQL.renderModal(function(modal) { renderAddArgument(modal, appName, config); });
+        JEQL.renderModal(function(modal) { renderAssignDatabase(modal, appName, config); });
     });
     document.getElementById(ID_ADD_AUTH).addEventListener("click", function() {
         JEQL.renderModal(function(modal) { renderAddAuth(modal, appName, config); });
@@ -187,8 +187,8 @@ function renderConfigModal(modal, appName, config) {
         }
         return preSearch;
     };
-    JEQL.pagedSearchingTable(document.getElementById(ID_TABLE_ARGUMENTS), refreshArgumentsTable,
-        function(searchText) { return searchFunc(searchText, [JEQL.KEY_PARAMETER, JEQL.KEY_DATABASE, JEQL.KEY_NODE]); }
+    JEQL.pagedSearchingTable(document.getElementById(ID_TABLE_ASSIGNED_DATABASES), refreshAssignedDatabaseTable,
+        function(searchText) { return searchFunc(searchText, [JEQL.KEY_DATASET, JEQL.KEY_DATABASE, JEQL.KEY_NODE]); }
     );
     JEQL.pagedSearchingTable(document.getElementById(ID_TABLE_AUTHS), refreshConfigAuthsTable,
         function(searchText) { return searchFunc(searchText, [JEQL.KEY_ROLE]); });
@@ -217,12 +217,12 @@ function appParameterRowRenderer(rowElem, data, idx, superRowRenderer) {
     superRowRenderer();
     let rowObj = JEQL.tupleToObject(data[JEQL.KEY_ROWS][idx], data[JEQL.KEY_COLUMNS]);
     rowElem.buildChild("td").buildChild("button").buildText("Delete").buildEventListener("click", function() {
-        JEQL.renderModalAreYouSure("Would you like to delete the parameter", function() {
+        JEQL.renderModalAreYouSure("Would you like to delete the dataset", function() {
             let data = {};
             data[JEQL.KEY_APPLICATION] = rowObj[JEQL.KEY_APPLICATION];
             data[JEQL.KEY_NAME] = rowObj[JEQL.KEY_NAME];
-            JEQL.doConfirmDelete(window.JEQL_CONFIG, data, JEQL.ACTION_INTERNAL_PARAMETERS_DEL,
-                JEQL.ACTION_INTERNAL_PARAMETERS_DELCONF,
+            JEQL.doConfirmDelete(window.JEQL_CONFIG, data, JEQL.ACTION_INTERNAL_DATASETS_DEL,
+                JEQL.ACTION_INTERNAL_DATASETS_DELCONF,
                 function() { JEQL.getPagedSearchingTableRefreshButton(ID_PARAMETER_APP).click(); }
             );
         });
@@ -231,7 +231,7 @@ function appParameterRowRenderer(rowElem, data, idx, superRowRenderer) {
 
 function onLoadParameters(page, size, search, sort) {
     JEQL.requests.makeBody(window.JEQL_CONFIG,
-        JEQL.ACTION_INTERNAL_PARAMETERS,
+        JEQL.ACTION_INTERNAL_DATASETS,
         function(data) {
             let parameterTable = document.getElementById(ID_PARAMETER_APP);
             JEQL.pagedTableUpdate(parameterTable, data);
@@ -277,7 +277,7 @@ function renderAddConfigModal(modal, app) {
 
 function renderAddParameterModal(modal, app) {
     modal.buildHTML(`
-        <h1>Add a Parameter</h1>
+        <h1>Add a Dataset</h1>
         <label>Application: <input id="${ID_ADD_APP_PARAMETER_APP}" disabled/></label><br>
         <label>Name: <input id="${ID_ADD_APP_PARAMETER_NAME}"/></label><br>
         <label>Description: <input id="${ID_ADD_APP_PARAMETER_DESCRIPTION}"/></label><br>
@@ -287,8 +287,8 @@ function renderAddParameterModal(modal, app) {
         submitObj[JEQL.KEY_NAME] = document.getElementById(ID_ADD_APP_PARAMETER_NAME).value;
         submitObj[JEQL.KEY_DESCRIPTION] = document.getElementById(ID_ADD_APP_PARAMETER_DESCRIPTION).value;
 
-        JEQL.requests.makeBody(window.JEQL_CONFIG, JEQL.ACTION_INTERNAL_PARAMETERS_ADD, function() {
-            JEQL.renderModalOk("Successfully added application parameter", function() {
+        JEQL.requests.makeBody(window.JEQL_CONFIG, JEQL.ACTION_INTERNAL_DATASETS_ADD, function() {
+            JEQL.renderModalOk("Successfully added dataset", function() {
                 modal.closeModal();
                 JEQL.getPagedSearchingTableRefreshButton(ID_PARAMETER_APP).click();
             });
@@ -299,6 +299,13 @@ function renderAddParameterModal(modal, app) {
 
 function renderAppModal(modal, appName) {
     modal.buildHTML(`
+        <h1>Datasets</h1>
+        <table id=${ID_PARAMETER_APP}>
+            
+        </table>
+        <button id=${ID_ADD_APP_PARAMETER}>
+            Add Parameter
+        </button>
         <h1>Configurations</h1>
         <table id=${ID_CONF_APP}>
             
@@ -307,13 +314,6 @@ function renderAppModal(modal, appName) {
             Add Config
         </button>
         <br>
-        <h1>Parameters</h1>
-        <table id=${ID_PARAMETER_APP}>
-            
-        </table>
-        <button id=${ID_ADD_APP_PARAMETER}>
-            Add Parameter
-        </button>
     `);
     document.getElementById(ID_ADD_APP_CONFIG).addEventListener("click", function() {
         JEQL.renderModal(function(modal) { renderAddConfigModal(modal, appName); });

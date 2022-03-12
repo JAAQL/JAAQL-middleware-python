@@ -2,11 +2,12 @@ import "./css_loader.js"  // Will import the CSS
 import * as requests from "./requests/requests.js"; export {requests}
 let HTTP_STATUS_DEFAULT = requests.HTTP_STATUS_DEFAULT; export {HTTP_STATUS_DEFAULT};
 
-let VERSION = "1.0.0";
+let VERSION = "1.1.0";
 console.log("Loaded JEQL library, version " + VERSION);
 
 let HTTP_STATUS_CONNECTION_EXPIRED = 419;
 let HTTP_STATUS_OK = 200; export {HTTP_STATUS_OK};
+let HTTP_STATUS_ACCEPTED = 202; export {HTTP_STATUS_ACCEPTED};
 
 let STORAGE_JAAQL_TOKENS = "JAAQL_TOKENS";
 let STORAGE_JAAQL_CONFIGS = "JAAQL_CONFIGS";
@@ -17,10 +18,10 @@ let ACTION_INTERNAL_NODES = "GET /internal/nodes"; export {ACTION_INTERNAL_NODES
 let ACTION_INTERNAL_NODES_ADD = "POST /internal/nodes"; export {ACTION_INTERNAL_NODES_ADD};
 let ACTION_INTERNAL_NODES_DEL = "DELETE /internal/nodes"; export {ACTION_INTERNAL_NODES_DEL};
 let ACTION_INTERNAL_NODES_DELCONF = "POST /internal/nodes/confirm-deletion"; export {ACTION_INTERNAL_NODES_DELCONF};
-let ACTION_INTERNAL_NODE_AUTHS = "GET /internal/authorization/node"; export {ACTION_INTERNAL_NODE_AUTHS};
-let ACTION_INTERNAL_NODE_AUTHS_ADD = "POST /internal/authorization/node"; export {ACTION_INTERNAL_NODE_AUTHS_ADD};
-let ACTION_INTERNAL_NODE_AUTHS_DEL = "DELETE /internal/authorization/node"; export {ACTION_INTERNAL_NODE_AUTHS_DEL};
-let ACTION_INTERNAL_NODE_AUTHS_DELCONF = "POST /internal/authorization/node/confirm-deletion"; export {ACTION_INTERNAL_NODE_AUTHS_DELCONF};
+let ACTION_INTERNAL_NODE_AUTHS = "GET /internal/nodes/credentials"; export {ACTION_INTERNAL_NODE_AUTHS};
+let ACTION_INTERNAL_NODE_AUTHS_ADD = "POST /internal/nodes/credentials"; export {ACTION_INTERNAL_NODE_AUTHS_ADD};
+let ACTION_INTERNAL_NODE_AUTHS_DEL = "DELETE /internal/nodes/credentials"; export {ACTION_INTERNAL_NODE_AUTHS_DEL};
+let ACTION_INTERNAL_NODE_AUTHS_DELCONF = "POST /internal/nodes/credentials/confirm-deletion"; export {ACTION_INTERNAL_NODE_AUTHS_DELCONF};
 let ACTION_INTERNAL_DATABASES = "GET /internal/databases"; export {ACTION_INTERNAL_DATABASES};
 let ACTION_INTERNAL_DATABASES_ADD = "POST /internal/databases"; export {ACTION_INTERNAL_DATABASES_ADD};
 let ACTION_INTERNAL_DATABASES_DEL = "DELETE /internal/databases"; export {ACTION_INTERNAL_DATABASES_DEL};
@@ -33,24 +34,23 @@ let ACTION_REFRESH = "POST /oauth/refresh";
 let ACTION_SUBMIT = "POST /submit";
 let ACTION_SUBMIT_FILE = "POST /submit-file";
 let ACTION_CONFIGURATIONS = "GET /configurations";
-let ACTION_INTERNAL_ARG = "GET /internal/application-arguments"; export {ACTION_INTERNAL_ARG};
-let ACTION_INTERNAL_ARG_ADD = "POST /internal/application-arguments"; export {ACTION_INTERNAL_ARG_ADD};
-let ACTION_INTERNAL_ARG_DEL = "DELETE /internal/application-arguments"; export {ACTION_INTERNAL_ARG_DEL};
-let ACTION_INTERNAL_ARG_DELCONF = "POST /internal/application-arguments/confirm-deletion"; export {ACTION_INTERNAL_ARG_DELCONF};
-let ACTION_INTERNAL_CONFIG = "GET /internal/application-configurations"; export {ACTION_INTERNAL_CONFIG};
-let ACTION_INTERNAL_CONFIG_ADD = "POST /internal/application-configurations"; export {ACTION_INTERNAL_CONFIG_ADD};
-let ACTION_INTERNAL_CONFIG_DEL = "DELETE /internal/application-configurations"; export {ACTION_INTERNAL_CONFIG_DEL};
-let ACTION_INTERNAL_CONFIG_DELCONF = "POST /internal/application-configurations/confirm-deletion"; export {ACTION_INTERNAL_CONFIG_DELCONF};
-let ACTION_INTERNAL_CONFIG_AUTH = "GET /internal/authorization/configuration"; export {ACTION_INTERNAL_CONFIG_AUTH};
-let ACTION_INTERNAL_CONFIG_AUTH_ADD = "POST /internal/authorization/configuration"; export {ACTION_INTERNAL_CONFIG_AUTH_ADD};
-let ACTION_INTERNAL_CONFIG_AUTH_DEL = "DELETE /internal/authorization/configuration"; export {ACTION_INTERNAL_CONFIG_AUTH_DEL};
-let ACTION_INTERNAL_CONFIG_AUTH_DELCONF = "POST /internal/authorization/configuration/confirm-deletion"; export {ACTION_INTERNAL_CONFIG_AUTH_DELCONF};
-let ACTION_INTERNAL_PARAMETERS = "GET /internal/application-parameters"; export {ACTION_INTERNAL_PARAMETERS};
-let ACTION_INTERNAL_PARAMETERS_ADD = "POST /internal/application-parameters"; export {ACTION_INTERNAL_PARAMETERS_ADD};
-let ACTION_INTERNAL_PARAMETERS_DEL = "DELETE /internal/application-parameters"; export {ACTION_INTERNAL_PARAMETERS_DEL};
-let ACTION_INTERNAL_PARAMETERS_DELCONF = "POST /internal/application-parameters/confirm-deletion"; export {ACTION_INTERNAL_PARAMETERS_DELCONF};
-let ACTION_CONFIGURATIONS_ARGUMENTS = "GET /configurations/arguments";
-let ACTION_FETCH_LOGIN_DETAILS = "GET /login-details";
+let ACTION_INTERNAL_ASSIGNED_DATABASES = "GET /internal/applications/configurations/assigned-databases"; export {ACTION_INTERNAL_ASSIGNED_DATABASES};
+let ACTION_INTERNAL_ASSIGNED_DATABASE_ADD = "POST /internal/applications/configurations/assigned-databases"; export {ACTION_INTERNAL_ASSIGNED_DATABASE_ADD};
+let ACTION_INTERNAL_ASSIGNED_DATABASE_DEL = "DELETE /internal/applications/configurations/assigned-databases"; export {ACTION_INTERNAL_ASSIGNED_DATABASE_DEL};
+let ACTION_INTERNAL_ASSIGNED_DATABASE_DELCONF = "POST /internal/applications/configurations/assigned-databases/confirm-deletion"; export {ACTION_INTERNAL_ASSIGNED_DATABASE_DELCONF};
+let ACTION_INTERNAL_CONFIG = "GET /internal/applications/configurations"; export {ACTION_INTERNAL_CONFIG};
+let ACTION_INTERNAL_CONFIG_ADD = "POST /internal/applications/configuration"; export {ACTION_INTERNAL_CONFIG_ADD};
+let ACTION_INTERNAL_CONFIG_DEL = "DELETE /internal/applications/configurations"; export {ACTION_INTERNAL_CONFIG_DEL};
+let ACTION_INTERNAL_CONFIG_DELCONF = "POST /internal/applications/configurations/confirm-deletion"; export {ACTION_INTERNAL_CONFIG_DELCONF};
+let ACTION_INTERNAL_CONFIG_AUTH = "GET /internal/applications/configurations/authorizations"; export {ACTION_INTERNAL_CONFIG_AUTH};
+let ACTION_INTERNAL_CONFIG_AUTH_ADD = "POST /internal/applications/configurations/authorizations"; export {ACTION_INTERNAL_CONFIG_AUTH_ADD};
+let ACTION_INTERNAL_CONFIG_AUTH_DEL = "DELETE /internal/applications/configurations/authorizations"; export {ACTION_INTERNAL_CONFIG_AUTH_DEL};
+let ACTION_INTERNAL_CONFIG_AUTH_DELCONF = "POST /internal/applications/configurations/authorizations/confirm-deletion"; export {ACTION_INTERNAL_CONFIG_AUTH_DELCONF};
+let ACTION_INTERNAL_DATASETS = "GET /internal/applications/datasets"; export {ACTION_INTERNAL_DATASETS};
+let ACTION_INTERNAL_DATASETS_ADD = "POST /internal/applications/datasets"; export {ACTION_INTERNAL_DATASETS_ADD};
+let ACTION_INTERNAL_DATASETS_DEL = "DELETE /internal/applications/datasets"; export {ACTION_INTERNAL_DATASETS_DEL};
+let ACTION_INTERNAL_DATASETS_DELCONF = "POST /internal/applications/datasets/confirm-deletion"; export {ACTION_INTERNAL_DATASETS_DELCONF};
+let ACTION_CONFIGURATIONS_ASSIGNED_DATABASES = "GET /configurations/assigned-databases";
 
 let PARAMETER_JAAQL = "jaaql";
 let PARAMETER_CONFIGURATION = "configuration";
@@ -62,10 +62,11 @@ let ERR_IMPERATIVE_APP_CONFIG_FAILED = "Tried to get app config in an imperative
 let ERR_NO_FOUND_CONFIGURATION_FOR_USER = "No configuration found for user";
 let ERR_COULD_NOT_REFRESH_APP_CONFIG = "Could not refresh app config connection token";
 let ERR_COULD_NOT_FIND_APPLICATION_WITH_NAME = "Could not find application with name ";
+let ERR_MFA_TIMEOUT_OCCURRED = "MFA timeout hit. Please login again";
 
 let KEY_QUERY = "query";
 let KEY_PARAMETERS = "parameters";
-let KEY_PARAMETER = "parameter"; export {KEY_PARAMETER};
+let KEY_DATASET = "dataset"; export {KEY_DATASET};
 let KEY_NODE = "node"; export {KEY_NODE};
 let KEY_DATABASE = "database"; export {KEY_DATABASE};
 let KEY_FORCE_TRANSACTIONAL = "force_transactional"; export {KEY_FORCE_TRANSACTIONAL};
@@ -78,13 +79,13 @@ let KEY_CONNECTION = "connection";
 let KEY_USERNAME = "username"; export {KEY_USERNAME};
 let KEY_PASSWORD = "password"; export {KEY_PASSWORD};
 let KEY_MFA_KEY = "mfa_key";
+let KEY_PRE_AUTH_KEY = "pre_auth_key";
 let KEY_CONFIGURATION = "configuration"; export {KEY_CONFIGURATION};
 let KEY_APPLICATION = "application"; export {KEY_APPLICATION};
 let KEY_DESCRIPTION = "description"; export {KEY_DESCRIPTION};
 let KEY_URL = "url"; export {KEY_URL};
 let KEY_ROLE = "role"; export {KEY_ROLE};
 let KEY_PRECEDENCE = "precedence"; export {KEY_PRECEDENCE};
-let KEY_PARAMETER_NAME = "parameter_name";
 let KEY_CONNECTIONS = "connections";
 let KEY_NAME = "name"; export {KEY_NAME};
 let KEY_DATA = "data"; export {KEY_DATA};
@@ -152,6 +153,8 @@ let ID_PAGING_SEARCH = "search";
 let ID_PAGING_LAST_SEARCH = "last-search";
 
 let CLS_INPUT = "jeql-input";
+
+let AUTH_MFA_EXPIRY_MS = 120000;
 
 export function getSearchObj(page, size, search, sort) {
     let obj = {};
@@ -460,7 +463,7 @@ export function tableRenderer(data, table, rowRenderer) {
                 span.buildAttr(ATTR_JEQL_SORT_DIRECTION, oldSortDir);
                 span.innerHTML = oldSortDir;
             }
-            th.buildEventListener().buildEventListener("click", function(event) {
+            th.buildEventListener().buildEventListener("click", function() {
                 if (span.getAttribute(ATTR_JEQL_SORT_DIRECTION) === SORT_DEFAULT) {
                     span.innerHTML = SORT_ASC;
                     span.setAttribute(ATTR_JEQL_SORT_DIRECTION, SORT_ASC);
@@ -501,16 +504,6 @@ export function tableRenderer(data, table, rowRenderer) {
     }
 }
 
-export function tableBodyRenderer(data, tableBody) {
-    makeBuildable(tableBody);
-    for (let idx in data["rows"]) {
-        let row = tableBody.buildChild("tr");
-        for (let key in data["rows"][idx]) {
-            row.buildChild("td").buildText(data["rows"][idx][key]);
-        }
-    }
-}
-
 function buildBoolean(elem, attr, doBuild) {
     if (doBuild) {
         elem.setAttribute(attr, attr);
@@ -524,6 +517,7 @@ function buildEventListener(elem, event, onevent) {
 }
 
 export function makeBuildable(elem) {
+    elem.removeElement = function() { elem.parentNode.removeChild(elem); }
     elem.buildClass = function(classOrClasses) { return buildClass(elem, classOrClasses); };
     elem.buildAttr = function(attr, value) { return buildAttr(elem, attr, value); };
     elem.buildBoolean = function(attr, doBuild) { return buildBoolean(elem, attr, doBuild); };
@@ -630,7 +624,7 @@ function setMFAKey(curId, nextId, nextFunc = null) {
         nextFunc = function() { document.getElementById(nextId).focus(); };
     }
     document.getElementById(curId).onkeypress = function(event) {
-        if (Number.parseInt(event.key)) {
+        if (Number.parseInt(event.key) || Number.parseInt(event.key) === 0) {
             document.getElementById(curId).value = event.key;
             nextFunc();
         } else {
@@ -639,22 +633,84 @@ function setMFAKey(curId, nextId, nextFunc = null) {
     };
 }
 
-function getLoginData(renderMFA) {
+function getLoginData(isMFA) {
     let ret = {};
 
-    ret[KEY_USERNAME] = document.getElementById(ID_USERNAME).value;
-    ret[KEY_PASSWORD] = document.getElementById(ID_PASSWORD).value;
-
-    if (renderMFA) {
+    if (isMFA) {
         ret[KEY_MFA_KEY] = document.getElementById(ID_MFA_0).value + document.getElementById(ID_MFA_1).value +
             document.getElementById(ID_MFA_2).value + document.getElementById(ID_MFA_3).value +
             document.getElementById(ID_MFA_4).value + document.getElementById(ID_MFA_5).value;
+        ret[KEY_PRE_AUTH_KEY] = isMFA;
+    } else {
+        ret[KEY_USERNAME] = document.getElementById(ID_USERNAME).value;
+        ret[KEY_PASSWORD] = document.getElementById(ID_PASSWORD).value;
     }
 
     return ret;
 }
 
-function rendererLogin(modal, config, callback, errMsg, renderMFA) {
+function handleLoginError(modal, loginErrMsg) {
+    document.getElementById(ID_LOGIN_ERROR).innerHTML = loginErrMsg + "<br>";
+    let inputs = modal.getElementsByClassName(CLS_INPUT);
+
+    for (let inp in inputs) {
+        if (inputs.hasOwnProperty(inp)) {
+            inputs[inp].style.borderColor = "red";
+        }
+    }
+}
+
+function rendererMFALogin(modal, mainLoginDiv, config, callback, preAuthKey) {
+    mainLoginDiv.buildHTML(`
+        <span id=${ID_LOGIN_ERROR} style="color: red"></span>
+        <br>
+        <label class="jeql-strong">
+            2FA
+            <br>
+            <div style="width: 100%; display: flex; gap: 1%">
+                <input class="${CLS_INPUT} ${CLS_INPUT_MFA}" type="text" id=${ID_MFA_0} maxlength="1" size="1">
+                <input class="${CLS_INPUT} ${CLS_INPUT_MFA}" type="text" id=${ID_MFA_1} maxlength="1" size="1">
+                <input class="${CLS_INPUT} ${CLS_INPUT_MFA}" type="text" id=${ID_MFA_2} maxlength="1" size="1">
+                <input class="${CLS_INPUT} ${CLS_INPUT_MFA}" type="text" id=${ID_MFA_3} maxlength="1" size="1">
+                <input class="${CLS_INPUT} ${CLS_INPUT_MFA}" type="text" id=${ID_MFA_4} maxlength="1" size="1">
+                <input class="${CLS_INPUT} ${CLS_INPUT_MFA}" type="text" id=${ID_MFA_5} maxlength="1" size="1">
+            </div>
+        </label>
+    `);
+
+    setMFAKey(ID_MFA_0, ID_MFA_1);
+    setMFAKey(ID_MFA_1, ID_MFA_2);
+    setMFAKey(ID_MFA_2, ID_MFA_3);
+    setMFAKey(ID_MFA_3, ID_MFA_4);
+    setMFAKey(ID_MFA_4, ID_MFA_5);
+    setMFAKey(ID_MFA_5, null, function() {
+        document.getElementById(ID_LOGIN_BUTTON).click()
+    });
+
+	bindButton(ID_MFA_5, ID_LOGIN_BUTTON);
+
+    document.getElementById(ID_LOGIN_BUTTON).addEventListener("click", function() {
+        requests.makeJson(config, ACTION_LOGIN, function(loginErrMsg) {
+            if (loginErrMsg) {
+                handleLoginError(modal, loginErrMsg);
+                document.getElementById(ID_MFA_0).focus();
+                document.getElementById(ID_MFA_0).value = "";
+                document.getElementById(ID_MFA_1).value = "";
+                document.getElementById(ID_MFA_2).value = "";
+                document.getElementById(ID_MFA_3).value = "";
+                document.getElementById(ID_MFA_4).value = "";
+                document.getElementById(ID_MFA_5).value = "";
+            } else {
+                modal.closeModal();
+                callback();
+            }
+        }, getLoginData(preAuthKey));
+    });
+
+    document.getElementById(ID_MFA_0).focus();
+}
+
+function rendererLogin(modal, config, callback, errMsg) {
     modal.id = ID_LOGIN_MODAL;
     modal.appendChild(elemBuilder("div").buildClass(CLS_CENTER).buildHTML(`
         <h1>
@@ -679,79 +735,69 @@ function rendererLogin(modal, config, callback, errMsg, renderMFA) {
         document.getElementById(ID_LOGIN_ERROR).innerHTML = errMsg + "<br>";
     }
 
-    if (renderMFA) {
-        mainLoginDiv.buildHTML(`
-            <label class="jeql-strong">
-                2FA
-                <br>
-                <div style="width: 100%; display: flex; gap: 1%">
-                    <input class="${CLS_INPUT} ${CLS_INPUT_MFA}" type="text" id=${ID_MFA_0} maxlength="1" size="1">
-                    <input class="${CLS_INPUT} ${CLS_INPUT_MFA}" type="text" id=${ID_MFA_1} maxlength="1" size="1">
-                    <input class="${CLS_INPUT} ${CLS_INPUT_MFA}" type="text" id=${ID_MFA_2} maxlength="1" size="1">
-                    <input class="${CLS_INPUT} ${CLS_INPUT_MFA}" type="text" id=${ID_MFA_3} maxlength="1" size="1">
-                    <input class="${CLS_INPUT} ${CLS_INPUT_MFA}" type="text" id=${ID_MFA_4} maxlength="1" size="1">
-                    <input class="${CLS_INPUT} ${CLS_INPUT_MFA}" type="text" id=${ID_MFA_5} maxlength="1" size="1">
-                </div>
-            </label>
-        `);
-
-        setMFAKey(ID_MFA_0, ID_MFA_1);
-        setMFAKey(ID_MFA_1, ID_MFA_2);
-        setMFAKey(ID_MFA_2, ID_MFA_3);
-        setMFAKey(ID_MFA_3, ID_MFA_4);
-        setMFAKey(ID_MFA_4, ID_MFA_5);
-        setMFAKey(ID_MFA_5, null, function() { document.getElementById(ID_LOGIN_BUTTON).click() });
-    }
-
     let rememberMeBox = modal.buildChild("div").buildHTML(`
         <label for=${ID_REMEMBER_ME}>Remember me</label>
         <input type="checkbox" id=${ID_REMEMBER_ME}>
     `);
     rememberMeBox.checked = config.rememberMe;
 
-    let button = elemBuilder("div")
-        .buildChild("button")
-        .buildClass(CLS_BUTTON)
-        .buildText("Login")
-        .buildAttr("id", ID_LOGIN_BUTTON);
-    modal.appendChild(button);
+    let createLoginButton = function(buttonDiv) {
+        return buttonDiv
+            .buildChild("button")
+            .buildClass(CLS_BUTTON)
+            .buildText("Login")
+            .buildAttr("id", ID_LOGIN_BUTTON);
+    }
+    let buttonDiv = elemBuilder("div");
+    let button = createLoginButton(buttonDiv);
+    modal.appendChild(buttonDiv);
     button.addEventListener("click", function() {
         if (document.getElementById(ID_REMEMBER_ME).checked !== config.rememberMe) {
             config.logout(false, true);
             config.rememberMe = document.getElementById(ID_REMEMBER_ME).checked;
         }
-        requests.makeJson(config, ACTION_LOGIN, function(loginErrMsg) {
-            if (loginErrMsg) {
-                document.getElementById(ID_LOGIN_ERROR).innerHTML = loginErrMsg + "<br>";
-                let inputs = modal.getElementsByClassName(CLS_INPUT);
-                for (let inp in inputs) {
-                    if (inputs.hasOwnProperty(inp)) {
-                        inputs[inp].style.borderColor = "red";
+        requests.makeJson(config, ACTION_LOGIN, function(loginErrMsg, mfaNext) {
+            if (mfaNext) {
+                mainLoginDiv.innerHTML = "";
+                rememberMeBox.removeElement();
+                let mfaError = mainLoginDiv.buildChild("span")
+                    .buildAttr("style", "display: none");
+                buttonDiv.innerHTML = "";
+                let backButton = buttonDiv.buildChild("button")
+                    .buildClass(CLS_BUTTON)
+                    .buildText("Back");
+                createLoginButton(buttonDiv);
+                setTimeout(function() {
+                    mfaError.innerText = ERR_MFA_TIMEOUT_OCCURRED;
+                    backButton.click();
+                }, AUTH_MFA_EXPIRY_MS);
+                backButton.addEventListener("click", function() {
+                    modal.closeModal();
+                    let mfaErrMsg = null;
+                    if (mfaError.innerText.length !== 0) {
+                        mfaErrMsg = mfaError.innerText;
                     }
-                }
+                    showLoginModal(config, callback, mfaErrMsg);
+                });
+                rendererMFALogin(modal, mainLoginDiv, config, callback, loginErrMsg);
+            } else if (loginErrMsg) {
+                handleLoginError(modal, loginErrMsg);
                 document.getElementById(ID_USERNAME).focus();
             } else {
                 modal.closeModal();
                 callback();
             }
-        }, getLoginData(renderMFA));
+        }, getLoginData());
     });
     bindButton(ID_USERNAME, ID_LOGIN_BUTTON);
     bindButton(ID_PASSWORD, ID_LOGIN_BUTTON);
-
-    if (renderMFA) {
-        bindButton(ID_MFA_5, ID_LOGIN_BUTTON);
-    }
+    document.getElementById(ID_USERNAME).focus();
 }
 
 function showLoginModal(config, callback, errMsg) {
-    requests.makeSimple(config, ACTION_FETCH_LOGIN_DETAILS,
-        function(details) {
-            renderModal(
-                function(modal) { rendererLogin(modal, config, callback, errMsg,details.includes(KEY_MFA_KEY)); },
-                false);
-        }
-    );
+    renderModal(
+        function(modal) { rendererLogin(modal, config, callback, errMsg); },
+        false);
 }
 
 function onRefreshToken(config, callback) {
@@ -875,7 +921,7 @@ function selectAppConfig(config, callback, chosenConfig) {
     let updateStoredAppConfigs = function(config, callback, chosenConfig, connections) {
         let connectionLookup = {};
         for (let idx in connections) {
-            connectionLookup[connections[idx][KEY_PARAMETER_NAME]] = connections[idx][KEY_CONNECTION];
+            connectionLookup[connections[idx][KEY_DATASET]] = connections[idx][KEY_CONNECTION];
         }
 
         let configObj = {};
@@ -888,7 +934,7 @@ function selectAppConfig(config, callback, chosenConfig) {
         callback(config);
     };
 
-    requests.makeBody(config, ACTION_CONFIGURATIONS_ARGUMENTS,
+    requests.makeBody(config, ACTION_CONFIGURATIONS_ASSIGNED_DATABASES,
         function(connections) { updateStoredAppConfigs(config, callback, chosenConfig, connections); },
         callData);
 }
@@ -1048,21 +1094,21 @@ export function init(application, onLoad, doRenderAccountBanner = true, jaaqlUrl
     return config;
 }
 
-function fetchConnection(config, appParameter = null) {
+function fetchConnection(config, dataset = null) {
     let appConfig = getOrSelectAppConfig(config)[KEY_CONNECTIONS];
 
-    if (appParameter === null) {
+    if (dataset === null) {
         if (Object.keys(appConfig).length > 1) {
-            throw new Error("Must supply parameter as multiple parameters exist");
+            throw new Error("Must supply dataset as multiple datasets exist");
         } else if (appConfig.length === 0) {
             resetAppConfig(config);
         }
         return appConfig[Object.keys(appConfig)[0]];
     } else {
-        if (appParameter in appConfig) {
-            return appConfig[appParameter];
+        if (dataset in appConfig) {
+            return appConfig[dataset];
         } else {
-            throw new Error("Parameter '" + appParameter + " does not exist");
+            throw new Error("Dataset '" + dataset + " does not exist");
         }
     }
 }
@@ -1114,8 +1160,8 @@ function expiredConnectionHandler(res, config, action, renderFunc, body, json) {
         appConfig[KEY_NAME]);
 }
 
-export function formQuery(config, query, queryParameters = null, appParameter = null, database = null) {
-    let connection = fetchConnection(config, appParameter);
+export function formQuery(config, query, queryParameters = null, dataset = null, database = null) {
+    let connection = fetchConnection(config, dataset);
 
     if (queryParameters === null) { queryParameters = {}; }
 
@@ -1125,6 +1171,10 @@ export function formQuery(config, query, queryParameters = null, appParameter = 
     formed[KEY_CONNECTION] = connection;
     formed[KEY_DATABASE] = database;
     return formed;
+}
+
+export function submitFile(config, input, renderFunc) {
+    submit(config, input, renderFunc, false, true);
 }
 
 export function submit(config, input, renderFunc, doNotRefresh = false, asFile = false) {

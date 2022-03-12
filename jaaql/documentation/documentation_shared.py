@@ -1,6 +1,9 @@
+from http import HTTPStatus
+
 from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, SwaggerArgumentResponse,\
-    SwaggerResponse, SwaggerList, SwaggerFlatResponse, REST__POST, REST__GET, SwaggerSimpleList
+    SwaggerResponse, SwaggerList, SwaggerFlatResponse, REST__POST
 from jaaql.constants import *
+from typing import Union
 
 OUTPUT = False
 
@@ -61,15 +64,31 @@ def rename_arg(arg_res: SwaggerArgumentResponse, new_name: str):
     )
 
 
-def set_nullable(arg_res: SwaggerArgumentResponse, condition: str = None, new_name: str = None):
+def set_required(arg_res: SwaggerArgumentResponse, new_name: str = None):
     return SwaggerArgumentResponse(
         arg_res.name if new_name is None else new_name,
         arg_res.description,
         arg_res.arg_type,
         arg_res.example,
-        False,
-        condition=condition
+        True
     )
+
+
+def set_nullable(arg_res: Union[SwaggerArgumentResponse, list], condition: Union[str, list] = None,
+                 new_name: Union[str, list] = None):
+    if isinstance(arg_res, list):
+        if new_name is None:
+            new_name = [None] * len(arg_res)
+        return [set_nullable(cur, condition) for cur, condition, new_name in zip(arg_res, condition, new_name)]
+    else:
+        return SwaggerArgumentResponse(
+            arg_res.name if new_name is None else new_name,
+            arg_res.description,
+            arg_res.arg_type,
+            arg_res.example,
+            False,
+            condition=condition
+        )
 
 
 def gen_filtered_records(name: str, data: [SwaggerArgumentResponse]):
@@ -100,27 +119,43 @@ ARG_RES__part_sort_pageable = [
 ]
 
 
-def gen_arg_res_sort_pageable(col_one: str, col_two: str, example_one: str = None, example_two: str = None):
+def gen_arg_res_sort_pageable(col_one: str, col_two: str = None, example_one: str = None, example_two: str = None):
     if example_one is None:
         example_one = "jaaql"
     if example_two is None:
         example_two = "jaaql"
 
-    sort_arg = SwaggerArgumentResponse(
-        name=KEY__sort,
-        description="Comma separated sort",
-        condition="If not supplied uses default database ordering",
-        arg_type=str,
-        example=[col_one + " ASC, " + col_two + " DESC", col_two + " ASC, " + col_one + " DESC"]
-    )
-    search_arg = SwaggerArgumentResponse(
-        name=KEY__search,
-        description="OR/AND separated search. Uses a limited subset of SQL",
-        condition="If not supplied all records will match",
-        arg_type=str,
-        example=[col_one + " LIKE '%" + example_one + "%' OR " + col_two + " LIKE '%" + example_two + "%'",
-                 col_two + " LIKE '%" + example_two + "%' AND " + col_one + " LIKE '%" + example_one + "%'"]
-    )
+    if col_two is None:
+        sort_arg = SwaggerArgumentResponse(
+            name=KEY__sort,
+            description="Comma separated sort",
+            condition="If not supplied uses default database ordering",
+            arg_type=str,
+            example=[col_one + " ASC", col_one + " DESC"]
+        )
+        search_arg = SwaggerArgumentResponse(
+            name=KEY__search,
+            description="OR/AND separated search. Uses a limited subset of SQL",
+            condition="If not supplied all records will match",
+            arg_type=str,
+            example=[col_one + " LIKE '%" + example_one + "%'"]
+        )
+    else:
+        sort_arg = SwaggerArgumentResponse(
+            name=KEY__sort,
+            description="Comma separated sort",
+            condition="If not supplied uses default database ordering",
+            arg_type=str,
+            example=[col_one + " ASC, " + col_two + " DESC", col_two + " ASC, " + col_one + " DESC"]
+        )
+        search_arg = SwaggerArgumentResponse(
+            name=KEY__search,
+            description="OR/AND separated search. Uses a limited subset of SQL",
+            condition="If not supplied all records will match",
+            arg_type=str,
+            example=[col_one + " LIKE '%" + example_one + "%' OR " + col_two + " LIKE '%" + example_two + "%'",
+                     col_two + " LIKE '%" + example_two + "%' AND " + col_one + " LIKE '%" + example_one + "%'"]
+        )
 
     return [sort_arg, search_arg] + ARG_RES__part_sort_pageable
 
@@ -141,31 +176,54 @@ ARG_RES__email = SwaggerArgumentResponse(
     required=True,
 )
 
-ARG_RES__totp_mfa = SwaggerResponse(
+ARG_RES__totp_mfa = [
+    SwaggerArgumentResponse(
+        name=KEY__otp_uri,
+        description="OTP URI",
+        arg_type=str,
+        example=["otpauth://totp/%test?secret=supersecret&issuer=JAAQL",
+                 "otpauth://totp/%mylabel?secret=pa55word&issuer=MyIssuer"],
+        required=True
+    ),
+    SwaggerArgumentResponse(
+        name=KEY__otp_qr,
+        description="OTP QR code, as a inlined base64 encoded png image",
+        arg_type=str,
+        example=["data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKsAAADV...",
+                 "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA..."],
+        required=True
+    )
+]
+RES__totp_mfa = SwaggerResponse(
     description="Contains information to setup authenticator app",
-    response=[
-        SwaggerArgumentResponse(
-            name=KEY__otp_uri,
-            description="OTP URI",
-            arg_type=str,
-            example=["otpauth://totp/%test?secret=supersecret&issuer=JAAQL",
-                     "otpauth://totp/%mylabel?secret=pa55word&issuer=MyIssuer"],
-            required=True
-        ),
-        SwaggerArgumentResponse(
-            name=KEY__otp_qr,
-            description="OTP QR code, as a inlined base64 encoded png image",
-            arg_type=str,
-            example=["data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKsAAADV...",
-                     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA..."],
-            required=True
-        )
-    ]
+    response=ARG_RES__totp_mfa
+)
+RES__totp_mfa_nullable = SwaggerResponse(
+    description="Contains information to setup authenticator app",
+    response=set_nullable(ARG_RES__totp_mfa, ["Is mfa forced on"] * len(ARG_RES__totp_mfa))
 )
 
 RES__oauth_token = SwaggerFlatResponse(
     description="A temporary JWT token that can be used to authenticate with the server",
     body=EXAMPLE__jwt
+)
+
+DESC__expecting_mfa_key = "A temporary JWT token that can be submitted to the server along with an MFA key for full "\
+                          "access"
+
+RES__expecting_mfa_key = SwaggerFlatResponse(
+    description=DESC__expecting_mfa_key,
+    body=EXAMPLE__jwt,
+    code=HTTPStatus.ACCEPTED
+)
+
+ARG_RES__expecting_mfa_key = SwaggerArgumentResponse(
+    name=KEY__pre_auth_key,
+    description=DESC__expecting_mfa_key,
+    arg_type=str,
+    example=[EXAMPLE__jwt],
+    required=False,
+    condition="Is during the first round of authentication"
 )
 
 ARG_RES__mfa_key = SwaggerArgumentResponse(
@@ -175,25 +233,6 @@ ARG_RES__mfa_key = SwaggerArgumentResponse(
     example=["571208", "222104"],
     required=False,
     condition="MFA is turned on"
-)
-
-DOCUMENTATION__login_details = SwaggerDocumentation(
-    tags="Login Details",
-    security=False,
-    methods=SwaggerMethod(
-        name="Fetch Login Fields",
-        description="Fetches the fields that are required to login",
-        method=REST__GET,
-        response=SwaggerResponse(
-            description="A response detailing what fields are required to login",
-            response=SwaggerSimpleList(
-                arg_type=str,
-                description="A list of fields required to login",
-                example=[KEY__username, KEY__password, KEY__mfa_key],
-                required=True
-            )
-        )
-    )
 )
 
 EXAMPLE__application_name = "Library Browser"
@@ -221,15 +260,36 @@ ARG_RES__application_uri = SwaggerArgumentResponse(
     example=[EXAMPLE__application_url, "https://jaaql.com/demos/meeting-application"],
     required=True
 )
+EXAMPLE__application_dataset = "library"
+ARG_RES__dataset_name = SwaggerArgumentResponse(
+    name=KEY__dataset_name,
+    description="The name of the dataset",
+    arg_type=str,
+    example=[EXAMPLE__application_dataset, "meeting"],
+    required=True
+)
+ARG_RES__dataset_description = SwaggerArgumentResponse(
+    name="description",
+    description="The dataset description",
+    arg_type=str,
+    example=["The library book dataset", "The meeting room spaces dataset"],
+    required=True
+)
+ARG_RES__reference_dataset = rename_arg(ARG_RES__dataset_name, KEY__dataset)
 
 ARG_RES__application_body = [ARG_RES__application_name, ARG_RES__application_description, ARG_RES__application_uri]
+
+CONDITION__pre_auth = "Is during 1st stage authentication"
 
 DOCUMENTATION__oauth_token = SwaggerDocumentation(
     tags="OAuth",
     security=False,  # This _is_ the security method, therefore it is not expecting a jwt token
     methods=SwaggerMethod(
         name="OAuth Fetch Token",
-        description="Authenticate with the server",
+        description="Authenticate with the server. Send username and password and server will respond with 200 and a "
+                    "token which can be used to access the service. The server may also respond with a 202 and a "
+                    "token, this indicates that an mfa key is expected. Send the token back to the service along with "
+                    "an MFA key and you will returned the aforementioned 200 response",
         method=REST__POST,
         body=[
             SwaggerArgumentResponse(
@@ -237,12 +297,17 @@ DOCUMENTATION__oauth_token = SwaggerDocumentation(
                 description="JAAQL login username",
                 arg_type=str,
                 example=["jaaql", "aaron@jaaql.com"],
-                required=True
+                required=False,
+                condition=CONDITION__pre_auth
             ),
-            ARG_RES__jaaql_password,
-            ARG_RES__mfa_key
+            set_nullable(ARG_RES__jaaql_password, CONDITION__pre_auth),
+            ARG_RES__mfa_key,
+            ARG_RES__expecting_mfa_key
         ],
-        response=RES__oauth_token
+        response=[
+            RES__oauth_token,
+            RES__expecting_mfa_key
+        ]
     )
 )
 

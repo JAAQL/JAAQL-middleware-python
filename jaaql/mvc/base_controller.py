@@ -29,6 +29,7 @@ ARG__response = "response"
 ARG__oauth_token = "oauth_token"
 ARG__password_hash = "password_hash"
 ARG__last_totp = "last_totp"
+ARG__username = "username"
 
 CONTENT__encoding = "charset=utf-8"
 CONTENT__json = "application/json"
@@ -79,7 +80,7 @@ class BaseJAAQLController:
         super().__init__()
         self.app = Flask(__name__, instance_relative_config=True)
         self.app.config[FLASK__json_sort_keys] = False
-        self.app.config[FLASK__max_content_length] = 1024 * 8  # 8kB
+        self.app.config[FLASK__max_content_length] = 1024 * 100 * 2  # 2 MB
         self._init_error_handlers(self.app)
         self.model = model
         self.is_prod = is_prod
@@ -282,6 +283,24 @@ class BaseJAAQLController:
         resp.headers.add(HEADER__allow_methods, CORS__WILDCARD)
         return resp
 
+    def log_safe_dump_recursive(self, data):
+        if isinstance(data, list):
+            return [self.log_safe_dump_recursive(itm) for itm in data]
+        elif isinstance(data, dict):
+            return {
+                idx: "*******" if "password" in idx.lower() else itm
+                for idx, itm in data.items()
+            }
+        else:
+            return data
+
+    def log_safe_dump(self, data):
+        """
+        Performs a log safe json dump of the data
+        :return:
+        """
+        return json.dumps(self.log_safe_dump_recursive(data))
+
     def cors_route(self, route: str, swagger_documentation: Union[list, SwaggerDocumentation]):
         documentation_as_lists = swagger_documentation
         if not isinstance(documentation_as_lists, list):
@@ -315,14 +334,15 @@ class BaseJAAQLController:
                     ip_id = None
                     ua_id = None
                     totp_iv = None
+                    username = None
                     password_hash = None
                     l_totp = None
 
                     ip_addr = request.headers.get(HEADER__real_ip, request.remote_addr).split(",")[0]
 
                     if swagger_documentation.security:
-                        jaaql_connection, user_id, ip_id, ua_id, totp_iv, password_hash, l_totp = self.model.verify_jwt(
-                            request.headers.get(HEADER__security), ip_addr, user_agent,
+                        jaaql_connection, user_id, ip_id, ua_id, totp_iv, password_hash, l_totp, username =\
+                            self.model.verify_jwt(request.headers.get(HEADER__security), ip_addr, user_agent,
                             route == ENDPOINT__refresh)
 
                     supply_dict = {}
@@ -334,12 +354,12 @@ class BaseJAAQLController:
                         if ARG__http_inputs in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__http_inputs] = BaseJAAQLController.get_input_as_dictionary(method,
                                                                                                         self.is_prod)
-                            method_input = json.dumps(supply_dict[ARG__http_inputs])
+                            method_input = self.log_safe_dump(supply_dict[ARG__http_inputs])
 
                         if ARG__sql_inputs in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__sql_inputs] = BaseJAAQLController.get_input_as_dictionary(
                                 method, self.is_prod, fill_missing=False)
-                            method_input = json.dumps(supply_dict[ARG__sql_inputs])
+                            method_input = self.log_safe_dump(supply_dict[ARG__sql_inputs])
 
                         if ARG__totp_iv in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:
@@ -360,6 +380,11 @@ class BaseJAAQLController:
                             if not swagger_documentation.security:
                                 raise Exception(ERR__method_required_password_hash)
                             supply_dict[ARG__last_totp] = l_totp
+
+                        if ARG__username in inspect.getfullargspec(view_func_local).args:
+                            if not swagger_documentation.security:
+                                raise Exception(ERR__method_required_password_hash)
+                            supply_dict[ARG__username] = username
 
                         if ARG__user_agent in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__user_agent] = user_agent
@@ -398,6 +423,8 @@ class BaseJAAQLController:
                             resp = BaseJAAQLController.validate_output(method_response, resp)
                         ret_status = status
                     except Exception as ex:
+                        if not self.is_prod:
+                            traceback.print_exc()  # Debugging
                         if not isinstance(ex, HttpStatusException):
                             ret_status = RESP__default_err_code
                             ex_msg = RESP__default_err_message
@@ -413,7 +440,8 @@ class BaseJAAQLController:
                         if not do_allow_all and ret_status != HTTPStatus.UNAUTHORIZED and ret_status !=\
                                 HTTPStatus.NOT_IMPLEMENTED and ret_status != HTTPStatus.BAD_REQUEST and \
                                 ret_status != HTTPStatus.UNPROCESSABLE_ENTITY and \
-                                ret_status != CustomHTTPStatus.DATABASE_NO_EXIST:
+                                ret_status != CustomHTTPStatus.DATABASE_NO_EXIST and \
+                                ret_status != HTTPStatus.INTERNAL_SERVER_ERROR:
                             try:
                                 self.get_response(method, ret_status)
                             except Exception as sub_ex:
@@ -438,8 +466,9 @@ class BaseJAAQLController:
 
                 if jaaql_resp.response_type == resp_type:
                     resp = jsonify(resp)
+                    resp.status = jaaql_resp.response_code
                 else:
-                    resp = Response(resp, mimetype=jaaql_resp.response_type)
+                    resp = Response(resp, mimetype=jaaql_resp.response_type, status=jaaql_resp.response_code)
 
                 self._cors(resp)
                 return resp

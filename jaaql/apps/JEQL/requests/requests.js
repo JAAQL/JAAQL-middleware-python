@@ -136,6 +136,10 @@ export function make(config, action, renderFunc, body, json) {
             } else {
                 renderFunc(res);
             }
+        } else if (this.readyState === 4 && this.status === 202) {
+            if (isOauth) {
+                origRenderFunc(res, true);
+            }
         } else if (this.readyState === 4 && this.status === 401) {
             if (isOauth) {
                 origRenderFunc("Credentials incorrect. Please try again");

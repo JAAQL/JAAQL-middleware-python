@@ -29,6 +29,9 @@ textarea {
 .argument {
     color: #ff00ff;
 }
+.optional_argument {
+    color: #ffff00;
+}
 #welcome {
     text-align: center;
 }
