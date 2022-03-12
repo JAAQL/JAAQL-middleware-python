@@ -717,6 +717,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         jwt_key = self.vault.get_obj(VAULT_KEY__jwt_crypt_key)
         obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
+        was_database_none = database is None
 
         if database is None:
             database = jaaql_connection
@@ -738,4 +739,17 @@ class JAAQLModel(BaseJAAQLModel):
         if KEY__database in http_inputs:
             http_inputs.pop(KEY__database)
 
-        return InterpretJAAQL(database).transform(http_inputs)
+        caught_ex = None
+        to_ret = None
+        try:
+            to_ret = InterpretJAAQL(database).transform(http_inputs)
+        except Exception as ex:
+            caught_ex = ex
+
+        if not was_database_none:
+            database.pg_pool.closeall()
+
+        if caught_ex is not None:
+            raise caught_ex
+
+        return to_ret

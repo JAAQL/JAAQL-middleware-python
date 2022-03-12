@@ -373,6 +373,9 @@ class BaseJAAQLController:
                             ex_msg = ex.message
                         throw_ex = ex
 
+                    if jaaql_connection is not None:
+                        jaaql_connection.pg_pool.closeall()
+
                     duration = round((datetime.now() - start_time).total_seconds() * 1000)
                     if user_id is not None:
                         self.model.log(user_id, start_time, duration, ex_msg, method_input, ip_id, ua_id, ret_status,
