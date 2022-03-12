@@ -1,5 +1,10 @@
 # How to build
 For the purpose of making the maintainer's life easier, this file has been included in case they forget how to build and push  
+To build you need the following packages
+
+    pip install wheel
+    pip install twine
+
 Build and push the project with the commands  
 
     python setup.py sdist bdist_wheel
