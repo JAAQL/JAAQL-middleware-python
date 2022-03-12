@@ -1,14 +1,11 @@
-FROM postgres:14.2
+FROM jaaql/jaaql-middleware-python
 LABEL maintainer="jaaql.io"
 
 EXPOSE 80
 EXPOSE 443
 
-RUN apt-get update && apt-get install -y build-essential
-RUN apt install -y libpq-dev
-RUN apt-get install -y git
-
 ENV INSTALL_PATH /JAAQL-middleware-python
+RUN rm -rf $INSTALL_PATH
 COPY . $INSTALL_PATH
 
 RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini
@@ -17,7 +14,6 @@ RUN mv $INSTALL_PATH/jaaql/config/config-docker.ini $INSTALL_PATH/jaaql/config/c
 RUN mkdir -p $INSTALL_PATH/www
 RUN mkdir -p $INSTALL_PATH/log
 RUN chown -R "$USER":www-data $INSTALL_PATH/www
-
 RUN mkdir -p /etc/letsencrypt/live
 
 VOLUME /etc/letsencrypt
@@ -26,20 +22,7 @@ VOLUME $INSTALL_PATH/vault
 
 COPY docker/jaaql.service /lib/systemd/system/jaaql.service
 
-RUN apt update
-RUN apt -y install nginx
-
 VOLUME /etc/nginx/sites-available/
-
-RUN apt-get install dos2unix
-RUN apt -y install bzip2
-RUN apt -y install wget
-RUN wget https://downloads.python.org/pypy/pypy3.7-v7.3.5-linux64.tar.bz2
-RUN tar xf pypy3.7-v7.3.5-linux64.tar.bz2
-RUN ./pypy3.7-v7.3.5-linux64/bin/pypy -m ensurepip --default-pip
-RUN ./pypy3.7-v7.3.5-linux64/bin/pypy -mpip install -U pip wheel
-RUN ./pypy3.7-v7.3.5-linux64/bin/pypy -mpip install certbot-nginx==1.2.0
-RUN ./pypy3.7-v7.3.5-linux64/bin/pypy -mpip install -r $INSTALL_PATH/requirements.txt
 
 RUN mv $INSTALL_PATH/docker/jaaql.sql /docker-entrypoint-initdb.d/jaaql.sql
 RUN mv $INSTALL_PATH/docker/entrypoint.sh entrypoint.sh

@@ -85,6 +85,7 @@ function processUpDownKey(history, historyList) {
 }
 
 function keyDownBody(e) {
+    if (JEQL.modalExists()) { return; }
     window.lineInput.focus();
     if (window.curHistoryLine !== null) {
         let history = getHistory(window.jeqlConfig);
@@ -209,6 +210,7 @@ function onSendConsole() {
 }
 
 function keyPressBody(e) {
+    if (JEQL.modalExists()) { return; }
     if (e.which === 13 && !e.shiftKey) {
         window.newLine.getElementsByTagName("span")[0].innerText = new Date().toISOString();
         window.lineInput.setAttribute("readonly", "readonly");

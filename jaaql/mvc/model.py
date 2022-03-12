@@ -6,6 +6,7 @@ from jaaql.exceptions.http_status_exception import HttpStatusException, HTTPStat
     HTTP_STATUS_CONNECTION_EXPIRED, ERR__already_installed, ERR__passwords_do_not_match, ERR__cannot_override_db
 
 from typing import Optional
+from distutils.dir_util import copy_tree
 from jaaql.mvc.response import JAAQLResponse
 from collections import Counter
 from os.path import dirname
@@ -335,7 +336,7 @@ class JAAQLModel(BaseJAAQLModel):
                 if app_dir.is_dir():
                     if os.path.exists(join(apps_dir, app_dir.name)):
                         shutil.rmtree(join(apps_dir, app_dir.name))
-            shutil.copytree(join(get_jaaql_root(), DIR__apps), apps_dir)
+            copy_tree(join(get_jaaql_root(), DIR__apps), apps_dir)
 
     def install(self, db_connection_string: str, superjaaql_password: str, password: str, install_key: str,
                 ip_address: str, user_agent: str, response: JAAQLResponse):
@@ -903,6 +904,8 @@ class JAAQLModel(BaseJAAQLModel):
         jwt_key = self.vault.get_obj(VAULT_KEY__jwt_crypt_key)
         obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
 
+        was_connection_none = connection is None
+
         if connection is None:
             connection = jaaql_connection
         else:
@@ -925,4 +928,17 @@ class JAAQLModel(BaseJAAQLModel):
         if KEY__database in http_inputs:
             http_inputs.pop(KEY__database)
 
-        return InterpretJAAQL(connection).transform(http_inputs)
+        caught_ex = None
+        to_ret = None
+        try:
+            to_ret = InterpretJAAQL(connection).transform(http_inputs)
+        except Exception as ex:
+            caught_ex = ex
+
+        if not was_connection_none:
+            connection.pg_pool.closeall()
+
+        if caught_ex is not None:
+            raise caught_ex
+
+        return to_ret

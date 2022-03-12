@@ -162,6 +162,10 @@ export function getSearchObj(page, size, search, sort) {
     return obj;
 }
 
+export function modalExists() {
+    return document.body.getElementsByClassName(CLS_MODAL).length !== 0;
+}
+
 export function doConfirmDelete(config, data, actionDel, actionDelConf, onComplete) {
     requests.makeBody(window.JEQL_CONFIG, actionDel, function(res) {
         data = {};

@@ -34,11 +34,12 @@ class DBPGInterface(DBInterface):
             if "does not exist" in str(ex).split("\"")[-1]:
                 raise HttpStatusException(str(ex), CustomHTTPStatus.DATABASE_NO_EXIST)
             else:
-                raise HttpStatusException(str(ex), HTTPStatus.UNAUTHORIZED)
+                raise HttpStatusException(str(ex))
 
     def get_conn(self):
         try:
             conn = self.pg_pool.getconn()
+            print("Fetched conn")
             if conn is None:
                 raise Exception
         except Exception as ex:
@@ -48,6 +49,7 @@ class DBPGInterface(DBInterface):
         return conn
 
     def put_conn(self, conn):
+        print("Put conn")
         return self.pg_pool.putconn(conn)
 
     def close(self):
