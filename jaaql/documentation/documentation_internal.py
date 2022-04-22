@@ -3,11 +3,14 @@ from jaaql.constants import *
 from jaaql.documentation.documentation_shared import ARG_RES__jaaql_password, ARG_RES__email,\
     JWT__invite, gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__deletion_key, RES__deletion_key,\
     set_nullable, rename_arg, ARG_RES__database_name, EXAMPLE__db, ARG_RES__application_name,\
-    EXAMPLE__application_name, EXAMPLE__application_url, ARG_RES__application_body
+    EXAMPLE__application_name, EXAMPLE__application_url, ARG_RES__application_body, EXAMPLE__application_dataset,\
+    ARG_RES__dataset_name, ARG_RES__dataset_description, RES__totp_mfa_nullable, ARG_RES__reference_dataset
 
 TITLE = "JAAQL Internal API"
 DESCRIPTION = "Collection of methods in the JAAQL internal API"
 FILENAME = "jaaql_internal_api"
+
+CONDITION_force_mfa = "Was MFA requested or forced on"
 
 ARG_RES__double_mfa = SwaggerResponse(
     description="Contains information to setup authenticator app for jaaql and potentially postgres user",
@@ -18,7 +21,8 @@ ARG_RES__double_mfa = SwaggerResponse(
             arg_type=str,
             example=["otpauth://totp/%test?secret=supersecret&issuer=JAAQL",
                      "otpauth://totp/%mylabel?secret=pa55word&issuer=MyIssuer"],
-            required=True
+            required=False,
+            condition=CONDITION_force_mfa
         ),
         SwaggerArgumentResponse(
             name=KEY__jaaql_otp_qr,
@@ -26,7 +30,8 @@ ARG_RES__double_mfa = SwaggerResponse(
             arg_type=str,
             example=["data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKsAAADV...",
                      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA..."],
-            required=True
+            required=False,
+            condition=CONDITION_force_mfa
         ),
         SwaggerArgumentResponse(
             name=KEY__superjaaql_otp_uri,
@@ -35,7 +40,7 @@ ARG_RES__double_mfa = SwaggerResponse(
             example=["otpauth://totp/%test?secret=supersecret&issuer=JAAQL",
                      "otpauth://totp/%mylabel?secret=pa55word&issuer=MyIssuer"],
             required=False,
-            condition="Was the superjaaql password supplied"
+            condition="Was the superjaaql password supplied and mfa requested or forced on"
         ),
         SwaggerArgumentResponse(
             name=KEY__superjaaql_otp_qr,
@@ -44,7 +49,7 @@ ARG_RES__double_mfa = SwaggerResponse(
             example=["data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKsAAADV...",
                      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA..."],
             required=False,
-            condition="Was the superjaaql password supplied"
+            condition="Was the superjaaql password supplied and mfa requested or forced on"
         )
     ]
 )
@@ -70,6 +75,15 @@ DOCUMENTATION__install = SwaggerDocumentation(
             ),
             ARG_RES__jaaql_password,
             SwaggerArgumentResponse(
+                name=KEY__use_mfa,
+                description="To use MFA, if MFA is not forced, otherwise will be true. It is highly recommended that "
+                "mfa is enabled for open production systems due to the access level of the created account(s)",
+                arg_type=bool,
+                example=[True, False],
+                required=False,
+                condition="Is MFA force enabled"
+            ),
+            SwaggerArgumentResponse(
                 name=KEY__install_key,
                 description="Single use/purpose key. Find in the logs, line starting with 'INSTALL KEY:' at startup",
                 arg_type=str,
@@ -80,8 +94,8 @@ DOCUMENTATION__install = SwaggerDocumentation(
                 name=KEY__superjaaql_password,
                 description="At the postgres level, the postgres user is used to set up the jaaql user. If you want "
                 "access to the postgres user through JAAQL, please provide a password and this user will be setup for "
-                "you. This is a JAAQL login for superjaaql so it is entirely independent of the postgres password "
-                "at the database level. If you do not supply this password, you will not be able to login to jaaql "
+                "you. This is a JAAQL login for superjaaql so it is entirely independent of the postgres password at "
+                "the database level. If you do not supply this password, you will not be able to login to jaaql "
                 "authenticating as postgres with the local database node. You can set this up later if you want ",
                 example=["sup3rjaaqlpa55word"],
                 condition="If you want to give the superjaaql user a login",
@@ -101,8 +115,7 @@ DOCUMENTATION__install = SwaggerDocumentation(
 )
 
 # Not unused. Used to generate html files
-from jaaql.documentation.documentation_shared import DOCUMENTATION__login_details, DOCUMENTATION__oauth_token,\
-    DOCUMENTATION__oauth_refresh
+from jaaql.documentation.documentation_shared import DOCUMENTATION__oauth_token, DOCUMENTATION__oauth_refresh
 
 
 EXAMPLE__address = "mydb.abbcdcec9afd.eu-west-1.rds.amazonaws.com"
@@ -372,31 +385,13 @@ ARG__application_name = SwaggerArgumentResponse(
     required=True
 )
 
-KEY__application_parameter_name = "name"
-EXAMPLE__application_parameter_db = "library_db"
-
-ARG_RES__application_parameter_name = SwaggerArgumentResponse(
-    name=KEY__application_parameter_name,
-    description="The name of the parameter",
-    arg_type=str,
-    example=[EXAMPLE__application_parameter_db, "meeting_db"],
-    required=True
-)
-ARG_RES__reference_application_parameter = rename_arg(ARG_RES__application_name, KEY__parameter)
-
-ARG_RES__application_parameter_key = [
+ARG_RES__dataset_key = [
     ARG__application_name,
-    ARG_RES__application_parameter_name
+    ARG_RES__dataset_name
 ]
 
-ARG_RES__application_parameter = ARG_RES__application_parameter_key + [
-    SwaggerArgumentResponse(
-        name="description",
-        description="The parameter description",
-        arg_type=str,
-        example=["The library book database", "The meeting room spaces database"],
-        required=True
-    )
+ARG_RES__application_dataset = ARG_RES__dataset_key + [
+    ARG_RES__dataset_description
 ]
 
 EXAMPLE__configuration_name = "Library QA"
@@ -431,44 +426,44 @@ ARG_RES__application_configuration = ARG_RES__application_configuration_key + [
     )
 ]
 
-DOCUMENTATION__application_parameters = SwaggerDocumentation(
+DOCUMENTATION__application_datasets = SwaggerDocumentation(
     tags="Applications",
     methods=[
         SwaggerMethod(
-            name="Add Application Parameter",
-            description="Add a new application parameter",
-            arguments=ARG_RES__application_parameter,
+            name="Add Application Dataset",
+            description="Add a new dataset to an application",
+            arguments=ARG_RES__application_dataset,
             method=REST__POST
         ),
         SwaggerMethod(
-            name="Fetch Application Parameters",
-            description="Fetch a list of application parameters",
+            name="Fetch Application Dataset",
+            description="Fetch a list of dataset",
             method=REST__GET,
-            arguments=gen_arg_res_sort_pageable(KEY__application, KEY__application_parameter_name,
-                                                EXAMPLE__application_name, EXAMPLE__application_parameter_db),
+            arguments=gen_arg_res_sort_pageable(KEY__application, KEY__database_name,
+                                                EXAMPLE__application_name, EXAMPLE__application_dataset),
             response=SwaggerResponse(
-                description="List of application parameters",
+                description="List of application datasets",
                 response=gen_filtered_records(
-                    "application parameter",
-                    ARG_RES__application_parameter
+                    "application dataset",
+                    ARG_RES__application_dataset
                 )
             )
         ),
         SwaggerMethod(
-            name="Delete Application Parameter",
-            description="Deletes a application parameter",
+            name="Delete Application Dataset",
+            description="Deletes a application dataset",
             method=REST__DELETE,
-            arguments=ARG_RES__application_parameter_key,
+            arguments=ARG_RES__dataset_key,
             response=RES__deletion_key
         )
     ]
 )
 
-DOCUMENTATION__application_parameters_confirm_deletion = SwaggerDocumentation(
+DOCUMENTATION__application_datasets_confirm_deletion = SwaggerDocumentation(
     tags="Applications",
     methods=SwaggerMethod(
-        name="Confirm application parameter deletion",
-        description="Confirm the application parameter deletion, providing a single use deletion key",
+        name="Confirm application dataset deletion",
+        description="Confirm the application dataset deletion, providing a single use deletion key",
         method=REST__POST,
         body=ARG_RES__deletion_key
     )
@@ -517,57 +512,57 @@ DOCUMENTATION__application_configurations_confirm_deletion = SwaggerDocumentatio
     )
 )
 
-ARG_RES__application_argument_key = [
+ARG_RES__assigned_database_key = [
     ARG__application_name,
     ARG_RES__reference_configuration,
-    ARG_RES__reference_application_parameter
+    ARG_RES__reference_dataset
 ]
 
 ARG_RES__reference_database = rename_arg(ARG_RES__database_name, KEY__database)
 
-ARG_RES__application_argument = ARG_RES__application_argument_key + [
+ARG_RES__assigned_database = ARG_RES__assigned_database_key + [
     ARG_RES__reference_database,
     ARG_RES__reference_node
 ]
 
-DOCUMENTATION__application_arguments = SwaggerDocumentation(
+DOCUMENTATION__assigned_databases = SwaggerDocumentation(
     tags="Application Configuration",
     methods=[
         SwaggerMethod(
-            name="Add Application Argument",
-            description="Add a new application argument",
-            arguments=ARG_RES__application_argument,
+            name="Assign Database",
+            description="Add a database to a configuration",
+            arguments=ARG_RES__assigned_database,
             method=REST__POST
         ),
         SwaggerMethod(
-            name="Fetch Application Arguments",
-            description="Fetch a list of application arguments",
+            name="Fetch Assigned Databases",
+            description="Fetch a list of assigned databases",
             method=REST__GET,
             arguments=gen_arg_res_sort_pageable(KEY__application, KEY__configuration, EXAMPLE__application_name,
                                                 EXAMPLE__configuration_name),
             response=SwaggerResponse(
-                description="List of application arguments",
+                description="List of assigned databases",
                 response=gen_filtered_records(
-                    "application argument",
-                    ARG_RES__application_argument
+                    "assigned database",
+                    ARG_RES__assigned_database
                 )
             )
         ),
         SwaggerMethod(
-            name="Delete Application Argument",
-            description="Deletes a application argument",
+            name="Remove database assignment",
+            description="Removes the assignment of a database",
             method=REST__DELETE,
-            arguments=ARG_RES__application_argument_key,
+            arguments=ARG_RES__assigned_database_key,
             response=RES__deletion_key
         )
     ]
 )
 
-DOCUMENTATION__application_arguments_confirm_deletion = SwaggerDocumentation(
+DOCUMENTATION__database_assignment_confirm_deletion = SwaggerDocumentation(
     tags="Application Configuration",
     methods=SwaggerMethod(
-        name="Confirm application argument deletion",
-        description="Confirm the application argument deletion, providing a single use deletion key",
+        name="Confirm removal of database assignment",
+        description="Confirm the removal of the database assignment, providing a single use deletion key",
         method=REST__POST,
         body=ARG_RES__deletion_key
     )
@@ -668,15 +663,15 @@ DOCUMENTATION__authorization_node = SwaggerDocumentation(
     tags="Authorization",
     methods=[
         SwaggerMethod(
-            name="Add node authorization",
+            name="Add node credentials",
             description="Add a node and it's credentials for use with a specific role",
             method=REST__POST,
             body=ARG_RES__authorization_node_key + [ARG_RES__authorization_node_precedence] +
                  ARG_RES__authorization_node_credentials,
         ),
         SwaggerMethod(
-            name="Fetch node authorizations",
-            description="Fetch a list of roles which have been authorized to use nodes",
+            name="Fetch node credentialed roles",
+            description="Fetch a list of roles which have credentials for a node",
             method=REST__GET,
             arguments=gen_arg_res_sort_pageable(KEY__node, KEY__role, EXAMPLE__node_label, EXAMPLE__role) + [
                 ARG_RES__deleted],
@@ -689,8 +684,8 @@ DOCUMENTATION__authorization_node = SwaggerDocumentation(
             )
         ),
         SwaggerMethod(
-            name="Revoke role auth for node",
-            description="Requests the revoke of a node authorization, returning a confirmation key",
+            name="Revoke role credentials for node",
+            description="Requests the revoke of node credentials for a role, returning a confirmation key",
             method=REST__DELETE,
             arguments=ARG_RES__authorization_node_key,
             response=RES__deletion_key
@@ -699,28 +694,114 @@ DOCUMENTATION__authorization_node = SwaggerDocumentation(
 )
 
 DOCUMENTATION__authorization_node_confirm_deletion = SwaggerDocumentation(
-    tags="Node Authorization",
+    tags="Authorization",
     methods=SwaggerMethod(
-        name="Confirm revoke of a node authorization",
-        description="Confirm the revoke of a node authorization, providing a single use deletion key",
+        name="Confirm revoke of a node credentials",
+        description="Confirm the revoke of a node credentials for a role, providing a single use deletion key",
         method=REST__POST,
         body=ARG_RES__deletion_key
     )
 )
 
-DOCUMENTATION__user_invite = SwaggerDocumentation(
+ARG_RES__roles = SwaggerArgumentResponse(
+    name=KEY__roles,
+    description="The internal roles for which to assign to the user along with the default roles (if "
+    "any). Comma separated. The user must be signed up with an invite key before usage",
+    arg_type=str,
+    example=["admin,moderator"],
+    required=False,
+    condition="If you want to assign roles to the user"
+)
+
+DOCUMENTATION__users = SwaggerDocumentation(
+    tags="User Management",
+    methods=[
+        SwaggerMethod(
+            name="Create User",
+            description="Creates a user",
+            body=[ARG_RES__email, ARG_RES__roles],
+            method=REST__POST
+        ),
+        SwaggerMethod(
+            name="Invite User",
+            description="Fetches an invite token, usable with a specific email address for a pre-created user",
+            method=REST__PUT,
+            body=[ARG_RES__email],
+            response=SwaggerFlatResponse(
+                description="A JWT that can be used along with the email to sign up to the platform",
+                body=JWT__invite
+            )
+        ),
+        SwaggerMethod(
+            name="Revoke User",
+            description="Requests the revoke of user, returning a confirmation key",
+            method=REST__DELETE,
+            body=[ARG_RES__email]
+        )
+    ]
+)
+
+DOCUMENTATION__activate = SwaggerDocumentation(
     tags="User Management",
     methods=SwaggerMethod(
-        name="Invite",
-        description="Fetches an invite token, usable with a specific email address",
+        name="Activate",
+        description="Activates a JAAQL user with the email and a password",
         method=REST__POST,
         body=[
-            ARG_RES__email
+            ARG_RES__email,
+            ARG_RES__jaaql_password
         ],
-        response=SwaggerFlatResponse(
-            description="A JWT that can be used along with the email to sign up to the platform",
-            body=JWT__invite
+        response=RES__totp_mfa_nullable
+    )
+)
+
+DOCUMENTATION__users_confirm_revoke = SwaggerDocumentation(
+    tags="Users",
+    methods=SwaggerMethod(
+        name="Confirm user revoke",
+        description="Confirm the revoke of a user, providing a single use deletion key",
+        method=REST__POST,
+        body=ARG_RES__deletion_key
+    )
+)
+
+DOCUMENTATION__user_default_roles = SwaggerDocumentation(
+    tags="User Management",
+    methods=[
+        SwaggerMethod(
+            name="Fetch default user roles",
+            description="A default user role is a role that is assigned to a user automatically upon creation of "
+            "the user which can occur from the internal endpoint public or the sign up endpoint. ",
+            method=REST__GET,
+            arguments=gen_arg_res_sort_pageable(KEY__role, example_one=EXAMPLE__role),
+            response=SwaggerResponse(
+                description="List of default user roles",
+                response=gen_filtered_records(KEY__role, [ARG_RES__role])
+            )
+        ),
+        SwaggerMethod(
+            name="Add default user role",
+            description="Adds a default user role",
+            method=REST__POST,
+            arguments=ARG_RES__role
+        ),
+        SwaggerMethod(
+            name="Delete default user role",
+            description="Deletes a default user role",
+            method=REST__DELETE,
+            arguments=ARG_RES__role,
+            response=RES__deletion_key
         )
+    ]
+)
+
+DOCUMENTATION__user_default_roles_confirm_deletion = SwaggerDocumentation(
+    tags="User Management",
+    methods=SwaggerMethod(
+        name="Confirm default role deletion",
+        description="Confirm the default role deletion, providing a single use deletion key",
+        method=REST__POST,
+        body=ARG_RES__deletion_key
     )
 )
 

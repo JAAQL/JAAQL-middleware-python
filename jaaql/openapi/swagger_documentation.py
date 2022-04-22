@@ -239,15 +239,18 @@ def validate_argument_responses(arg_responses: TYPE__argument_response):
             if isinstance(arg_resp, SwaggerList):
                 validate_argument_responses(arg_resp.responses)
             else:
-                is_list = isinstance(arg_resp.arg_type, SwaggerList)
-                is_resp = isinstance(arg_resp.arg_type, SwaggerArgumentResponse)
-                is_resp_list = isinstance(arg_resp.arg_type, List)
-                if is_list or is_resp or is_resp_list:
-                    validate_argument_responses(arg_resp.arg_type)
+                try:
+                    is_list = isinstance(arg_resp.arg_type, SwaggerList)
+                    is_resp = isinstance(arg_resp.arg_type, SwaggerArgumentResponse)
+                    is_resp_list = isinstance(arg_resp.arg_type, List)
+                    if is_list or is_resp or is_resp_list:
+                        validate_argument_responses(arg_resp.arg_type)
 
-                if arg_resp.name in found_names:
-                    raise SwaggerException(ERR__duplicated_argument_response_name % arg_resp.name)
-                found_names.append(arg_resp.name)
+                    if arg_resp.name in found_names:
+                        raise SwaggerException(ERR__duplicated_argument_response_name % arg_resp.name)
+                    found_names.append(arg_resp.name)
+                except:
+                    pass
 
 
 class SwaggerFlatResponse:
@@ -535,11 +538,6 @@ def _produce_path(doc: SwaggerDocumentation, yaml: str, is_prod: bool) -> str:
 
         if not any([resp.code == HTTPStatus.OK for resp in method.responses]):
             method.responses.append(SwaggerFlatResponse(RESPONSE__200_ok))
-
-        if not any([resp.code == RESP__default_err_code for resp in method.responses]):
-            method.responses.append(SwaggerFlatResponse(description=RESP__default_err_message,
-                                                        code=RESP__default_err_code,
-                                                        body=RESP__default_err_message))
 
         for response in method.responses:
             yaml = _build_yaml(yaml, 4, YAML__quote + str(_http_status_to_integer(response.code)) + YAML__quote)

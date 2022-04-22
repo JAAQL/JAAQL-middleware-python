@@ -20,6 +20,9 @@ let CLS_LINE_TEXT_CONTAINER = "line-text-container";
 let CLS_LINE_TEXT_PARENT = "line-text-parent";
 
 let STORAGE_CONSOLE_HISTORY = "APP_CONSOLE_HISTORY";
+let STORAGE_CUR_DB = "CUR_DB";
+
+let DEFAULT_DB = "jaaql";
 
 function textAreaAutoResize() {
     this.style.height = "auto";
@@ -80,6 +83,7 @@ function processUpDownKey(history, historyList) {
             updateHistory(window.jeqlConfig, history);
         }
         window.lineInput.value = historyList[window.curHistoryLine];
+        window.lineInput.setSelectionRange(window.lineInput.value.length, window.lineInput.value.length);
         window.wasConsole = true;
     }
 }
@@ -125,26 +129,35 @@ function getDefaultResponseHandler() {
     return responseHandlers;
 }
 
-function handleFileInput(config) {
-    let fileInput = document.getElementById(ID_CONSOLE_SQL_FILE);
-    fileInput.onchange = f => {
-        let file = f.target.files[0];
-        let reader = new FileReader();
-        config.createSpinner();
-        reader.onload = readerEvent => {
-            config.destroySpinner();
-            let content = readerEvent.target.result;
-            let formedQuery = JEQL.formQuery(config, content, null, null, window.curDatabase);
-            formedQuery[JEQL.KEY_FORCE_TRANSACTIONAL] = true;
-            JEQL.submit(
-                config,
-                formedQuery,
-                getDefaultResponseHandler()
-            );
-        };
-        reader.readAsText(file);
+function readAndSubmitFile(config, file) {
+    let reader = new FileReader();
+    config.createSpinner();
+    reader.onload = readerEvent => {
+        config.destroySpinner();
+        let content = readerEvent.target.result;
+        let formedQuery = JEQL.formQuery(config, content, null, null, window.curDatabase);
+        JEQL.submitFile(
+            config,
+            formedQuery,
+            getDefaultResponseHandler()
+        );
     };
-    fileInput.click();
+    reader.readAsText(file);
+}
+
+function handleFileInput(config, filePath = null) {
+    if (filePath === null) {
+        let fileInput = document.getElementById(ID_CONSOLE_SQL_FILE);
+        fileInput.value = "";
+        fileInput.onchange = f => {
+            let file = f.target.files[0];
+            fileInput.onchange = function() {};
+            readAndSubmitFile(config, file);
+        };
+        fileInput.click();
+    } else {
+        readAndSubmitFile(config, filePath);
+    }
 }
 
 function onSendConsole() {
@@ -174,8 +187,8 @@ function onSendConsole() {
             addConsoleLine(window.jeqlConfig);
         } else if (consoleInput === COMMAND_START + COMMAND_LOGOUT) {
             window.jeqlConfig.logout();
-        } else if (consoleInput.startsWith(COMMAND_START + COMMAND_SWITCH)) {
-            window.curDatabase = consoleInput.split(COMMAND_START + COMMAND_SWITCH + " ")[1].trim();
+        } else if (consoleInput.split(" ")[0] === COMMAND_START + COMMAND_SWITCH) {
+            updateCurDb(window.jeqlConfig, consoleInput.split(COMMAND_START + COMMAND_SWITCH + " ")[1].trim());
             addConsoleLine(window.jeqlConfig);
         } else if (consoleInput === COMMAND_START + COMMAND_CLEAR) {
             let allLines = Array.from(document.getElementsByClassName(CLS_LINE_TEXT_PARENT));
@@ -192,8 +205,13 @@ function onSendConsole() {
             window.wasConsole = null;
             getHistory(window.jeqlConfig);
             addConsoleLine(window.jeqlConfig);
-        } else if (consoleInput === COMMAND_START + COMMAND_FILE) {
-            handleFileInput(window.jeqlConfig);
+        } else if (consoleInput.split(" ")[0] === COMMAND_START + COMMAND_FILE) {
+            if (consoleInput.trim().split(" ").length === 1) {
+                handleFileInput(window.jeqlConfig);
+            } else {
+                let fileName = consoleInput.trim().split(" ").shift();
+                handleFileInput(window.jeqlConfig, fileName.join(" "));
+            }
         } else {
             addConsoleLine(window.jeqlConfig);
             window.lineInput.value = "Unknown console command: '" + consoleInput.substr(1) + "'";
@@ -236,7 +254,23 @@ function getHistory(config) {
     return history;
 }
 
+function updateCurDb(config, db) {
+    config.getStorage().setItem(STORAGE_CUR_DB, db);
+    window.curDatabase = db;
+}
+
+function loadCurDb(config) {
+    let curDb = config.getStorage().getItem(STORAGE_CUR_DB);
+    if (!curDb) {
+        curDb = DEFAULT_DB;
+        updateCurDb(config, curDb);
+    }
+    return curDb;
+}
+
 function init(config) {
+    loadCurDb(config);
+
     if (config.rememberMe) {
         window.sessionStorage.removeItem(STORAGE_CONSOLE_HISTORY);
     } else {
@@ -250,5 +284,4 @@ function init(config) {
 
 window.onload = function() {
     window.jeqlConfig = JEQL.init(APPLICATION_NAME, init);
-    window.curDatabase = null;
 };

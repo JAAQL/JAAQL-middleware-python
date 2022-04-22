@@ -81,7 +81,7 @@ class InterpretJAAQL:
     def __init__(self, db_interface: DBInterface):
         self.db_interface = db_interface
 
-    def transform(self, operation, conn=None):
+    def transform(self, operation, conn=None, force_transactional: bool = False):
         if (not isinstance(operation, list)) and (not isinstance(operation, dict)) and (not isinstance(operation, str)):
             raise HttpStatusException(ERR_malformed_operation_type, HTTPStatus.BAD_REQUEST)
 
@@ -99,7 +99,6 @@ class InterpretJAAQL:
         last_query = None
 
         last_echo = ECHO__none
-        force_transactional = False
 
         try:
             ret_as_arr = False
@@ -118,10 +117,6 @@ class InterpretJAAQL:
                 echo_list = []
                 assert_list = []
                 for op in operation:
-                    if KEY__force_transactional in operation:
-                        if len(operation) != 1:
-                            raise HttpStatusException("Can only use force_transactional for singular queries")
-                        force_transactional = operation[KEY__force_transactional]
                     query, parameters, echo, ret_assert = self.render_cur_operation(op)
                     query_list.append(query)
                     parameters_list.append(parameters)
@@ -129,6 +124,9 @@ class InterpretJAAQL:
                     assert_list.append(ret_assert)
 
             past_parameters = {}
+
+            if len(operation) != 1 and force_transactional:
+                raise HttpStatusException("Can only use force_transactional for singular queries")
 
             conn.set_session(autocommit=len(operation) == 1 and not force_transactional)
 

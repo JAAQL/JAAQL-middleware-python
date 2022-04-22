@@ -4,6 +4,7 @@ import jaaql.utilities.crypt_utils as crypt_utils
 from jaaql.migrations.migrations import run_migrations
 
 from jaaql.constants import *
+from jaaql.config_constants import *
 
 import uuid
 import traceback
@@ -21,7 +22,6 @@ from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
 CONFIG_KEY_security = "SECURITY"
 CONFIG_KEY_SECURITY__mfa_label = "mfa_label"
 CONFIG_KEY_SECURITY__mfa_issuer = "mfa_issuer"
-CONFIG_KEY_SECURITY__use_mfa = "use_mfa"
 CONFIG_KEY_SECURITY__do_audit = "do_audit"
 CONFIG_KEY_SECURITY__token_expiry_ms = "token_expiry_ms"
 CONFIG_KEY_SECURITY__token_refresh_expiry_ms = "token_refresh_expiry_ms"
@@ -174,14 +174,14 @@ class BaseJAAQLModel:
 
         self.url = url
 
-        self.use_mfa = config[CONFIG_KEY_security][CONFIG_KEY_SECURITY__use_mfa]
-        self.do_audit = config[CONFIG_KEY_security][CONFIG_KEY_SECURITY__do_audit]
+        self.force_mfa = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__force_mfa]
+        self.do_audit = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__do_audit]
 
         self.vault = Vault(vault_key, DIR__vault)
         self.jaaql_lookup_connection = None
 
-        self.token_expiry_ms = int(config[CONFIG_KEY_security][CONFIG_KEY_SECURITY__token_expiry_ms])
-        self.refresh_expiry_ms = int(config[CONFIG_KEY_security][CONFIG_KEY_SECURITY__token_refresh_expiry_ms])
+        self.token_expiry_ms = int(config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__token_expiry_ms])
+        self.refresh_expiry_ms = int(config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__token_refresh_expiry_ms])
 
         if not self.vault.has_obj(VAULT_KEY__db_crypt_key):
             _, db_crypt_key = crypt_utils.key_stretcher(str(uuid.uuid4()), length=crypt_utils.AES__key_length)

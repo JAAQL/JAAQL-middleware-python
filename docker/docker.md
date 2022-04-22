@@ -54,8 +54,9 @@ For those wishing that this container boots when your system boots (on startup),
 
 Additional lines can be used
 
-    -e DO_AUDIT=FALSE
-    -e USE_MFA=FALSE
+    -e DO_AUDIT=FALSE \
+    -e FORCE_MFA=FALSE \
+    -e INVITE_ONLY=FALSE \
 
 To disable logging and MFA respectively
     

@@ -14,6 +14,7 @@ from jaaql.mvc.controller import JAAQLController
 from jaaql.mvc.model import JAAQLModel
 from jaaql.mvc.controller_interface import JAAQLControllerInterface
 from jaaql.mvc.model_interface import JAAQLModelInterface
+from jaaql.config_constants import *
 
 DIR__config = "config"
 FILE__config = "config.ini"
@@ -21,9 +22,9 @@ FILE__config = "config.ini"
 ENVIRON__vault_key = "JAAQL_VAULT_PASSWORD"
 
 DEFAULT__mfa_label = "test"
+
 CONFIG_KEY__security = "SECURITY"
 CONFIG_KEY_SECURITY__mfa_label = "mfa_label"
-CONFIG_KEY_SECURITY__use_mfa = "use_mfa"
 CONFIG_KEY_SECURITY__do_audit = "do_audit"
 CONFIG_KEY__swagger = "SWAGGER"
 CONFIG_KEY_SWAGGER__url = "url"
@@ -32,9 +33,6 @@ CONFIG_KEY_SERVER__port = "port"
 
 WARNING__vault_key_stdin = "MAJOR SECURITY ISSUE! Passing vault key via program arguments is insecure as other progra" \
                            "ms can see the arguments. Please provide via stdin instead!"
-
-WARNING__mfa_off = "MAJOR SECURITY ISSUE! config SECURITY->use_mfa is set to false. Please enable it for PROD (it wil" \
-                   "l be enabled using the default docker configuration"
 
 WARNING__audit_off = "Audit trail is off. Logs will still be kept by the internal postgres instance"
 
@@ -124,12 +122,15 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
         print("MFA label is set to default. This isn't a security issue but adds a nice name when added to "
               "authenticator apps via QR codes. You can change in the config")
 
-    use_mfa = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__use_mfa] in ("true", "True", True)
+    force_mfa = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__force_mfa] in ("true", "True", True)
     do_audit = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__do_audit] in ("true", "True", True)
-    config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__use_mfa] = use_mfa
+    invite_only = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__invite_only] in ("true", "True", True)
+
+    # The following code sets it "properly" in case it is accessed incorrectly from elsewhere
+    config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__force_mfa] = force_mfa
     config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__do_audit] = do_audit
-    if not use_mfa:
-        print(WARNING__mfa_off, file=sys.stderr)
+    config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__invite_only] = invite_only
+
     if not do_audit:
         print(WARNING__audit_off, file=sys.stderr)
 

@@ -1,8 +1,9 @@
 from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
-from jaaql.documentation.documentation_shared import ARG_RES__totp_mfa, ARG_RES__jaaql_password, JWT__invite,\
+from jaaql.documentation.documentation_shared import RES__totp_mfa_nullable, ARG_RES__jaaql_password, JWT__invite,\
     gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__mfa_key, RES__oauth_token, RES__deletion_key,\
-    ARG_RES__deletion_key, set_nullable, ARG_RES__application_body
+    ARG_RES__deletion_key, set_nullable, ARG_RES__application_body, ARG_RES__email, rename_arg,\
+    ARG_RES__reference_dataset, ARG_RES__dataset_description
 
 TITLE = "JAAQL API"
 DESCRIPTION = "Collection of methods in the JAAQL API"
@@ -30,25 +31,33 @@ DOCUMENTATION__sign_up = SwaggerDocumentation(
     security=False,
     methods=SwaggerMethod(
         name="Signup",
-        description="Signs up to JAAQL using the key provided in the email",
+        description="Signs up to JAAQL using either the key provided in the email or the email address itself if the "
+        "user has not been invited to the platform",
         method=REST__POST,
         body=[
             SwaggerArgumentResponse(
                 name=KEY__invite_key,
-                description="A JWT that functions as a invite for a specific email address",
+                description="A JWT that functions as an invite for a specific email address",
                 arg_type=str,
                 example=[JWT__invite],
-                required=True
+                required=False,
+                condition="Is an invite key required"
             ),
             ARG_RES__jaaql_password
         ],
-        response=ARG_RES__totp_mfa
+        response=[
+            RES__totp_mfa_nullable,
+            SwaggerFlatResponse(
+                description=ERR__already_signed_up,
+                code=HTTPStatus.CONFLICT,
+                body=ERR__already_signed_up
+            )
+        ]
     )
 )
 
 # Not unused. Used to generate html files
-from jaaql.documentation.documentation_shared import DOCUMENTATION__login_details, DOCUMENTATION__oauth_token,\
-    DOCUMENTATION__oauth_refresh
+from jaaql.documentation.documentation_shared import DOCUMENTATION__oauth_token, DOCUMENTATION__oauth_refresh
 
 DOCUMENTATION__my_applications = SwaggerDocumentation(
     tags="Applications",
@@ -105,34 +114,41 @@ ARG_RES__connection = SwaggerArgumentResponse(
     required=True
 )
 
-DOCUMENTATION__config_arguments = SwaggerDocumentation(
+DOCUMENTATION__config_assigned_databases = SwaggerDocumentation(
     tags="Configuration",
     methods=SwaggerMethod(
-        name="Fetch arguments for configuration",
-        description="Fetches the arguments for a configuration and a JWT token describing the argument",
+        name="Fetch assigned databases for configuration",
+        description="Fetches the assigned databases for a configuration and a JWT token describing each of them",
         method=REST__GET,
         arguments=[
             ARG_RES__application,
             ARG_RES__configuration
         ],
         response=SwaggerResponse(
-            description="List of parameters and their arguments for the configuration",
+            description="List of datasets and their assigned databases for the configuration",
             response=SwaggerList(
-                SwaggerArgumentResponse(
-                    name=KEY__parameter_name,
-                    description="The name of the parameter",
-                    arg_type=str,
-                    example=["library_db", "meeting_db"],
-                    required=True
-                ),
-                SwaggerArgumentResponse(
-                    name=KEY__parameter_description,
-                    description="The parameter description",
-                    arg_type=str,
-                    example=["The library book database", "The meeting room spaces database"],
-                    required=True
-                ),
+                ARG_RES__reference_dataset,
+                rename_arg(ARG_RES__dataset_description, KEY__dataset_description),
                 ARG_RES__connection
+            )
+        )
+    )
+)
+
+DOCUMENTATION__assigned_database_roles = SwaggerDocumentation(
+    tags="Configuration",
+    methods=SwaggerMethod(
+        name="Fetch roles for assigned database",
+        description="Fetches my database level roles for the assigned database",
+        arguments=ARG_RES__connection,
+        method=REST__GET,
+        response=SwaggerResponse(
+            description="List of database roles for the current connection",
+            response=SwaggerSimpleList(
+                arg_type=str,
+                description="A list of database roles for the current connection",
+                example=["pg_read_all_stats", "pg_monitor", "pg_read_all_settings"],
+                required=True
             )
         )
     )
@@ -152,6 +168,27 @@ ARG_RES__address = SwaggerArgumentResponse(
     arg_type=str,
     example=[EXAMPLE__address, "::1/128"],
     required=True
+)
+
+ARG_RES__mfa_enabled = SwaggerArgumentResponse(
+    name=KEY__mfa_enabled,
+    description="Is MFA enabled",
+    arg_type=bool,
+    example=[True, False],
+    required=True
+)
+
+DOCUMENTATION__my_account_info = SwaggerDocumentation(
+    tags="Account",
+    methods=SwaggerMethod(
+        name="My account info",
+        description="Fetch information for my account",
+        method=REST__GET,
+        response=SwaggerResponse(
+            description="Account information",
+            response=[ARG_RES__email, ARG_RES__mfa_enabled]
+        )
+    )
 )
 
 DOCUMENTATION__my_ips = SwaggerDocumentation(
@@ -244,6 +281,18 @@ DOCUMENTATION__account_close_confirm = SwaggerDocumentation(
         description="Confirms account closure",
         method=REST__POST,
         body=ARG_RES__deletion_key
+    )
+)
+
+DOCUMENTATION__account_mfa = SwaggerDocumentation(
+    tags="Account",
+    methods=SwaggerMethod(
+        name="Enable/Disable MFA",
+        description="Reverses the MFA status on the account. If MFA is required and an attempt to disable it is made, "
+        "an error will be returned",
+        body=[ARG_RES__jaaql_password, set_nullable(ARG_RES__mfa_key, "Is MFA enabled")],
+        method=REST__POST,
+        response=RES__totp_mfa_nullable
     )
 )
 

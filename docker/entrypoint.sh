@@ -76,10 +76,16 @@ replace_config() {
   sed -i 's/{{SERVER_ADDRESS}}/'$SERVER_PROTOCOL$SERVER_ADDRESS'/g' /JAAQL-middleware-python/jaaql/config/config.ini
   sed -i 's/{{MFA_LABEL}}/'$MFA_LABEL'/g' /JAAQL-middleware-python/jaaql/config/config.ini
 
-  if [ "$USE_MFA" = "FALSE" ] ; then
-    sed -i 's/{{USE_MFA}}/false/g' /JAAQL-middleware-python/jaaql/config/config.ini
+  if [ "$FORCE_MFA" = "FALSE" ] ; then
+    sed -i 's/{{FORCE_MFA}}/false/g' /JAAQL-middleware-python/jaaql/config/config.ini
   else
-    sed -i 's/{{USE_MFA}}/true/g' /JAAQL-middleware-python/jaaql/config/config.ini
+    sed -i 's/{{FORCE_MFA}}/true/g' /JAAQL-middleware-python/jaaql/config/config.ini
+  fi
+
+  if [ "$INVITE_ONLY" = "FALSE" ] ; then
+    sed -i 's/{{INVITE_ONLY}}/false/g' /JAAQL-middleware-python/jaaql/config/config.ini
+  else
+    sed -i 's/{{INVITE_ONLY}}/true/g' /JAAQL-middleware-python/jaaql/config/config.ini
   fi
 
   if [ "$DO_AUDIT" = "FALSE" ] ; then
@@ -97,21 +103,24 @@ replace_config() {
 
 replace_config
 
+rm -rf /etc/nginx/sites-enabled/default
+service nginx restart
+
 CERT_DIR=/etc/letsencrypt/live/$SERVER_ADDRESS
 if [ "$IS_HTTPS" = "TRUE" ] && [ ! -d "$CERT_DIR" ] ; then
   echo "Initialising certbot"
   /pypy3.7-v7.3.5-linux64/bin/certbot --nginx -d $SERVER_ADDRESS -d www.$SERVER_ADDRESS --redirect --noninteractive --no-eff-email --email $HTTPS_EMAIL --agree-tos -w $INSTALL_PATH/www
+  service nginx restart
 elif [ "$IS_HTTPS" = "TRUE" ] && [ -d "$CERT_DIR" ] ; then
   echo "Found existing certificates. Installing"
-  printf "1\n" | /pypy3.7-v7.3.5-linux64/bin/certbot --nginx
+  printf "1,2\n1\n" | /pypy3.7-v7.3.5-linux64/bin/certbot --nginx
+  service nginx restart
 fi
 
-rm -rf /etc/nginx/sites-enabled/default
-service nginx restart
 docker-entrypoint.sh postgres &
 
 if [ "$IS_HTTPS" = "TRUE" ] ; then
-  /pypy3.7-v7.3.5-linux64/bin/certbot renew --dry-run
+  /pypy3.7-v7.3.5-linux64/bin/certbot renew --dry-run &
 fi
 
 cd $INSTALL_PATH
