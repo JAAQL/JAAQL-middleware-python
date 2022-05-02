@@ -141,3 +141,6 @@ log
 
 /apps
 wsgi_patch.py
+
+node_modules/
+package-lock.json

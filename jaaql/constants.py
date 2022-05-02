@@ -91,4 +91,4 @@ JAAQL__arg_marker = ":"
 ENCODING__utf = "UTF-8"
 EXAMPLE__jwt = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.e30.yXvILkvUUCBqAFlAv6wQ1Q-QRAjfe3eSosO949U73Vo"
 
-VERSION = "2.2.0"
+VERSION = "2.3.0"
