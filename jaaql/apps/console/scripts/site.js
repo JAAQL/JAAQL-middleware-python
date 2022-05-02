@@ -50,7 +50,7 @@ function renderConsoleLine(newLine, db_name) {
     window.lineInput.addEventListener("keyup", function(event) {
         if (event.which === 38 || event.which === 40) { return; }
         window.wasConsole = false;
-        let history = getHistory(window.jeqlConfig);
+        let history = getHistory(window.JEQL_CONFIG);
         let historyList = history[HISTORY_LIST];
         if (window.curHistoryLine === historyList.length - 1 && history[HISTORY_HAS_TEMP]) {
             let isEmpty = window.lineInput.value.length === 0;
@@ -61,7 +61,7 @@ function renderConsoleLine(newLine, db_name) {
             } else {
                 window.curHistoryLine -= 1;
             }
-            updateHistory(window.jeqlConfig, history);
+            updateHistory(window.JEQL_CONFIG, history);
         }
     });
 }
@@ -80,7 +80,7 @@ function processUpDownKey(history, historyList) {
         if (window.lineInput.value.length !== 0 && !window.wasConsole && !history[HISTORY_HAS_TEMP]) {
             historyList.push(window.lineInput.value);
             history[HISTORY_HAS_TEMP] = true;
-            updateHistory(window.jeqlConfig, history);
+            updateHistory(window.JEQL_CONFIG, history);
         }
         window.lineInput.value = historyList[window.curHistoryLine];
         window.lineInput.setSelectionRange(window.lineInput.value.length, window.lineInput.value.length);
@@ -92,7 +92,7 @@ function keyDownBody(e) {
     if (JEQL.modalExists()) { return; }
     window.lineInput.focus();
     if (window.curHistoryLine !== null) {
-        let history = getHistory(window.jeqlConfig);
+        let history = getHistory(window.JEQL_CONFIG);
         let historyList = history[HISTORY_LIST];
         if (e.which === 38 && (window.curHistoryLine > 0 || historyList.length === 1 ||
             window.lineInput.value === "")) {
@@ -112,14 +112,14 @@ function keyDownBody(e) {
 }
 
 function renderResponse(data, isErr = false) {
-    addConsoleLine(window.jeqlConfig);
+    addConsoleLine(window.JEQL_CONFIG);
     window.lineInput.value = JSON.stringify(data);
     window.lineInput.style.height = "auto";
     window.lineInput.style.height = (window.lineInput.scrollHeight) + "px";
     if (isErr) {
         window.lineInput.style.color = "red";
     }
-    addConsoleLine(window.jeqlConfig);
+    addConsoleLine(window.JEQL_CONFIG);
 }
 
 function getDefaultResponseHandler() {
@@ -164,7 +164,7 @@ function onSendConsole() {
     let consoleInput = window.lineInput.value.trimEnd();
     if (window.lineInput.value === "") { return; }
 
-    let history = getHistory(window.jeqlConfig);
+    let history = getHistory(window.JEQL_CONFIG);
     if (history[HISTORY_HAS_TEMP]) {
         history[HISTORY_LIST].pop();
     }
@@ -177,51 +177,51 @@ function onSendConsole() {
     } else {
         history[HISTORY_IDX] = history[HISTORY_LIST].length - 1;
     }
-    updateHistory(window.jeqlConfig, history);
+    updateHistory(window.JEQL_CONFIG, history);
 
     if (consoleInput.startsWith(COMMAND_START)) {
         if (consoleInput === COMMAND_START + COMMAND_HELP) {
-            addConsoleLine(window.jeqlConfig);
+            addConsoleLine(window.JEQL_CONFIG);
             window.lineInput.parentElement.innerHTML = document.getElementById("welcomeText").innerHTML;
             window.lineInput.remove();
-            addConsoleLine(window.jeqlConfig);
+            addConsoleLine(window.JEQL_CONFIG);
         } else if (consoleInput === COMMAND_START + COMMAND_LOGOUT) {
-            window.jeqlConfig.logout();
+            window.JEQL_CONFIG.logout();
         } else if (consoleInput.split(" ")[0] === COMMAND_START + COMMAND_SWITCH) {
-            updateCurDb(window.jeqlConfig, consoleInput.split(COMMAND_START + COMMAND_SWITCH + " ")[1].trim());
-            addConsoleLine(window.jeqlConfig);
+            updateCurDb(window.JEQL_CONFIG, consoleInput.split(COMMAND_START + COMMAND_SWITCH + " ")[1].trim());
+            addConsoleLine(window.JEQL_CONFIG);
         } else if (consoleInput === COMMAND_START + COMMAND_CLEAR) {
             let allLines = Array.from(document.getElementsByClassName(CLS_LINE_TEXT_PARENT));
             allLines.forEach(line => {
                 line.remove();
             });
-            addConsoleLine(window.jeqlConfig);
+            addConsoleLine(window.JEQL_CONFIG);
             window.lineInput.value = COMMAND_START + COMMAND_CLEAR;
-            addConsoleLine(window.jeqlConfig);
+            addConsoleLine(window.JEQL_CONFIG);
         } else if (consoleInput === COMMAND_START + COMMAND_CLEARHIS) {
-            addConsoleLine(window.jeqlConfig);
+            addConsoleLine(window.JEQL_CONFIG);
             window.lineInput.value = "History cleared";
-            window.jeqlConfig.getStorage().removeItem(STORAGE_CONSOLE_HISTORY);
+            window.JEQL_CONFIG.getStorage().removeItem(STORAGE_CONSOLE_HISTORY);
             window.wasConsole = null;
-            getHistory(window.jeqlConfig);
-            addConsoleLine(window.jeqlConfig);
+            getHistory(window.JEQL_CONFIG);
+            addConsoleLine(window.JEQL_CONFIG);
         } else if (consoleInput.split(" ")[0] === COMMAND_START + COMMAND_FILE) {
             if (consoleInput.trim().split(" ").length === 1) {
-                handleFileInput(window.jeqlConfig);
+                handleFileInput(window.JEQL_CONFIG);
             } else {
                 let fileName = consoleInput.trim().split(" ").shift();
-                handleFileInput(window.jeqlConfig, fileName.join(" "));
+                handleFileInput(window.JEQL_CONFIG, fileName.join(" "));
             }
         } else {
-            addConsoleLine(window.jeqlConfig);
+            addConsoleLine(window.JEQL_CONFIG);
             window.lineInput.value = "Unknown console command: '" + consoleInput.substr(1) + "'";
             window.lineInput.style.color = "red";
-            addConsoleLine(window.jeqlConfig);
+            addConsoleLine(window.JEQL_CONFIG);
         }
     } else {
         JEQL.submit(
-            window.jeqlConfig,
-            JEQL.formQuery(window.jeqlConfig, window.lineInput.value, null, null, window.curDatabase),
+            window.JEQL_CONFIG,
+            JEQL.formQuery(window.JEQL_CONFIG, window.lineInput.value, null, null, window.curDatabase),
             getDefaultResponseHandler()
         );
     }
@@ -283,5 +283,5 @@ function init(config) {
 }
 
 window.onload = function() {
-    window.jeqlConfig = JEQL.init(APPLICATION_NAME, init);
+    JEQL.init(APPLICATION_NAME, init);
 };

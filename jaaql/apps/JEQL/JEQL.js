@@ -12,6 +12,12 @@ let HTTP_STATUS_ACCEPTED = 202; export {HTTP_STATUS_ACCEPTED};
 let STORAGE_JAAQL_TOKENS = "JAAQL_TOKENS";
 let STORAGE_JAAQL_CONFIGS = "JAAQL_CONFIGS";
 
+let JEQL_FIESTA_INTRODUCER = "introducer";
+let JEQL_FIESTA_EXPRESSION = "expression";
+let JEQL_FIESTA_SEPARATOR = "separator";
+let JEQL_FIESTA_TERMINATOR = "terminator";
+let JEQL_FIESTA_ALTERNATIVE = "alternative";
+
 let ACTION_LOGIN = "POST /oauth/token";
 let ACTION_FETCH_APPLICATIONS = "GET /applications";
 let ACTION_INTERNAL_NODES = "GET /internal/nodes"; export {ACTION_INTERNAL_NODES};
@@ -389,15 +395,15 @@ function buildHTML(elem, html) {
 export function tupleToObject(row, columns) {
     let obj = {};
     for (let i2 = 0; i2 < columns.length; i2 ++) {
-		if (columns[i2].constructor === Object) {
-			let objKey = Object.keys(columns[i2])[0];
-			let subResponse = {};
-			subResponse[KEY_COLUMNS] = columns[i2][objKey];
-			subResponse[KEY_ROWS] = row[i2];
-			obj[objKey] = tuplesToObjects(subResponse);
-		} else {
-			obj[columns[i2]] = row[i2];
-		}
+        if (columns[i2].constructor === Object) {
+            let objKey = Object.keys(columns[i2])[0];
+            let subResponse = {};
+            subResponse[KEY_COLUMNS] = columns[i2][objKey];
+            subResponse[KEY_ROWS] = row[i2];
+            obj[objKey] = tuplesToObjects(subResponse);
+        } else {
+            obj[columns[i2]] = row[i2];
+        }
     }
     return obj;
 }
@@ -524,6 +530,13 @@ export function makeBuildable(elem) {
     elem.buildText = function(text) { return buildText(elem, text); };
     elem.buildHTML = function(html) { return buildHTML(elem, html); };
     elem.buildChild = function(tag) { return buildChild(elem, tag); };
+    elem.buildRow = function() { return buildChild(elem, "tr"); };
+    elem.buildForeach = function(iterable, lambda) {
+        for (let i = 0; i < iterable.length; i ++) {
+            elem.buildHTML(lambda(iterable[i]));
+        }
+        return elem;
+    };
     elem.getParent = function() { return makeBuildable(elem.parentNode); };
     elem.buildSibling = function(tag) { return buildSibling(elem, tag); };
     elem.buildEventListener = function(event, onevent) { return buildEventListener(elem, event, onevent); };
@@ -568,7 +581,7 @@ export function renderModal(modalBodyRender, allowClose = true, modalBaseClass =
 
     let subDiv = modalDiv.buildChild("div");
     subDiv.closeModal = function() { outerDiv.parentElement.removeChild(outerDiv); };
-	modalBodyRender(subDiv);
+    modalBodyRender(subDiv);
 }
 
 export function renderModalOk(msg, onOk = null, title = "Success!") {
@@ -687,7 +700,7 @@ function rendererMFALogin(modal, mainLoginDiv, config, callback, preAuthKey) {
         document.getElementById(ID_LOGIN_BUTTON).click()
     });
 
-	bindButton(ID_MFA_5, ID_LOGIN_BUTTON);
+    bindButton(ID_MFA_5, ID_LOGIN_BUTTON);
 
     document.getElementById(ID_LOGIN_BUTTON).addEventListener("click", function() {
         requests.makeJson(config, ACTION_LOGIN, function(loginErrMsg) {
@@ -816,29 +829,29 @@ export function formatAsTableHeader(inStr) {
 }
 
 function findGetParameter(parameterName) {
-	let result = null, tmp = [];
-	location.search
-		.substr(1)
-		.split("&")
-		.forEach(function (item) {
-			tmp = item.split("=");
-			if (tmp[0] === parameterName) { result = decodeURIComponent(tmp[1]); }
-		});
-	return result;
+    let result = null, tmp = [];
+    location.search
+        .substr(1)
+        .split("&")
+        .forEach(function (item) {
+            tmp = item.split("=");
+            if (tmp[0] === parameterName) { result = decodeURIComponent(tmp[1]); }
+        });
+    return result;
 }
 
 function getJaaqlUrl() {
     let jaaqlUrl = findGetParameter(PARAMETER_JAAQL);
     if (jaaqlUrl !== null) { return jaaqlUrl; }
 
-	let callLoc = window.location.protocol;
-	if (callLoc === PROTOCOL_FILE) {
-		callLoc = LOCAL_DEBUGGING_URL;
-	} else {
-		callLoc += "/api"
-	}
+    let callLoc = window.location.protocol;
+    if (callLoc === PROTOCOL_FILE) {
+        callLoc = LOCAL_DEBUGGING_URL;
+    } else {
+        callLoc += "/api"
+    }
 
-	return callLoc;
+    return callLoc;
 }
 
 function decodeJWT(jwt) {
@@ -985,6 +998,42 @@ function storeJEQLDataToElement(elem, data) {
 
 function extractJEQLDataFromElement(elem) {
     return JSON.parse(atob(elem.getAttribute(ATTR_JEQL_DATA)));
+}
+
+export function render(formedQuery, renderFunc, config) {
+    let formedRenderFunc = renderFunc;
+
+    if (renderFunc.constructor === Object) {
+        formedRenderFunc = function(data) {
+            let body = null;
+            let doAlternative = data[KEY_ROWS].length === 0;
+
+            if (doAlternative) {
+                if (JEQL_FIESTA_ALTERNATIVE in renderFunc) {
+                    renderFunc[JEQL_FIESTA_ALTERNATIVE](data[KEY_COLUMNS]);
+                }
+            } else {
+                if (JEQL_FIESTA_INTRODUCER in renderFunc) {
+                    body = renderFunc[JEQL_FIESTA_INTRODUCER](data[KEY_COLUMNS]);
+                }
+                for (let i = 0; i < data[KEY_ROWS].length; i ++) {
+                    if (JEQL_FIESTA_EXPRESSION in renderFunc) {
+                        renderFunc[JEQL_FIESTA_EXPRESSION](data[KEY_ROWS][i], body);
+                    }
+                    if (JEQL_FIESTA_SEPARATOR in renderFunc) {
+                        renderFunc[JEQL_FIESTA_SEPARATOR](data[KEY_ROWS][i], body);
+                    }
+                }
+                if (JEQL_FIESTA_TERMINATOR in renderFunc) {
+                    renderFunc[JEQL_FIESTA_TERMINATOR](data[KEY_COLUMNS], body);
+                }
+            }
+        }
+    }
+
+    if (!config) { config = window.JEQL_CONFIG; }
+
+    submit(window.JEQL_CONFIG, formedQuery, formedRenderFunc);
 }
 
 function renderSelectAppConfig(config, callback, data) {

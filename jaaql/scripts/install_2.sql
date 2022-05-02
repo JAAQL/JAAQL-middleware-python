@@ -90,6 +90,7 @@ create table jaaql__application (
 
 INSERT INTO jaaql__application (name, description, url) VALUES ('console', 'The console application', '');
 INSERT INTO jaaql__application (name, description, url) VALUES ('manager', 'The administration panel for JAAQL', '');
+INSERT INTO jaaql__application (name, description, url) VALUES ('playground', 'Allows testing for new JAAQL/JEQL features', '');
 
 create table jaaql__application_dataset (
     application varchar(64) not null,
@@ -100,6 +101,7 @@ create table jaaql__application_dataset (
 );
 INSERT INTO jaaql__application_dataset (application, name, description) VALUES ('console', 'node', 'The node which the console will run against');
 INSERT INTO jaaql__application_dataset (application, name, description) VALUES ('manager', 'node', 'A jaaql node which the app can manage');
+INSERT INTO jaaql__application_dataset (application, name, description) VALUES ('playground', 'node', 'A jaaql node which the app can manage');
 
 create table jaaql__application_configuration (
     application varchar(64) not null,
@@ -109,6 +111,7 @@ create table jaaql__application_configuration (
     FOREIGN KEY (application) references jaaql__application on delete cascade on update cascade
 );
 INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('manager', 'host', 'The host jaaql node');
+INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('playground', 'host', 'The host jaaql node');
 
 create table jaaql__assigned_database (
     application varchar(64) not null,

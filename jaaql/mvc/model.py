@@ -48,6 +48,7 @@ NODE__host_node = "host"
 DB__jaaql = "jaaql"
 
 APPLICATION__console = "console"
+APPLICATION__playground = "playground"
 APPLICATION__manager = "manager"
 CONFIGURATION__host = "host"
 
@@ -201,6 +202,7 @@ DIR__apps = "apps"
 SEPARATOR__dir = "/"
 DIR__www = "www"
 DIR__manager = "manager"
+DIR__playground = "playground"
 DIR__console = "console"
 DB__empty = ""
 
@@ -432,6 +434,11 @@ class JAAQLModel(BaseJAAQLModel):
                 KEY__configuration: CONFIGURATION__host,
                 KEY__role: USERNAME__jaaql
             }, self.jaaql_lookup_connection)
+            self.add_configuration_authorization({
+                KEY__application: APPLICATION__playground,
+                KEY__configuration: CONFIGURATION__host,
+                KEY__role: USERNAME__jaaql
+            }, self.jaaql_lookup_connection)
 
             superjaaql_db_password = db_password
             super_otp_uri = None
@@ -455,6 +462,11 @@ class JAAQLModel(BaseJAAQLModel):
                     KEY__configuration: CONFIGURATION__host,
                     KEY__role: USERNAME__postgres
                 }, self.jaaql_lookup_connection)
+                self.add_configuration_authorization({
+                    KEY__application: APPLICATION__playground,
+                    KEY__configuration: CONFIGURATION__host,
+                    KEY__role: USERNAME__postgres
+                }, self.jaaql_lookup_connection)
 
             self.copy_apps()
 
@@ -467,6 +479,11 @@ class JAAQLModel(BaseJAAQLModel):
                                              KEY__application_name: APPLICATION__manager})
             self.execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_setup_host,
                                             {KEY__application: APPLICATION__manager})
+            self.execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_set_url,
+                                            {KEY__application_url: base_url + DIR__playground,
+                                             KEY__application_name: APPLICATION__playground})
+            self.execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_setup_host,
+                                            {KEY__application: APPLICATION__playground})
 
             print("Rebooting to allow JAAQL config to be shared among workers")
             threading.Thread(target=self.exit_jaaql).start()
