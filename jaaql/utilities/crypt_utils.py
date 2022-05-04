@@ -10,8 +10,9 @@ from datetime import datetime, timezone
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
+from jaaql.constants import ENCODING__ascii
 
-ENCODING__ascii = "ascii"
+
 FERNET__key_length = 32
 AES__key_length = 24  # A key of length 24 that is base64 encoded is length 32. This corresponds to AES-256
 AES__iv_length = 16

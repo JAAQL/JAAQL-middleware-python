@@ -20,6 +20,7 @@ DIR__config = "config"
 FILE__config = "config.ini"
 
 ENVIRON__vault_key = "JAAQL_VAULT_PASSWORD"
+ENVIRON__email_credentials = "JAAQL_EMAIL_CREDENTIALS"
 
 DEFAULT__mfa_label = "test"
 
@@ -79,11 +80,15 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
     if len(options) == 0 and not is_gunicorn:
         options = parse_options(sys.argv, False)
 
+    email_credentials = None
+
     if OPT_KEY__vault_key in options:
         print(WARNING__vault_key_stdin, file=sys.stderr)
         vault_key = options[OPT_KEY__vault_key]
+        email_credentials = options.get(OPT_KEY__email_credentials)
     elif is_gunicorn:
         vault_key = os.environ.get(ENVIRON__vault_key)
+        email_credentials = os.environ.get(ENVIRON__email_credentials)
     else:
         vault_key = input("Input vault key: ")
 
@@ -137,7 +142,7 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
     url = config[CONFIG_KEY__swagger][CONFIG_KEY_SWAGGER__url]
 
     model = JAAQLModel(config, vault_key, migration_db_interface, migration_project_name, migration_folder,
-                       is_container=is_gunicorn, url=url)
+                       is_container=is_gunicorn, url=url, email_credentials=email_credentials)
     controller = JAAQLController(model, is_gunicorn)
     controller.create_app()
 

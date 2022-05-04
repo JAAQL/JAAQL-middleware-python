@@ -29,6 +29,7 @@ class Option:
 
 
 OPT_KEY__vault_key = "vault-key"
+OPT_KEY__email_credentials = "email-credentials"
 OPT_KEY__help = "help"
 
 DEFAULT_OPTIONS: List[Option] = [

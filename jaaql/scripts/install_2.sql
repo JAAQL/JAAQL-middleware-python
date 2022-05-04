@@ -379,3 +379,23 @@ BEGIN
     UPDATE jaaql__node SET "name" = (left("name", 180) || '_deleted_') || current_timestamp::text, deleted = current_timestamp WHERE name = node_name;
 END
 $$ language plpgsql;
+
+create table jaaql__email_accounts (
+    name varchar(255) PRIMARY KEY not null,
+    send_name varchar(255) not null,
+    protocol varchar(4) not null,
+    check (protocol in ('smtp', 'imap')),
+    host varchar(255) not null,
+    port integer not null,
+    username varchar(255) not null,
+    deleted timestamp default null
+);
+
+create table jaaql__email_history (
+    email_account varchar(255) not null,
+    FOREIGN KEY (email_account) references jaaql__email_accounts,
+    sent timestamp not null,
+    subject varchar(255),
+    encrypted_body text,
+    encrypted_attachments text
+);
