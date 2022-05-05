@@ -8,7 +8,8 @@ create table jaaql__user (
     deleted timestamptz,
     enc_totp_iv varchar(254),
     last_totp varchar(6),
-    alias varchar(32)
+    alias varchar(32),
+    sign_up_data text
 );
 CREATE UNIQUE INDEX jaaql__user_unq_email ON jaaql__user (email) WHERE (deleted is null);
 
@@ -400,5 +401,3 @@ create table jaaql__email_history (
     encrypted_body text,
     encrypted_attachments text
 );
-
-INSERT INTO jaaql__email_accounts (account_name, send_name, protocol, host, port, username) VALUES ('jaaql', 'JAAQL Emails', 'smtp', 'web119.shared.hosting-login.net', 587, 'aaron.tasker@sqmi.nl');

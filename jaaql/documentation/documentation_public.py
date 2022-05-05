@@ -3,7 +3,7 @@ from jaaql.constants import *
 from jaaql.documentation.documentation_shared import RES__totp_mfa_nullable, ARG_RES__jaaql_password, JWT__invite,\
     gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__mfa_key, RES__oauth_token, RES__deletion_key,\
     ARG_RES__deletion_key, set_nullable, ARG_RES__application_body, ARG_RES__email, rename_arg,\
-    ARG_RES__reference_dataset, ARG_RES__dataset_description
+    ARG_RES__reference_dataset, ARG_RES__dataset_description, EXAMPLE__email, combine_response
 
 TITLE = "JAAQL API"
 DESCRIPTION = "Collection of methods in the JAAQL API"
@@ -25,6 +25,25 @@ ARG_RES__configuration = SwaggerArgumentResponse(
     required=True
 )
 
+ARG_RES__signup_data = SwaggerArgumentResponse(
+    name=KEY__sign_up_data,
+    description="Signup data that can be attached to the user during a self sign up. Returned to the user in the second"
+                " half of the sign up process",
+    arg_type=str,
+    example=["eyJkYXRhIjogInZhbHVlIn0="],
+    required=False,
+    condition="Is an invite key required"
+)
+
+ARG_RES__invite_key = SwaggerArgumentResponse(
+    name=KEY__invite_key,
+    description="A JWT that functions as an invite for a specific email address",
+    arg_type=str,
+    example=[JWT__invite],
+    required=False,
+    condition="Is an invite key required"
+)
+
 DOCUMENTATION__sign_up = SwaggerDocumentation(
     tags="Signup",
     # The security is in the invite key. User has not signed up yet so cannot get an oauth token
@@ -35,18 +54,20 @@ DOCUMENTATION__sign_up = SwaggerDocumentation(
         "user has not been invited to the platform",
         method=REST__POST,
         body=[
+            ARG_RES__invite_key,
             SwaggerArgumentResponse(
-                name=KEY__invite_key,
-                description="A JWT that functions as an invite for a specific email address",
+                name=KEY__email,
+                description="The email of the user, if they are performing a self sign up",
                 arg_type=str,
-                example=[JWT__invite],
+                example=[EXAMPLE__email],
                 required=False,
-                condition="Is an invite key required"
+                condition="Is the user signing up via an invite key or are they signing themselves up"
             ),
-            ARG_RES__jaaql_password
+            ARG_RES__signup_data,
+            set_nullable(ARG_RES__jaaql_password, "Is the user in the 2nd stage of signup")
         ],
         response=[
-            RES__totp_mfa_nullable,
+            combine_response(RES__totp_mfa_nullable, [ARG_RES__signup_data, ARG_RES__invite_key]),
             SwaggerFlatResponse(
                 description=ERR__already_signed_up,
                 code=HTTPStatus.CONFLICT,

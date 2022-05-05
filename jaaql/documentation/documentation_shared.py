@@ -3,7 +3,9 @@ from http import HTTPStatus
 from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, SwaggerArgumentResponse,\
     SwaggerResponse, SwaggerList, SwaggerFlatResponse, REST__POST
 from jaaql.constants import *
-from typing import Union
+from typing import Union, List
+
+import copy
 
 OUTPUT = False
 
@@ -11,6 +13,7 @@ JWT__invite = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFhcm9uQGphYXFs
               "u02crWWx1ZPh8Pw"
 
 ENDPOINT__refresh = "/oauth/refresh"
+EXAMPLE__email = "aaron@jaaql.com"
 
 EXAMPLE__db = "meeting"
 ARG_RES__database_name = SwaggerArgumentResponse(
@@ -202,6 +205,16 @@ RES__totp_mfa_nullable = SwaggerResponse(
     description="Contains information to setup authenticator app",
     response=set_nullable(ARG_RES__totp_mfa, ["Is mfa forced on"] * len(ARG_RES__totp_mfa))
 )
+
+
+def combine_response(res: SwaggerResponse, args: Union[SwaggerArgumentResponse, List[SwaggerArgumentResponse]]):
+    res = copy.deepcopy(res)
+    if not isinstance(args, list):
+        args = [args]
+
+    res.responses = res.responses + args
+    return res
+
 
 RES__oauth_token = SwaggerFlatResponse(
     description="A temporary JWT token that can be used to authenticate with the server",

@@ -204,9 +204,21 @@ class JAAQLController(BaseJAAQLController):
             return self.model.enable_disable_mfa(http_inputs, user_id, totp_iv, last_totp, password_hash)
 
         @self.cors_route('/account/signup', DOCUMENTATION__sign_up)
-        def signup(http_inputs: dict, ip_address: str, user_agent: str, response: JAAQLResponse):
-            return self.model.sign_up_user_with_token(http_inputs[KEY__invite_key], http_inputs[KEY__password],
-                                                      ip_address, user_agent, response)
+        def signup(sql_inputs: dict, ip_address: str, user_agent: str, response: JAAQLResponse):
+            if KEY__invite_key in sql_inputs:
+                if KEY__sign_up_data in sql_inputs or KEY__email in sql_inputs:
+                    rep_var = KEY__sign_up_data if KEY__sign_up_data in sql_inputs else KEY__email
+                    raise HttpStatusException(ERR__unexpected_argument % rep_var, HTTPStatus.BAD_REQUEST)
+                if KEY__password not in sql_inputs:
+                    raise HttpStatusException(ERR__expected_argument % KEY__password, HTTPStatus.BAD_REQUEST)
+                return self.model.sign_up_user_with_token(sql_inputs[KEY__invite_key], sql_inputs[KEY__password],
+                                                          ip_address, user_agent, response)
+            else:
+                if KEY__password in sql_inputs:
+                    raise HttpStatusException(ERR__unexpected_argument % KEY__password, HTTPStatus.BAD_REQUEST)
+                if KEY__email not in sql_inputs:
+                    raise HttpStatusException(ERR__expected_argument % KEY__email, HTTPStatus.BAD_REQUEST)
+                return self.model.pre_sign_up_user_with_email(sql_inputs[KEY__email], sql_inputs.get(KEY__sign_up_data))
 
         @self.cors_route('/account/logs', DOCUMENTATION__my_logs)
         def fetch_logs(http_inputs: dict, jaaql_connection: DBInterface):

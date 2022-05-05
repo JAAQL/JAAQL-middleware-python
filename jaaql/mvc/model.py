@@ -41,6 +41,7 @@ ERR__refresh_expired = "Token too old to be used for refresh. Please authenticat
 ERR__duplicated_database = "User %s has a duplicate database precedence with databases '%s'"
 ERR__not_sole_owner = "You are not the sole owner of this connection"
 ERR__mfa_must_be_enabled = "MFA must be turned on!"
+ERR__cannot_self_sign_up = "Cannot self sign up. Must be invited to the platform"
 
 USERNAME__jaaql = "jaaql"
 USERNAME__superjaaql = "superjaaql"
@@ -97,11 +98,12 @@ QUERY__node_credentials_del = "UPDATE jaaql__credentials_node SET deleted = curr
 QUERY__node_credentials_sel = "SELECT id, node, role, deleted FROM jaaql__credentials_node"
 QUERY__role_connection_sel = "SELECT ad.id as id, ad.db_encrypted_username as username, ad.db_encrypted_password as password, nod.address, nod.port FROM jaaql__credentials_node ad INNER JOIN jaaql__node nod ON nod.name = ad.node WHERE role = (SELECT coalesce(alias, email) FROM jaaql__user WHERE email = :role) AND node = :node AND ad.deleted is null AND nod.deleted is null;"
 QUERY__node_credentials_count = "SELECT COUNT(*) FROM jaaql__credentials_node"
-QUERY__user_ins = "INSERT INTO jaaql__user (email, mobile, alias) VALUES (lower(:email), :mobile, :alias) RETURNING id"
+QUERY__user_ins = "INSERT INTO jaaql__user (email, mobile, alias, sign_up_data) VALUES (lower(:email), :mobile, :alias, :sign_up_data) RETURNING id"
 QUERY__revoke_user = "UPDATE jaaql__user SET deleted = current_timestamp WHERE email = lower(:username) AND email not in ('jaaql', 'superjaaql') AND deleted is NULL"
 QUERY__disable_mfa = "UPDATE jaaql__user SET enc_totp_iv = null WHERE id = :user_id"
 QUERY__set_mfa = "UPDATE jaaql__user SET enc_totp_iv = :totp_iv WHERE id = :user_id"
-QUERY__user_id_from_username = "SELECT id FROM jaaql__user WHERE email = lower(:username) AND deleted is null"
+QUERY__user_id_and_signup_data_from_username = "SELECT id, sign_up_data FROM jaaql__user WHERE email = lower(:username) AND deleted is null"
+QUERY__user_erase_sign_up_data = "UPDATE jaaql__user SET sign_up_data = null WHERE id = :id"
 QUERY__user_totp_upd = "UPDATE jaaql__user SET last_totp = :last_totp WHERE id = :user_id"
 QUERY__user_ip_sel = "SELECT encrypted_address as address, first_use, most_recent_use FROM jaaql__my_ips"
 QUERY__user_ip_count = "SELECT COUNT(*) FROM jaaql__my_ips"
@@ -873,9 +875,18 @@ class JAAQLModel(BaseJAAQLModel):
     def sign_up_user(self, jaaql_connection: DBInterface, username: str, password: str, user_id: str = None,
                      ip_address: str = None, user_agent: str = None, use_mfa: bool = False,
                      response: JAAQLResponse = None):
+        sign_up_data = None
         if user_id is None:
-            user_id = execute_supplied_statement_singleton(jaaql_connection, QUERY__user_id_from_username,
-                                                           {KEY__username: username}, as_objects=True)[KEY__username]
+            resp = execute_supplied_statement_singleton(jaaql_connection,
+                                                        QUERY__user_id_and_signup_data_from_username,
+                                                        {KEY__username: username}, as_objects=True,
+                                                        encryption_key=self.get_db_crypt_key(),
+                                                        decrypt_columns=[KEY__sign_up_data])
+            user_id = resp[KEY__id]
+            sign_up_data = resp[KEY__sign_up_data]
+
+            if sign_up_data is not None:
+                execute_supplied_statement(jaaql_connection, QUERY__user_erase_sign_up_data, {KEY__id: user_id})
 
         self.add_password(jaaql_connection, user_id, password)
 
@@ -892,17 +903,32 @@ class JAAQLModel(BaseJAAQLModel):
             response.ua_id = ua_id
             response.ip_id = ip_id
 
-        return {
+        resp = {
             KEY__otp_uri: totp_uri,
             KEY__otp_qr: totp_b64_qr
         }
+
+        if sign_up_data is not None:
+            resp[KEY__sign_up_data] = sign_up_data
+
+        return resp
 
     def fetch_default_roles_as_list(self):
         return [row[0] for row in execute_supplied_statement(self.jaaql_lookup_connection,
                                                              QUERY__default_roles_sel)[RET__rows]]
 
+    def pre_sign_up_user_with_email(self, email: str, sign_up_data: str):
+        if self.invite_only:
+            raise HttpStatusException(ERR__cannot_self_sign_up, HTTPStatus.UNAUTHORIZED)
+
+        self.create_user(self.jaaql_lookup_connection, email, sign_up_data=sign_up_data)
+
+        return {
+            KEY__invite_key: self.user_invite({KEY__email: email})
+        }
+
     def create_user(self, jaaql_connection: DBInterface, username: str, db_password: str = None, mobile: str = None,
-                    attach_as: str = None, precedence: int = None, roles: str = None):
+                    attach_as: str = None, precedence: int = None, roles: str = None, sign_up_data: str = None):
         if db_password is None:
             db_password = str(uuid.uuid4())
 
@@ -912,9 +938,12 @@ class JAAQLModel(BaseJAAQLModel):
         parameters = {
             ATTR__email: username,
             ATTR__mobile: mobile,
-            ATTR__alias: attach_as if attach_as != username else None
+            ATTR__alias: attach_as if attach_as != username else None,
+            KEY__sign_up_data: sign_up_data
         }
         user_id = execute_supplied_statement_singleton(jaaql_connection, QUERY__user_ins, parameters,
+                                                       encryption_key=self.get_db_crypt_key(),
+                                                       encrypt_parameters=[KEY__sign_up_data],
                                                        as_objects=True)[KEY__id]
 
         self.add_node_authorization({

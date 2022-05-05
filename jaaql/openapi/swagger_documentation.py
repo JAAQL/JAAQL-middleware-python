@@ -233,7 +233,7 @@ def validate_argument_responses(arg_responses: TYPE__argument_response):
     if isinstance(arg_responses, SwaggerList):
         arg_responses = arg_responses.responses
 
-    if arg_responses is not None and isinstance(arg_responses, List):
+    if arg_responses is not None and isinstance(arg_responses, list):
         found_names = []
         for arg_resp in arg_responses:
             if isinstance(arg_resp, SwaggerList):
@@ -316,7 +316,7 @@ class SwaggerMethod:
 
     @staticmethod
     def _validate_exceptions(exceptions: TYPE__exceptions):
-        if exceptions is not None and isinstance(exceptions, List):
+        if exceptions is not None and isinstance(exceptions, list):
             found_codes = []
             for ex in exceptions:
                 if _http_status_to_integer(ex.code) in found_codes:
@@ -325,7 +325,7 @@ class SwaggerMethod:
 
     @staticmethod
     def _validate_responses(responses: TYPE__responses):
-        if responses is not None and isinstance(responses, List):
+        if responses is not None and isinstance(responses, list):
             found_codes = []
             for ex in responses:
                 if _http_status_to_integer(ex.code) in found_codes:

@@ -109,7 +109,7 @@ class EmailManager:
 
         if email.attachments is not None:
             email_attachments = email.attachments
-            if not isinstance(email_attachments, List):
+            if not isinstance(email_attachments, list):
                 email_attachments = [email_attachments]
             for attachment in email_attachments:
                 message_final.attach(attachment.build_attachment())

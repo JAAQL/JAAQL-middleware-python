@@ -4,7 +4,8 @@ from jaaql.documentation.documentation_shared import ARG_RES__jaaql_password, AR
     JWT__invite, gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__deletion_key, RES__deletion_key,\
     set_nullable, rename_arg, ARG_RES__database_name, EXAMPLE__db, ARG_RES__application_name,\
     EXAMPLE__application_name, EXAMPLE__application_url, ARG_RES__application_body, EXAMPLE__application_dataset,\
-    ARG_RES__dataset_name, ARG_RES__dataset_description, RES__totp_mfa_nullable, ARG_RES__reference_dataset
+    ARG_RES__dataset_name, ARG_RES__dataset_description, RES__totp_mfa_nullable, ARG_RES__reference_dataset,\
+    EXAMPLE__email
 
 TITLE = "JAAQL Internal API"
 DESCRIPTION = "Collection of methods in the JAAQL internal API"
@@ -574,7 +575,7 @@ ARG_RES__role = SwaggerArgumentResponse(
     name=KEY__role,
     description="The role associated with this authorization",
     arg_type=str,
-    example=[EXAMPLE__role, "aaron@jaaql.com"],
+    example=[EXAMPLE__role, EXAMPLE__email],
     required=True
 )
 
