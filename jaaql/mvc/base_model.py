@@ -202,7 +202,17 @@ class BaseJAAQLModel:
             run_migrations(self.jaaql_lookup_connection, migration_project_name, migration_folder=migration_folder,
                            update_db_interface=self.migration_db_interface)
 
-            self.email_manager = EmailManager(self.jaaql_lookup_connection, email_credentials)
+            self.email_manager = EmailManager(self.jaaql_lookup_connection, email_credentials, self.get_db_crypt_key())
+            from jaaql.email.email_manager import EmailAttachment, Email
+            self.email_manager.send_email(Email(
+                "jaaql",
+                "aaron.tasker@gmail.com",
+                "This is a test email",
+                "<html><body><div style=\"color: red\">This is a test email body for {{NAME}}</div></body></html>",
+                EmailAttachment(open("C:/users/aaron/desktop/2022.0159.Certua.Invoice.pdf", "rb").read(),
+                                "invoice.pdf"),
+                {"NAME": "Aaron Tasker"}
+            ))
         else:
             self.install_key = str(uuid.uuid4())
             print("INSTALL KEY: " + self.install_key)

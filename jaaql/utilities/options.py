@@ -46,11 +46,20 @@ DEFAULT_OPTIONS: List[Option] = [
         required=False,
         description="Encrypts the jaaql vault which stores internal sensitive information",
         is_flag=False
+    ),
+    Option(
+        short="e",
+        long=OPT_KEY__email_credentials,
+        required=False,
+        description="Provides SMTP/IMAP email credentials into the JAAQL server. Base64 encoded json dict of the format"
+        " { \"my_account_name\": \"my_account_password\" }",
+        is_flag=False
     )
 ]
 
 
-def parse_options(args: dict, do_print_help: bool = True, require_override: list = None, title: str = None, use_options: [Option] = None):
+def parse_options(args: dict, do_print_help: bool = True, require_override: list = None, title: str = None,
+                  use_options: [Option] = None):
     if use_options is None:
         use_options = DEFAULT_OPTIONS
 

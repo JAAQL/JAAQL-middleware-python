@@ -3,7 +3,7 @@ from jaaql.db.db_utils import execute_supplied_statement
 import json
 import imaplib
 import smtplib
-from base64 import urlsafe_b64decode as b64d
+from base64 import urlsafe_b64decode as b64d, urlsafe_b64encode as b64e
 from jaaql.constants import ENCODING__ascii
 from typing import Union, List, Optional
 from email.mime.multipart import MIMEMultipart
@@ -11,23 +11,32 @@ from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
 from queue import Queue
 import threading
+import ssl
 
 QUERY__load_email_accounts = "SELECT * FROM jaaql__email_accounts WHERE deleted is null"
+
+KEY__email_account = "email_account"
+KEY__encrypted_subject = "encrypted_subject"
+KEY__encrypted_body = "encrypted_body"
+KEY__encrypted_attachments = "encrypted_attachments"
+KEY__encrypted_recipients = "encrypted_recipients"
+QUERY__ins_email_history = "INSERT INTO jaaql__email_history (email_account, encrypted_subject, encrypted_body, encrypted_attachments, encrypted_recipients) VALUES (:email_account, :encrypted_subject, :encrypted_body, :encrypted_attachments, :encrypted_recipients)"
 
 ERR__password_not_found = "Password not found for email account with name '%s'"
 ERR__email_not_found = "Email account not found with name '%s'"
 
-KEY__account_name = "name"
+KEY__account_name = "account_name"
 KEY__account_protocol = "protocol"
 KEY__account_host = "host"
 KEY__account_username = "username"
 KEY__account_port = "port"
-KEY__account_send_from = "send_from"
+KEY__account_send_from = "send_name"
 
 PROTOCOL__imap = "imap"
 PROTOCOL__smtp = "smtp"
 
 EMAIL__from = "From"
+EMAIL__from_email = "From_Email"
 EMAIL__to = "To"
 EMAIL__subject = "Subject"
 
@@ -45,9 +54,12 @@ class EmailAttachment:
         return attachment
 
 
+TYPE__email_attachments = Union[EmailAttachment, List[EmailAttachment]]
+
+
 class Email:
     def __init__(self, from_account: str, to: Union[str, List[str]], subject: str = None, body: str = None,
-                 attachments: Union[EmailAttachment, List[EmailAttachment]] = None, html_replacements: dict = None):
+                 attachments: TYPE__email_attachments = None, html_replacements: dict = None):
         self.from_account = from_account
         self.to = to
         self.subject = subject
@@ -58,11 +70,12 @@ class Email:
 
 class EmailManager:
 
-    def __init__(self, connection: DBInterface, email_credentials: Optional[str]):
+    def __init__(self, connection: DBInterface, email_credentials: Optional[str], db_crypt_key: bytes):
         if email_credentials is None:
             self.email_credentials = None
         else:
             self.email_credentials = json.loads(b64d(email_credentials).decode(ENCODING__ascii))
+        self.db_crypt_key = db_crypt_key
         self.connection = connection
         self.accounts = execute_supplied_statement(connection, QUERY__load_email_accounts, as_objects=True)
 
@@ -73,27 +86,26 @@ class EmailManager:
                 raise Exception(ERR__password_not_found % account[KEY__account_name])
             cur_queue = Queue()
             self.email_queues[account[KEY__account_name]] = cur_queue
-            method_args = [self.email_queues, cur_queue, self.email_credentials[account[KEY__account_name]]]
+            method_args = [account, cur_queue, self.email_credentials[account[KEY__account_name]]]
             threading.Thread(target=self.email_connection_thread, args=method_args, daemon=True).start()
 
-    def construct_message(self, account: dict, email: Email) -> MIMEMultipart:
+    def construct_message(self, account: dict, email: Email) -> (str, MIMEMultipart):
         send_body = email.body
 
         message = MIMEMultipart("alternative")
 
         if email.html_replacements is not None:
-            for key, val in email.html_replacements:
+            for key, val in email.html_replacements.items():
                 send_body = send_body.replace(REPLACEMENT__str % key, val)
-            message.attach(MIMEText(email.body, 'html'))
+            message.attach(MIMEText(send_body, 'html'))
         else:
-            message.attach(MIMEText(email.body, 'plain'))
-
-        message[EMAIL__to] = email.to
-        message[EMAIL__from] = account[KEY__account_send_from]
-        message[EMAIL__subject] = email.subject
+            message.attach(MIMEText(send_body, 'plain'))
 
         message_final = MIMEMultipart('mixed')
         message_final.attach(message)
+        message_final[EMAIL__to] = email.to
+        message_final[EMAIL__from] = account[KEY__account_send_from] + " <" + account[KEY__account_username] + ">"
+        message_final[EMAIL__subject] = email.subject
 
         if email.attachments is not None:
             email_attachments = email.attachments
@@ -102,21 +114,64 @@ class EmailManager:
             for attachment in email_attachments:
                 message_final.attach(attachment.build_attachment())
 
-        return message_final
+        return send_body, message_final
+
+    def is_connected(self, conn: smtplib.SMTP):
+        try:
+            status = conn.noop()[0]
+        except Exception as ex:
+            status = -1
+        return True if status == 250 else False
+
+    def fetch_conn(self, conn_lib, account: dict, password: str):
+        conn = conn_lib(account[KEY__account_host], port=account[KEY__account_port])
+
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+
+        if conn_lib == smtplib.SMTP_SSL:
+            conn.ehlo()
+        conn.starttls(context=context)
+        if conn_lib == smtplib.SMTP_SSL:
+            conn.ehlo()
+        conn.login(account[KEY__account_username], password)
+
+        return conn
+
+    def format_attachments_for_storage(self, attachments: TYPE__email_attachments):
+        if attachments is None:
+            return None
+        if not isinstance(attachments, list):
+            attachments = [attachments]
+        attachments = "::".join([b64e(attachment.content).decode(ENCODING__ascii) for attachment in attachments])
+        return attachments
 
     def email_connection_thread(self, account: dict, queue: Queue, password: str):
-        protocol = account[KEY__account_protocol]
-        host = account[KEY__account_host]
-        conn_lib = imaplib.IMAP4_SSL if protocol == PROTOCOL__imap else smtplib.SMTP_SSL
-        conn = conn_lib(protocol + "." + host, port=account[KEY__account_port])
-
-        conn.starttls()
-        conn.login(account[KEY__account_username] + "@" + host, password)
+        conn_lib = imaplib.IMAP4 if account[KEY__account_protocol] == PROTOCOL__imap else smtplib.SMTP
+        conn = self.fetch_conn(conn_lib, account, password)
 
         while True:
             email: Email = queue.get()
-            conn.send_message(account[KEY__account_send_from], email.to,
-                              self.construct_message(account, email).as_string())
+            if not self.is_connected(conn):
+                conn = self.fetch_conn(conn_lib, account, password)
+            send_to = email.to
+            if not isinstance(send_to, list):
+                send_to = [send_to]
+            send_to = ", ".join(send_to)
+            formatted_body, to_send = self.construct_message(account, email)
+            conn.send_message(to_send, account[KEY__account_username], send_to)
+            execute_supplied_statement(self.connection, QUERY__ins_email_history, {
+                    KEY__email_account: account[KEY__account_name],
+                    KEY__encrypted_subject: email.subject,
+                    KEY__encrypted_body: formatted_body,
+                    KEY__encrypted_attachments: self.format_attachments_for_storage(email.attachments),
+                    KEY__encrypted_recipients: send_to
+                }, encryption_key=self.db_crypt_key, encrypt_parameters=[
+                    KEY__encrypted_subject,
+                    KEY__encrypted_body,
+                    KEY__encrypted_attachments,
+                    KEY__encrypted_recipients
+                ]
+            )
 
     def send_email(self, email: Email):
         if email.from_account in self.email_queues:
