@@ -2,6 +2,8 @@ from jaaql.utilities.vault import Vault
 from jaaql.db.db_interface import DBInterface
 import jaaql.utilities.crypt_utils as crypt_utils
 from jaaql.migrations.migrations import run_migrations
+from jaaql.email.email_manager import EmailManager
+from jaaql.db.db_utils import execute_supplied_statement
 
 from jaaql.constants import *
 from jaaql.config_constants import *
@@ -13,11 +15,8 @@ import time
 import os
 from os.path import join
 
-
 from jaaql.exceptions.http_status_exception import *
 from typing import Union
-
-from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
 
 CONFIG_KEY_security = "SECURITY"
 CONFIG_KEY_SECURITY__mfa_label = "mfa_label"
@@ -35,16 +34,9 @@ ERR__expected_operand = "operand"
 ERR__expected_logic = "'AND' or 'OR'"
 
 ERR__expected_parser = "Expected %s in search parameter not '%s'"
-ERR__encryption_key_required = "Encryption key required. Check internal function calls"
-ERR__expected_single_row = "Expected single row response but received '%d' rows"
 ERR__deletion_invalid_key = "Deletion key invalid. Either didn't exist or expired"
 ERR__deletion_invalid_purpose = "Invalid purpose for deletion key"
 ERR__deletion_key_expired = "Deletion key expired"
-ERR__duplicated_encrypt_parameter = "Duplicated value in encrypt_parameters list"
-ERR__duplicated_encryption_salt = "Duplicated value in encryption_salts list"
-ERR__duplicated_decrypt_column = "Duplicated value in decrypt_columns list"
-ERR__missing_encrypt_parameter = "Encrypted parameter is not found '%s'"
-ERR__missing_decrypt_column = "Decrypted column '%s' not found in the result set"
 ERR__missing_page_size = "Cannot provide one or the other for page/size. Please provide both or neither"
 ERR__unexpected_paren_close = "Cannot process ')' in search as no associated '('"
 ERR__unexpected_parse_err = "Unexpected error whilst parsing search string. Please inspect"
@@ -165,7 +157,8 @@ class BaseJAAQLModel:
         return ret
 
     def __init__(self, config, vault_key: str, migration_db_interface=None, migration_project_name: str = None,
-                 migration_folder: str = None, is_container: bool = False, url: str = None):
+                 migration_folder: str = None, is_container: bool = False, url: str = None,
+                 email_credentials: dict = None):
         self.config = config
         self.migration_db_interface = migration_db_interface
         self.migration_project_name = migration_project_name
@@ -179,6 +172,7 @@ class BaseJAAQLModel:
 
         self.vault = Vault(vault_key, DIR__vault)
         self.jaaql_lookup_connection = None
+        self.email_manager = None
 
         self.token_expiry_ms = int(config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__token_expiry_ms])
         self.refresh_expiry_ms = int(config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__token_refresh_expiry_ms])
@@ -207,6 +201,18 @@ class BaseJAAQLModel:
 
             run_migrations(self.jaaql_lookup_connection, migration_project_name, migration_folder=migration_folder,
                            update_db_interface=self.migration_db_interface)
+
+            self.email_manager = EmailManager(self.jaaql_lookup_connection, email_credentials, self.get_db_crypt_key())
+            from jaaql.email.email_manager import EmailAttachment, Email
+            self.email_manager.send_email(Email(
+                "jaaql",
+                "aaron.tasker@gmail.com",
+                "This is a test email",
+                "<html><body><div style=\"color: red\">This is a test email body for {{NAME}}</div></body></html>",
+                EmailAttachment(open("C:/users/aaron/desktop/2022.0159.Certua.Invoice.pdf", "rb").read(),
+                                "invoice.pdf"),
+                {"NAME": "Aaron Tasker"}
+            ))
         else:
             self.install_key = str(uuid.uuid4())
             print("INSTALL KEY: " + self.install_key)
@@ -234,14 +240,14 @@ class BaseJAAQLModel:
     def execute_paging_query(self, jaaql_connection: DBInterface, full_query: str, count_query: str, parameters: dict,
                              where_query: str, where_parameters: dict, decrypt_columns: list = None,
                              encryption_key: bytes = None):
-        data = self.execute_supplied_statement(jaaql_connection, full_query, parameters=parameters,
-                                               as_objects=True, decrypt_columns=decrypt_columns,
-                                               encryption_key=encryption_key)
-        total = self.execute_supplied_statement(jaaql_connection, count_query, as_objects=True)
+        data = execute_supplied_statement(jaaql_connection, full_query, parameters=parameters,
+                                          as_objects=True, decrypt_columns=decrypt_columns,
+                                          encryption_key=encryption_key)
+        total = execute_supplied_statement(jaaql_connection, count_query, as_objects=True)
         total = total[0]["count"]
-        total_filtered = self.execute_supplied_statement(jaaql_connection, count_query + where_query,
-                                                         parameters=where_parameters,
-                                                         as_objects=True)[0]["count"]
+        total_filtered = execute_supplied_statement(jaaql_connection, count_query + where_query,
+                                                    parameters=where_parameters,
+                                                    as_objects=True)[0]["count"]
         return self.paged_collection(total, total_filtered, data)
 
     @staticmethod
@@ -478,136 +484,4 @@ class BaseJAAQLModel:
             raise HttpStatusException(ERR__deletion_invalid_purpose)
 
         data = json.loads(crypt_utils.decrypt(jwt_obj_key, key[JWT__data]))
-        return data
-
-    def force_singleton(self, data, as_objects: bool = False):
-        was_no_singleton = False
-        if as_objects:
-            if len(data) != 1:
-                was_no_singleton = True
-        else:
-            if len(data["rows"]) != 1:
-                was_no_singleton = True
-            if len(data["rows"]) != 0:
-                data["rows"] = data["rows"][0]
-
-        if was_no_singleton:
-            raise HttpStatusException(ERR__expected_single_row % len(data))
-
-        return data[0] if as_objects else data
-
-    def execute_supplied_statement_singleton(self, db_interface: DBInterface, query, parameters: dict = None,
-                                             as_objects: bool = False, encrypt_parameters: list = None,
-                                             decrypt_columns: list = None, encryption_key: bytes = None,
-                                             encryption_salts: dict = None):
-        data = self.execute_supplied_statement(db_interface, query, parameters, as_objects, encrypt_parameters,
-                                               decrypt_columns, encryption_key, encryption_salts)
-
-        return self.force_singleton(data, as_objects)
-
-    @staticmethod
-    def jaaql__encrypt(dec_input: str, encryption_key: bytes, salt: bytes = None) -> str:
-        return crypt_utils.encrypt_raw(encryption_key, dec_input, salt)
-
-    @staticmethod
-    def jaaql__decrypt(enc_input: str, encryption_key: bytes) -> str:
-        return crypt_utils.decrypt__raw(encryption_key, enc_input)
-
-    @staticmethod
-    def try_encode(salt: Union[str, bytes]) -> bytes:
-        if isinstance(salt, str):
-            salt = salt.encode(ENCODING__utf)
-        return salt
-
-    @staticmethod
-    def execute_supplied_statement(db_interface: DBInterface, query: str, parameters: dict = None,
-                                   as_objects: bool = False, encrypt_parameters: list = None,
-                                   decrypt_columns: list = None, encryption_key: bytes = None,
-                                   encryption_salts: dict = None):
-        if parameters is None:
-            parameters = {}
-
-        if (
-                decrypt_columns is not None or encrypt_parameters is not None or encryption_salts is not None
-        ) and encryption_key is None:
-            raise HttpStatusException(ERR__encryption_key_required)
-
-        if decrypt_columns is None:
-            decrypt_columns = []
-
-        if encrypt_parameters is None:
-            encrypt_parameters = []
-
-        if encryption_salts is None:
-            encryption_salts = {}
-
-        if len(encrypt_parameters) != len(set(encrypt_parameters)):
-            raise HttpStatusException(ERR__duplicated_encrypt_parameter)
-
-        if len(encrypt_parameters) != len(set(encrypt_parameters)):
-            raise HttpStatusException(ERR__duplicated_decrypt_column)
-
-        for key, val in encryption_salts.items():
-            if key not in encrypt_parameters:
-                raise HttpStatusException(ERR__missing_encrypt_parameter % key)
-
-        if len(encryption_salts.keys()) != len(set(encryption_salts.keys())):
-            raise HttpStatusException(ERR__duplicated_encryption_salt)
-
-        missing = [param for param in encrypt_parameters if param not in parameters.keys()]
-        if len(missing) != 0:
-            raise HttpStatusException(ERR__missing_encrypt_parameter % missing)
-
-        for col in encrypt_parameters:
-            if parameters[col] is not None:
-                parameters[col] = BaseJAAQLModel.jaaql__encrypt(parameters[col], encryption_key,
-                                                                BaseJAAQLModel.try_encode(
-                                                                    encryption_salts.get(col, None)))
-
-        statement = {
-            "query": query,
-            "parameters": parameters
-        }
-
-        data = InterpretJAAQL(db_interface).transform(statement)
-
-        missing = [param for param in decrypt_columns if param not in data["columns"]]
-        if len(missing) != 0:
-            raise HttpStatusException(ERR__missing_decrypt_column % missing)
-
-        if len(decrypt_columns) != 0:
-            data["rows"] = [
-                [BaseJAAQLModel.jaaql__decrypt(
-                    val, encryption_key) if col in decrypt_columns and val is not None else val for val, col in
-                 zip(row, data["columns"])] for row in data["rows"]]
-
-        if as_objects:
-            data = db_interface.objectify(data)
-
-        return data
-
-    @staticmethod
-    def execute_supplied_statements(db_interface: DBInterface, queries: Union[str, list],
-                                    parameters: Union[dict, list] = None, as_objects: bool = False):
-        if not isinstance(queries, list):
-            queries = [queries]
-        if not isinstance(parameters, list) and parameters is not None:
-            parameters = [parameters]
-
-        if parameters is None:
-            parameters = [{}] * len(queries)
-
-        statement = [
-            {
-                "query": query,
-                "parameters": parameter_set
-            }
-            for query, parameter_set in zip(queries, parameters)
-        ]
-
-        data = InterpretJAAQL(db_interface).transform(statement)
-
-        if as_objects:
-            data = [db_interface.objectify(obj) for obj in data]
-
         return data
