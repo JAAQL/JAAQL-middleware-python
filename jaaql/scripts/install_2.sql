@@ -9,7 +9,8 @@ create table jaaql__user (
     enc_totp_iv varchar(254),
     last_totp varchar(6),
     alias varchar(32),
-    sign_up_data text
+    sign_up_data text,
+    is_public boolean default false
 );
 CREATE UNIQUE INDEX jaaql__user_unq_email ON jaaql__user (email) WHERE (deleted is null);
 
@@ -49,7 +50,8 @@ create view jaaql__user_latest_password as (
         us.email,
         password_hash,
         us.enc_totp_iv,
-        us.last_totp
+        us.last_totp,
+        us.is_public
     FROM
         (SELECT
             the_user,

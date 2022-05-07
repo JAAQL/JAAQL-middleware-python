@@ -110,7 +110,7 @@ QUERY__user_ip_count = "SELECT COUNT(*) FROM jaaql__my_ips"
 QUERY__user_ip_ins = "INSERT INTO jaaql__user_ip (the_user, address_hash, encrypted_address) VALUES (:id, :address_hash, :ip_address) ON CONFLICT ON CONSTRAINT jaaql__user_ip_unq DO UPDATE SET most_recent_use = current_timestamp RETURNING most_recent_use <> first_use as existed, id"
 QUERY__user_ua_ins = "INSERT INTO jaaql__user_ua (the_user, ua_hash, encrypted_ua) VALUES (:id, :ua_hash, :ua) ON CONFLICT ON CONSTRAINT jaaql__user_ua_unq DO UPDATE SET most_recent_use = current_timestamp RETURNING most_recent_use <> first_use as existed, id"
 QUERY__user_password_ins = "INSERT INTO jaaql__user_password (the_user, password_hash) VALUES (:the_user, :password_hash)"
-QUERY__fetch_user_latest_password = "SELECT id, email, password_hash, enc_totp_iv as totp_iv, last_totp FROM jaaql__user_latest_password WHERE email = lower(:username)"
+QUERY__fetch_user_latest_password = "SELECT id, email, password_hash, enc_totp_iv as totp_iv, last_totp, is_public FROM jaaql__user_latest_password WHERE email = lower(:username)"
 QUERY__user_create_role = "SELECT jaaql__create_role(lower(:username), :password)"
 QUERY__log_ins = "INSERT INTO jaaql__log (the_user, occurred, duration_ms, encrypted_exception, encrypted_input, ip, ua, status, endpoint) VALUES (:user_id, :occurred, :duration_ms, :exception, :input, :ip, :ua, :status, :endpoint)"
 QUERY__user_log_sel = "SELECT occurred, encrypted_address as address, encrypted_ua as user_agent, status, endpoint, duration_ms, encrypted_exception as exception FROM jaaql__my_logs"
@@ -568,7 +568,7 @@ class JAAQLModel(BaseJAAQLModel):
         return DBInterface.create_interface(self.config, auth[KEY__address], auth[KEY__port], DB__jaaql,
                                             auth[KEY__username], auth[KEY__password]
                                             ), user[KEY__id], ip_id, ua_id, iv, user[ATTR__password_hash], last_totp, \
-               username
+               username, user[KEY__is_public]
 
     def add_application(self, inputs: dict, jaaql_connection: DBInterface):
         default_url = self.url + SEPARATOR__dir + DIR__apps

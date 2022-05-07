@@ -59,6 +59,7 @@ KEY__jaaql_otp_uri = "jaaql_otp_uri"
 KEY__jaaql_otp_qr = "jaaql_otp_qr"
 KEY__superjaaql_otp_uri = "superjaaql_otp_uri"
 KEY__superjaaql_otp_qr = "superjaaql_otp_qr"
+KEY__is_public = "is_public"
 
 ATTR__deleted = "deleted"
 

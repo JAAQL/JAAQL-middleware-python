@@ -1,4 +1,4 @@
-import * as JEQL from "../../JEQL/JEQL.js"
+import * as JEQL from "../../../../../JEQL/JEQL.js"
 
 let APPLICATION_NAME = "playground";
 let QUERY_APPLICATIONS = "SELECT * FROM jaaql__application"
