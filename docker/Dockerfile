@@ -11,6 +11,11 @@ RUN apt-get install -y git
 ENV INSTALL_PATH /JAAQL-middleware-python
 COPY . $INSTALL_PATH
 
+RUN git clone https://github.com/JAAQL/JEQL.git
+WORKDIR JEQL
+RUN git checkout 2.0.0
+WORKDIR /
+
 RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini
 RUN mv $INSTALL_PATH/jaaql/config/config-docker.ini $INSTALL_PATH/jaaql/config/config.ini
 

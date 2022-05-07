@@ -6,6 +6,8 @@ from jaaql.documentation.documentation_shared import *
 from jaaql.mvc.response import JAAQLResponse
 from jaaql.db.db_interface import DBInterface
 
+ERR__user_public = "Cannot perform this action on a public user!"
+
 
 class JAAQLController(BaseJAAQLController):
 
@@ -178,7 +180,9 @@ class JAAQLController(BaseJAAQLController):
             self.model.sign_up_user(jaaql_connection, http_inputs[KEY__email], http_inputs[KEY__password])
 
         @self.cors_route('/internal/users/confirm-deletion', DOCUMENTATION__users_confirm_revoke)
-        def revoke_user_confirm(http_inputs: dict, jaaql_connection: DBInterface):
+        def revoke_user_confirm(http_inputs: dict, jaaql_connection: DBInterface, is_public: bool):
+            if is_public:
+                raise HttpStatusException(ERR__user_public, HTTPStatus.UNAUTHORIZED)
             return self.model.revoke_user_confirm(http_inputs, jaaql_connection)
 
         @self.cors_route('/internal/users/default-roles', DOCUMENTATION__user_default_roles)
@@ -200,7 +204,9 @@ class JAAQLController(BaseJAAQLController):
             return self.model.fetch_account_info(username, totp_iv)
 
         @self.cors_route('/account/mfa', DOCUMENTATION__account_mfa)
-        def mfa(http_inputs: dict, user_id: str, totp_iv: str, last_totp: str, password_hash: str):
+        def mfa(http_inputs: dict, user_id: str, totp_iv: str, last_totp: str, password_hash: str, is_public: bool):
+            if is_public:
+                raise HttpStatusException(ERR__user_public, HTTPStatus.UNAUTHORIZED)
             return self.model.enable_disable_mfa(http_inputs, user_id, totp_iv, last_totp, password_hash)
 
         @self.cors_route('/account/signup', DOCUMENTATION__sign_up)
@@ -221,21 +227,30 @@ class JAAQLController(BaseJAAQLController):
                 return self.model.pre_sign_up_user_with_email(sql_inputs[KEY__email], sql_inputs.get(KEY__sign_up_data))
 
         @self.cors_route('/account/logs', DOCUMENTATION__my_logs)
-        def fetch_logs(http_inputs: dict, jaaql_connection: DBInterface):
+        def fetch_logs(http_inputs: dict, jaaql_connection: DBInterface, is_public: bool):
+            if is_public:
+                raise HttpStatusException(ERR__user_public, HTTPStatus.UNAUTHORIZED)
             return self.model.my_logs(http_inputs, jaaql_connection)
 
         @self.cors_route('/account/addresses', DOCUMENTATION__my_ips)
-        def fetch_addresses(http_inputs: dict, jaaql_connection: DBInterface):
+        def fetch_addresses(http_inputs: dict, jaaql_connection: DBInterface, is_public: bool):
+            if is_public:
+                raise HttpStatusException(ERR__user_public, HTTPStatus.UNAUTHORIZED)
             return self.model.my_ips(http_inputs, jaaql_connection)
 
         @self.cors_route('/account/password', DOCUMENTATION__password)
         def change_password(http_inputs: dict, totp_iv: str, oauth_token: str, password_hash: str, user_id: str,
-                            last_totp: str, jaaql_connection: DBInterface):
+                            last_totp: str, jaaql_connection: DBInterface, is_public: bool):
+            if is_public:
+                raise HttpStatusException(ERR__user_public, HTTPStatus.UNAUTHORIZED)
             return self.model.change_password(http_inputs, totp_iv, oauth_token, password_hash, user_id, last_totp,
                                               jaaql_connection)
 
         @self.cors_route('/account/close', DOCUMENTATION__account_close)
-        def close_account(http_inputs: dict, totp_iv: str, password_hash: str, user_id: str, last_totp: str):
+        def close_account(http_inputs: dict, totp_iv: str, password_hash: str, user_id: str, last_totp: str,
+                          is_public: bool):
+            if is_public:
+                raise HttpStatusException(ERR__user_public, HTTPStatus.UNAUTHORIZED)
             return self.model.close_account(http_inputs, totp_iv, password_hash, user_id, last_totp)
 
         @self.cors_route('/account/confirm-close', DOCUMENTATION__account_close_confirm)

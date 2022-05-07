@@ -19,6 +19,7 @@ from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMet
 from jaaql.exceptions.http_status_exception import *
 
 ARG__http_inputs = "http_inputs"
+ARG__is_public = "is_public"
 ARG__sql_inputs = "sql_inputs"
 ARG__totp_iv = "totp_iv"
 ARG__user_id = "user_id"
@@ -54,6 +55,7 @@ ERR__unexpected_response_field = "Unexpected response field '%s'"
 ERR__method_required_security = "Method requires connection input yet marked as not secure in documentation"
 ERR__method_required_token = "Method requires oauth token input yet marked as not secure in documentation"
 ERR__method_required_totp = "Method requires totp iv input yet marked as not secure in documentation"
+ERR__method_required_is_public = "Method requires is_public input yet marked as not secure in documentation"
 ERR__method_required_user_id = "Method requires user id input yet marked as not secure in documentation"
 ERR__method_required_password_hash = "Method requires password hash input yet marked as not secure in documentation"
 ERR__missing_user_id = "Expected user id in response from method as method is without security"
@@ -337,11 +339,12 @@ class BaseJAAQLController:
                     username = None
                     password_hash = None
                     l_totp = None
+                    is_public = None
 
                     ip_addr = request.headers.get(HEADER__real_ip, request.remote_addr).split(",")[0]
 
                     if swagger_documentation.security:
-                        jaaql_connection, user_id, ip_id, ua_id, totp_iv, password_hash, l_totp, username =\
+                        jaaql_connection, user_id, ip_id, ua_id, totp_iv, password_hash, l_totp, username, is_public =\
                             self.model.verify_jwt(request.headers.get(HEADER__security), ip_addr, user_agent,
                             route == ENDPOINT__refresh)
 
@@ -355,6 +358,11 @@ class BaseJAAQLController:
                             supply_dict[ARG__http_inputs] = BaseJAAQLController.get_input_as_dictionary(method,
                                                                                                         self.is_prod)
                             method_input = self.log_safe_dump(supply_dict[ARG__http_inputs])
+
+                        if ARG__is_public in inspect.getfullargspec(view_func_local).args:
+                            if not swagger_documentation.security:
+                                raise Exception(ERR__method_required_is_public)
+                            supply_dict[ARG__is_public] = is_public
 
                         if ARG__sql_inputs in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__sql_inputs] = BaseJAAQLController.get_input_as_dictionary(

@@ -1,4 +1,4 @@
-import * as JEQL from "../../JEQL/JEQL.js"
+import * as JEQL from "../../../../../JEQL/JEQL.js"
 
 let APPLICATION_NAME = "manager";
 let ID_CONF_APP = "configuration-table";
