@@ -10,13 +10,12 @@ else
   cd ../
 fi
 
-mv JEQL JAAQL_middleware_python/apps/JEQL
+cp -r JEQL /JAAQL-middleware-python/jaaql/apps/JEQL
 
 JEQL_REPLACE="import * as JEQL from '../../JEQL/JEQL.js'"
-REPLACE_ESC=$(systemd-escape $JEQL_REPLACE)
-sed -ri '1s@^.*$@'"$REPLACE_ESC"'@' JAAQL_middleware_python/apps/console/scripts/site.js
-sed -ri '1s@^.*$@'"$REPLACE_ESC"'@' JAAQL_middleware_python/apps/manager/scripts/site.js
-sed -ri '1s@^.*$@'"$REPLACE_ESC"'@' JAAQL_middleware_python/apps/playground/scripts/site.js
+sed -ri '1s@^.*$@'"$JEQL_REPLACE"'@' /JAAQL-middleware-python/jaaql/apps/console/scripts/site.js
+sed -ri '1s@^.*$@'"$JEQL_REPLACE"'@' /JAAQL-middleware-python/jaaql/apps/manager/scripts/site.js
+sed -ri '1s@^.*$@'"$JEQL_REPLACE"'@' /JAAQL-middleware-python/jaaql/apps/playground/scripts/site.js
 
 
 LOG_FILE=$INSTALL_PATH/log/gunicorn.log
