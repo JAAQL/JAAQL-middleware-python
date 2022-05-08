@@ -7,9 +7,7 @@ from jaaql.exceptions.http_status_exception import HttpStatusException, HTTPStat
     ERR__already_signed_up
 
 from typing import Optional
-from jaaql.db.db_utils import execute_supplied_statement, execute_supplied_statement_singleton, \
-    execute_supplied_statements
-from distutils.dir_util import copy_tree
+from jaaql.db.db_utils import execute_supplied_statement, execute_supplied_statement_singleton
 from jaaql.mvc.response import JAAQLResponse
 from collections import Counter
 from os.path import dirname
@@ -374,17 +372,6 @@ class JAAQLModel(BaseJAAQLModel):
         return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data,
                                       expiry_ms=expiry_time)
 
-    def copy_apps(self):
-        if self.is_container:
-            apps_dir = join(DIR__www, DIR__apps)
-            if not os.path.exists(DIR__apps):
-                os.makedirs(DIR__apps)
-            for app_dir in os.scandir(join(get_jaaql_root(), DIR__apps)):
-                if app_dir.is_dir():
-                    if os.path.exists(join(apps_dir, app_dir.name)):
-                        shutil.rmtree(join(apps_dir, app_dir.name))
-            copy_tree(join(get_jaaql_root(), DIR__apps), apps_dir)
-
     def install(self, db_connection_string: str, superjaaql_password: str, password: str, install_key: str,
                 use_mfa: bool, ip_address: str, user_agent: str, response: JAAQLResponse):
         if not use_mfa and self.force_mfa:
@@ -469,8 +456,6 @@ class JAAQLModel(BaseJAAQLModel):
                     KEY__configuration: CONFIGURATION__host,
                     KEY__role: USERNAME__postgres
                 }, self.jaaql_lookup_connection)
-
-            self.copy_apps()
 
             base_url = self.url + SEPARATOR__dir + DIR__apps + SEPARATOR__dir
             execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_set_url,

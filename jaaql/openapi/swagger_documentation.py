@@ -255,7 +255,7 @@ def validate_argument_responses(arg_responses: TYPE__argument_response):
 
 class SwaggerFlatResponse:
 
-    def __init__(self, description: str, code: HTTPStatus = HTTPStatus.OK, resp_type: type = str,
+    def __init__(self, description: str = "HTTP OK", code: HTTPStatus = HTTPStatus.OK, resp_type: type = str,
                  body: str = RESPONSE__OK):
         self.code = code
         self.description = description

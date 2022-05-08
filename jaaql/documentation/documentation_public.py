@@ -55,14 +55,7 @@ DOCUMENTATION__sign_up = SwaggerDocumentation(
         method=REST__POST,
         body=[
             ARG_RES__invite_key,
-            SwaggerArgumentResponse(
-                name=KEY__email,
-                description="The email of the user, if they are performing a self sign up",
-                arg_type=str,
-                example=[EXAMPLE__email],
-                required=False,
-                condition="Is the user signing up via an invite key or are they signing themselves up"
-            ),
+            set_nullable(ARG_RES__email, "Is the user signing up via an invite key or are they signing themselves up"),
             ARG_RES__signup_data,
             set_nullable(ARG_RES__jaaql_password, "Is the user in the 2nd stage of signup")
         ],

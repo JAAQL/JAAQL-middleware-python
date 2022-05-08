@@ -1,10 +1,10 @@
-from jaaql.mvc.base_model import BaseJAAQLModel
+from jaaql.mvc.model import JAAQLModel
 from abc import ABC
 
 
 class JAAQLModelInterface(ABC):
     def __init__(self):
-        self.base_model: BaseJAAQLModel = None
+        self.base_model: JAAQLModel = None
 
-    def set_model(self, base_model: BaseJAAQLModel):
+    def set_model(self, base_model: JAAQLModel):
         self.base_model = base_model

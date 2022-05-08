@@ -17,6 +17,7 @@ sed -ri '1s@^.*$@'"$JEQL_REPLACE"'@' /JAAQL-middleware-python/jaaql/apps/console
 sed -ri '1s@^.*$@'"$JEQL_REPLACE"'@' /JAAQL-middleware-python/jaaql/apps/manager/scripts/site.js
 sed -ri '1s@^.*$@'"$JEQL_REPLACE"'@' /JAAQL-middleware-python/jaaql/apps/playground/scripts/site.js
 
+cp -r /JAAQL-middleware-python/jaaql/apps $INSTALL_PATH/www/apps
 
 LOG_FILE=$INSTALL_PATH/log/gunicorn.log
 
