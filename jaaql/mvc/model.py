@@ -435,10 +435,11 @@ class JAAQLModel(BaseJAAQLModel):
             if superjaaql_password is not None:
                 # Because we are setting this user up as postgres, it has a role of every user. Therefore we set this
                 # precedence as higher to override them
-                self.create_user(self.jaaql_lookup_connection, USERNAME__superjaaql, superjaaql_db_password,
-                                 attach_as=USERNAME__postgres, precedence=PRECEDENCE__super_user)
-                super_mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__superjaaql, password, user_id,
-                                              ip_address, user_agent, use_mfa=use_mfa)
+                super_used_id = self.create_user(self.jaaql_lookup_connection, USERNAME__superjaaql,
+                                                 superjaaql_db_password, attach_as=USERNAME__postgres,
+                                                 precedence=PRECEDENCE__super_user)
+                super_mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__superjaaql, password,
+                                              super_used_id, ip_address, user_agent, use_mfa=use_mfa)
                 super_otp_uri = super_mfa[KEY__otp_uri]
                 super_otp_qr = super_mfa[KEY__otp_qr]
                 self.add_configuration_authorization({
