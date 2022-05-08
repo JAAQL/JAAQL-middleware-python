@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-if [[ -z "${JEQL_BRANCH}" ]]; then
+if [ -z "${JEQL_BRANCH}" ]; then
   echo "Using default JEQL version"
 else
   echo "Switching to JEQL version $JEQL_BRANCH"
@@ -10,6 +10,7 @@ else
   cd ../
 fi
 
+mkdir -p $INSTALL_PATH/www
 cp -r JEQL /JAAQL-middleware-python/jaaql/apps/JEQL
 
 JEQL_REPLACE="import * as JEQL from '../../JEQL/JEQL.js'"
@@ -17,6 +18,7 @@ sed -ri '1s@^.*$@'"$JEQL_REPLACE"'@' /JAAQL-middleware-python/jaaql/apps/console
 sed -ri '1s@^.*$@'"$JEQL_REPLACE"'@' /JAAQL-middleware-python/jaaql/apps/manager/scripts/site.js
 sed -ri '1s@^.*$@'"$JEQL_REPLACE"'@' /JAAQL-middleware-python/jaaql/apps/playground/scripts/site.js
 
+mkdir -p $INSTALL_PATH/www
 cp -r /JAAQL-middleware-python/jaaql/apps $INSTALL_PATH/www/apps
 
 LOG_FILE=$INSTALL_PATH/log/gunicorn.log
