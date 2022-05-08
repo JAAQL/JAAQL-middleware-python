@@ -25,7 +25,6 @@ from jaaql.constants import *
 from os.path import join
 from jaaql.utilities.utils import get_jaaql_root
 import threading
-import shutil
 
 TOKEN__pre_auth_reduction_factor = 15
 

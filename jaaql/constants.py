@@ -93,4 +93,4 @@ ENCODING__utf = "UTF-8"
 ENCODING__ascii = "ascii"
 EXAMPLE__jwt = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.e30.yXvILkvUUCBqAFlAv6wQ1Q-QRAjfe3eSosO949U73Vo"
 
-VERSION = "2.9.0"
+VERSION = "2.10.0"
