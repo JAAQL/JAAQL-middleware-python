@@ -95,10 +95,10 @@ replace_config() {
   sed -i 's/{{SERVER_ADDRESS}}/'$SERVER_PROTOCOL$SERVER_ADDRESS'/g' /JAAQL-middleware-python/jaaql/config/config.ini
   sed -i 's/{{MFA_LABEL}}/'$MFA_LABEL'/g' /JAAQL-middleware-python/jaaql/config/config.ini
 
-  if [ "$FORCE_MFA" = "FALSE" ] ; then
-    sed -i 's/{{FORCE_MFA}}/false/g' /JAAQL-middleware-python/jaaql/config/config.ini
-  else
+  if [ "$FORCE_MFA" = "TRUE" ] ; then
     sed -i 's/{{FORCE_MFA}}/true/g' /JAAQL-middleware-python/jaaql/config/config.ini
+  else
+    sed -i 's/{{FORCE_MFA}}/false/g' /JAAQL-middleware-python/jaaql/config/config.ini
   fi
 
   if [ "$INVITE_ONLY" = "FALSE" ] ; then

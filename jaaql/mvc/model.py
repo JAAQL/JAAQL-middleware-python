@@ -438,7 +438,7 @@ class JAAQLModel(BaseJAAQLModel):
                 super_used_id = self.create_user(self.jaaql_lookup_connection, USERNAME__superjaaql,
                                                  superjaaql_db_password, attach_as=USERNAME__postgres,
                                                  precedence=PRECEDENCE__super_user)
-                super_mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__superjaaql, password,
+                super_mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__superjaaql, superjaaql_password,
                                               super_used_id, ip_address, user_agent, use_mfa=use_mfa)
                 super_otp_uri = super_mfa[KEY__otp_uri]
                 super_otp_qr = super_mfa[KEY__otp_qr]
