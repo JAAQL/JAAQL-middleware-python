@@ -1,4 +1,4 @@
-from jaaql.utilities.vault import Vault
+from jaaql.utilities.vault import Vault, DIR__vault
 from jaaql.db.db_interface import DBInterface
 import jaaql.utilities.crypt_utils as crypt_utils
 from jaaql.migrations.migrations import run_migrations
@@ -10,6 +10,7 @@ from jaaql.config_constants import *
 
 import uuid
 import traceback
+import subprocess
 import json
 import time
 import os
@@ -54,15 +55,15 @@ WHERE__id = "where_query_"
 
 KEY__db_crypt_key = "db_crypt_key"
 
-VAULT_KEY__db_crypt_key = "db_crypt_key"
 VAULT_KEY__jwt_crypt_key = "jwt_crypt_key"
 VAULT_KEY__jwt_obj_crypt_key = "jwt_obj_crypt_key"
-VAULT_KEY__jaaql_lookup_connection = "jaaql_lookup_connection"
-DIR__vault = "vault"
+
 FILE__was_installed = "was_installed"
 
 JWT__purpose = "purpose"
 JWT__data = "data"
+
+ENVIRON__install_path = "INSTALL_PATH"
 
 
 class JAAQLPivotData:
@@ -106,10 +107,14 @@ class BaseJAAQLModel:
         This hook reloads all workers if the file exists in vault
         :return:
         """
-        time.sleep(1)
         if self.is_container:
             open(join(DIR__vault, FILE__was_installed), 'a').close()
-        os._exit(0)
+        if os.environ.get(ENVIRON__install_path, "").strip() == "/component-test-project":
+            pid = open("app.pid", "r").read()
+            subprocess.call("kill -HUP " + pid, shell=True)  # Kill gunicorn so coverage report is generated
+        else:
+            time.sleep(1)
+            os._exit(0)
 
     def pivot(self, data: [dict], pivot_info: [JAAQLPivotInfo]):
         if len(data) == 0:
@@ -157,8 +162,7 @@ class BaseJAAQLModel:
         return ret
 
     def __init__(self, config, vault_key: str, migration_db_interface=None, migration_project_name: str = None,
-                 migration_folder: str = None, is_container: bool = False, url: str = None,
-                 email_credentials: dict = None):
+                 migration_folder: str = None, is_container: bool = False, url: str = None):
         self.config = config
         self.migration_db_interface = migration_db_interface
         self.migration_project_name = migration_project_name
@@ -203,7 +207,8 @@ class BaseJAAQLModel:
             run_migrations(self.jaaql_lookup_connection, migration_project_name, migration_folder=migration_folder,
                            update_db_interface=self.migration_db_interface)
 
-            self.email_manager = EmailManager(self.jaaql_lookup_connection, email_credentials, self.get_db_crypt_key())
+            self.email_manager = EmailManager()
+            open(FILE__finished_migrations, "w").close()
         else:
             self.install_key = str(uuid.uuid4())
             print("INSTALL KEY: " + self.install_key)

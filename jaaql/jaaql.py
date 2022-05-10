@@ -1,26 +1,22 @@
 from logging import StreamHandler
+from jaaql.constants import ENVIRON__vault_key
 import re
 import logging
 import pkgutil
-from os.path import exists, join
+from os.path import exists
 import configparser
 from jaaql.openapi.swagger_documentation import produce_all_documentation
 from jaaql.utilities.options import *
 import sys
 import os
 import jaaql.documentation as documentation
-from jaaql.utilities.utils import get_jaaql_root
+from jaaql.utilities.utils import load_config
 from jaaql.mvc.controller import JAAQLController
 from jaaql.mvc.model import JAAQLModel
 from jaaql.mvc.controller_interface import JAAQLControllerInterface
 from jaaql.mvc.model_interface import JAAQLModelInterface
 from jaaql.config_constants import *
 
-DIR__config = "config"
-FILE__config = "config.ini"
-
-ENVIRON__vault_key = "JAAQL_VAULT_PASSWORD"
-ENVIRON__email_credentials = "JAAQL_EMAIL_CREDENTIALS"
 
 DEFAULT__mfa_label = "test"
 
@@ -80,31 +76,17 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
     if len(options) == 0 and not is_gunicorn:
         options = parse_options(sys.argv, False)
 
-    email_credentials = None
-
     if OPT_KEY__vault_key in options:
         print(WARNING__vault_key_stdin, file=sys.stderr)
         vault_key = options[OPT_KEY__vault_key]
-        email_credentials = options.get(OPT_KEY__email_credentials)
     elif is_gunicorn:
         vault_key = os.environ.get(ENVIRON__vault_key)
-        email_credentials = os.environ.get(ENVIRON__email_credentials)
     else:
         vault_key = input("Input vault key: ")
 
     logging.getLogger("werkzeug").handlers.append(SensitiveHandler())
 
-    config_root = get_jaaql_root()
-    if is_gunicorn:
-        config_root = "/JAAQL-middleware-python/jaaql"
-
-    config = configparser.ConfigParser()
-    config.sections()
-    config_path = join(config_root, DIR__config, FILE__config)
-    if not exists(config_path):
-        raise Exception("Could not find config. Please check working directory has access to '" + config_path + "'")
-    config.read(config_path)
-    config = {s: dict(config.items(s)) for s in config.sections()}
+    config = load_config(is_gunicorn)
 
     if override_config_path is not None:
         override_config = configparser.ConfigParser()
@@ -142,7 +124,7 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
     url = config[CONFIG_KEY__swagger][CONFIG_KEY_SWAGGER__url]
 
     model = JAAQLModel(config, vault_key, migration_db_interface, migration_project_name, migration_folder,
-                       is_container=is_gunicorn, url=url, email_credentials=email_credentials)
+                       is_container=is_gunicorn, url=url)
     controller = JAAQLController(model, is_gunicorn)
     controller.create_app()
 

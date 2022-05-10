@@ -337,6 +337,7 @@ DOCUMENTATION__applications = SwaggerDocumentation(
                     condition="Only updated if supplied",
                     description="New application name",
                     arg_type=str,
+                    required=False,
                     example=["Library Browser", "Meeting Room Scheduling Assistant"]
                 ),
                 SwaggerArgumentResponse(
@@ -344,6 +345,7 @@ DOCUMENTATION__applications = SwaggerDocumentation(
                     condition="Only updated if supplied",
                     description="New application description",
                     arg_type=str,
+                    required=False,
                     example=["Browses books in the library", "Helps book meetings"]
                 ),
                 SwaggerArgumentResponse(
@@ -351,6 +353,7 @@ DOCUMENTATION__applications = SwaggerDocumentation(
                     condition="Only updated if supplied",
                     description="New application url",
                     arg_type=str,
+                    required=False,
                     example=["https://jaaql.com/demos/library-application",
                              "https://jaaql.com/demos/meeting-application"]
                 )
@@ -757,7 +760,7 @@ DOCUMENTATION__activate = SwaggerDocumentation(
 )
 
 DOCUMENTATION__users_confirm_revoke = SwaggerDocumentation(
-    tags="Users",
+    tags="User Management",
     methods=SwaggerMethod(
         name="Confirm user revoke",
         description="Confirm the revoke of a user, providing a single use deletion key",

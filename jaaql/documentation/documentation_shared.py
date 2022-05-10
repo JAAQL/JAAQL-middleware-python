@@ -110,6 +110,7 @@ ARG_RES__part_sort_pageable = [
         condition="If not supplied, will return all records",
         description="The size of the page",
         arg_type=int,
+        required=False,
         example=[10, 20]
     ),
     SwaggerArgumentResponse(
@@ -117,6 +118,7 @@ ARG_RES__part_sort_pageable = [
         description="The page number to select, 0-based indexing",
         condition="If not supplied will default to 0",
         arg_type=int,
+        required=False,
         example=[0, 1]
     )
 ]
@@ -134,6 +136,7 @@ def gen_arg_res_sort_pageable(col_one: str, col_two: str = None, example_one: st
             description="Comma separated sort",
             condition="If not supplied uses default database ordering",
             arg_type=str,
+            required=False,
             example=[col_one + " ASC", col_one + " DESC"]
         )
         search_arg = SwaggerArgumentResponse(
@@ -141,6 +144,7 @@ def gen_arg_res_sort_pageable(col_one: str, col_two: str = None, example_one: st
             description="OR/AND separated search. Uses a limited subset of SQL",
             condition="If not supplied all records will match",
             arg_type=str,
+            required=False,
             example=[col_one + " LIKE '%" + example_one + "%'"]
         )
     else:
@@ -149,6 +153,7 @@ def gen_arg_res_sort_pageable(col_one: str, col_two: str = None, example_one: st
             description="Comma separated sort",
             condition="If not supplied uses default database ordering",
             arg_type=str,
+            required=False,
             example=[col_one + " ASC, " + col_two + " DESC", col_two + " ASC, " + col_one + " DESC"]
         )
         search_arg = SwaggerArgumentResponse(
@@ -156,6 +161,7 @@ def gen_arg_res_sort_pageable(col_one: str, col_two: str = None, example_one: st
             description="OR/AND separated search. Uses a limited subset of SQL",
             condition="If not supplied all records will match",
             arg_type=str,
+            required=False,
             example=[col_one + " LIKE '%" + example_one + "%' OR " + col_two + " LIKE '%" + example_two + "%'",
                      col_two + " LIKE '%" + example_two + "%' AND " + col_one + " LIKE '%" + example_one + "%'"]
         )

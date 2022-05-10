@@ -1,0 +1,8 @@
+FROM local-jaaql-middleware-python
+
+ENV INSTALL_PATH /component-test-project
+COPY jaaql/test/component-test-project $INSTALL_PATH
+COPY jaaql/test/component.py $INSTALL_PATH/component.py
+COPY jaaql/test/components $INSTALL_PATH/components
+
+ENTRYPOINT ["sh", "entrypoint.test.component.sh"]

@@ -5,6 +5,8 @@ import json
 FILE__vault = "vault"
 FILE__vault_salt = "vault_salt"
 
+DIR__vault = "vault"
+
 ENCODING_utf = "UTF-8"
 
 
@@ -30,9 +32,12 @@ class Vault:
             vault = json.loads(crypt_utils.decrypt(self._vault_key, f.read().decode(ENCODING_utf)))
         else:
             self._vault = {}
-            self._persist()
+            self.insert_obj("init", "val")
 
         return vault
+
+    def reload(self):
+        self._load()
 
     def _persist(self):
         data = crypt_utils.encrypt(self._vault_key, json.dumps(self._vault)).encode(ENCODING_utf)
