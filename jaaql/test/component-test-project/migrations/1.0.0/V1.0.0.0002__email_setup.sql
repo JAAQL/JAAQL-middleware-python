@@ -1,0 +1,1 @@
+INSERT INTO jaaql__email_accounts (account_name, send_name, protocol, host, port, username) VALUES ('CTP', 'CTP Sender', 'smtp', 'web119.shared.hosting-login.net', 587, 'jaaql-component-send@sqmi.nl');

@@ -9,7 +9,14 @@ else
   git checkout $JEQL_BRANCH
   cd ../
 fi
+if [ -z "${SERVER_ADDRESS}" ]; then
+  SERVER_ADDRESS="127.0.0.1"
+fi
+if [ -z "${SERVER_ADDRESS}" ]; then
+  MFA_LABEL="JAAQL"
+fi
 
+mkdir -p $INSTALL_PATH/log/nginx
 mkdir -p $INSTALL_PATH/www
 cp -r JEQL /JAAQL-middleware-python/jaaql/apps/JEQL
 
@@ -151,12 +158,16 @@ echo "from wsgi import build_app" >> wsgi_patch.py
 
 while :
 do
-  /pypy3.7-v7.3.5-linux64/bin/gunicorn --bind unix:jaaql.sock -m 777 --config /JAAQL-middleware-python/docker/gunicorn_config.py --log-file $LOG_FILE --capture-output --log-level info 'wsgi_patch:build_app()'
+  /pypy3.7-v7.3.5-linux64/bin/gunicorn -p app.pid --bind unix:jaaql.sock -m 777 --config /JAAQL-middleware-python/docker/gunicorn_config.py --log-file $LOG_FILE --capture-output --log-level info 'wsgi_patch:build_app()'
   chmod +777 /JAAQL-middleware-python/base_reboot.sh
   /JAAQL-middleware-python/base_reboot.sh
   replace_config
   if [ -f "reboot.sh" ] ; then
     chmod +777 reboot.sh
     ./reboot.sh
+  fi
+  touch has_restarted
+  if [ -f "DO_EXIT" ] ; then
+    break
   fi
 done

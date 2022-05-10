@@ -19,5 +19,10 @@ For docker you can need to build with the tag (e.g. :1.1.0) and then use the fol
 
 Do not push alpha versions to latest
 
-# JEQL
-You may want to change the JEQL version which is pulled in the docker file
+## Component Tests
+Please run the following component tests before pushing a final build. In order to do that please run the following docker commands, replacing the email environment variables
+    
+    docker build -t jaaql/jaaql-middleware-python -f docker/Dockerfile .
+    docker tag jaaql/jaaql-middleware-python local-jaaql-middleware-python
+    docker build -t jaaql-middleware-python-ct -f docker/Dockerfile-component .
+    docker run -d -e POSTGRES_PASSWORD=123456 -e JAAQL_VAULT_PASSWORD=pa55word -e JAAQL_EMAIL_CREDENTIALS=eyJDVFAiOiAiVGhlIHdyb25nIHBhc3N3b3JkIn0= -e COMPONENT_EMAIL_PASSWORD=rawcomponentemailpassword jaaql-middleware-python-ct

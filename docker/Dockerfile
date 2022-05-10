@@ -51,4 +51,10 @@ RUN mv $INSTALL_PATH/docker/entrypoint.sh entrypoint.sh
 RUN dos2unix entrypoint.sh
 RUN dos2unix $INSTALL_PATH/base_reboot.sh
 
+WORKDIR $INSTALL_PATH
+RUN /pypy3.7-v7.3.5-linux64/bin/python setup.py sdist bdist_wheel
+
+RUN VERSION=$(grep '^VERSION = ' /JAAQL-middleware-python/jaaql/constants.py | cut -d'=' -f2 | cut -d'"' -f2) && /pypy3.7-v7.3.5-linux64/bin/pip install --no-deps /JAAQL-middleware-python/dist/jaaql_middleware_python-"$VERSION"-py3-none-any.whl
+WORKDIR /
+
 ENTRYPOINT ["sh", "entrypoint.sh"]

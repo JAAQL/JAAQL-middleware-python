@@ -10,6 +10,7 @@ from jaaql.config_constants import *
 
 import uuid
 import traceback
+import subprocess
 import json
 import time
 import os
@@ -64,6 +65,8 @@ FILE__was_installed = "was_installed"
 JWT__purpose = "purpose"
 JWT__data = "data"
 
+ENVIRON__install_path = "INSTALL_PATH"
+
 
 class JAAQLPivotData:
     def __init__(self, level_data: list, matching: list = None):
@@ -106,10 +109,14 @@ class BaseJAAQLModel:
         This hook reloads all workers if the file exists in vault
         :return:
         """
-        time.sleep(1)
         if self.is_container:
             open(join(DIR__vault, FILE__was_installed), 'a').close()
-        os._exit(0)
+        if os.environ.get(ENVIRON__install_path, "").strip() == "/component-test-project":
+            pid = open("app.pid", "r").read()
+            subprocess.call("kill -HUP " + pid, shell=True)  # Kill gunicorn so coverage report is generated
+        else:
+            time.sleep(1)
+            os._exit(0)
 
     def pivot(self, data: [dict], pivot_info: [JAAQLPivotInfo]):
         if len(data) == 0:

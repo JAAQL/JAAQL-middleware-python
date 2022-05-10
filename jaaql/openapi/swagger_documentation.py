@@ -173,7 +173,7 @@ class SwaggerArgumentResponse:
 
     def __init__(self, name: str, description: str,
                  arg_type: Union[type, List['SwaggerArgumentResponse'], 'SwaggerList', SwaggerSimpleList],
-                 example: Optional[TYPE__example] = None, required: bool = False, condition: str = None,
+                 example: Optional[TYPE__example] = None, required: bool = True, condition: str = None,
                  local_only: bool = False):
         self.name = name
         self.description = description
@@ -402,7 +402,7 @@ def _to_openapi_type(python_type: type) -> str:
         return OPEN_API__typemap[python_type]  # Lint issue PYC
 
 
-def _generate_examples(yaml: str, depth: int, response: TYPE__listed_argument_response) -> str:
+def _generate_examples(yaml: str, depth: int, response: TYPE__listed_argument_response, is_prod: bool) -> str:
     if isinstance(response, SwaggerList):
         yaml = yaml + _gen_yaml_indent(depth) + YAML__list_separator + YAML__new_line
         response = response.responses
@@ -413,13 +413,16 @@ def _generate_examples(yaml: str, depth: int, response: TYPE__listed_argument_re
 
     for response_property in response:
         if isinstance(response_property, SwaggerList):
-            yaml = _generate_examples(yaml, depth + 1, response_property)
+            yaml = _generate_examples(yaml, depth + 1, response_property, is_prod)
         else:
             is_complex = isinstance(response_property.arg_type, List)
 
+            if isinstance(response_property, SwaggerArgumentResponse) and response_property.local_only and is_prod:
+                continue
+
             if is_complex or isinstance(response_property.arg_type, SwaggerList):
                 yaml = _build_yaml(yaml, depth, response_property.name)
-                yaml = _generate_examples(yaml, depth + 1, response_property.arg_type)
+                yaml = _generate_examples(yaml, depth + 1, response_property.arg_type, is_prod)
             elif len(response_property.example) != 0:
                 raw_example = response_property.example[0]
                 if response_property.arg_type == str:
@@ -429,7 +432,7 @@ def _generate_examples(yaml: str, depth: int, response: TYPE__listed_argument_re
     return yaml
 
 
-def _generate_properties(yaml: str, depth: int, response: TYPE__listed_argument_response) -> str:
+def _generate_properties(yaml: str, depth: int, response: TYPE__listed_argument_response, is_prod: bool) -> str:
     if isinstance(response, SwaggerList):
         yaml = _build_yaml(yaml, depth, OPEN_API__items)
         response = response.responses
@@ -450,8 +453,10 @@ def _generate_properties(yaml: str, depth: int, response: TYPE__listed_argument_
 
     for response_property in response:
         if isinstance(response_property, SwaggerList):
-            yaml = _generate_properties(yaml, depth, response_property)
+            yaml = _generate_properties(yaml, depth, response_property, is_prod)
         else:
+            if isinstance(response_property, SwaggerArgumentResponse) and response_property.local_only and is_prod:
+                continue
             yaml = _build_yaml(yaml, depth + 1, response_property.name)
             yaml = _build_yaml(yaml, depth + 2, OPEN_API__description, response_property.description)
 
@@ -461,7 +466,7 @@ def _generate_properties(yaml: str, depth: int, response: TYPE__listed_argument_
             yaml = _build_yaml(yaml, depth + 2, OPEN_API__type, _to_openapi_type(response_property.arg_type))
 
             if is_complex:
-                yaml = _generate_properties(yaml, depth + 2, response_property.arg_type)
+                yaml = _generate_properties(yaml, depth + 2, response_property.arg_type, is_prod)
 
     return yaml
 
@@ -523,7 +528,7 @@ def _produce_path(doc: SwaggerDocumentation, yaml: str, is_prod: bool) -> str:
             if isinstance(method.body, SwaggerList):
                 yaml = _build_yaml(yaml, 8, OPEN_API__type, OPEN_API__array)
                 yaml = _build_yaml(yaml, 8, OPEN_API__example)
-                yaml = _generate_examples(yaml, 9, method.body)
+                yaml = _generate_examples(yaml, 9, method.body, is_prod)
                 yaml = _build_yaml(yaml, 8, OPEN_API__items)
                 yaml = _build_yaml(yaml, 9, OPEN_API__type, OPEN_API__object)
                 use_body = method.body.responses
@@ -531,8 +536,8 @@ def _produce_path(doc: SwaggerDocumentation, yaml: str, is_prod: bool) -> str:
             else:
                 yaml = _build_yaml(yaml, 8, OPEN_API__type, OPEN_API__object)
                 yaml = _build_yaml(yaml, 8, OPEN_API__example)
-                yaml = _generate_examples(yaml, 9, method.body)
-            yaml = _generate_properties(yaml, use_depth, use_body)
+                yaml = _generate_examples(yaml, 9, method.body, is_prod)
+            yaml = _generate_properties(yaml, use_depth, use_body, is_prod)
         yaml = _build_yaml(yaml, 3, OPEN_API__description, method.description)
         yaml = _build_yaml(yaml, 3, OPEN_API__responses)
 
@@ -553,7 +558,7 @@ def _produce_path(doc: SwaggerDocumentation, yaml: str, is_prod: bool) -> str:
                 if isinstance(response.responses, SwaggerList):
                     yaml = _build_yaml(yaml, 8, OPEN_API__type, OPEN_API__array)
                     yaml = _build_yaml(yaml, 8, OPEN_API__example)
-                    yaml = _generate_examples(yaml, 9, response.responses)
+                    yaml = _generate_examples(yaml, 9, response.responses, is_prod)
                     yaml = _build_yaml(yaml, 8, OPEN_API__items)
                     if isinstance(response.responses.responses[0], SwaggerList):
                         yaml = _build_yaml(yaml, 9, OPEN_API__type, OPEN_API__array)
@@ -563,12 +568,12 @@ def _produce_path(doc: SwaggerDocumentation, yaml: str, is_prod: bool) -> str:
                     use_response = response.responses.responses
                 elif isinstance(response.responses, SwaggerSimpleList):
                     yaml = _build_yaml(yaml, 8, OPEN_API__type, OPEN_API__array)
-                    yaml = _generate_examples(yaml, 8, response.responses)
+                    yaml = _generate_examples(yaml, 8, response.responses, is_prod)
                 else:
                     yaml = _build_yaml(yaml, 8, OPEN_API__type, OPEN_API__object)
                     yaml = _build_yaml(yaml, 8, OPEN_API__example)
-                    yaml = _generate_examples(yaml, 9, response.responses)
-                yaml = _generate_properties(yaml, use_depth, use_response)
+                    yaml = _generate_examples(yaml, 9, response.responses, is_prod)
+                yaml = _generate_properties(yaml, use_depth, use_response, is_prod)
             else:
                 yaml = _build_yaml(yaml, 8, OPEN_API__example, str(response.body))
 
