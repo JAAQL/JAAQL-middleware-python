@@ -5,7 +5,6 @@ import imaplib
 import email
 import ssl
 
-
 MAX_EMAIL_TIME_MS = 300000
 EMAIL_IMAP_URL = "web119.shared.hosting-login.net"
 EMAIL_USERNAME = "jaaql-component-receive@sqmi.nl"
@@ -17,10 +16,12 @@ EMAIL_FROM = "jaaql-component-send@sqmi.nl"
 class EmailComponent(BaseComponent):
 
     def test_email(self):
+        auth_token = self.get_jaaql_auth_header()
+
         replacement_data = "replaced at " + str(datetime.now())
         resp = requests.post(BASE_URL + "/ctp/send_email", json={
             "email_data": replacement_data
-        })
+        }, headers={HEADER_AUTH: auth_token})
 
         self.assertEqual(HTTPStatus.OK, resp.status_code, "Response ok")
 
@@ -31,6 +32,7 @@ class EmailComponent(BaseComponent):
         This is the CTP test email with data %s
     </body>
 </html>""" % replacement_data
+        expected_body.replace("\r\n", "\n").replace("\n", "\r\n")  # Not a mistake. Double prevents \r\r\n
         expected_attachment = "This is the content of the email attachment"
         expected_attachment_filename = "email_attachment.txt"
 

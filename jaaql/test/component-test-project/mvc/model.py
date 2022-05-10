@@ -1,5 +1,5 @@
 from jaaql.mvc.model_interface import JAAQLModelInterface
-from jaaql.email.email_manager import Email, EmailAttachment
+from jaaql.email.email_manager_service import Email, EmailAttachment
 
 
 EMAIL_ACC__ctp = "CTP"

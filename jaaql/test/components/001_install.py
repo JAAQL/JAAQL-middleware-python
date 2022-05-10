@@ -1,6 +1,5 @@
 from .base_component import *
 
-
 KEY_INSTALL_KEY = "install_key"
 PATH_INSTALL = "/install"
 

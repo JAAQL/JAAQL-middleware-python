@@ -89,8 +89,19 @@ SEPARATOR__space = " "
 
 JAAQL__arg_marker = ":"
 
+DIR__config = "config"
+FILE__config = "config.ini"
+
 ENCODING__utf = "UTF-8"
 ENCODING__ascii = "ascii"
 EXAMPLE__jwt = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.e30.yXvILkvUUCBqAFlAv6wQ1Q-QRAjfe3eSosO949U73Vo"
 
-VERSION = "2.10.0"
+VAULT_KEY__db_crypt_key = "db_crypt_key"
+VAULT_KEY__jaaql_lookup_connection = "jaaql_lookup_connection"
+
+FILE__finished_migrations = "finished_migrations"
+
+ENVIRON__vault_key = "JAAQL_VAULT_PASSWORD"
+ENVIRON__email_credentials = "JAAQL_EMAIL_CREDENTIALS"
+
+VERSION = "2.11.0"

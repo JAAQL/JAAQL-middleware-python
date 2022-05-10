@@ -150,7 +150,10 @@ if [ "$IS_HTTPS" = "TRUE" ] ; then
 fi
 
 cd $INSTALL_PATH
+export PYTHONPATH=.
 export PYTHONUNBUFFERED=TRUE
+
+/pypy3.7-v7.3.5-linux64/bin/python /JAAQL-middleware-python/jaaql/email/patch_ems.py &
 
 echo "from jaaql.patch import monkey_patch" >> wsgi_patch.py
 echo "monkey_patch()" >> wsgi_patch.py
