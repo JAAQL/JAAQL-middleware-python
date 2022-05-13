@@ -2,16 +2,13 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 import logging
 from jaaql.exceptions.http_status_exception import *
-from jaaql import db
 from typing import Optional
 
 ERR__unknown_echo = "Unknown echo type '%s'. Please use either %s"
-ERR__unsupported_interface = "Unsupported interface '%s'. We only support %s"
 
-KEY_CONFIG__db = "DATABASE"
 KEY_CONFIG__system = "SYSTEM"
 KEY_CONFIG__logging = "logging"
-KEY_CONFIG__interface = "interface"
+
 
 RET__echo = "echo"
 RET__columns = "columns"
@@ -29,9 +26,6 @@ ECHO__execute = True
 ECHO__allowed = [ECHO__none, ECHO__debug, ECHO__execute]
 
 CHAR__newline = "\r\n"
-
-INTERFACE__postgres_key = "postgres"
-INTERFACE__postgres_class = "DBPGInterface"
 
 FILE__read = "r"
 FILE__query_separator = ";"
@@ -65,23 +59,6 @@ class DBInterface(ABC):
         address, port = address.split(DIVIDER__port)
 
         return address, port, db_name, username, password
-
-    @staticmethod
-    def create_interface(config, address: str, port: int, database: str, username: str, password: str,
-                         is_jaaql_user: bool = False, dev_mode: bool = False) -> 'DBInterface':
-        interface = config[KEY_CONFIG__db][KEY_CONFIG__interface]
-        supported = {
-            INTERFACE__postgres_key: INTERFACE__postgres_class
-        }
-
-        if interface not in supported.keys():
-            raise Exception(ERR__unsupported_interface % (interface, ", ".join(supported.keys())))
-
-        interface_class = getattr(db, supported[interface])
-        instance: DBInterface = interface_class(config, address, port, database, username, password, is_jaaql_user,
-                                                dev_mode)
-
-        return instance
 
     @abstractmethod
     def get_conn(self):

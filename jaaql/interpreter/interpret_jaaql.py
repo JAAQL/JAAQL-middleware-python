@@ -2,7 +2,6 @@ from jaaql.exceptions.http_status_exception import *
 from datetime import datetime
 import re
 from jaaql.db.db_interface import DBInterface, ECHO__none
-from jaaql.documentation.documentation_shared import KEY__force_transactional
 
 ERR_malformed_statement = "Malformed query, expecting string or dictionary"
 ERR_unknown_assert = "Unknown assert type '%s'. Please use one of %s"

@@ -5,7 +5,8 @@ from jaaql.documentation.documentation_shared import ARG_RES__jaaql_password, AR
     set_nullable, rename_arg, ARG_RES__database_name, EXAMPLE__db, ARG_RES__application_name,\
     EXAMPLE__application_name, EXAMPLE__application_url, ARG_RES__application_body, EXAMPLE__application_dataset,\
     ARG_RES__dataset_name, ARG_RES__dataset_description, RES__totp_mfa_nullable, ARG_RES__reference_dataset,\
-    EXAMPLE__email
+    EXAMPLE__email, ARG_RES__username, ARG_RES__mfa_key, ARG_RES__email_template_name, ARG_RES__parameters,\
+    ARG_RES__email_template, KEY__email_template_name, EXAMPLE__email_template_name
 
 TITLE = "JAAQL Internal API"
 DESCRIPTION = "Collection of methods in the JAAQL internal API"
@@ -121,7 +122,15 @@ DOCUMENTATION__is_installed = SwaggerDocumentation(
     methods=SwaggerMethod(
         name="Is installed",
         description="Returns 200 OK if the service has installed otherwise a 422",
-        method=REST__GET
+        method=REST__GET,
+        response=[
+            SwaggerFlatResponse(),
+            SwaggerFlatResponse(
+                description=ERR__already_installed,
+                code=HTTPStatus.UNPROCESSABLE_ENTITY,
+                body=ERR__already_installed
+            )
+        ]
     )
 )
 
@@ -732,13 +741,13 @@ DOCUMENTATION__users = SwaggerDocumentation(
     methods=[
         SwaggerMethod(
             name="Create User",
-            description="Creates a user",
+            description="Creates a user. Does not send an email. This is done using invite user which can optionally send an email or return a token",
             body=[ARG_RES__email, ARG_RES__roles],
             method=REST__POST
         ),
         SwaggerMethod(
             name="Invite User",
-            description="Fetches an invite token, usable with a specific email address for a pre-created user",
+            description="Fetches an invite token",
             method=REST__PUT,
             body=[ARG_RES__email],
             response=SwaggerFlatResponse(
@@ -750,7 +759,7 @@ DOCUMENTATION__users = SwaggerDocumentation(
             name="Revoke User",
             description="Requests the revoke of user, returning a confirmation key",
             method=REST__DELETE,
-            body=[ARG_RES__email]
+            arguments=[ARG_RES__email]
         )
     ]
 )
@@ -819,6 +828,25 @@ DOCUMENTATION__user_default_roles_confirm_deletion = SwaggerDocumentation(
     )
 )
 
+DOCUMENTATION__user_make_public = SwaggerDocumentation(
+    tags="User Management",
+    methods=SwaggerMethod(
+        name="Make user public",
+        description="Make a user public. WARNING! This user will be available to EVERYONE. By making this user public, "
+        "you make all it's underlying database user and privileges available to everyone. A public user has MFA "
+        "disabled and cannot be made private again",
+        method=REST__POST,
+        arguments=[
+            ARG_RES__username,
+            ARG_RES__jaaql_password,
+            ARG_RES__mfa_key,
+            ARG_RES__application_name,
+            set_nullable(rename_arg(ARG_RES__jaaql_password, KEY__new_password), "Is password being changed"),
+            set_nullable(rename_arg(ARG_RES__jaaql_password, KEY__new_password_confirm), "Is password being changed")
+        ]
+    )
+)
+
 DOCUMENTATION__deploy = SwaggerDocumentation(
     tags="Deployment",
     methods=[
@@ -829,4 +857,207 @@ DOCUMENTATION__deploy = SwaggerDocumentation(
             method=REST__POST
         )
     ]
+)
+
+EXAMPLE__email_account_name = "Notification account"
+ARG_RES__email_account_name = SwaggerArgumentResponse(
+    name=KEY__email_account_name,
+    description="The internal name of the account",
+    arg_type=str,
+    example=EXAMPLE__email_account_name
+)
+
+KEY__email_account_send_name = "send_name"
+EXAMPLE__email_account_send_name = "JAAQL Admin"
+ARG_RES__email_account_send_name = SwaggerArgumentResponse(
+    name=KEY__email_account_send_name,
+    description="The name of the email account, seen in the recipients email address",
+    arg_type=str,
+    example="JAAQL Admin"
+)
+
+ARG_RES__email_account_base = [
+    ARG_RES__email_account_name,
+    ARG_RES__email_account_send_name,
+    SwaggerArgumentResponse(
+        name="protocol",
+        description="The sending protocol. One of 'smtp', 'imap'",
+        arg_type=str,
+        example=["smtp", "imap"]
+    ),
+    SwaggerArgumentResponse(
+        name="host",
+        description="The host of the email server",
+        arg_type=str,
+        example=["smtp.gmail.com"]
+    ),
+    SwaggerArgumentResponse(
+        name="port",
+        description="The port of the email server",
+        arg_type=int,
+        example=[587]
+    ),
+    SwaggerArgumentResponse(
+        name="username",
+        description="The username to authenticate with the email server",
+        arg_type=str,
+        example=["user@gmail.com"]
+    )
+]
+
+DOCUMENTATION__email_accounts = SwaggerDocumentation(
+    tags="Emails",
+    methods=[
+        SwaggerMethod(
+            name="Add email account",
+            description="Adds an email account",
+            method=REST__POST,
+            arguments=ARG_RES__email_account_base + [
+                SwaggerArgumentResponse(
+                    name=KEY__password,
+                    description="The password to authenticate with the email server",
+                    arg_type=str,
+                    example=["P@55w0rd"]
+                )
+            ]
+        ),
+        SwaggerMethod(
+            name="Fetch email accounts",
+            description="Fetches a list of email account",
+            method=REST__GET,
+            arguments=gen_arg_res_sort_pageable(KEY__email_account_name, KEY__email_account_send_name,
+                                                EXAMPLE__email_account_name, EXAMPLE__email_account_send_name) + [ARG_RES__deleted],
+            response=SwaggerResponse(
+                description="A list of email accounts",
+                response=gen_filtered_records("email account", ARG_RES__email_account_base + [ARG_RES__when_deleted])
+            )
+        ),
+        SwaggerMethod(
+            name="Delete email account",
+            method=REST__DELETE,
+            description="Deletes an email account",
+            arguments=ARG_RES__email_account_name,
+            response=RES__deletion_key
+        )
+    ]
+)
+
+DOCUMENTATION__email_accounts_confirm_deletion = SwaggerDocumentation(
+    tags="Emails",
+    methods=SwaggerMethod(
+        name="Confirm email account deletion",
+        description="Confirm the email account deletion, providing a single use deletion key",
+        method=REST__POST,
+        body=ARG_RES__deletion_key
+    )
+)
+
+ARG_RES__email_template_body = [
+    ARG_RES__email_template_name,
+    rename_arg(ARG_RES__email_account_name, KEY__account),
+    SwaggerArgumentResponse(
+        name=KEY__description,
+        description="A description of the email template",
+        arg_type=str,
+        example=["The signup email template"]
+    ),
+    SwaggerArgumentResponse(
+        name=KEY__app_relative_path,
+        description="The path of the template in relation to the app. Can only contain alphanumeric "
+        "characters, - and _. For example if the app runs at jaaql.io/apps/my_app.html and the path is "
+        "'my_template', the template can be found at jaaql.io/email_templates/my_template.html. Leave it "
+        "null and no email will be sent upon request",
+        arg_type=str,
+        example=["my_template"],
+        required=False,
+        condition="Is a path provided"
+    ),
+    SwaggerArgumentResponse(
+        name=KEY__subject,
+        description="The subject of the email. Can contain replacement values",
+        arg_type=str,
+        example=["Welcome to JAAQL"],
+        required=False,
+        condition="Is a subject provided"
+    ),
+    SwaggerArgumentResponse(
+        name=KEY__allow_signup,
+        description="Allow the user to signup to the service with this template. Defaults to false",
+        arg_type=bool,
+        required=False,
+        condition="Is this parameter specified"
+    ),
+    SwaggerArgumentResponse(
+        name=KEY__allow_confirm_signup_attempt,
+        description="Allow this email to be sent to the user, notifying them that their account already exists and an "
+        "attempt to signup was already made ",
+        arg_type=bool,
+        required=False,
+        condition="Is this parameter specified"
+    ),
+    SwaggerArgumentResponse(
+        name=KEY__data_validation_table,
+        description="A table that is used for data validation. A row is inserted into this table with the "
+        "data supplied when sending the email along with a generated UUID. The row is then selected from "
+        "this table with the UUID and the row data is then used to replace data in the template. If null "
+        "no data can be replaced in the email. The data is then deleted unless the email template is marked as "
+        "allow_signup is true. Then it is deleted when the user is signed up ",
+        arg_type=str,
+        example=["my_data_validation_table"],
+        required=False,
+        condition="Is data being replaced"
+    ),
+    SwaggerArgumentResponse(
+        name=KEY__recipient_validation_view,
+        description="Allowed recipients are SELECT key, email FROM this_view WHERE "
+        "pg_has_role(role, 'MEMBER'). The user then selects from the keys. key, email should be a "
+        "bijective mapping. If no view is present, the email can be sent only to the current user",
+        arg_type=str,
+        example=["my_recipient_validation_view"],
+        required=False,
+        condition="Are emails sent to other users"
+    )
+]
+
+DOCUMENTATION__email_templates = SwaggerDocumentation(
+    tags="Emails",
+    methods=[
+        SwaggerMethod(
+            name="Fetch email templates",
+            description="Fetches a list of email templates",
+            method=REST__GET,
+            arguments=gen_arg_res_sort_pageable(KEY__account, KEY__email_template_name, EXAMPLE__email_account_name,
+                                                EXAMPLE__email_template_name) + [ARG_RES__deleted],
+            response=SwaggerResponse(
+                description="A list of email templates",
+                response=gen_filtered_records(
+                    "email template",
+                    ARG_RES__email_template_body + [ARG_RES__when_deleted]
+                )
+            )
+        ),
+        SwaggerMethod(
+            name="Register email template",
+            description="Registers an email template",
+            method=REST__POST,
+            body=ARG_RES__email_template_body
+        ),
+        SwaggerMethod(
+            name="Unregister email template",
+            description="Unregisters an email template. Does not delete the template file",
+            method=REST__DELETE,
+            arguments=ARG_RES__email_template_name,
+            response=RES__deletion_key
+        )
+    ]
+)
+
+DOCUMENTATION__email_template_confirm_deletion = SwaggerDocumentation(
+    tags="Emails",
+    methods=SwaggerMethod(
+        name="Confirm email template unregistration",
+        description="Confirm the unregistration of an email template, providing a single use deletion key",
+        method=REST__POST,
+        body=ARG_RES__deletion_key
+    )
 )

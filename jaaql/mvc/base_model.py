@@ -3,7 +3,7 @@ from jaaql.db.db_interface import DBInterface
 import jaaql.utilities.crypt_utils as crypt_utils
 from jaaql.migrations.migrations import run_migrations
 from jaaql.email.email_manager import EmailManager
-from jaaql.db.db_utils import execute_supplied_statement
+from jaaql.db.db_utils import execute_supplied_statement, create_interface
 
 from jaaql.constants import *
 from jaaql.config_constants import *
@@ -36,7 +36,6 @@ ERR__expected_logic = "'AND' or 'OR'"
 
 ERR__expected_parser = "Expected %s in search parameter not '%s'"
 ERR__deletion_invalid_key = "Deletion key invalid. Either didn't exist or expired"
-ERR__deletion_invalid_purpose = "Invalid purpose for deletion key"
 ERR__deletion_key_expired = "Deletion key expired"
 ERR__missing_page_size = "Cannot provide one or the other for page/size. Please provide both or neither"
 ERR__unexpected_paren_close = "Cannot process ')' in search as no associated '('"
@@ -60,7 +59,6 @@ VAULT_KEY__jwt_obj_crypt_key = "jwt_obj_crypt_key"
 
 FILE__was_installed = "was_installed"
 
-JWT__purpose = "purpose"
 JWT__data = "data"
 
 ENVIRON__install_path = "INSTALL_PATH"
@@ -170,6 +168,7 @@ class BaseJAAQLModel:
         self.is_container = is_container
 
         self.url = url
+        self.has_installed = False
 
         self.force_mfa = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__force_mfa]
         self.do_audit = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__do_audit]
@@ -195,9 +194,10 @@ class BaseJAAQLModel:
             self.vault.insert_obj(VAULT_KEY__jwt_obj_crypt_key, jwt_obj_crypt_key.decode(crypt_utils.ENCODING__ascii))
 
         if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):
+            self.has_installed = True
             jaaql_uri = self.vault.get_obj(VAULT_KEY__jaaql_lookup_connection)
             address, port, db, username, password = DBInterface.fracture_uri(jaaql_uri)
-            self.jaaql_lookup_connection = DBInterface.create_interface(self.config, address, port, db, username,
+            self.jaaql_lookup_connection = create_interface(self.config, address, port, db, username,
                                                                         password, is_jaaql_user=True)
             run_migrations(self.jaaql_lookup_connection)
 
@@ -211,6 +211,11 @@ class BaseJAAQLModel:
         else:
             self.install_key = str(uuid.uuid4())
             print("INSTALL KEY: " + self.install_key)
+
+        if not self.vault.has_obj(VAULT_KEY__jaaql_local_access_key):
+            self.vault.insert_obj(VAULT_KEY__jaaql_local_access_key, str(uuid.uuid4()))
+
+        self.local_access_key = self.vault.get_obj(VAULT_KEY__jaaql_local_access_key)
 
     def get_db_crypt_key(self):
         return self.vault.get_obj(VAULT_KEY__db_crypt_key).encode(crypt_utils.ENCODING__ascii)
@@ -464,19 +469,18 @@ class BaseJAAQLModel:
         jwt_key = self.vault.get_obj(VAULT_KEY__jwt_crypt_key)
 
         decoded = {
-            JWT__purpose: purpose,
             JWT__data: crypt_utils.encrypt(jwt_obj_key, json.dumps(input_args))
         }
 
-        return crypt_utils.jwt_encode(jwt_key, decoded, expiry_ms=expiry_seconds * 1000)
+        return crypt_utils.jwt_encode(jwt_key, decoded, purpose, expiry_ms=expiry_seconds * 1000)
 
     def validate_deletion_key(self, key: str, purpose: str) -> dict:
         jwt_obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
         jwt_key = self.vault.get_obj(VAULT_KEY__jwt_crypt_key)
 
-        key = crypt_utils.jwt_decode(jwt_key, key)
-        if key[JWT__purpose] != purpose:
-            raise HttpStatusException(ERR__deletion_invalid_purpose)
+        key = crypt_utils.jwt_decode(jwt_key, key, purpose)
+        if not key:
+            raise HttpStatusException(ERR__deletion_invalid_key)
 
         data = json.loads(crypt_utils.decrypt(jwt_obj_key, key[JWT__data]))
         return data

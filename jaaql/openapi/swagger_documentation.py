@@ -9,7 +9,6 @@ import json
 from jaaql.utilities.utils import get_jaaql_root
 from jaaql.constants import VERSION
 
-
 ERR__empty_example_list = "Empty examples list for argument '%s'"
 ERR__null_example = "No examples found for argument '%s'"
 ERR__example_type = "Found type '%s' for example #%d, argument '%s'. Doesn't match type '%s'"
@@ -24,6 +23,8 @@ ERR__documentation_variable_expected = "Expected '%s' variable in documentation 
 ERR__empty_path = "Empty path for documentation. Variable unused or documentation occuring before controller import"
 ERR__nested_not_allowed = "Nested objects are not allowed in method arguments. Please place in the body"
 ERR__list_not_allowed = "Lists now allowed in method arguments. Please place in the body"
+ERR__delete_not_allowed_body = "HTTP method delete isn't allowed a body. Please use the arguments parameter instead"
+ERR__get_not_allowed_body = "HTTP method get isn't allowed a body. Please use the arguments parameter instead"
 
 TYPE__example = Union[List[Any], Any]
 
@@ -177,6 +178,8 @@ class SwaggerArgumentResponse:
                  local_only: bool = False):
         self.name = name
         self.description = description
+        if arg_type == bool and example is None:
+            example = [True, False]
         self.example = force_list(example)
         self.required = required
         self.arg_type = arg_type
@@ -192,8 +195,7 @@ class SwaggerArgumentResponse:
         if arg_type_sub_list:
             arg_type_sub_list = all([isinstance(x, SwaggerArgumentResponse) for x in arg_type])
 
-        if not arg_type_sub_list and not isinstance_union(arg_type,
-                                                          TYPE__swagger_list_like) and name != DOCUMENTATION__allow_all:
+        if not arg_type_sub_list and not isinstance_union(arg_type, TYPE__swagger_list_like) and not self.is_arg_all():
             self._validate_example(name, arg_type, self.example)
 
     @staticmethod
@@ -210,6 +212,12 @@ class SwaggerArgumentResponse:
         if len(example) != len(set(example)):
             raise SwaggerException(ERR__duplicated_example % name)
 
+    def is_arg_all(self):
+        if isinstance(self.arg_type, SwaggerArgumentResponse):
+            if self.arg_type.name == DOCUMENTATION__allow_all:
+                return True
+        return self.name == DOCUMENTATION__allow_all
+
 
 class SwaggerList:
 
@@ -219,9 +227,7 @@ class SwaggerList:
 
 TYPE__swagger_list_like = Union[SwaggerSimpleList, SwaggerList]
 
-
 ARG_RESP__allow_all = SwaggerArgumentResponse(DOCUMENTATION__allow_all, DOCUMENTATION__allow_all, str)
-
 
 TYPE__argument_response = Optional[Union[List[SwaggerArgumentResponse], SwaggerArgumentResponse, SwaggerList,
                                          SwaggerSimpleList]]
@@ -255,7 +261,7 @@ def validate_argument_responses(arg_responses: TYPE__argument_response):
 
 class SwaggerFlatResponse:
 
-    def __init__(self, description: str = "HTTP OK", code: HTTPStatus = HTTPStatus.OK, resp_type: type = str,
+    def __init__(self, description: str = "HTTP OK", code: Union[HTTPStatus, int] = HTTPStatus.OK, resp_type: type = str,
                  body: str = RESPONSE__OK):
         self.code = code
         self.description = description
@@ -285,7 +291,6 @@ RES__allow_all = SwaggerResponse(
     response=ARG_RESP__allow_all
 )
 
-
 TYPE__response = Union[SwaggerFlatResponse, SwaggerResponse]
 TYPE__responses = Optional[Union[TYPE__response, List[TYPE__response]]]
 
@@ -313,6 +318,12 @@ class SwaggerMethod:
         found_500 = any([_http_status_to_integer(ex.code) == RESP__default_err_code for ex in self.exceptions])
         if not found_500:
             self.exceptions.append(SwaggerResponseException())
+
+        if self.method == REST__DELETE and len(self.body) != 0:
+            raise Exception(ERR__delete_not_allowed_body)
+
+        if self.method == REST__GET and len(self.body) != 0:
+            raise Exception(ERR__get_not_allowed_body)
 
     @staticmethod
     def _validate_exceptions(exceptions: TYPE__exceptions):
@@ -398,6 +409,8 @@ def _to_openapi_type(python_type: type) -> str:
         return OPEN_API__object
     elif isinstance(python_type, SwaggerList):
         return OPEN_API__array
+    elif isinstance(python_type, SwaggerArgumentResponse):
+        return OPEN_API__object
     else:
         return OPEN_API__typemap[python_type]  # Lint issue PYC
 
@@ -426,8 +439,10 @@ def _generate_examples(yaml: str, depth: int, response: TYPE__listed_argument_re
             elif len(response_property.example) != 0:
                 raw_example = response_property.example[0]
                 if response_property.arg_type == str:
-                    raw_example = YAML__double_quote + raw_example + YAML__double_quote
+                    raw_example = YAML__double_quote + str(raw_example) + YAML__double_quote
                 yaml = _build_yaml(yaml, depth, response_property.name, raw_example)
+            elif response_property.arg_type == ARG_RESP__allow_all:
+                yaml = _build_yaml(yaml, depth, response_property.name, "{}")
 
     return yaml
 
@@ -442,13 +457,14 @@ def _generate_properties(yaml: str, depth: int, response: TYPE__listed_argument_
         yaml = _build_yaml(yaml, depth + 1, OPEN_API__type, _to_openapi_type(response.arg_type))
         return yaml
 
-    required = YAML__array_separator.join([YAML__double_quote + response_property.name + YAML__double_quote
-                                          for response_property in response if not isinstance(response_property,
-                                                                                              SwaggerList)
-                                          and response_property.required])
+    required_props = [YAML__double_quote + response_property.name + YAML__double_quote
+                      for response_property in response
+                      if not isinstance(response_property, SwaggerList) and response_property.required]
+    required = YAML__array_separator.join(required_props)
 
     if len(response) == 0 or not isinstance(response[0], SwaggerList):
-        yaml = _build_yaml(yaml, depth, OPEN_API__required, YAML__array_open + required + YAML__array_close)
+        if len(required_props) != 0:
+            yaml = _build_yaml(yaml, depth, OPEN_API__required, YAML__array_open + required + YAML__array_close)
         yaml = _build_yaml(yaml, depth, OPEN_API__properties)
 
     for response_property in response:

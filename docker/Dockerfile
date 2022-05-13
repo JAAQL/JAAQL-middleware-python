@@ -9,11 +9,12 @@ RUN apt install -y libpq-dev
 RUN apt-get install -y git
 
 ENV INSTALL_PATH /JAAQL-middleware-python
+ENV JAAQL_DEPLOYED true
 COPY . $INSTALL_PATH
 
 RUN git clone https://github.com/JAAQL/JEQL.git
 WORKDIR JEQL
-RUN git checkout 2.0.0
+RUN git checkout Fix-2.1.0
 WORKDIR /
 
 RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini

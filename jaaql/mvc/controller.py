@@ -48,8 +48,8 @@ class JAAQLController(BaseJAAQLController):
             return self.model.install(**http_inputs, ip_address=ip_address, user_agent=user_agent, response=response)
 
         @self.cors_route('/internal/is_installed', DOCUMENTATION__is_installed)
-        def is_installed():
-            return self.model.is_installed()
+        def is_installed(response: JAAQLResponse):
+            return self.model.is_installed(response)
 
         @self.cors_route('/internal/applications', DOCUMENTATION__applications)
         def applications(http_inputs: dict, jaaql_connection: DBInterface):
@@ -65,6 +65,10 @@ class JAAQLController(BaseJAAQLController):
         @self.cors_route('/applications', DOCUMENTATION__my_applications)
         def public_applications(jaaql_connection: DBInterface):
             return self.model.get_my_applications(jaaql_connection)
+
+        @self.cors_route('/applications/public-user', DOCUMENTATION__applications_public_user_credentials)
+        def application_public_user_credentials(http_inputs: dict):
+            self.model.get_public_user_credentials_for_application(http_inputs[KEY__application])
 
         @self.cors_route('/internal/applications/confirm-deletion', DOCUMENTATION__applications_confirm_deletion)
         def confirm_application_deletion(http_inputs: dict, jaaql_connection: DBInterface):
@@ -173,15 +177,19 @@ class JAAQLController(BaseJAAQLController):
             if self.is_post():
                 self.model.create_user(jaaql_connection, http_inputs[KEY__email])
             elif self.is_put():
-                return self.model.user_invite(http_inputs)
+                return self.model.user_invite_and_check(http_inputs, jaaql_connection)
             elif self.is_get():
                 raise NotImplementedError()  # TODO
             else:
                 return self.model.revoke_user(http_inputs)
 
         @self.cors_route('/internal/users/activate', DOCUMENTATION__activate)
-        def users(http_inputs: dict, jaaql_connection: DBInterface):
+        def user_activate(http_inputs: dict, jaaql_connection: DBInterface):
             self.model.sign_up_user(jaaql_connection, http_inputs[KEY__email], http_inputs[KEY__password])
+
+        @self.cors_route('/internal/users/make-public', DOCUMENTATION__user_make_public)
+        def user_make_public(http_inputs: dict, jaaql_connection: DBInterface):
+            self.model.make_user_public(http_inputs, jaaql_connection)
 
         @self.cors_route('/internal/users/confirm-deletion', DOCUMENTATION__users_confirm_revoke)
         def revoke_user_confirm(http_inputs: dict, jaaql_connection: DBInterface, is_public: bool):
@@ -203,6 +211,32 @@ class JAAQLController(BaseJAAQLController):
         def confirm_default_role_deletion(http_inputs: dict, jaaql_connection: DBInterface):
             self.model.delete_user_default_role_confirm(http_inputs, jaaql_connection)
 
+        @self.cors_route('/internal/emails/accounts', DOCUMENTATION__email_accounts)
+        def email_accounts(http_inputs: dict, jaaql_connection: DBInterface):
+            if self.is_post():
+                self.model.add_email_account(http_inputs, jaaql_connection)
+            elif self.is_get():
+                return self.model.fetch_email_accounts(http_inputs, jaaql_connection)
+            else:
+                return self.model.delete_email_account(http_inputs, jaaql_connection)
+
+        @self.cors_route('/internal/emails/accounts/confirm-deletion', DOCUMENTATION__email_accounts_confirm_deletion)
+        def email_accounts_confirm_deletion(http_inputs: dict, jaaql_connection: DBInterface):
+            self.model.delete_email_account_confirm(http_inputs, jaaql_connection)
+
+        @self.cors_route('/internal/emails/templates', DOCUMENTATION__email_templates)
+        def email_templates(http_inputs: dict, jaaql_connection: DBInterface):
+            if self.is_post():
+                self.model.register_email_template(http_inputs, jaaql_connection)
+            elif self.is_get():
+                return self.model.fetch_email_templates(http_inputs, jaaql_connection)
+            else:
+                return self.model.unregister_email_template(http_inputs, jaaql_connection)
+
+        @self.cors_route('/internal/emails/templates/confirm-deletion', DOCUMENTATION__email_template_confirm_deletion)
+        def email_templates_confirm_deletion(http_inputs: dict, jaaql_connection: DBInterface):
+            self.model.unregister_email_template_confirm(http_inputs, jaaql_connection)
+
         @self.cors_route('/account/info', DOCUMENTATION__my_account_info)
         def account_info(username: str, totp_iv: str):
             return self.model.fetch_account_info(username, totp_iv)
@@ -214,31 +248,16 @@ class JAAQLController(BaseJAAQLController):
             return self.model.enable_disable_mfa(http_inputs, user_id, totp_iv, last_totp, password_hash)
 
         @self.cors_route('/account/signup/request', DOCUMENTATION__sign_up_request_invite)
-        def signup_request(http_inputs: dict, ip_address: str, user_agent: str, response: JAAQLResponse):
-            pass
+        def signup_request(http_inputs: dict):
+            self.model.request_signup(http_inputs)
 
         @self.cors_route('/account/signup/activate', DOCUMENTATION__sign_up_with_invite)
         def signup_activate(http_inputs: dict, ip_address: str, user_agent: str, response: JAAQLResponse):
-            pass
+            self.model.sign_up_user_with_token(http_inputs[KEY__invite_key], http_inputs[KEY__password], ip_address, user_agent, response)
 
         @self.cors_route('/account/signup/finish', DOCUMENTATION__sign_up_finish)
         def signup_finish(http_inputs: dict):
-            pass
-
-        # if KEY__invite_key in sql_inputs:
-        #     if KEY__sign_up_data in sql_inputs or KEY__email in sql_inputs:
-        #         rep_var = KEY__sign_up_data if KEY__sign_up_data in sql_inputs else KEY__email
-        #         raise HttpStatusException(ERR__unexpected_argument % rep_var, HTTPStatus.BAD_REQUEST)
-        #     if KEY__password not in sql_inputs:
-        #         raise HttpStatusException(ERR__expected_argument % KEY__password, HTTPStatus.BAD_REQUEST)
-        #     return self.model.sign_up_user_with_token(sql_inputs[KEY__invite_key], sql_inputs[KEY__password],
-        #                                               ip_address, user_agent, response)
-        # else:
-        #     if KEY__password in sql_inputs:
-        #         raise HttpStatusException(ERR__unexpected_argument % KEY__password, HTTPStatus.BAD_REQUEST)
-        #     if KEY__email not in sql_inputs:
-        #         raise HttpStatusException(ERR__expected_argument % KEY__email, HTTPStatus.BAD_REQUEST)
-        #     return self.model.pre_sign_up_user_with_email(sql_inputs[KEY__email], sql_inputs.get(KEY__sign_up_data))
+            self.model.finish_signup(http_inputs[KEY__invite_key])
 
         @self.cors_route('/account/logs', DOCUMENTATION__my_logs)
         def fetch_logs(http_inputs: dict, jaaql_connection: DBInterface, is_public: bool):
@@ -280,8 +299,8 @@ class JAAQLController(BaseJAAQLController):
             return self.model.config_assigned_databases(http_inputs, jaaql_connection, user_id)
 
         @self.cors_route('/configurations/assigned-databases/roles', DOCUMENTATION__assigned_database_roles)
-        def connection_roles(http_inputs: dict, jaaql_connection: DBInterface, user_id: str):
-            return self.model.config_assigned_database_roles(http_inputs, jaaql_connection, user_id)
+        def connection_roles(http_inputs: dict, jaaql_connection: DBInterface):
+            return self.model.config_assigned_database_roles(http_inputs, jaaql_connection)
 
         @self.cors_route('/submit', DOCUMENTATION__submit)
         def submit(http_inputs: dict, jaaql_connection: DBInterface):
@@ -290,3 +309,18 @@ class JAAQLController(BaseJAAQLController):
         @self.cors_route('/submit-file', DOCUMENTATION__submit_file)
         def submit_file(http_inputs: dict, jaaql_connection: DBInterface):
             return self.model.submit(http_inputs, jaaql_connection, True)
+
+        @self.cors_route('/emails/allowed_recipients', DOCUMENTATION__email_allowed_recipients)
+        def emails_allowed_recipients(inputs: dict, username: str):
+            return self.model.fetch_allowed_recipients_for_email_template(inputs[KEY__email_template], username)
+
+        @self.cors_route('/emails', DOCUMENTATION__email)
+        def emails(http_inputs: dict, jaaql_connection: DBInterface, username: str):
+            if self.is_get():
+                return self.model.fetch_user_email_history(http_inputs, jaaql_connection)
+            else:
+                return self.model.send_email(http_inputs, username)
+
+        @self.cors_route('/emails/history', DOCUMENTATION__email_history)
+        def emails_history(http_inputs: dict, user_id: str):
+            return self.model.fetch_user_singular_email_history(http_inputs[KEY__id], user_id)

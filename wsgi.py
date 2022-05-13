@@ -3,7 +3,6 @@ import jaaql.documentation as documentation
 from jaaql.utilities.options import *
 import sys
 import threading
-import time
 from jaaql.email.email_manager_service import create_flask_app as create_email_service_app
 
 if __name__ == '__main__':

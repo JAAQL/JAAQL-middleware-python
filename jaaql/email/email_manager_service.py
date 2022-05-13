@@ -5,30 +5,33 @@ import json
 import imaplib
 import smtplib
 from base64 import urlsafe_b64decode as b64d, urlsafe_b64encode as b64e
-from jaaql.constants import ENCODING__ascii
 from typing import Union, List, Optional
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
-from queue import Queue
+from queue import Queue, Empty
 import threading
 import ssl
 import sys
 from flask import Flask, jsonify, request
 from jaaql.utilities.vault import Vault, DIR__vault
-from jaaql.constants import VAULT_KEY__jaaql_lookup_connection, VAULT_KEY__db_crypt_key
+from jaaql.constants import VAULT_KEY__db_crypt_key, KEY__encrypted_password, KEY__id, KEY__template, KEY__sender, ENCODING__ascii, PORT__ems, \
+    ENDPOINT__reload_accounts
 
-QUERY__load_email_accounts = "SELECT * FROM jaaql__email_accounts WHERE deleted is null"
+QUERY__update_email_account_password = "UPDATE jaaql__email_account SET encrypted_password = :encrypted_password WHERE id = :id"
+QUERY__load_email_accounts = "SELECT * FROM jaaql__email_account WHERE deleted is null"
 
 KEY__email_account = "email_account"
 KEY__encrypted_subject = "encrypted_subject"
 KEY__encrypted_body = "encrypted_body"
 KEY__encrypted_attachments = "encrypted_attachments"
 KEY__encrypted_recipients = "encrypted_recipients"
-QUERY__ins_email_history = "INSERT INTO jaaql__email_history (email_account, encrypted_subject, encrypted_body, encrypted_attachments, encrypted_recipients) VALUES (:email_account, :encrypted_subject, :encrypted_body, :encrypted_attachments, :encrypted_recipients)"
+KEY__encrypted_recipients_keys = "encrypted_recipients_keys"
+QUERY__ins_email_history = "INSERT INTO jaaql__email_history (template, sender, encrypted_subject, encrypted_body, encrypted_attachments, encrypted_recipients) VALUES (:template, :sender, :encrypted_subject, :encrypted_body, :encrypted_attachments, :encrypted_recipients)"
 
 ERR__password_not_found = "Password not found for email account with name '%s'"
 ERR__email_not_found = "Email account not found with name '%s'"
+ERR__invalid_call_to_internal_email_service = "Invalid call to internal email service"
 
 KEY__account_name = "account_name"
 KEY__account_protocol = "protocol"
@@ -45,9 +48,7 @@ EMAIL__from_email = "From_Email"
 EMAIL__to = "To"
 EMAIL__subject = "Subject"
 
-REPLACEMENT__str = "{{%s}}"
-
-PORT__ems = 6061
+SPLIT__address = ", "
 
 
 class EmailAttachment:
@@ -67,34 +68,52 @@ class EmailAttachment:
     def deserialize(attachment: dict):
         return EmailAttachment(b64d(attachment["content"]), attachment["filename"])
 
+    def encode_filename(self):
+        return b64e(self.filename.encode(ENCODING__ascii)).decode(ENCODING__ascii)
+
+    def encode_content(self):
+        return b64e(self.content).decode(ENCODING__ascii)
+
 
 TYPE__email_attachments = Union[EmailAttachment, List[EmailAttachment]]
 
 
 class Email:
-    def __init__(self, from_account: str, to: Union[str, List[str]], subject: str = None, body: str = None,
-                 attachments: TYPE__email_attachments = None, html_replacements: dict = None):
+    def __init__(self, sender: str, template: str, from_account: str, to: Union[str, List[str]], recipient_names: Union[str, List[str]],
+                 subject: str = None, body: str = None, attachments: TYPE__email_attachments = None, is_html: bool = True):
+        self.sender = sender
+        self.template = template
         self.from_account = from_account
+        if isinstance(to, list) != isinstance(recipient_names, list):
+            raise Exception(ERR__invalid_call_to_internal_email_service)
+        if not isinstance(to, list):
+            to = [to]
+            recipient_names = [recipient_names]
+        if len(to) != len(recipient_names):
+            raise Exception(ERR__invalid_call_to_internal_email_service)
+        recipient_names = [to[idx] if itm is None else itm for idx, itm in zip(range(len(recipient_names)), recipient_names)]
         self.to = to
+        self.recipient_names = recipient_names
         self.subject = subject
         self.body = body
         self.attachments = attachments
         if not isinstance(self.attachments, List) and self.attachments is not None:
             self.attachments = [attachments]
-        self.html_replacements = html_replacements
+        self.is_html = is_html
 
     def repr_json(self):
-        return dict(from_account=self.from_account, to=self.to, subject=self.subject, body=self.body,
+        return dict(sender=self.sender, template=self.template, from_account=self.from_account, to=self.to, recipient_names=self.recipient_names,
+                    subject=self.subject, body=self.body,
                     attachments=[attachment.repr_json() for attachment in self.attachments],
-                    html_replacements=self.html_replacements)
+                    is_html=self.is_html)
 
     @staticmethod
     def deserialize(email: dict):
         attachments = None
         if email["attachments"] is not None:
             attachments = [EmailAttachment.deserialize(attachment) for attachment in email["attachments"]]
-        return Email(email["from_account"], email["to"], email["subject"], email["body"], attachments,
-                     email["html_replacements"])
+        return Email(email["sender"], email["template"], email["from_account"], email["to"], email["recipient_names"], email["subject"],
+                     email["body"], attachments, email["is_html"])
 
 
 class EmailManagerService:
@@ -106,33 +125,46 @@ class EmailManagerService:
             self.email_credentials = json.loads(b64d(email_credentials).decode(ENCODING__ascii))
         self.db_crypt_key = db_crypt_key
         self.connection = connection
-        self.accounts = execute_supplied_statement(connection, QUERY__load_email_accounts, as_objects=True)
 
         self.email_queues = {}
 
-        for account in self.accounts:
-            if account[KEY__account_name] not in self.email_credentials:
+        self.reload_accounts()
+
+    def reload_accounts(self):
+        accounts = execute_supplied_statement(self.connection, QUERY__load_email_accounts, as_objects=True,
+                                              decrypt_columns=[KEY__encrypted_password],
+                                              encryption_key=self.db_crypt_key)
+        email_queues = {}
+
+        for account in accounts:
+            if account[KEY__account_name] not in self.email_credentials and account[KEY__encrypted_password] is None:
                 raise Exception(ERR__password_not_found % account[KEY__account_name])
+            elif account[KEY__account_name] in self.email_credentials and account[KEY__encrypted_password] is None:
+                execute_supplied_statement(self.connection, QUERY__update_email_account_password,  # Stores the password
+                                           {KEY__encrypted_password: self.email_credentials[account[KEY__account_name]],
+                                            KEY__id: account[KEY__id]},
+                                           encrypt_parameters=[KEY__encrypted_password])
             cur_queue = Queue()
-            self.email_queues[account[KEY__account_name]] = cur_queue
-            method_args = [account, cur_queue, self.email_credentials[account[KEY__account_name]]]
-            threading.Thread(target=self.email_connection_thread, args=method_args, daemon=True).start()
+            if account[KEY__id] not in self.email_queues:
+                email_queues[account[KEY__id]] = cur_queue
+                method_args = [account, cur_queue, self.email_credentials[account[KEY__account_name]]]
+                threading.Thread(target=self.email_connection_thread, args=method_args, daemon=True).start()
+
+        self.email_queues = email_queues
 
     def construct_message(self, account: dict, email: Email) -> (str, MIMEMultipart):
         send_body = email.body
 
         message = MIMEMultipart("alternative")
 
-        if email.html_replacements is not None:
-            for key, val in email.html_replacements.items():
-                send_body = send_body.replace(REPLACEMENT__str % key, val)
+        if email.is_html:
             message.attach(MIMEText(send_body, 'html'))
         else:
             message.attach(MIMEText(send_body, 'plain'))
 
         message_final = MIMEMultipart('mixed')
         message_final.attach(message)
-        message_final[EMAIL__to] = email.to
+        message_final[EMAIL__to] = SPLIT__address.join(email.to)
         message_final[EMAIL__from] = account[KEY__account_send_from] + " <" + account[KEY__account_username] + ">"
         message_final[EMAIL__subject] = email.subject
 
@@ -169,7 +201,7 @@ class EmailManagerService:
             return None
         if not isinstance(attachments, list):
             attachments = [attachments]
-        attachments = "::".join([b64e(attachment.content).decode(ENCODING__ascii) for attachment in attachments])
+        attachments = "::".join([attachment.encode_filename() + ":" + attachment.encode_content() for attachment in attachments])
         return attachments
 
     def email_connection_thread(self, account: dict, queue: Queue, password: str):
@@ -177,28 +209,37 @@ class EmailManagerService:
         conn = self.fetch_conn(conn_lib, account, password)
 
         while True:
-            email: Email = queue.get()
-            if not self.is_connected(conn):
-                conn = self.fetch_conn(conn_lib, account, password)
-            send_to = email.to
-            if not isinstance(send_to, list):
-                send_to = [send_to]
-            send_to = ", ".join(send_to)
-            formatted_body, to_send = self.construct_message(account, email)
-            conn.send_message(to_send, account[KEY__account_username], send_to)
-            execute_supplied_statement(self.connection, QUERY__ins_email_history, {
-                    KEY__email_account: account[KEY__account_name],
-                    KEY__encrypted_subject: email.subject,
-                    KEY__encrypted_body: formatted_body,
-                    KEY__encrypted_attachments: self.format_attachments_for_storage(email.attachments),
-                    KEY__encrypted_recipients: send_to
-                }, encryption_key=self.db_crypt_key, encrypt_parameters=[
-                    KEY__encrypted_subject,
-                    KEY__encrypted_body,
-                    KEY__encrypted_attachments,
-                    KEY__encrypted_recipients
-                ]
-            )
+            try:
+                email: Email = queue.get(timeout=10)
+                if not self.is_connected(conn):
+                    conn = self.fetch_conn(conn_lib, account, password)
+                formatted_body, to_send = self.construct_message(account, email)
+                conn.send_message(to_send, account[KEY__account_username], email.to)
+
+                execute_supplied_statement(self.connection, QUERY__ins_email_history, {
+                        KEY__template: email.template,
+                        KEY__sender: email.sender,
+                        KEY__encrypted_subject: email.subject,
+                        KEY__encrypted_body: formatted_body,
+                        KEY__encrypted_attachments: self.format_attachments_for_storage(email.attachments),
+                        KEY__encrypted_recipients: SPLIT__address.join(email.to),
+                        KEY__encrypted_recipients_keys: SPLIT__address.join(email.recipient_names)
+                    }, encryption_key=self.db_crypt_key, encrypt_parameters=[
+                        KEY__encrypted_subject,
+                        KEY__encrypted_body,
+                        KEY__encrypted_attachments,
+                        KEY__encrypted_recipients,
+                        KEY__encrypted_recipients_keys
+                    ]
+                )
+            except Empty:
+                if account[KEY__id] not in self.email_queues:
+                    break
+
+        try:
+            conn.quit()
+        except:
+            pass
 
     def send_email(self, email: Email):
         if email.from_account in self.email_queues:
@@ -214,6 +255,12 @@ def create_app(ems: EmailManagerService):
     @app.route("/send-email", methods=["POST"])
     def send_email():
         ems.send_email(Email.deserialize(request.json))
+
+        return jsonify("OK")
+
+    @app.route(ENDPOINT__reload_accounts, methods=["POST"])
+    def refresh_accounts():
+        ems.reload_accounts()
 
         return jsonify("OK")
 

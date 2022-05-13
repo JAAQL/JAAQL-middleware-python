@@ -13,8 +13,8 @@ from jaaql.mvc.model import JAAQLModel
 from jaaql.mvc.response import JAAQLResponse
 from typing import Union
 
-from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, TYPE__response,\
-    SwaggerFlatResponse, REST__DELETE, REST__GET, REST__OPTIONS, REST__POST, REST__PUT, SwaggerList, SwaggerResponse,\
+from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, TYPE__response, \
+    SwaggerFlatResponse, REST__DELETE, REST__GET, REST__OPTIONS, REST__POST, REST__PUT, SwaggerList, SwaggerResponse, \
     MOCK__description, ARG_RESP__allow_all, RES__allow_all, SwaggerArgumentResponse, SwaggerSimpleList
 from jaaql.exceptions.http_status_exception import *
 
@@ -344,9 +344,10 @@ class BaseJAAQLController:
                     ip_addr = request.headers.get(HEADER__real_ip, request.remote_addr).split(",")[0]
 
                     if swagger_documentation.security:
-                        jaaql_connection, user_id, ip_id, ua_id, totp_iv, password_hash, l_totp, username, is_public =\
-                            self.model.verify_jwt(request.headers.get(HEADER__security), ip_addr, user_agent,
-                            route == ENDPOINT__refresh)
+                        jaaql_connection, user_id, ip_id, ua_id, totp_iv, password_hash, l_totp, username, is_public = \
+                            self.model.verify_jwt(request.headers.get(HEADER__security).get(None), ip_addr, user_agent,
+                                                  route == ENDPOINT__refresh,
+                                                  request.headers.get(HEADER__security_bypass).get(None))
 
                     supply_dict = {}
 
@@ -445,7 +446,7 @@ class BaseJAAQLController:
                             if method.responses[0] == RES__allow_all:
                                 do_allow_all = True
 
-                        if not do_allow_all and ret_status != HTTPStatus.UNAUTHORIZED and ret_status !=\
+                        if not do_allow_all and ret_status != HTTPStatus.UNAUTHORIZED and ret_status != \
                                 HTTPStatus.NOT_IMPLEMENTED and ret_status != HTTPStatus.BAD_REQUEST and \
                                 ret_status != HTTPStatus.UNPROCESSABLE_ENTITY and \
                                 ret_status != CustomHTTPStatus.DATABASE_NO_EXIST and \

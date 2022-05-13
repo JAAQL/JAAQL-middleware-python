@@ -1,4 +1,12 @@
 CREATE DOMAIN jaaql__email AS varchar(254) CHECK ((VALUE ~* '^[A-Za-z0-9._%-]+@[A-Za-z0-9.-]+[.][A-Za-z]+$' OR VALUE IN ('jaaql', 'superjaaql')) AND lower(VALUE) = VALUE);
+CREATE DOMAIN postgres_table_view_name AS varchar(64) CHECK (VALUE ~* '^[A-Za-z*0-9_\-]+$');
+
+create table jaaql__application (
+    name varchar(64) not null primary key,
+    description varchar(256) not null,
+    url text not null,
+    created timestamptz not null default current_timestamp
+);
 
 create table jaaql__user (
     id uuid primary key not null default gen_random_uuid(),
@@ -9,10 +17,15 @@ create table jaaql__user (
     enc_totp_iv varchar(254),
     last_totp varchar(6),
     alias varchar(32),
-    sign_up_data text,
-    is_public boolean default false
+    is_public boolean default false not null,
+    public_credentials text,
+    application varchar(64),
+    check (not is_public = (public_credentials is null)),
+    check (not is_public = (application is null)),
+    FOREIGN KEY (application) REFERENCES jaaql__application
 );
 CREATE UNIQUE INDEX jaaql__user_unq_email ON jaaql__user (email) WHERE (deleted is null);
+CREATE UNIQUE INDEX jaaql__user_public_application ON jaaql__user (application) WHERE (deleted is null);
 
 create table jaaql__user_ip (
     id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
@@ -79,16 +92,9 @@ CREATE UNIQUE INDEX jaaql__node_unq
 
 create table jaaql__database (
     node varchar(255) not null references jaaql__node on update cascade on delete cascade,
-	name varchar(255) not null,
+	name postgres_table_view_name not null,
 	deleted timestamptz,
 	PRIMARY KEY (node, name)
-);
-
-create table jaaql__application (
-    name varchar(64) not null primary key,
-    description varchar(256) not null,
-    url text not null,
-    created timestamptz not null default current_timestamp
 );
 
 INSERT INTO jaaql__application (name, description, url) VALUES ('console', 'The console application', '');
@@ -119,7 +125,7 @@ INSERT INTO jaaql__application_configuration (application, name, description) VA
 create table jaaql__assigned_database (
     application varchar(64) not null,
     configuration varchar(64) not null,
-    database varchar(255) not null,
+    database postgres_table_view_name not null,
     node varchar(255) not null,
     dataset varchar(64) not null,
     PRIMARY KEY (application, dataset, configuration),
@@ -383,29 +389,97 @@ BEGIN
 END
 $$ language plpgsql;
 
-create table jaaql__email_accounts (
-    account_name varchar(255) PRIMARY KEY not null,
+create table jaaql__email_account (
+    id uuid PRIMARY KEY NOT NULL not null default gen_random_uuid(),
+    name varchar(255) not null,
     send_name varchar(255) not null,
     protocol varchar(4) not null,
     check (protocol in ('smtp', 'imap')),
     host varchar(255) not null,
     port integer not null,
     username varchar(255) not null,
+    encrypted_password text not null,
     deleted timestamptz default null
+);
+CREATE UNIQUE INDEX jaaql__email_account_unq
+    ON jaaql__email_account (name) WHERE (deleted is null);
+
+create table jaaql__email_template (
+    id uuid PRIMARY KEY NOT NULL not null default gen_random_uuid(),
+    name varchar(60) NOT NULL,
+    subject varchar(255),
+    account uuid NOT NULL,
+    FOREIGN KEY (account) REFERENCES jaaql__email_account,
+    description text,
+    app_relative_path postgres_table_view_name,  -- Not a mistake for this domain type
+    check ((subject is null) = (app_relative_path is null)),
+    data_validation_table postgres_table_view_name,
+    recipient_validation_view postgres_table_view_name,
+    allow_signup boolean default false not null,
+    allow_confirm_signup_attempt boolean default false not null,
+    deleted timestamptz default null
+);
+CREATE UNIQUE INDEX jaaql__email_template_unq
+    ON jaaql__email_template (name) WHERE (deleted is null);
+
+create view jaaql__email_templates as (
+    SELECT
+        jet.name,
+        jea.name as account,
+        jet.description,
+        jet.app_relative_path,
+        jet.subject,
+        jet.allow_signup,
+        jet.allow_confirm_signup_attempt,
+        jet.data_validation_table,
+        jet.recipient_validation_view
+    FROM jaaql__email_template jet
+        INNER JOIN jaaql__email_account jea ON jea.id = jet.account
 );
 
 create table jaaql__email_history (
-    email_account varchar(255) not null,
-    FOREIGN KEY (email_account) references jaaql__email_accounts,
+    id uuid PRIMARY KEY NOT NULL,
+    template uuid not null,
+    FOREIGN KEY (template) REFERENCES jaaql__email_template,
+    sender uuid not null,
+    FOREIGN KEY (sender) REFERENCES jaaql__user,
     sent timestamptz not null default current_timestamp,
     encrypted_subject text,
-    encrypted_recipients text,
+    encrypted_recipients text not null,
+    encrypted_recipients_keys text not null,
     encrypted_body text,
     encrypted_attachments text
 );
 
-create table jaaql__template_validation_table (
-    template_path varchar(255),
-    validation_table varchar(255),
-    PRIMARY KEY(template_path)
+create or replace view jaaql__my_email_history as (
+    SELECT
+        jeh.id,
+        jet.name as template,
+        sent,
+        encrypted_subject as subject,
+        encrypted_recipients_keys as recipient
+    FROM jaaql__email_history jeh
+    INNER JOIN jaaql__email_template jet on jeh.template = jet.id
+    INNER JOIN jaaql__user ju on jeh.sender = ju.id
+    WHERE ju.email = current_user
+);
+grant select on jaaql__my_email_history to public;
+
+create or replace view table_primary_cols as (
+    SELECT c.column_name, tc.table_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name)
+    JOIN information_schema.columns AS c ON c.table_schema = tc.constraint_schema
+      AND tc.table_name = c.table_name AND ccu.column_name = c.column_name
+    WHERE constraint_type = 'PRIMARY KEY' AND c.table_schema = 'public'
+);
+
+create or replace view table_cols_marked_primary as (
+    SELECT
+        col.table_name,
+        col.column_name,
+        CASE WHEN tpc.column_name is not null then true else false end as is_primary
+    FROM information_schema.columns col
+    LEFT JOIN table_primary_cols tpc ON tpc.table_name = col.table_name AND col.column_name = tpc.column_name
+    WHERE col.table_schema = 'public'
 );

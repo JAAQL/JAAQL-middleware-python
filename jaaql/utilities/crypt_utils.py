@@ -26,7 +26,8 @@ ERR__password_no_letters = "Password must contain letters"
 PASSWORD__min_length = 8
 
 JWT__hour_expiry = 1000 * 60 * 60
-JWT__exp = "expires_at"
+JWT__exp = "__expires_at"
+JWT__purpose = "__purpose"
 JWT__algo = "HS256"
 
 MAX_LONG = 2**63-1
@@ -36,18 +37,22 @@ def fetch_epoch_ms():
     return int(datetime.now().replace(tzinfo=timezone.utc).timestamp() * 1000)
 
 
-def jwt_encode(secret_key: bytes, data: dict, expiry_ms: int = JWT__hour_expiry) -> str:
+def jwt_encode(secret_key: bytes, data: dict, purpose: str, expiry_ms: int = JWT__hour_expiry) -> str:
     data[JWT__exp] = (fetch_epoch_ms() + expiry_ms) if expiry_ms != 0 else MAX_LONG
+    data[JWT__purpose] = purpose
     return jwt.encode(data, secret_key, algorithm=JWT__algo).decode(ENCODING__ascii)
 
 
-def jwt_decode(secret_key: bytes, data: str, allow_expired: bool = False) -> Union[dict, bool]:
+def jwt_decode(secret_key: bytes, data: str, purpose: str, allow_expired: bool = False) -> Union[dict, bool]:
     try:
         jwt_obj = jwt.decode(data, secret_key, algorithms=[JWT__algo])
     except:
         return False
 
     if jwt_obj[JWT__exp] < fetch_epoch_ms() and not allow_expired:
+        return False
+
+    if jwt_obj[JWT__purpose] != purpose:
         return False
 
     jwt_obj.pop(JWT__exp)

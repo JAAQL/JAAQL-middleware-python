@@ -3,19 +3,13 @@ from jaaql.constants import *
 from jaaql.documentation.documentation_shared import RES__totp_mfa_nullable, ARG_RES__jaaql_password, JWT__invite,\
     gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__mfa_key, RES__oauth_token, RES__deletion_key,\
     ARG_RES__deletion_key, set_nullable, ARG_RES__application_body, ARG_RES__email, rename_arg,\
-    ARG_RES__reference_dataset, ARG_RES__dataset_description, EXAMPLE__email, combine_response
+    ARG_RES__reference_dataset, ARG_RES__dataset_description, combine_response, ARG_RES__username,\
+    ARG_RES__application, ARG_RES__email_template, ARG_RES__parameters, ARG_RES__already_signed_up_email_template, \
+    ARG_RES__occurred, EXAMPLE__email_template_name, EXAMPLE__occurred
 
 TITLE = "JAAQL API"
 DESCRIPTION = "Collection of methods in the JAAQL API"
 FILENAME = "jaaql_api"
-
-ARG_RES__application = SwaggerArgumentResponse(
-    name=KEY__application,
-    description="The name of the application",
-    arg_type=str,
-    example=["Library Browser", "Meeting Room"],
-    required=True
-)
 
 ARG_RES__configuration = SwaggerArgumentResponse(
     name=KEY__configuration,
@@ -25,14 +19,6 @@ ARG_RES__configuration = SwaggerArgumentResponse(
     required=True
 )
 
-ARG_RES__parameters = SwaggerArgumentResponse(
-    name=KEY__parameters,
-    description="Nonspecific data which is supplied as an object",
-    arg_type=ARG_RESP__allow_all,
-    required=False,
-    condition="Is signup data provided"
-)
-
 ARG_RES__invite_key = SwaggerArgumentResponse(
     name=KEY__invite_key,
     description="A JWT that functions as an invite for a specific email address",
@@ -40,24 +26,20 @@ ARG_RES__invite_key = SwaggerArgumentResponse(
     example=[JWT__invite],
 )
 
-ARG_RES__template = SwaggerArgumentResponse(
-    name=KEY__template,
-    description="Name of an email template. Template must match regex [a-zA-Z\-_]+",
-    arg_type=str,
-    example=["signup-template"]
-)
-
 DOCUMENTATION__sign_up_request_invite = SwaggerDocumentation(
     tags="Signup",
     security=False,
     methods=SwaggerMethod(
         name="Request an invitation",
-        description="Requests an invitation with the option to send an email to the user",
+        description="Requests an invitation, sending an email to the user (or if the email template does not contain "
+        "the signup id, they will then need to be approved by an admin).",
         method=REST__POST,
         body=[
             ARG_RES__email,
             ARG_RES__parameters,
-            ARG_RES__template
+            ARG_RES__email_template,
+            ARG_RES__already_signed_up_email_template,
+            ARG_RES__application
         ]
     )
 )
@@ -68,12 +50,12 @@ DOCUMENTATION__sign_up_with_invite = SwaggerDocumentation(
     security=False,
     methods=SwaggerMethod(
         name="Signup with invite",
-        description="Signs up to JAAQL using either the key provided in the email or the email address itself if the "
-        "user has not been invited to the platform",
+        description="Signs up to JAAQL using either the key fetched either from internal methods or from the email. "
+        "Returns the signup parameters if supplied",
         method=REST__POST,
         body=[
             ARG_RES__invite_key,
-            ARG_RES__jaaql_password
+            ARG_RES__jaaql_password,
         ],
         response=[
             combine_response(RES__totp_mfa_nullable, [ARG_RES__parameters, ARG_RES__email]),
@@ -91,7 +73,16 @@ DOCUMENTATION__sign_up_finish = SwaggerDocumentation(
     methods=SwaggerMethod(
         name="Finish signup",
         description="Finishes the signup and deletes the data. At this point, signups cannot be re-sent to the user",
-        method=REST__POST
+        method=REST__POST,
+        arguments=ARG_RES__invite_key,
+        response=[
+            SwaggerFlatResponse(),
+            SwaggerFlatResponse(
+                description=ERR__already_signed_up,
+                code=HTTPStatus.CONFLICT,
+                body=ERR__already_signed_up
+            )
+        ]
     )
 )
 
@@ -107,6 +98,24 @@ DOCUMENTATION__my_applications = SwaggerDocumentation(
         response=SwaggerResponse(
             description="List of applications the user has access to",
             response=SwaggerList(*ARG_RES__application_body)
+        )
+    )
+)
+
+DOCUMENTATION__applications_public_user_credentials = SwaggerDocumentation(
+    tags="Applications",
+    security=False,
+    methods=SwaggerMethod(
+        name="Fetch app public credentials",
+        description="Fetches public credentials associated with an application (if any)",
+        method=REST__GET,
+        arguments=ARG_RES__application,
+        response=SwaggerResponse(
+            description="Public credentials associated with an application",
+            response=[
+                ARG_RES__username,
+                ARG_RES__jaaql_password
+            ]
         )
     )
 )
@@ -352,13 +361,7 @@ DOCUMENTATION__my_logs = SwaggerDocumentation(
             response=gen_filtered_records(
                 "log",
                 [
-                    SwaggerArgumentResponse(
-                        name="occurred",
-                        description="When this event occurred",
-                        arg_type=str,
-                        example=["2021-08-07 19:05:07.763189+01:00", "2021-08-07 18:04:41.156935+01:00"],
-                        required=True
-                    ),
+                    ARG_RES__occurred,
                     ARG_RES__address,
                     SwaggerArgumentResponse(
                         name=KEY__user_agent,
@@ -407,16 +410,128 @@ DOCUMENTATION__my_logs = SwaggerDocumentation(
     )
 )
 
-# TODO discuss
-# How can we decide if the user can send the email to the other user. Assign email roles to the user. Use database roles
-# X role can send to Y role. Implies Y role can receive from X role
-# DOCUMENTATION__my_emails = SwaggerDocumentation(
-#     tags="Emails",
-#     methods=SwaggerMethod(
-#         name="Send Email",
-#         description="Sends an email to a signed up user or myself from the system"
-#     )
-# )
+DOCUMENTATION__email_allowed_recipients = SwaggerDocumentation(
+    tags="Emails",
+    methods=SwaggerMethod(
+        name="Fetch template permitted recipients",
+        description="Fetches a list of permitted recipients for the supplied email template",
+        method=REST__GET,
+        arguments=ARG_RES__email_template,
+        response=SwaggerResponse(
+            description="Returns a list of permitted recipients for the supplied email template",
+            response=SwaggerSimpleList(
+                arg_type=str,
+                description="A list of permitted recipients for the supplied email template",
+                example=["my_manager", "client_a"],
+                required=True
+            )
+        )
+    )
+)
+
+ARG_RES__email_recipient = SwaggerArgumentResponse(
+    name=KEY__recipient,
+    description="The recipient of the email, null if sent to self",
+    required=False,
+    condition="Is the email being sent to someone else",
+    arg_type=str,
+    example=["my_manager", "client_a"]
+)
+ARG_RES__email_id = SwaggerArgumentResponse(
+    name=KEY__id,
+    description="The id of the email history item",
+    arg_type=str,
+    example=["7b4e15b4-bf07-4d52-b3fd-1edd4ed5ec04"]
+)
+ARG_RES__email_subject = SwaggerArgumentResponse(
+    name=KEY__subject,
+    description="The final subject of the sent email",
+    arg_type=str,
+    example=["Welcome to JAAQL"]
+)
+ARG_RES__email_body = SwaggerArgumentResponse(
+    name=KEY__body,
+    description="The final body of the sent email",
+    arg_type=str,
+    example=["<html>Email body</html>"]
+)
+
+ARG_RES__email_base = [
+    ARG_RES__email_template,
+    ARG_RES__email_recipient,
+    SwaggerArgumentResponse(
+        name=KEY__attachments,
+        description="Any email attachments, if supplied. Email attachments are only allowed if the recipient is null and therefore the "
+        "email is being sent to the self. Server side template rendering is not yet supported",
+        arg_type=SwaggerList(
+            SwaggerArgumentResponse(
+                name=KEY__filename,
+                description="The filename of the attachment",
+                arg_type=str,
+                example=["report.pdf"]
+            ),
+            SwaggerArgumentResponse(
+                name=KEY__content,
+                description="The base64 encoded content of the file",
+                arg_type=str,
+                example=["Y29udGVudA=="]
+            )
+        ),
+        required=False,
+        condition="Are attachments supplied"
+    )
+]
+
+ARG_RES__emaiL_sent = rename_arg(ARG_RES__occurred, KEY__email_sent)
+
+DOCUMENTATION__email = SwaggerDocumentation(
+    tags="Emails",
+    methods=[
+        SwaggerMethod(
+            name="Send email",
+            description="Sends an email template",
+            method=REST__POST,
+            body=[
+                ARG_RES__application,
+                ARG_RES__parameters
+            ] + ARG_RES__email_base
+        ),
+        SwaggerMethod(
+            name="Fetch my email history",
+            method=REST__GET,
+            description="Fetches a list of my email history",
+            arguments=gen_arg_res_sort_pageable(KEY__template, KEY__email_sent, EXAMPLE__email_template_name, EXAMPLE__occurred),
+            response=SwaggerResponse(
+                description="A list of sent emails",
+                response=gen_filtered_records("email", [
+                    ARG_RES__email_id,
+                    ARG_RES__email_template,
+                    ARG_RES__emaiL_sent,
+                    ARG_RES__email_subject,
+                    ARG_RES__email_recipient
+                ])
+            )
+        )
+    ]
+)
+
+DOCUMENTATION__email_history = SwaggerDocumentation(
+    tags="Email",
+    methods=SwaggerMethod(
+        name="Fetch email content",
+        description="Fetches the full email content including attachments",
+        method=REST__GET,
+        arguments=ARG_RES__email_id,
+        response=SwaggerResponse(
+            description="Full email content with attachments",
+            response=ARG_RES__email_base + [
+                ARG_RES__emaiL_sent,
+                ARG_RES__email_body,
+                ARG_RES__email_subject
+            ]
+        )
+    )
+)
 
 DOCUMENTATION__submit = SwaggerDocumentation(
     tags="JAAQL",
