@@ -3,7 +3,10 @@ import requests
 from os.path import join, exists, dirname
 import glob
 from jaaql.constants import DIR__config, FILE__config, CONFIG_KEY__server, CONFIG_KEY_SERVER__port
+from jaaql.db.db_interface import DBInterface
+from jaaql.constants import VAULT_KEY__jaaql_lookup_connection
 import configparser
+import time
 
 PATH__migrations = "migrations"
 
@@ -50,6 +53,7 @@ def get_base_url(config, is_gunicorn: bool):
     else:
         return "http://127.0.0.1:" + str(int(config[CONFIG_KEY__server][CONFIG_KEY_SERVER__port]))
 
+
 def await_jaaql_installation(config, is_gunicorn: bool):
     base_url = get_base_url(config, is_gunicorn)
     while True:
@@ -59,3 +63,9 @@ def await_jaaql_installation(config, is_gunicorn: bool):
         except:
             pass
         time.sleep(5)
+
+
+def get_jaaql_connection(config, vault):
+    jaaql_uri = vault.get_obj(VAULT_KEY__jaaql_lookup_connection)
+    address, port, db, username, password = DBInterface.fracture_uri(jaaql_uri)
+    return DBInterface.create_interface(config, address, port, db, username, password, is_jaaql_user=True)

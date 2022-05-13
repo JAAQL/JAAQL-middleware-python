@@ -106,4 +106,4 @@ ENVIRON__email_credentials = "JAAQL_EMAIL_CREDENTIALS"
 CONFIG_KEY__server = "SERVER"
 CONFIG_KEY_SERVER__port = "port"
 
-VERSION = "2.13.0"
+VERSION = "2.12.1"
