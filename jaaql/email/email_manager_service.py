@@ -1,7 +1,6 @@
 from jaaql.db.db_interface import DBInterface
 from jaaql.db.db_utils import execute_supplied_statement
-from jaaql.utilities.utils import load_config
-from os.path import exists
+from jaaql.utilities.utils import load_config, await_jaaql_installation#
 import json
 import imaplib
 import smtplib
@@ -14,12 +13,10 @@ from email.mime.text import MIMEText
 from queue import Queue
 import threading
 import ssl
-import os
 import sys
 from flask import Flask, jsonify, request
 from jaaql.utilities.vault import Vault, DIR__vault
-from jaaql.constants import VAULT_KEY__jaaql_lookup_connection, VAULT_KEY__db_crypt_key, FILE__finished_migrations
-import time
+from jaaql.constants import VAULT_KEY__jaaql_lookup_connection, VAULT_KEY__db_crypt_key
 
 QUERY__load_email_accounts = "SELECT * FROM jaaql__email_accounts WHERE deleted is null"
 
@@ -224,14 +221,10 @@ def create_app(ems: EmailManagerService):
 
 
 def create_flask_app(vault_key=None, email_credentials=None, is_gunicorn: bool = False):
-    print("Awaiting email management service")
-    while not exists(FILE__finished_migrations):
-        time.sleep(5)
-    os.remove(FILE__finished_migrations)
+    config = load_config(is_gunicorn)
+    await_jaaql_installation(config, is_gunicorn)
     vault = Vault(vault_key, DIR__vault)
     print("Starting email management service")
-
-    config = load_config(is_gunicorn)
 
     db_crypt_key = vault.get_obj(VAULT_KEY__db_crypt_key).encode(ENCODING__ascii)
     jaaql_uri = vault.get_obj(VAULT_KEY__jaaql_lookup_connection)
