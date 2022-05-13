@@ -99,9 +99,10 @@ EXAMPLE__jwt = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.e30.yXvILkvUUCBqAFlAv6wQ1Q-
 VAULT_KEY__db_crypt_key = "db_crypt_key"
 VAULT_KEY__jaaql_lookup_connection = "jaaql_lookup_connection"
 
-FILE__finished_migrations = "finished_migrations"
-
 ENVIRON__vault_key = "JAAQL_VAULT_PASSWORD"
 ENVIRON__email_credentials = "JAAQL_EMAIL_CREDENTIALS"
 
-VERSION = "2.11.0"
+CONFIG_KEY__server = "SERVER"
+CONFIG_KEY_SERVER__port = "port"
+
+VERSION = "2.12.0"

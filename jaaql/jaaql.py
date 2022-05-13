@@ -25,8 +25,6 @@ CONFIG_KEY_SECURITY__mfa_label = "mfa_label"
 CONFIG_KEY_SECURITY__do_audit = "do_audit"
 CONFIG_KEY__swagger = "SWAGGER"
 CONFIG_KEY_SWAGGER__url = "url"
-CONFIG_KEY__server = "SERVER"
-CONFIG_KEY_SERVER__port = "port"
 
 WARNING__vault_key_stdin = "MAJOR SECURITY ISSUE! Passing vault key via program arguments is insecure as other progra" \
                            "ms can see the arguments. Please provide via stdin instead!"

@@ -47,6 +47,10 @@ class JAAQLController(BaseJAAQLController):
         def install(http_inputs: dict, ip_address: str, user_agent: str, response: JAAQLResponse):
             return self.model.install(**http_inputs, ip_address=ip_address, user_agent=user_agent, response=response)
 
+        @self.cors_route('/internal/is_installed', DOCUMENTATION__is_installed)
+        def is_installed():
+            return self.model.is_installed()
+
         @self.cors_route('/internal/applications', DOCUMENTATION__applications)
         def applications(http_inputs: dict, jaaql_connection: DBInterface):
             if self.is_get():
