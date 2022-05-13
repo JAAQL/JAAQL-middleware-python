@@ -39,6 +39,7 @@ ERR__duplicated_database = "User %s has a duplicate database precedence with dat
 ERR__not_sole_owner = "You are not the sole owner of this connection"
 ERR__mfa_must_be_enabled = "MFA must be turned on!"
 ERR__cannot_self_sign_up = "Cannot self sign up. Must be invited to the platform"
+ERR__not_installed = "The platform is not installed yet"
 
 USERNAME__jaaql = "jaaql"
 USERNAME__superjaaql = "superjaaql"
@@ -370,6 +371,10 @@ class JAAQLModel(BaseJAAQLModel):
             response.response_code = HTTPStatus.ACCEPTED
         return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data,
                                       expiry_ms=expiry_time)
+
+    def is_installed(self):
+        if self.jaaql_lookup_connection is None:
+            raise HttpStatusException(ERR__not_installed)
 
     def install(self, db_connection_string: str, superjaaql_password: str, password: str, install_key: str,
                 use_mfa: bool, ip_address: str, user_agent: str, response: JAAQLResponse):

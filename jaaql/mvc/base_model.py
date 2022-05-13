@@ -208,7 +208,6 @@ class BaseJAAQLModel:
                            update_db_interface=self.migration_db_interface)
 
             self.email_manager = EmailManager()
-            open(FILE__finished_migrations, "w").close()
         else:
             self.install_key = str(uuid.uuid4())
             print("INSTALL KEY: " + self.install_key)

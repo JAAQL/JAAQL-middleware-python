@@ -115,6 +115,16 @@ DOCUMENTATION__install = SwaggerDocumentation(
     )
 )
 
+DOCUMENTATION__is_installed = SwaggerDocumentation(
+    tags="Installation",
+    security=False,
+    methods=SwaggerMethod(
+        name="Is installed",
+        description="Returns 200 OK if the service has installed otherwise a 422",
+        method=REST__GET
+    )
+)
+
 # Not unused. Used to generate html files
 from jaaql.documentation.documentation_shared import DOCUMENTATION__oauth_token, DOCUMENTATION__oauth_refresh
 
