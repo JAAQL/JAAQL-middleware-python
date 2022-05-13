@@ -1,6 +1,6 @@
 from jaaql.db.db_interface import DBInterface
 from jaaql.db.db_utils import execute_supplied_statement
-from jaaql.utilities.utils import load_config, await_jaaql_installation#
+from jaaql.utilities.utils import load_config, await_jaaql_installation, get_jaaql_connection
 import json
 import imaplib
 import smtplib
@@ -224,14 +224,9 @@ def create_flask_app(vault_key=None, email_credentials=None, is_gunicorn: bool =
     config = load_config(is_gunicorn)
     await_jaaql_installation(config, is_gunicorn)
     vault = Vault(vault_key, DIR__vault)
-    print("Starting email management service")
-
-    db_crypt_key = vault.get_obj(VAULT_KEY__db_crypt_key).encode(ENCODING__ascii)
-    jaaql_uri = vault.get_obj(VAULT_KEY__jaaql_lookup_connection)
-    address, port, db, username, password = DBInterface.fracture_uri(jaaql_uri)
-    jaaql_lookup_connection = DBInterface.create_interface(config, address, port, db, username, password,
-                                                           is_jaaql_user=True)
+    jaaql_lookup_connection = get_jaaql_connection(config, vault)
+    db_crypt_key = vault.get_obj(VAULT_KEY__db_crypt_key)
 
     flask_app = create_app(EmailManagerService(jaaql_lookup_connection, email_credentials, db_crypt_key))
-    print("Created shared memory app host, running flask", file=sys.stderr)
+    print("Created email manager app host, running flask", file=sys.stderr)
     flask_app.run(port=PORT__ems, host="0.0.0.0", threaded=True)
