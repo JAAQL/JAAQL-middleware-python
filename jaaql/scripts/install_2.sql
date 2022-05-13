@@ -403,3 +403,9 @@ create table jaaql__email_history (
     encrypted_body text,
     encrypted_attachments text
 );
+
+create table jaaql__template_validation_table (
+    template_path varchar(255),
+    validation_table varchar(255),
+    PRIMARY KEY(template_path)
+);

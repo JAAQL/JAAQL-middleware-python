@@ -25,14 +25,12 @@ ARG_RES__configuration = SwaggerArgumentResponse(
     required=True
 )
 
-ARG_RES__signup_data = SwaggerArgumentResponse(
-    name=KEY__sign_up_data,
-    description="Signup data that can be attached to the user during a self sign up. Returned to the user in the second"
-                " half of the sign up process",
-    arg_type=str,
-    example=["eyJkYXRhIjogInZhbHVlIn0="],
+ARG_RES__parameters = SwaggerArgumentResponse(
+    name=KEY__parameters,
+    description="Nonspecific data which is supplied as an object",
+    arg_type=ARG_RESP__allow_all,
     required=False,
-    condition="Is an invite key required"
+    condition="Is signup data provided"
 )
 
 ARG_RES__invite_key = SwaggerArgumentResponse(
@@ -40,33 +38,60 @@ ARG_RES__invite_key = SwaggerArgumentResponse(
     description="A JWT that functions as an invite for a specific email address",
     arg_type=str,
     example=[JWT__invite],
-    required=False,
-    condition="Is an invite key required"
 )
 
-DOCUMENTATION__sign_up = SwaggerDocumentation(
+ARG_RES__template = SwaggerArgumentResponse(
+    name=KEY__template,
+    description="Name of an email template. Template must match regex [a-zA-Z\-_]+",
+    arg_type=str,
+    example=["signup-template"]
+)
+
+DOCUMENTATION__sign_up_request_invite = SwaggerDocumentation(
+    tags="Signup",
+    security=False,
+    methods=SwaggerMethod(
+        name="Request an invitation",
+        description="Requests an invitation with the option to send an email to the user",
+        method=REST__POST,
+        body=[
+            ARG_RES__email,
+            ARG_RES__parameters,
+            ARG_RES__template
+        ]
+    )
+)
+
+DOCUMENTATION__sign_up_with_invite = SwaggerDocumentation(
     tags="Signup",
     # The security is in the invite key. User has not signed up yet so cannot get an oauth token
     security=False,
     methods=SwaggerMethod(
-        name="Signup",
+        name="Signup with invite",
         description="Signs up to JAAQL using either the key provided in the email or the email address itself if the "
         "user has not been invited to the platform",
         method=REST__POST,
         body=[
             ARG_RES__invite_key,
-            set_nullable(ARG_RES__email, "Is the user signing up via an invite key or are they signing themselves up"),
-            ARG_RES__signup_data,
-            set_nullable(ARG_RES__jaaql_password, "Is the user in the 2nd stage of signup")
+            ARG_RES__jaaql_password
         ],
         response=[
-            combine_response(RES__totp_mfa_nullable, [ARG_RES__signup_data, ARG_RES__invite_key]),
+            combine_response(RES__totp_mfa_nullable, [ARG_RES__parameters, ARG_RES__email]),
             SwaggerFlatResponse(
                 description=ERR__already_signed_up,
                 code=HTTPStatus.CONFLICT,
                 body=ERR__already_signed_up
             )
         ]
+    )
+)
+
+DOCUMENTATION__sign_up_finish = SwaggerDocumentation(
+    tags="Signup",
+    methods=SwaggerMethod(
+        name="Finish signup",
+        description="Finishes the signup and deletes the data. At this point, signups cannot be re-sent to the user",
+        method=REST__POST
     )
 )
 
@@ -381,6 +406,17 @@ DOCUMENTATION__my_logs = SwaggerDocumentation(
         )
     )
 )
+
+# TODO discuss
+# How can we decide if the user can send the email to the other user. Assign email roles to the user. Use database roles
+# X role can send to Y role. Implies Y role can receive from X role
+# DOCUMENTATION__my_emails = SwaggerDocumentation(
+#     tags="Emails",
+#     methods=SwaggerMethod(
+#         name="Send Email",
+#         description="Sends an email to a signed up user or myself from the system"
+#     )
+# )
 
 DOCUMENTATION__submit = SwaggerDocumentation(
     tags="JAAQL",
