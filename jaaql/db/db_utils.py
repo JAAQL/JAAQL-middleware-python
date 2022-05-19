@@ -1,9 +1,9 @@
-from db_interface import DBInterface
 from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
 from jaaql.constants import ENCODING__utf
 from typing import Union
 import jaaql.utilities.crypt_utils as crypt_utils
+from jaaql.db.db_pg_interface import DBPGInterface
 
 ERR__encryption_key_required = "Encryption key required. Check internal function calls"
 ERR__duplicated_encrypt_parameter = "Duplicated value in encrypt_parameters list"
@@ -12,6 +12,13 @@ ERR__missing_encrypt_parameter = "Encrypted parameter is not found '%s'"
 ERR__duplicated_encryption_salt = "Duplicated value in encryption_salts list"
 ERR__missing_decrypt_column = "Decrypted column '%s' not found in the result set"
 ERR__expected_single_row = "Expected single row response but received '%d' rows"
+ERR__unsupported_interface = "Unsupported interface '%s'. We only support %s"
+
+
+KEY_CONFIG__db = "DATABASE"
+KEY_CONFIG__interface = "interface"
+INTERFACE__postgres_key = "postgres"
+INTERFACE__postgres_class = "DBPGInterface"
 
 
 def jaaql__encrypt(dec_input: str, encryption_key: bytes, salt: bytes = None) -> str:
@@ -28,7 +35,24 @@ def try_encode(salt: Union[str, bytes]) -> bytes:
     return salt
 
 
-def execute_supplied_statement(db_interface: DBInterface, query: str, parameters: dict = None,
+def create_interface(config, address: str, port: int, database: str, username: str, password: str,
+                     is_jaaql_user: bool = False, dev_mode: bool = False):
+    interface = config[KEY_CONFIG__db][KEY_CONFIG__interface]
+    supported = {
+        INTERFACE__postgres_key: INTERFACE__postgres_class
+    }
+
+    if interface not in supported.keys():
+        raise Exception(ERR__unsupported_interface % (interface, ", ".join(supported.keys())))
+
+    # interface_class = getattr(db, supported[interface])  To implement later for accessing non postgres databases
+    interface_class = DBPGInterface
+    instance = interface_class(config, address, port, database, username, password, is_jaaql_user, dev_mode)
+
+    return instance
+
+
+def execute_supplied_statement(db_interface, query: str, parameters: dict = None,
                                as_objects: bool = False, encrypt_parameters: list = None,
                                decrypt_columns: list = None, encryption_key: bytes = None,
                                encryption_salts: dict = None):
@@ -94,7 +118,7 @@ def execute_supplied_statement(db_interface: DBInterface, query: str, parameters
     return data
 
 
-def force_singleton(data, as_objects: bool = False):
+def force_singleton(data, as_objects: bool = False, singleton_code: int = None):
     was_no_singleton = False
     if as_objects:
         if len(data) != 1:
@@ -106,22 +130,22 @@ def force_singleton(data, as_objects: bool = False):
             data["rows"] = data["rows"][0]
 
     if was_no_singleton:
-        raise HttpStatusException(ERR__expected_single_row % len(data))
+        raise HttpStatusException(ERR__expected_single_row % len(data), singleton_code)
 
     return data[0] if as_objects else data
 
 
-def execute_supplied_statement_singleton(db_interface: DBInterface, query, parameters: dict = None,
+def execute_supplied_statement_singleton(db_interface, query, parameters: dict = None,
                                          as_objects: bool = False, encrypt_parameters: list = None,
                                          decrypt_columns: list = None, encryption_key: bytes = None,
-                                         encryption_salts: dict = None):
+                                         encryption_salts: dict = None, singleton_code: int = None):
     data = execute_supplied_statement(db_interface, query, parameters, as_objects, encrypt_parameters,
-                                           decrypt_columns, encryption_key, encryption_salts)
+                                      decrypt_columns, encryption_key, encryption_salts)
 
-    return force_singleton(data, as_objects)
+    return force_singleton(data, as_objects, singleton_code)
 
 
-def execute_supplied_statements(db_interface: DBInterface, queries: Union[str, list],
+def execute_supplied_statements(db_interface, queries: Union[str, list],
                                 parameters: Union[dict, list] = None, as_objects: bool = False):
     if not isinstance(queries, list):
         queries = [queries]

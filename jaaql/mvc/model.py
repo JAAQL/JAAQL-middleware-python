@@ -1,19 +1,22 @@
 from jaaql.db.db_interface import DBInterface, RET__rows
-from jaaql.mvc.base_model import BaseJAAQLModel, VAULT_KEY__jaaql_lookup_connection, CONFIG_KEY__security, \
-    CONFIG_KEY_SECURITY__mfa_label, CONFIG_KEY_SECURITY__mfa_issuer, VAULT_KEY__jwt_obj_crypt_key, \
-    VAULT_KEY__jwt_crypt_key
+from jaaql.mvc.base_model import BaseJAAQLModel, CONFIG_KEY__security, CONFIG_KEY_SECURITY__mfa_label, \
+    CONFIG_KEY_SECURITY__mfa_issuer, VAULT_KEY__jwt_obj_crypt_key, VAULT_KEY__jwt_crypt_key
 from jaaql.exceptions.http_status_exception import HttpStatusException, HTTPStatus, ERR__connection_expired, \
     HTTP_STATUS_CONNECTION_EXPIRED, ERR__already_installed, ERR__passwords_do_not_match, ERR__cannot_override_db, \
     ERR__already_signed_up
 
+from typing import Union
+from base64 import urlsafe_b64decode as b64d
+from jaaql.mvc.queries import *
 from typing import Optional
-from jaaql.db.db_utils import execute_supplied_statement, execute_supplied_statement_singleton
+from jaaql.db.db_utils import execute_supplied_statement, execute_supplied_statement_singleton, create_interface
 from jaaql.mvc.response import JAAQLResponse
 from collections import Counter
 from os.path import dirname
 from jaaql.utilities import crypt_utils
 import uuid
 import os
+import json
 import pyotp
 import qrcode
 import qrcode.image.svg
@@ -28,6 +31,10 @@ import threading
 
 TOKEN__pre_auth_reduction_factor = 15
 
+ERR__recipient_not_allowed = "Recipient not allowed"
+ERR__cant_send_attachments = "Cannot send attachments to other people"
+ERR__template_not_signup = "One of the supplied templates is not suitable for signup"
+ERR__please_sign_in = "Please sign in, this user already exists and is signed up!"
 ERR__incorrect_install_key = "Incorrect install key!"
 ERR__incorrect_credentials = "Incorrect credentials!"
 ERR__password_incorrect = "Your password is incorrect!"
@@ -40,111 +47,21 @@ ERR__not_sole_owner = "You are not the sole owner of this connection"
 ERR__mfa_must_be_enabled = "MFA must be turned on!"
 ERR__cannot_self_sign_up = "Cannot self sign up. Must be invited to the platform"
 ERR__not_installed = "The platform is not installed yet"
+ERR__unexpected_mfa_token = "MFA is disabled but user provided"
+ERR__cannot_make_user_public = "Cannot make user with this username public"
+ERR__unexpected_parameters = "Signup data not expected"
+ERR__unexpected_validation_column = "Unexpected column in the input parameters '%s'"
+ERR__user_does_not_exist = "The user does not exist, cannot resend the email"
 
 USERNAME__jaaql = "jaaql"
 USERNAME__superjaaql = "superjaaql"
 USERNAME__postgres = "postgres"
-
-NODE__host_node = "host"
-DB__jaaql = "jaaql"
 
 APPLICATION__console = "console"
 APPLICATION__playground = "playground"
 APPLICATION__manager = "manager"
 CONFIGURATION__host = "host"
 
-QUERY__my_roles = "SELECT rolname FROM pg_roles WHERE pg_has_role(oid, 'member');"
-QUERY__grant_role = "GRANT %s TO %s"
-QUERY__default_roles_sel = "SELECT * FROM jaaql__default_role"
-QUERY__default_roles_ins = "INSERT INTO jaaql__default_role (the_role) VALUES (:role)"
-QUERY__default_roles_del = "DELETE FROM jaaql__default_role WHERE the_role = :role"
-QUERY__fetch_my_applications = "SELECT * FROM jaaql__my_applications"
-QUERY__application_set_url = "UPDATE jaaql__application SET url = :url WHERE name = :name"
-QUERY__application_ins = "INSERT INTO jaaql__application (name, description, url) VALUES (:name, :description, :url)"
-QUERY__application_setup_host = "INSERT INTO jaaql__assigned_database (application, configuration, database, node, dataset) VALUES (:application, 'host', '%s', '%s', 'node')" % (
-    DB__jaaql, NODE__host_node)
-QUERY__application_del = "DELETE FROM jaaql__application WHERE name = :name"
-QUERY__application_sel = "SELECT * FROM jaaql__application"
-QUERY__application_count = "SELECT COUNT(*) FROM jaaql__application"
-QUERY__application_upd = "UPDATE jaaql__application SET name = coalesce(:new_name, name), description = coalesce(:new_description, description), url = coalesce(:new_url, url) WHERE name = :name"
-QUERY__database_ins = "INSERT INTO jaaql__database (node, name) VALUES (:node, :name)"
-QUERY__node_create = "SELECT jaaql__create_node(:name, :address, :port, :description);"
-QUERY__database_sel = "SELECT * FROM jaaql__database"
-QUERY__node_sel = "SELECT * FROM jaaql__node"
-QUERY__database_del = "DELETE FROM jaaql__database WHERE name = :name AND node = :node"
-QUERY__node_del = "SELECT jaaql__delete_node(:name);"
-QUERY__database_count = "SELECT COUNT(*) FROM jaaql__database"
-QUERY__node_count = "SELECT COUNT(*) FROM jaaql__node"
-QUERY__application_dataset_ins = "INSERT INTO jaaql__application_dataset (application, name, description) VALUES (:application, :name, :description)"
-QUERY__application_dataset_del = "DELETE FROM jaaql__application_dataset WHERE name = :name AND application = :application"
-QUERY__application_dataset_sel = "SELECT * FROM jaaql__application_dataset"
-QUERY__application_dataset_count = "SELECT COUNT(*) FROM jaaql__application_dataset"
-QUERY__application_configuration_ins = "INSERT INTO jaaql__application_configuration (application, name, description) VALUES (:application, :name, :description)"
-QUERY__application_configuration_del = "DELETE FROM jaaql__application_configuration WHERE name = :name AND application = :application"
-QUERY__application_configuration_sel = "SELECT * FROM jaaql__application_configuration"
-QUERY__application_configuration_count = "SELECT COUNT(*) FROM jaaql__application_configuration"
-QUERY__assigned_database_ins = "INSERT INTO jaaql__assigned_database (application, configuration, database, node, dataset) VALUES (:application, :configuration, :database, :node, :dataset)"
-QUERY__assigned_database_del = "DELETE FROM jaaql__assigned_database WHERE application = :application AND configuration = :configuration AND dataset = :dataset"
-QUERY__assigned_database_sel = "SELECT * FROM jaaql__assigned_database"
-QUERY__assigned_database_count = "SELECT COUNT(*) FROM jaaql__assigned_database"
-QUERY__configuration_authorization_ins = "INSERT INTO jaaql__authorization_configuration (application, configuration, role) VALUES (:application, :configuration, :role)"
-QUERY__configuration_authorization_del = "DELETE FROM jaaql__authorization_configuration WHERE application = :application AND role = :role AND configuration = :configuration"
-QUERY__configuration_authorization_sel = "SELECT * FROM jaaql__authorization_configuration"
-QUERY__configuration_authorization_count = "SELECT COUNT(*) FROM jaaql__authorization_configuration"
-QUERY__node_credentials_ins = "INSERT INTO jaaql__credentials_node (node, role, db_encrypted_username, db_encrypted_password, precedence) VALUES (:node, :role, :username, :password, coalesce(:precedence, 0))"
-QUERY__node_credentials_del = "UPDATE jaaql__credentials_node SET deleted = current_timestamp WHERE role = :role AND node = :node AND deleted is null"
-QUERY__node_credentials_sel = "SELECT id, node, role, deleted FROM jaaql__credentials_node"
-QUERY__role_connection_sel = "SELECT ad.id as id, ad.db_encrypted_username as username, ad.db_encrypted_password as password, nod.address, nod.port FROM jaaql__credentials_node ad INNER JOIN jaaql__node nod ON nod.name = ad.node WHERE role = (SELECT coalesce(alias, email) FROM jaaql__user WHERE email = :role) AND node = :node AND ad.deleted is null AND nod.deleted is null;"
-QUERY__node_credentials_count = "SELECT COUNT(*) FROM jaaql__credentials_node"
-QUERY__user_ins = "INSERT INTO jaaql__user (email, mobile, alias, sign_up_data) VALUES (lower(:email), :mobile, :alias, :sign_up_data) RETURNING id"
-QUERY__revoke_user = "UPDATE jaaql__user SET deleted = current_timestamp WHERE email = lower(:username) AND email not in ('jaaql', 'superjaaql') AND deleted is NULL"
-QUERY__disable_mfa = "UPDATE jaaql__user SET enc_totp_iv = null WHERE id = :user_id"
-QUERY__set_mfa = "UPDATE jaaql__user SET enc_totp_iv = :totp_iv WHERE id = :user_id"
-QUERY__user_id_and_signup_data_from_username = "SELECT id, sign_up_data FROM jaaql__user WHERE email = lower(:username) AND deleted is null"
-QUERY__user_erase_sign_up_data = "UPDATE jaaql__user SET sign_up_data = null WHERE id = :id"
-QUERY__user_totp_upd = "UPDATE jaaql__user SET last_totp = :last_totp WHERE id = :user_id"
-QUERY__user_ip_sel = "SELECT encrypted_address as address, first_use, most_recent_use FROM jaaql__my_ips"
-QUERY__user_ip_count = "SELECT COUNT(*) FROM jaaql__my_ips"
-QUERY__user_ip_ins = "INSERT INTO jaaql__user_ip (the_user, address_hash, encrypted_address) VALUES (:id, :address_hash, :ip_address) ON CONFLICT ON CONSTRAINT jaaql__user_ip_unq DO UPDATE SET most_recent_use = current_timestamp RETURNING most_recent_use <> first_use as existed, id"
-QUERY__user_ua_ins = "INSERT INTO jaaql__user_ua (the_user, ua_hash, encrypted_ua) VALUES (:id, :ua_hash, :ua) ON CONFLICT ON CONSTRAINT jaaql__user_ua_unq DO UPDATE SET most_recent_use = current_timestamp RETURNING most_recent_use <> first_use as existed, id"
-QUERY__user_password_ins = "INSERT INTO jaaql__user_password (the_user, password_hash) VALUES (:the_user, :password_hash)"
-QUERY__fetch_user_latest_password = "SELECT id, email, password_hash, enc_totp_iv as totp_iv, last_totp, is_public FROM jaaql__user_latest_password WHERE email = lower(:username)"
-QUERY__user_create_role = "SELECT jaaql__create_role(lower(:username), :password)"
-QUERY__log_ins = "INSERT INTO jaaql__log (the_user, occurred, duration_ms, encrypted_exception, encrypted_input, ip, ua, status, endpoint) VALUES (:user_id, :occurred, :duration_ms, :exception, :input, :ip, :ua, :status, :endpoint)"
-QUERY__user_log_sel = "SELECT occurred, encrypted_address as address, encrypted_ua as user_agent, status, endpoint, duration_ms, encrypted_exception as exception FROM jaaql__my_logs"
-QUERY__user_log_count = "SELECT COUNT(*) FROM jaaql__my_logs"
-QUERY__my_configs = "SELECT * FROM jaaql__my_configurations WHERE application = :application or :application is null"
-QUERY__my_configs_where = "SELECT * FROM jaaql__my_configurations WHERE application = :application AND configuration = :configuration"
-QUERY__create_database = "create database \"%s\""
-QUERY__drop_database = "drop database \"%s\""
-QUERY__node_single_credential_sel = """
-SELECT
-    *
-FROM
-    jaaql__their_single_authorized_wildcard_node wn
-WHERE (wn.node, wn.precedence) in 
-    (SELECT
-        wnsub.node,
-        max(wnsub.precedence) as max_precedence
-    FROM jaaql__their_single_authorized_wildcard_node wnsub
-    WHERE (wnsub.role = '' or pg_has_role(jaaql__fetch_alias_from_id(:user_id), wnsub.role, 'MEMBER'))
-    GROUP BY wnsub.node) AND
-    (wn.role = '' or pg_has_role(jaaql__fetch_alias_from_id(:user_id), wn.role, 'MEMBER')) AND wn.node = :node;
-"""
-QUERY__authorized_configuration = """
-SELECT
-    jtac.*
-FROM jaaql__their_authorized_configurations jtac
-INNER JOIN (
-    SELECT DISTINCT application, configuration FROM jaaql__their_authorized_app_only_configurations WHERE pg_has_role(jaaql__fetch_alias_from_id(:user_id), conf_role, 'MEMBER') AND application = :application AND configuration = :configuration
-) sub ON sub.application = jtac.application AND sub.configuration = jtac.configuration
-WHERE pg_has_role(jaaql__fetch_alias_from_id(:user_id), node_role, 'MEMBER') AND jtac.application = :application AND jtac.configuration = :configuration AND jtac.precedence IN (
-    SELECT
-        MAX(precedence)
-    FROM jaaql__their_authorized_configurations
-    WHERE pg_has_role(jaaql__fetch_alias_from_id(:user_id), node_role, 'MEMBER') AND application = :application AND configuration = :configuration
-);
-"""
 FUNC__jaaql_create_node = "jaaql__create_node"
 
 ATTR__email = "email"
@@ -170,14 +87,16 @@ KEY__dat_name = "datname"
 KEY__authorization = "authorization"
 
 DELETION_PURPOSE__application = "application"
-DELETION_PURPOSE__application_dataset = "application_dataset"
 DELETION_PURPOSE__application_configuration = "application_configuration"
-DELETION_PURPOSE__database_assignment = "database_assignment"
+DELETION_PURPOSE__application_dataset = "application_dataset"
 DELETION_PURPOSE__configuration_authorization = "configuration_authorization"
-DELETION_PURPOSE__node_authorization = "node_authorization"
 DELETION_PURPOSE__database = "database"
-DELETION_PURPOSE__node = "node"
+DELETION_PURPOSE__database_assignment = "database_assignment"
 DELETION_PURPOSE__default_role = "default_role"
+DELETION_PURPOSE__email_account = "email_account"
+DELETION_PURPOSE__email_template = "email_template"
+DELETION_PURPOSE__node = "node"
+DELETION_PURPOSE__node_authorization = "node_authorization"
 DELETION_PURPOSE__user = "user"
 DELETION_PURPOSE__user_self = "user_self"
 
@@ -195,6 +114,9 @@ JWT__password = "password"
 JWT__created = "created"
 JWT__ua = "ua"
 JWT__ip = "ip"
+JWT__invite_lookup = "invite_lookup"
+JWT__invite_user = "invite_user"
+JWT__invite_template = "invite_template"
 
 PG__default_connection_string = "postgresql://postgres:%s@localhost:5432/jaaql"
 PG_ENV__password = "POSTGRES_PASSWORD"
@@ -220,19 +142,48 @@ class JAAQLModel(BaseJAAQLModel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def verify_user(self, username: str, ip_address: str, user_agent: str):
-        username = username.lower()
-
+    def fetch_user_from_username(self, username: str, jaaql_connection: DBInterface):
         inputs = {KEY__username: username}
-        users = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_user_latest_password,
-                                           inputs, as_objects=True,
+        users = execute_supplied_statement(jaaql_connection, QUERY__fetch_user_latest_password, inputs, as_objects=True,
                                            decrypt_columns=[ATTR__password_hash, KEY__totp_iv],
                                            encryption_key=self.get_db_crypt_key())
 
         if len(users) == 0:
             raise HttpStatusException(ERR__incorrect_credentials, HTTPStatus.UNAUTHORIZED)
 
-        user = users[0]
+        return users[0]
+
+    def add_email_account(self, inputs: dict, jaaql_interface: DBInterface):
+        execute_supplied_statement(jaaql_interface, QUERY__email_account_ins, inputs, encryption_key=self.get_db_crypt_key(),
+                                   encrypt_parameters=[KEY__password])
+        self.email_manager.reload_service()
+
+    def register_email_template(self, inputs: dict, jaaql_interface: DBInterface):
+        inputs[KEY__account] = execute_supplied_statement_singleton(jaaql_interface, QUERY__email_account_sel,
+                                                                    {KEY__email_account_name: inputs[KEY__account]})[KEY__id]
+        execute_supplied_statement(jaaql_interface, QUERY__email_template_ins, inputs)
+
+    def delete_email_account(self, inputs: dict, jaaql_connection: DBInterface):
+        res = execute_supplied_statement(jaaql_connection, QUERY__email_account_sel, inputs, as_objects=True)[KEY__id]
+        return {KEY__deletion_key: self.request_deletion_key(DELETION_PURPOSE__email_account, res)}
+
+    def delete_email_account_confirm(self, inputs: dict, jaaql_interface: DBInterface):
+        params = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__email_account)
+        execute_supplied_statement_singleton(jaaql_interface, QUERY__email_account_del, params)
+        self.email_manager.reload_service()
+
+    def unregister_email_template(self, inputs: dict, jaaql_connection: DBInterface):
+        res = execute_supplied_statement(jaaql_connection, QUERY__email_account_sel, inputs, as_objects=True)[KEY__id]
+        return {KEY__deletion_key: self.request_deletion_key(DELETION_PURPOSE__email_template, res)}
+
+    def unregister_email_template_confirm(self, inputs: dict, jaaql_interface: DBInterface):
+        params = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__email_template)
+        execute_supplied_statement_singleton(jaaql_interface, QUERY__email_template_del, params)
+
+    def verify_user(self, username: str, ip_address: str, user_agent: str):
+        username = username.lower()
+
+        user = self.fetch_user_from_username(username, self.jaaql_lookup_connection)
 
         hashed_ip = crypt_utils.hash_password(ip_address, user[KEY__id].encode(crypt_utils.ENCODING__ascii))
         inputs = {
@@ -271,7 +222,8 @@ class JAAQLModel(BaseJAAQLModel):
         return user, existed_ip, existed_ua, ip_id, ua_id, user[KEY__last_totp]
 
     def refresh(self, oauth_token: str):
-        decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), oauth_token, allow_expired=True)
+        decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), oauth_token, JWT_PURPOSE__oauth,
+                                         allow_expired=True)
         if not decoded:
             raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
@@ -291,7 +243,7 @@ class JAAQLModel(BaseJAAQLModel):
             JWT__created: crypt_utils.encrypt(jwt_obj_key, created)
         }
 
-        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data,
+        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data, JWT_PURPOSE__oauth,
                                       expiry_ms=self.token_expiry_ms)
 
     def verify_mfa(self, mfa_key: str, totp_iv: str, last_totp: str, user_id: str):
@@ -325,7 +277,7 @@ class JAAQLModel(BaseJAAQLModel):
 
     def authenticate_with_mfa_key(self, pre_auth: str, mfa_key: str, ip_address: str, user_agent: str,
                                   response: JAAQLResponse):
-        decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), pre_auth)
+        decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), pre_auth, JWT_PURPOSE__pre_auth)
         if not decoded:
             raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
@@ -340,7 +292,7 @@ class JAAQLModel(BaseJAAQLModel):
         response.ua_id = ua_id
 
         decoded[JWT__fully_authenticated] = True
-        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), decoded,
+        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), decoded, JWT_PURPOSE__oauth,
                                       expiry_ms=self.token_expiry_ms)
 
     def authenticate(self, username: str, password: str, ip_address: str, user_agent: str, response: JAAQLResponse):
@@ -366,15 +318,19 @@ class JAAQLModel(BaseJAAQLModel):
         response.ua_id = ua_id
 
         expiry_time = self.token_expiry_ms
+        purpose = JWT_PURPOSE__oauth
         if needs_further_auth:
             expiry_time /= TOKEN__pre_auth_reduction_factor
             response.response_code = HTTPStatus.ACCEPTED
-        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data,
+            purpose = JWT_PURPOSE__pre_auth
+
+        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data, purpose,
                                       expiry_ms=expiry_time)
 
-    def is_installed(self):
-        if self.jaaql_lookup_connection is None:
-            raise HttpStatusException(ERR__not_installed)
+    def is_installed(self, response: JAAQLResponse):
+        if not self.has_installed:
+            response.response_code = HTTPStatus.UNPROCESSABLE_ENTITY
+            return ERR__not_installed
 
     def install(self, db_connection_string: str, superjaaql_password: str, password: str, install_key: str,
                 use_mfa: bool, ip_address: str, user_agent: str, response: JAAQLResponse):
@@ -389,14 +345,14 @@ class JAAQLModel(BaseJAAQLModel):
 
             address, port, db, username, db_password = DBInterface.fracture_uri(db_connection_string)
 
-            db_interface = DBInterface.create_interface(self.config, address, port, db, username, db_password)
+            db_interface = create_interface(self.config, address, port, db, username, db_password)
             conn = db_interface.get_conn()
             resp = db_interface.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "install_1.sql"))
             db_interface.put_conn(conn)
             db_interface.close()
 
             jaaql_password = resp['rows'][0][0]
-            self.jaaql_lookup_connection = DBInterface.create_interface(self.config, address, port, db, USERNAME__jaaql,
+            self.jaaql_lookup_connection = create_interface(self.config, address, port, db, USERNAME__jaaql,
                                                                         jaaql_password)
 
             conn = self.jaaql_lookup_connection.get_conn()
@@ -517,48 +473,52 @@ class JAAQLModel(BaseJAAQLModel):
         # TODO do databases. Link the used database auth with the log
 
     def verify_jwt(self, jwt_token: str, ip_address: str, user_agent: str,
-                   was_refresh: bool) -> [DBInterface, str, str]:
-        decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_token, was_refresh)
-        if not decoded:
-            raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
+                   was_refresh: bool, bypass: str = None) -> [DBInterface, str, str]:
+        username = None
 
-        if not decoded[JWT__fully_authenticated]:
-            raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
+        if bypass is not None and bypass == self.local_access_key:
+            username = USERNAME__jaaql
+            user, _, _, ip_id, ua_id, last_totp = self.verify_user(username, ip_address, user_agent)
+        else:
+            decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_token,
+                                             JWT_PURPOSE__oauth, was_refresh)
+            if not decoded:
+                raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
-        jwt_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
-        username = crypt_utils.decrypt(jwt_key, decoded[JWT__username])
-        double_hashed_password = crypt_utils.decrypt(self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key),
-                                                     decoded[JWT__password])
+            if not decoded[JWT__fully_authenticated]:
+                raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
-        user, _, _, ip_id, ua_id, last_totp = self.verify_user(username, ip_address, user_agent)
-        if not crypt_utils.verify_password_hash(double_hashed_password, user[ATTR__password_hash]):
-            raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
+            jwt_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
+            username = crypt_utils.decrypt(jwt_key, decoded[JWT__username])
+            double_hashed_password = crypt_utils.decrypt(self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key),
+                                                         decoded[JWT__password])
 
-        jwt_ip_id = crypt_utils.decrypt(jwt_key, decoded[JWT__ip])
-        if ip_id != jwt_ip_id:
-            raise HttpStatusException(ERR__new_ip, HTTPStatus.UNAUTHORIZED)
+            user, _, _, ip_id, ua_id, last_totp = self.verify_user(username, ip_address, user_agent)
+            if not crypt_utils.verify_password_hash(double_hashed_password, user[ATTR__password_hash]):
+                raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
-        if jwt_ip_id is None and ua_id is not None:
-            raise HttpStatusException(ERR__new_ua, HTTPStatus.UNAUTHORIZED)
-        jwt_ua_id = crypt_utils.decrypt(jwt_key, decoded[JWT__ua])
-        if ua_id != jwt_ua_id:
-            raise HttpStatusException(ERR__new_ua, HTTPStatus.UNAUTHORIZED)
+            jwt_ip_id = crypt_utils.decrypt(jwt_key, decoded[JWT__ip])
+            if ip_id != jwt_ip_id:
+                raise HttpStatusException(ERR__new_ip, HTTPStatus.UNAUTHORIZED)
+
+            if jwt_ip_id is None and ua_id is not None:
+                raise HttpStatusException(ERR__new_ua, HTTPStatus.UNAUTHORIZED)
+            jwt_ua_id = crypt_utils.decrypt(jwt_key, decoded[JWT__ua])
+            if ua_id != jwt_ua_id:
+                raise HttpStatusException(ERR__new_ua, HTTPStatus.UNAUTHORIZED)
 
         params = {
             KEY__role: username,
             KEY__node: NODE__host_node
         }
-        auth = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
-                                                    QUERY__role_connection_sel, params,
-                                                    as_objects=True,
-                                                    decrypt_columns=[KEY__username, KEY__password],
+        auth = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__role_connection_sel, params,
+                                                    as_objects=True, decrypt_columns=[KEY__username, KEY__password],
                                                     encryption_key=self.get_db_crypt_key())
 
         iv = user[KEY__totp_iv]
-        return DBInterface.create_interface(self.config, auth[KEY__address], auth[KEY__port], DB__jaaql,
+        return create_interface(self.config, auth[KEY__address], auth[KEY__port], DB__jaaql,
                                             auth[KEY__username], auth[KEY__password]
-                                            ), user[KEY__id], ip_id, ua_id, iv, user[ATTR__password_hash], last_totp, \
-               username, user[KEY__is_public]
+                                            ), user[KEY__id], ip_id, ua_id, iv, user[ATTR__password_hash], last_totp, username, user[KEY__is_public]
 
     def add_application(self, inputs: dict, jaaql_connection: DBInterface):
         default_url = self.url + SEPARATOR__dir + DIR__apps
@@ -570,8 +530,7 @@ class JAAQLModel(BaseJAAQLModel):
 
     def delete_application_confirm(self, inputs: dict, jaaql_connection: DBInterface):
         parameters = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__application)
-        execute_supplied_statement(jaaql_connection, QUERY__application_del, parameters,
-                                   as_objects=True)
+        execute_supplied_statement(jaaql_connection, QUERY__application_del, parameters)
 
     def delete_database(self, inputs: dict):
         return {KEY__deletion_key: self.request_deletion_key(DELETION_PURPOSE__database, inputs)}
@@ -589,7 +548,7 @@ class JAAQLModel(BaseJAAQLModel):
                                                        QUERY__node_single_credential_sel, drop_inputs,
                                                        as_objects=True, encryption_key=self.get_db_crypt_key(),
                                                        decrypt_columns=[KEY__username, KEY__password])
-            interface = DBInterface.create_interface(self.config, res[KEY__address], res[KEY__port], DB__empty,
+            interface = create_interface(self.config, res[KEY__address], res[KEY__port], DB__empty,
                                                      res[KEY__username], res[KEY__password])
             execute_supplied_statement(interface, QUERY__drop_database % parameters_drop[KEY__database_name])
 
@@ -602,6 +561,11 @@ class JAAQLModel(BaseJAAQLModel):
 
     def get_my_applications(self, jaaql_connection: DBInterface):
         return execute_supplied_statement(jaaql_connection, QUERY__fetch_my_applications, as_objects=True)
+
+    def get_public_user_credentials_for_application(self, application: str):
+        return execute_supplied_statement_singleton(self.jaaql_lookup_connection,
+                                                    QUERY__fetch_application_public_user_credentials,
+                                                    {KEY__application: application}, as_objects=True)
 
     def fetch_user_default_roles(self, inputs: dict, jaaql_connection: DBInterface):
         paging_query, where_query, where_parameters, parameters = self.construct_paging_queries(inputs)
@@ -651,7 +615,7 @@ class JAAQLModel(BaseJAAQLModel):
                                                        QUERY__node_single_credential_sel, create_inputs,
                                                        as_objects=True, encryption_key=self.get_db_crypt_key(),
                                                        decrypt_columns=[KEY__username, KEY__password])
-            interface = DBInterface.create_interface(self.config, res[KEY__address], res[KEY__port], DB__empty,
+            interface = create_interface(self.config, res[KEY__address], res[KEY__port], DB__empty,
                                                      res[KEY__username], res[KEY__password])
             execute_supplied_statement(interface, QUERY__create_database % inputs[KEY__database_name])
 
@@ -768,13 +732,13 @@ class JAAQLModel(BaseJAAQLModel):
         parameters = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__user)
         execute_supplied_statement(jaaql_connection, QUERY__revoke_user, parameters)
 
-    def close_account(self, http_inputs: dict, totp_iv: str, password_hash: str, user_id: str,
+    def close_account(self, inputs: dict, totp_iv: str, password_hash: str, user_id: str,
                       last_totp: str):
-        if not crypt_utils.verify_password_hash(password_hash, http_inputs[KEY__password],
+        if not crypt_utils.verify_password_hash(password_hash, inputs[KEY__password],
                                                 salt=user_id.encode(crypt_utils.ENCODING__ascii)):
             raise HttpStatusException(ERR__password_incorrect, HTTPStatus.UNAUTHORIZED)
 
-        self.verify_mfa(http_inputs[KEY__mfa_key], totp_iv, last_totp, user_id)
+        self.verify_mfa(inputs[KEY__mfa_key], totp_iv, last_totp, user_id)
 
         return {KEY__deletion_key: self.request_deletion_key(DELETION_PURPOSE__user_self, {})}
 
@@ -782,9 +746,24 @@ class JAAQLModel(BaseJAAQLModel):
         self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__user_self)
         execute_supplied_statement(self.jaaql_lookup_connection, QUERY__revoke_user, {ATTR__the_user: user_id})
 
+    def user_invite_and_check(self, inputs: dict, jaaql_connection: DBInterface):
+        user_existed = False
+        try:
+            self.fetch_user_from_username(inputs[KEY__email], jaaql_connection)
+            user_existed = True
+        except HttpStatusException as sub_hs:
+            if sub_hs.response_code != HTTPStatus.UNAUTHORIZED:
+                raise sub_hs  # Unrelated exception, raise it
+
+        if user_existed:
+            raise HttpStatusException(ERR__already_signed_up, response_code=HTTPStatus.CONFLICT)
+
+        return self.user_invite(inputs)
+
     def user_invite(self, inputs: dict):
         ms_two_weeks = 1000 * 60 * 60 * 24 * 14
-        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), inputs, ms_two_weeks)
+        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), inputs, JWT_PURPOSE__invite,
+                                      ms_two_weeks)
 
     def enable_user_mfa(self, user_id: str):
         totp_iv, totp_uri, totp_b64_qr = self.gen_mfa()
@@ -805,11 +784,11 @@ class JAAQLModel(BaseJAAQLModel):
             KEY__mfa_enabled: totp_iv is not None
         }
 
-    def enable_disable_mfa(self, http_inputs: dict, user_id: str, totp_iv: str, last_totp: str, password_hash: str):
+    def enable_disable_mfa(self, inputs: dict, user_id: str, totp_iv: str, last_totp: str, password_hash: str):
         if self.force_mfa:
             raise HttpStatusException(ERR__mfa_must_be_enabled)
 
-        if not crypt_utils.verify_password_hash(password_hash, http_inputs[KEY__password], salt=user_id.encode(
+        if not crypt_utils.verify_password_hash(password_hash, inputs[KEY__password], salt=user_id.encode(
                 crypt_utils.ENCODING__ascii)):
             raise HttpStatusException(ERR__password_incorrect, HTTPStatus.UNAUTHORIZED)
 
@@ -819,13 +798,52 @@ class JAAQLModel(BaseJAAQLModel):
         if totp_iv is None:
             totp_uri, totp_b64_qr = self.enable_user_mfa(user_id)
         else:
-            self.verify_mfa(http_inputs[KEY__mfa_key], totp_iv, last_totp, user_id)
+            self.verify_mfa(inputs[KEY__mfa_key], totp_iv, last_totp, user_id)
             execute_supplied_statement(self.jaaql_lookup_connection, QUERY__disable_mfa, {KEY__user_id: user_id})
 
         return {
             KEY__otp_uri: totp_uri,
             KEY__otp_qr: totp_b64_qr
         }
+
+    def make_user_public(self, inputs: dict, jaaql_connection: DBInterface):
+        lower_user = inputs[KEY__username].lower()
+        if lower_user in (USERNAME__jaaql, USERNAME__superjaaql):
+            raise HttpStatusException(ERR__cannot_make_user_public)
+
+        user = self.fetch_user_from_username(inputs[KEY__username], jaaql_connection)
+        totp_iv = user[KEY__totp_iv]
+        password_hash = user[ATTR__password_hash]
+        last_totp = user[KEY__last_totp]
+        user_id = user[KEY__id]
+
+        if not crypt_utils.verify_password_hash(password_hash, inputs[KEY__password], salt=user_id.encode(
+                crypt_utils.ENCODING__ascii)):
+            raise HttpStatusException(ERR__password_incorrect, HTTPStatus.UNAUTHORIZED)
+
+        if totp_iv is None and inputs[KEY__mfa_key] is not None:
+            raise HttpStatusException(ERR__unexpected_mfa_token)
+        elif totp_iv is not None:
+            self.verify_mfa(inputs[KEY__mfa_key], totp_iv, last_totp, user_id)
+            execute_supplied_statement(jaaql_connection, QUERY__disable_mfa, {KEY__user_id: user_id})
+
+        new_password = inputs[KEY__new_password]
+        new_password_confirm = inputs[KEY__new_password_confirm]
+
+        if new_password != new_password_confirm:
+            raise HttpStatusException(ERR__passwords_do_not_match)
+
+        if new_password is not None:
+            self.add_password(jaaql_connection, user_id, new_password)
+
+        query_data = {
+            KEY__user_id: user_id,
+            KEY__application: inputs[KEY__application],
+            KEY__username: inputs[KEY__username],
+            KEY__new_password: inputs[KEY__password] if new_password is None else new_password
+        }
+
+        execute_supplied_statement(jaaql_connection, QUERY__make_user_public, query_data)
 
     def gen_mfa(self):
         _, totp_iv = crypt_utils.key_stretcher(str(uuid.uuid4()))
@@ -849,34 +867,50 @@ class JAAQLModel(BaseJAAQLModel):
 
     def sign_up_user_with_token(self, token: str, password: str, ip_address: str, user_agent: str,
                                 response: JAAQLResponse):
-        token = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), token)
+        token = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), token, JWT_PURPOSE__invite)
+        obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
 
-        inputs = {KEY__username: token[KEY__email]}
-        users = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_user_latest_password,
-                                           inputs, as_objects=True,
-                                           decrypt_columns=[ATTR__password_hash, KEY__totp_iv],
+        username = token[JWT__invite_user]
+        inputs = {KEY__username: token[JWT__invite_user]}
+        users = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_user_latest_password, inputs,
+                                           as_objects=True, decrypt_columns=[ATTR__password_hash, KEY__totp_iv],
                                            encryption_key=self.get_db_crypt_key())
         if len(users) != 0:
             raise HttpStatusException(ERR__already_signed_up, response_code=HTTPStatus.CONFLICT)
 
-        return self.sign_up_user(self.jaaql_lookup_connection, token[KEY__email], password, None, ip_address,
-                                 user_agent, response=response)
+        res = self.sign_up_user(self.jaaql_lookup_connection, username, password, None, ip_address, user_agent, response=response)
+
+        if token.get(JWT__invite_template):
+            if token.get(JWT__invite_lookup):
+                template_id_decrypt = crypt_utils.decrypt(obj_key, token[JWT__invite_template])
+                lookup_decrypt = crypt_utils.decrypt(obj_key, token[JWT__invite_lookup])
+                template_table = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template,
+                                                                      {KEY__id: template_id_decrypt},
+                                                                      as_objects=True)[KEY__data_validation_table]
+                res[KEY__parameters] = self.select_from_data_validation_table(template_table, json.loads(lookup_decrypt))
+
+        return res
+
+    def finish_signup(self, token: str):
+        obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
+        token = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), token, JWT_PURPOSE__invite)
+
+        if token.get(JWT__invite_template):
+            if token.get(JWT__invite_lookup):
+                template_id_decrypt = crypt_utils.decrypt(obj_key, token[JWT__invite_template])
+                lookup_decrypt = crypt_utils.decrypt(obj_key, token[JWT__invite_lookup])
+                template_table = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template,
+                                                                      {KEY__id: template_id_decrypt},
+                                                                      as_objects=True)[KEY__data_validation_table]
+                self.delete_from_data_validation_table(template_table, json.loads(lookup_decrypt))
 
     def sign_up_user(self, jaaql_connection: DBInterface, username: str, password: str, user_id: str = None,
                      ip_address: str = None, user_agent: str = None, use_mfa: bool = False,
                      response: JAAQLResponse = None):
-        sign_up_data = None
         if user_id is None:
-            resp = execute_supplied_statement_singleton(jaaql_connection,
-                                                        QUERY__user_id_and_signup_data_from_username,
-                                                        {KEY__username: username}, as_objects=True,
-                                                        encryption_key=self.get_db_crypt_key(),
-                                                        decrypt_columns=[KEY__sign_up_data])
+            resp = execute_supplied_statement_singleton(jaaql_connection, QUERY__user_id_from_username, {KEY__username: username},
+                                                        as_objects=True, encryption_key=self.get_db_crypt_key())
             user_id = resp[KEY__id]
-            sign_up_data = resp[KEY__sign_up_data]
-
-            if sign_up_data is not None:
-                execute_supplied_statement(jaaql_connection, QUERY__user_erase_sign_up_data, {KEY__id: user_id})
 
         self.add_password(jaaql_connection, user_id, password)
 
@@ -898,27 +932,216 @@ class JAAQLModel(BaseJAAQLModel):
             KEY__otp_qr: totp_b64_qr
         }
 
-        if sign_up_data is not None:
-            resp[KEY__sign_up_data] = sign_up_data
-
         return resp
 
     def fetch_default_roles_as_list(self):
         return [row[0] for row in execute_supplied_statement(self.jaaql_lookup_connection,
                                                              QUERY__default_roles_sel)[RET__rows]]
 
-    def pre_sign_up_user_with_email(self, email: str, sign_up_data: str):
+    def fetch_allowed_recipients_for_email_template(self, username: str, template: Union[str, dict], get_address: bool = False):
+        if isinstance(template, str):
+            template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_by_name, {
+                KEY__email_template_name: template
+            })
+
+        vw_name = template[KEY__recipient_validation_view]
+        if vw_name is None:
+            if get_address:
+                return {None: username}
+            else:
+                return []
+
+        where_clause = "pg_has_role(:username, sender_role, 'MEMBER')"
+        cols = ["key"]
+        if get_address:
+            cols.append("address")
+        cols_str = ", ".join(cols)
+        res = execute_supplied_statement(self.jaaql_lookup_connection,
+                                         "SELECT " + cols_str + " FROM \"" + vw_name + "\" WHERE " + where_clause,
+                                         {KEY__username: username}, as_objects=True)
+
+        if get_address:
+            return {cur_res[KEY__key]: cur_res[KEY__address] for cur_res in res}
+        else:
+            return [cur_res[KEY__key] for cur_res in res]
+
+    def delete_from_data_validation_table(self, val_table: str, pkey_vals: dict):
+        val_table_esc = '"%s"' % val_table
+        pkeys_where = " AND ".join(['"' + col + '" = :' + col for col in pkey_vals.keys()])
+        pkeys_returning = ",".join(['"' + col + '"' for col in pkey_vals.keys()])
+        del_query = "DELETE FROM " + val_table_esc + " WHERE " + pkeys_where + " RETURNING " + pkeys_returning
+        execute_supplied_statement_singleton(self.jaaql_lookup_connection, del_query, pkey_vals)
+
+    def select_from_data_validation_table(self, val_table: str, pkey_vals: dict):
+        val_table_esc = '"%s"' % val_table
+        pkeys_where = " AND ".join(['"' + col + '" = :' + col for col in pkey_vals.keys()])
+        sel_query = "SELECT * FROM " + val_table_esc + " WHERE " + pkeys_where
+        sanitized_params = execute_supplied_statement_singleton(self.jaaql_lookup_connection, sel_query, pkey_vals,
+                                                                as_objects=True)
+
+        return sanitized_params
+
+    def fetch_email_templates(self, inputs: dict, jaaql_connection: DBInterface):
+        paging_dict, parameters = self.setup_paging_parameters(inputs)
+
+        paging_query, where_query, where_parameters = self.construct_formatted_paging_queries(paging_dict, parameters)
+        full_query = QUERY__email_templates_sel + paging_query
+
+        return self.execute_paging_query(jaaql_connection, full_query, QUERY__email_templates_count, parameters, where_query,
+                                         where_parameters)
+
+    def fetch_email_accounts(self, inputs: dict, jaaql_connection: DBInterface):
+        paging_dict, parameters = self.setup_paging_parameters(inputs)
+
+        paging_query, where_query, where_parameters = self.construct_formatted_paging_queries(paging_dict, parameters)
+        full_query = QUERY__email_accounts_sel + paging_query
+
+        return self.execute_paging_query(jaaql_connection, full_query, QUERY__email_accounts_count, parameters, where_query,
+                                         where_parameters)
+
+    def fetch_user_email_history(self, inputs: dict, jaaql_connection: DBInterface):
+        paging_dict, parameters = self.setup_paging_parameters(inputs, False)
+        paging_query, where_query, where_parameters = self.construct_formatted_paging_queries(paging_dict, parameters)
+        full_query = QUERY__email_history_sel + paging_query
+
+        return self.execute_paging_query(jaaql_connection, full_query, QUERY__email_history_count,
+                                         parameters, where_query, where_parameters,
+                                         encryption_key=self.get_db_crypt_key())
+
+    def fetch_user_singular_email_history(self, email_id: str, user_id: str):
+        resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__email_history_singular_sel,
+                                                    {KEY__id: email_id, KEY__user_id: user_id}, encryption_key=self.get_db_crypt_key(),
+                                                    decrypt_columns=[KEY__subject, KEY__recipient, KEY__body, KEY__attachments], as_objects=True)
+
+        if resp[KEY__attachments] is not None:
+            resp[KEY__attachments] = [{
+                KEY__filename: b64d(attachment.split(":")[0]).decode(ENCODING__ascii),
+                KEY__content: attachment.split(":")[1]} for attachment in resp[KEY__attachments].split("::")]
+
+        return resp
+
+    def send_email(self, inputs: dict, username: str):
+        if inputs[KEY__recipient] is not None and inputs[KEY__attachments] is not None:
+            raise HttpStatusException(ERR__cant_send_attachments)
+
+        app_url = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
+                                                       QUERY__fetch_url_from_application_name,
+                                                       {KEY__application: inputs[KEY__application]},
+                                                       as_objects=True)[KEY__application_url]
+        template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_by_name, {
+            KEY__email_template_name: inputs[KEY__email_template]
+        })
+
+        params = inputs[KEY__parameters]
+        if params is not None and template[KEY__data_validation_table] is None:
+            raise HttpStatusException(ERR__unexpected_parameters)
+        if inputs[KEY__data_validation_table] is not None and params is None:
+            params = {}
+        if inputs[KEY__data_validation_table] is not None:
+            params, _ = self.fetch_sanitized_email_params(template, params)
+
+        allowed_recipients = self.fetch_allowed_recipients_for_email_template(username, template, True)
+        if inputs[KEY__recipient] not in allowed_recipients:
+            raise HttpStatusException(ERR__recipient_not_allowed)
+
+        self.email_manager.construct_and_send_email(self.url, app_url, template, username, allowed_recipients[inputs[KEY__recipient]],
+                                                    inputs[KEY__recipient], params, attachments=KEY__attachments)
+
+    def fetch_sanitized_email_params(self, template: dict, params: dict):
+        val_table = template[KEY__data_validation_table]
+        val_cols = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_table_columns,
+                                              {KEY__table_name: val_table}, as_objects=True)
+        val_cols = [val_col[KEY__column_name] for val_col in val_cols]
+        primary_cols = [val_col[KEY__column_name] for val_col in val_cols if val_col[KEY__is_primary]]
+
+        for col in params.keys():
+            if col not in val_cols:
+                raise HttpStatusException(ERR__unexpected_validation_column % col)
+
+        cols = ", ".join(['"' + col + '"' for col in val_cols if col in params.keys()])
+        ins = ", ".join([':' + col for col in val_cols if col in params.keys()])
+        pkeys = ", ".join(['"' + col + '"' for col in primary_cols])
+        val_table_esc = '"%s"' % val_table
+        ins_query = "INSERT INTO " + val_table_esc + " (" + cols + ") VALUES (" + ins + ") RETURNING " + pkeys
+        pkey_vals = execute_supplied_statement_singleton(self.jaaql_lookup_connection, ins_query, params, as_objects=True)
+
+        return self.select_from_data_validation_table(val_table, pkey_vals), pkey_vals
+
+    def request_signup(self, inputs: dict):
         if self.invite_only:
             raise HttpStatusException(ERR__cannot_self_sign_up, HTTPStatus.UNAUTHORIZED)
 
-        self.create_user(self.jaaql_lookup_connection, email, sign_up_data=sign_up_data)
+        app_url = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
+                                                       QUERY__fetch_url_from_application_name,
+                                                       {KEY__application: inputs[KEY__application]},
+                                                       as_objects=True)[KEY__application_url]
+
+        obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
+
+        user_existed = False
+        user_id = None
+        try:
+            user_id = self.create_user(self.jaaql_lookup_connection, inputs[KEY__email])
+        except HttpStatusException as hs:
+            if hs.response_code != HTTPStatus.CONFLICT:
+                raise hs  # Unrelated exception, raise it
+
+            try:
+                user_id = self.fetch_user_from_username(inputs[KEY__email], self.jaaql_lookup_connection)
+                user_existed = True
+            except HttpStatusException as sub_hs:
+                if sub_hs.response_code != HTTPStatus.UNAUTHORIZED:
+                    raise sub_hs  # Unrelated exception, raise it
+
+        template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_by_name, {
+            KEY__email_template_name: inputs[KEY__email_template]
+        })
+        template_already_exists = execute_supplied_statement_singleton(
+            self.jaaql_lookup_connection, QUERY__fetch_email_template_by_name, {
+                KEY__email_template_name: inputs[KEY__already_signed_up_email_template]
+            }
+        )
+
+        if not template[KEY__allow_signup] or not template_already_exists[KEY__allow_confirm_signup_attempt]:
+            raise HttpStatusException(ERR__template_not_signup)
+
+        params = inputs[KEY__parameters]
+        if params is not None and template[KEY__data_validation_table] is None:
+            raise HttpStatusException(ERR__unexpected_parameters)
+        if params is None and template[KEY__data_validation_table] is not None:
+            params = {}
+
+        invite_inputs = {KEY__email: inputs[KEY__email]}
+        sanitized_params = {}
+
+        if template[KEY__data_validation_table] is not None:
+            if EMAIL_PARAM__signup_key in inputs:
+                raise HttpStatusException(ERR__unexpected_validation_column % EMAIL_PARAM__signup_key)
+
+            sanitized_params, pkey_vals = self.fetch_sanitized_email_params(template, params)
+            invite_inputs[JWT__invite_lookup] = crypt_utils.encrypt(obj_key, json.dumps(pkey_vals))
+
+        template = template_already_exists if user_existed else template
+        invite_inputs[JWT__invite_template] = crypt_utils.encrypt(obj_key, template[KEY__id])
+        invite_inputs[JWT__invite_user] = crypt_utils.encrypt(obj_key, inputs[KEY__email])
+        invite_key = self.user_invite(invite_inputs)
+        optional_params = {EMAIL_PARAM__signup_key: invite_key}
+
+        self.email_manager.construct_and_send_email(self.url, app_url, template, user_id, inputs[KEY__email],
+                                                    sanitized_params, optional_params)
+
+    def pre_sign_up_user_with_email(self, email: str):
+        if self.invite_only:
+            raise HttpStatusException(ERR__cannot_self_sign_up, HTTPStatus.UNAUTHORIZED)
+
+        self.create_user(self.jaaql_lookup_connection, email)
 
         return {
             KEY__invite_key: self.user_invite({KEY__email: email})
         }
 
     def create_user(self, jaaql_connection: DBInterface, username: str, db_password: str = None, mobile: str = None,
-                    attach_as: str = None, precedence: int = None, roles: str = None, sign_up_data: str = None):
+                    attach_as: str = None, precedence: int = None, roles: str = ""):
         if db_password is None:
             db_password = str(uuid.uuid4())
 
@@ -928,12 +1151,11 @@ class JAAQLModel(BaseJAAQLModel):
         parameters = {
             ATTR__email: username,
             ATTR__mobile: mobile,
-            ATTR__alias: attach_as if attach_as != username else None,
-            KEY__sign_up_data: sign_up_data
+            ATTR__alias: attach_as if attach_as != username else None
         }
+
         user_id = execute_supplied_statement_singleton(jaaql_connection, QUERY__user_ins, parameters,
                                                        encryption_key=self.get_db_crypt_key(),
-                                                       encrypt_parameters=[KEY__sign_up_data],
                                                        as_objects=True)[KEY__id]
 
         self.add_node_authorization({
@@ -950,12 +1172,15 @@ class JAAQLModel(BaseJAAQLModel):
         }
         execute_supplied_statement(self.jaaql_lookup_connection, QUERY__user_create_role, inputs)
 
-        if roles is not None:
-            roles = roles.split(",") + self.fetch_default_roles_as_list()
-            roles = list(set(roles))
-            for role in roles:
-                # This is not SQL injection. We are protected by the postgres level access control of the connection
-                execute_supplied_statement(jaaql_connection, QUERY__grant_role % (role, attach_as))
+        if len(roles) == 0:
+            roles = []
+        else:
+            roles = roles.split(",")
+        roles = roles + self.fetch_default_roles_as_list()
+        roles = list(set(roles))
+        for role in roles:
+            # This is not SQL injection. We are protected by the postgres level access control of the connection
+            execute_supplied_statement(jaaql_connection, QUERY__grant_role % (role, attach_as))
 
         return user_id
 
@@ -991,19 +1216,19 @@ class JAAQLModel(BaseJAAQLModel):
                                    encryption_key=self.get_db_crypt_key(),
                                    encryption_salts={ATTR__password_hash: user_id})
 
-    def change_password(self, http_inputs: dict, totp_iv: str, oauth_token: str, password_hash: str, user_id: str,
+    def change_password(self, inputs: dict, totp_iv: str, oauth_token: str, password_hash: str, user_id: str,
                         last_totp: str, jaaql_connection: DBInterface):
-        decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), oauth_token)
+        decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), oauth_token, JWT_PURPOSE__oauth)
         jwt_obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
 
-        if not crypt_utils.verify_password_hash(password_hash, http_inputs[KEY__password],
+        if not crypt_utils.verify_password_hash(password_hash, inputs[KEY__password],
                                                 salt=user_id.encode(crypt_utils.ENCODING__ascii)):
             raise HttpStatusException(ERR__password_incorrect, HTTPStatus.UNAUTHORIZED)
 
-        self.verify_mfa(http_inputs[KEY__mfa_key], totp_iv, last_totp, user_id)
+        self.verify_mfa(inputs[KEY__mfa_key], totp_iv, last_totp, user_id)
 
-        new_password = http_inputs[KEY__new_password]
-        new_password_confirm = http_inputs[KEY__new_password_confirm]
+        new_password = inputs[KEY__new_password]
+        new_password_confirm = inputs[KEY__new_password_confirm]
 
         if new_password != new_password_confirm:
             raise HttpStatusException(ERR__passwords_do_not_match)
@@ -1012,7 +1237,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         decoded[JWT__password] = crypt_utils.encrypt(jwt_obj_key, crypt_utils.hash_password(new_password))
 
-        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), decoded,
+        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), decoded, JWT_PURPOSE__oauth,
                                       expiry_ms=self.token_expiry_ms)
 
     @staticmethod
@@ -1056,7 +1281,7 @@ class JAAQLModel(BaseJAAQLModel):
                 KEY__is_node: row[KEY__database] == DB__wildcard,
                 KEY__node: crypt_utils.encrypt(obj_key, row[KEY__node]),
                 KEY__db_url: crypt_utils.encrypt(obj_key, JAAQLModel.build_db_addr(row))
-            })
+            }, JWT_PURPOSE__connection)
         } for row in data]
 
         return ret
@@ -1071,7 +1296,7 @@ class JAAQLModel(BaseJAAQLModel):
         if connection is None:
             connection = jaaql_connection
         else:
-            jwt_decoded = crypt_utils.jwt_decode(jwt_key, connection)
+            jwt_decoded = crypt_utils.jwt_decode(jwt_key, connection, JWT_PURPOSE__connection)
             if not jwt_decoded:
                 raise HttpStatusException(ERR__connection_expired, HTTP_STATUS_CONNECTION_EXPIRED)
             is_node = jwt_decoded[KEY__is_node]
@@ -1085,24 +1310,24 @@ class JAAQLModel(BaseJAAQLModel):
             elif non_null_db:
                 raise HttpStatusException(ERR__cannot_override_db, HTTPStatus.UNPROCESSABLE_ENTITY)
 
-            connection = DBInterface.create_interface(self.config, address, port, database, username, password)
+            connection = create_interface(self.config, address, port, database, username, password)
 
         return connection, was_connection_none
 
-    def config_assigned_database_roles(self, inputs: dict, jaaql_connection: DBInterface, user_id: str):
+    def config_assigned_database_roles(self, inputs: dict, jaaql_connection: DBInterface):
         inputs[KEY_query] = QUERY__my_roles
         return self.submit(inputs, jaaql_connection)[RET__rows]
 
-    def submit(self, http_inputs: dict, jaaql_connection: DBInterface, force_transactional: bool = False):
-        connection, was_connection_none = self.obtain_connection(http_inputs, jaaql_connection)
+    def submit(self, inputs: dict, jaaql_connection: DBInterface, force_transactional: bool = False):
+        connection, was_connection_none = self.obtain_connection(inputs, jaaql_connection)
 
-        if KEY__database in http_inputs:
-            http_inputs.pop(KEY__database)
+        if KEY__database in inputs:
+            inputs.pop(KEY__database)
 
         caught_ex = None
         to_ret = None
         try:
-            to_ret = InterpretJAAQL(connection).transform(http_inputs, force_transactional=force_transactional)
+            to_ret = InterpretJAAQL(connection).transform(inputs, force_transactional=force_transactional)
         except Exception as ex:
             caught_ex = ex
 

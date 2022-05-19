@@ -39,7 +39,8 @@ class SensitiveHandler(StreamHandler):
     def emit(self, record):
         msg = self.format(record)
         msg = re.sub(self.PATTERN, lambda x: x[0][0:len(x[0]) - len(x[2])] + min(len(x[2]), 5) * '*', msg)
-        print(msg)
+        if "GET /internal/is_installed HTTP/1.1" not in msg:
+            print(msg)
 
 
 def dir_non_builtins(folder):

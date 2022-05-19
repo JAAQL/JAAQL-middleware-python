@@ -1,7 +1,9 @@
 import psycopg2
 from psycopg2 import pool, OperationalError
 
-from jaaql.db.db_interface import *
+import logging
+
+from jaaql.db.db_interface import DBInterface, ECHO__none, CHAR__newline
 from jaaql.exceptions.http_status_exception import *
 from jaaql.exceptions.custom_http_status import CustomHTTPStatus
 

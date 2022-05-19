@@ -1,7 +1,7 @@
 from http import HTTPStatus
 
 from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, SwaggerArgumentResponse,\
-    SwaggerResponse, SwaggerList, SwaggerFlatResponse, REST__POST
+    SwaggerResponse, SwaggerList, SwaggerFlatResponse, REST__POST, ARG_RESP__allow_all
 from jaaql.constants import *
 from typing import Union, List
 
@@ -236,6 +236,15 @@ RES__expecting_mfa_key = SwaggerFlatResponse(
     code=HTTPStatus.ACCEPTED
 )
 
+EXAMPLE__occurred = "2021-08-07 19:05:07.763189+01:00"
+ARG_RES__occurred = SwaggerArgumentResponse(
+    name="occurred",
+    description="When this event occurred",
+    arg_type=str,
+    example=[EXAMPLE__occurred, "2021-08-07 18:04:41.156935+01:00"],
+    required=True
+)
+
 ARG_RES__expecting_mfa_key = SwaggerArgumentResponse(
     name=KEY__pre_auth_key,
     description=DESC__expecting_mfa_key,
@@ -254,6 +263,24 @@ ARG_RES__mfa_key = SwaggerArgumentResponse(
     condition="MFA is turned on"
 )
 
+ARG_RES__parameters = SwaggerArgumentResponse(
+    name=KEY__parameters,
+    description="Nonspecific data which is supplied as an object either for email or signup. Is validated",
+    arg_type=ARG_RESP__allow_all,
+    required=False,
+    condition="Is signup data provided"
+)
+
+EXAMPLE__email_template_name = "signup"
+ARG_RES__email_template_name = SwaggerArgumentResponse(
+    name=KEY__email_template_name,
+    description="Internal template name",
+    arg_type=str,
+    example=[EXAMPLE__email_template_name]
+)
+ARG_RES__email_template = rename_arg(ARG_RES__email_template_name, KEY__email_template)
+ARG_RES__already_signed_up_email_template = rename_arg(ARG_RES__email_template_name, KEY__already_signed_up_email_template)
+
 EXAMPLE__application_name = "Library Browser"
 EXAMPLE__application_url = "https://jaaql.com/demos/library-application"
 
@@ -264,6 +291,7 @@ ARG_RES__application_name = SwaggerArgumentResponse(
     example=[EXAMPLE__application_name, "Meeting Room Scheduling Assistant"],
     required=True
 )
+ARG_RES__application = rename_arg(ARG_RES__application_name, KEY__application)
 ARG_RES__application_description = SwaggerArgumentResponse(
     name="description",
     description="Application description",
@@ -300,6 +328,13 @@ ARG_RES__application_body = [ARG_RES__application_name, ARG_RES__application_des
 
 CONDITION__pre_auth = "Is during 1st stage authentication"
 
+ARG_RES__username = SwaggerArgumentResponse(
+    name=KEY__username,
+    description="JAAQL login username",
+    arg_type=str,
+    example=["jaaql", "aaron@jaaql.com"]
+)
+
 DOCUMENTATION__oauth_token = SwaggerDocumentation(
     tags="OAuth",
     security=False,  # This _is_ the security method, therefore it is not expecting a jwt token
@@ -311,14 +346,7 @@ DOCUMENTATION__oauth_token = SwaggerDocumentation(
                     "an MFA key and you will returned the aforementioned 200 response",
         method=REST__POST,
         body=[
-            SwaggerArgumentResponse(
-                name=KEY__username,
-                description="JAAQL login username",
-                arg_type=str,
-                example=["jaaql", "aaron@jaaql.com"],
-                required=False,
-                condition=CONDITION__pre_auth
-            ),
+            set_nullable(ARG_RES__username, CONDITION__pre_auth),
             set_nullable(ARG_RES__jaaql_password, CONDITION__pre_auth),
             ARG_RES__mfa_key,
             ARG_RES__expecting_mfa_key
