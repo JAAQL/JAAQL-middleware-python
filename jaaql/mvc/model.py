@@ -46,7 +46,6 @@ ERR__duplicated_database = "User %s has a duplicate database precedence with dat
 ERR__not_sole_owner = "You are not the sole owner of this connection"
 ERR__mfa_must_be_enabled = "MFA must be turned on!"
 ERR__cannot_self_sign_up = "Cannot self sign up. Must be invited to the platform"
-ERR__not_installed = "The platform is not installed yet"
 ERR__unexpected_mfa_token = "MFA is disabled but user provided"
 ERR__cannot_make_user_public = "Cannot make user with this username public"
 ERR__unexpected_parameters = "Signup data not expected"
@@ -115,7 +114,6 @@ JWT__created = "created"
 JWT__ua = "ua"
 JWT__ip = "ip"
 JWT__invite_lookup = "invite_lookup"
-JWT__invite_user = "invite_user"
 JWT__invite_template = "invite_template"
 
 PG__default_connection_string = "postgresql://postgres:%s@localhost:5432/jaaql"
@@ -160,7 +158,11 @@ class JAAQLModel(BaseJAAQLModel):
 
     def register_email_template(self, inputs: dict, jaaql_interface: DBInterface):
         inputs[KEY__account] = execute_supplied_statement_singleton(jaaql_interface, QUERY__email_account_sel,
-                                                                    {KEY__email_account_name: inputs[KEY__account]})[KEY__id]
+                                                                    {KEY__email_account_name: inputs[KEY__account]}, as_objects=True)[KEY__id]
+        if inputs[KEY__allow_signup] is None:
+            inputs[KEY__allow_signup] = False
+        if inputs[KEY__allow_confirm_signup_attempt] is None:
+            inputs[KEY__allow_confirm_signup_attempt] = False
         execute_supplied_statement(jaaql_interface, QUERY__email_template_ins, inputs)
 
     def delete_email_account(self, inputs: dict, jaaql_connection: DBInterface):
@@ -330,7 +332,7 @@ class JAAQLModel(BaseJAAQLModel):
     def is_installed(self, response: JAAQLResponse):
         if not self.has_installed:
             response.response_code = HTTPStatus.UNPROCESSABLE_ENTITY
-            return ERR__not_installed
+            return ERR__not_yet_installed
 
     def install(self, db_connection_string: str, superjaaql_password: str, password: str, install_key: str,
                 use_mfa: bool, ip_address: str, user_agent: str, response: JAAQLResponse):
@@ -757,7 +759,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         if user_existed:
             raise HttpStatusException(ERR__already_signed_up, response_code=HTTPStatus.CONFLICT)
-
+        inputs[KEY__email] = crypt_utils.encrypt(self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key), inputs[KEY__email])
         return self.user_invite(inputs)
 
     def user_invite(self, inputs: dict):
@@ -870,8 +872,8 @@ class JAAQLModel(BaseJAAQLModel):
         token = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), token, JWT_PURPOSE__invite)
         obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
 
-        username = token[JWT__invite_user]
-        inputs = {KEY__username: token[JWT__invite_user]}
+        username = crypt_utils.decrypt(obj_key, token[KEY__email])
+        inputs = {KEY__username: token[KEY__email]}
         users = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_user_latest_password, inputs,
                                            as_objects=True, decrypt_columns=[ATTR__password_hash, KEY__totp_iv],
                                            encryption_key=self.get_db_crypt_key())
@@ -879,7 +881,7 @@ class JAAQLModel(BaseJAAQLModel):
             raise HttpStatusException(ERR__already_signed_up, response_code=HTTPStatus.CONFLICT)
 
         res = self.sign_up_user(self.jaaql_lookup_connection, username, password, None, ip_address, user_agent, response=response)
-
+        res[KEY__email] = username
         if token.get(JWT__invite_template):
             if token.get(JWT__invite_lookup):
                 template_id_decrypt = crypt_utils.decrypt(obj_key, token[JWT__invite_template])
@@ -1123,7 +1125,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         template = template_already_exists if user_existed else template
         invite_inputs[JWT__invite_template] = crypt_utils.encrypt(obj_key, template[KEY__id])
-        invite_inputs[JWT__invite_user] = crypt_utils.encrypt(obj_key, inputs[KEY__email])
+        invite_inputs[KEY__email] = crypt_utils.encrypt(obj_key, inputs[KEY__email])
         invite_key = self.user_invite(invite_inputs)
         optional_params = {EMAIL_PARAM__signup_key: invite_key}
 

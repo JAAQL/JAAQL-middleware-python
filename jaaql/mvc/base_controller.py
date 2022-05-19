@@ -345,9 +345,9 @@ class BaseJAAQLController:
 
                     if swagger_documentation.security:
                         jaaql_connection, user_id, ip_id, ua_id, totp_iv, password_hash, l_totp, username, is_public = \
-                            self.model.verify_jwt(request.headers.get(HEADER__security).get(None), ip_addr, user_agent,
+                            self.model.verify_jwt(request.headers.get(HEADER__security), ip_addr, user_agent,
                                                   route == ENDPOINT__refresh,
-                                                  request.headers.get(HEADER__security_bypass).get(None))
+                                                  request.headers.get(HEADER__security_bypass))
 
                     supply_dict = {}
 

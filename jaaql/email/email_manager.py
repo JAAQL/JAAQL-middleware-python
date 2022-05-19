@@ -18,7 +18,7 @@ class EmailManager:
         requests.post("http://127.0.0.1:" + str(PORT__ems) + "/send-email", json=email.repr_json())
 
     def reload_service(self):
-        requests.post("http://127.0.0.1:" + PORT__ems + "/" + ENDPOINT__reload_accounts)
+        requests.post("http://127.0.0.1:" + str(PORT__ems) + "/" + ENDPOINT__reload_accounts)
 
     def construct_and_send_email(self, base_url: str, app_url: str, template: dict, sender: str, to_email: str, to_name: str,
                                  parameters: dict = None, optional_parameters: dict = None, attachments: TYPE__email_attachments = None):
@@ -51,16 +51,16 @@ class EmailManager:
             optional_args = {}
 
         for key, val in args.items():
-            new_template = html_template.replace(REPLACE__str % key, val)
-            new_subject = subject.replace(REPLACE__str % key, val)
+            new_template = html_template.replace(REPLACE__str % key.upper(), val)
+            new_subject = subject.replace(REPLACE__str % key.upper(), val)
             if new_template == html_template and subject == new_subject:
                 raise HttpStatusException(ERR__unexpected_parameter_in_template % key)
             html_template = new_template
             subject = new_subject
 
         for key, val in optional_args.items():
-            subject = subject.replace(REPLACE__str % key, val)
-            subject = subject.replace(REPLACE__str % key, val)
+            subject = subject.replace(REPLACE__str % key.upper(), val)
+            subject = subject.replace(REPLACE__str % key.upper(), val)
 
         matched = re.findall(REGEX__email_parameter, html_template)
         matched = matched + re.findall(REGEX__email_parameter, subject)

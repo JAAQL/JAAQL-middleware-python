@@ -139,6 +139,8 @@ JWT_PURPOSE__pre_auth = "pre_auth"
 JWT_PURPOSE__invite = "invite"
 JWT_PURPOSE__connection = "connection"
 
+ERR__not_yet_installed = "JAAQL has not yet been installed!"
+
 NODE__host_node = "host"
 DB__jaaql = "jaaql"
 
@@ -146,4 +148,4 @@ PORT__ems = 6061
 
 ENDPOINT__reload_accounts = "/reload-accounts"
 
-VERSION = "2.13.0"
+VERSION = "2.14.0"

@@ -4,9 +4,9 @@ from jaaql.documentation.documentation_shared import ARG_RES__jaaql_password, AR
     JWT__invite, gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__deletion_key, RES__deletion_key,\
     set_nullable, rename_arg, ARG_RES__database_name, EXAMPLE__db, ARG_RES__application_name,\
     EXAMPLE__application_name, EXAMPLE__application_url, ARG_RES__application_body, EXAMPLE__application_dataset,\
-    ARG_RES__dataset_name, ARG_RES__dataset_description, RES__totp_mfa_nullable, ARG_RES__reference_dataset,\
-    EXAMPLE__email, ARG_RES__username, ARG_RES__mfa_key, ARG_RES__email_template_name, ARG_RES__parameters,\
-    ARG_RES__email_template, KEY__email_template_name, EXAMPLE__email_template_name
+    ARG_RES__dataset_name, ARG_RES__dataset_description, ARG_RES__reference_dataset,\
+    EXAMPLE__email, ARG_RES__username, ARG_RES__mfa_key, ARG_RES__email_template_name,\
+    KEY__email_template_name, EXAMPLE__email_template_name, ARG_RES__application
 
 TITLE = "JAAQL Internal API"
 DESCRIPTION = "Collection of methods in the JAAQL internal API"
@@ -128,7 +128,7 @@ DOCUMENTATION__is_installed = SwaggerDocumentation(
             SwaggerFlatResponse(
                 description=ERR__already_installed,
                 code=HTTPStatus.UNPROCESSABLE_ENTITY,
-                body=ERR__already_installed
+                body=ERR__not_yet_installed
             )
         ]
     )
@@ -750,10 +750,17 @@ DOCUMENTATION__users = SwaggerDocumentation(
             description="Fetches an invite token",
             method=REST__PUT,
             body=[ARG_RES__email],
-            response=SwaggerFlatResponse(
-                description="A JWT that can be used along with the email to sign up to the platform",
-                body=JWT__invite
-            )
+            response=[
+                SwaggerFlatResponse(
+                    description="A JWT that can be used along with the email to sign up to the platform",
+                    body=JWT__invite
+                ),
+                SwaggerFlatResponse(
+                    description=ERR__already_signed_up,
+                    code=HTTPStatus.CONFLICT,
+                    body=ERR__already_signed_up
+                )
+            ]
         ),
         SwaggerMethod(
             name="Revoke User",
@@ -762,20 +769,6 @@ DOCUMENTATION__users = SwaggerDocumentation(
             arguments=[ARG_RES__email]
         )
     ]
-)
-
-DOCUMENTATION__activate = SwaggerDocumentation(
-    tags="User Management",
-    methods=SwaggerMethod(
-        name="Activate",
-        description="Activates a JAAQL user with the email and a password",
-        method=REST__POST,
-        body=[
-            ARG_RES__email,
-            ARG_RES__jaaql_password
-        ],
-        response=RES__totp_mfa_nullable
-    )
 )
 
 DOCUMENTATION__users_confirm_revoke = SwaggerDocumentation(
@@ -836,11 +829,11 @@ DOCUMENTATION__user_make_public = SwaggerDocumentation(
         "you make all it's underlying database user and privileges available to everyone. A public user has MFA "
         "disabled and cannot be made private again",
         method=REST__POST,
-        arguments=[
+        body=[
             ARG_RES__username,
             ARG_RES__jaaql_password,
             ARG_RES__mfa_key,
-            ARG_RES__application_name,
+            ARG_RES__application,
             set_nullable(rename_arg(ARG_RES__jaaql_password, KEY__new_password), "Is password being changed"),
             set_nullable(rename_arg(ARG_RES__jaaql_password, KEY__new_password_confirm), "Is password being changed")
         ]
@@ -912,7 +905,7 @@ DOCUMENTATION__email_accounts = SwaggerDocumentation(
             name="Add email account",
             description="Adds an email account",
             method=REST__POST,
-            arguments=ARG_RES__email_account_base + [
+            body=ARG_RES__email_account_base + [
                 SwaggerArgumentResponse(
                     name=KEY__password,
                     description="The password to authenticate with the email server",

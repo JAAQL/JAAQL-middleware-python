@@ -417,6 +417,7 @@ create table jaaql__email_template (
     recipient_validation_view postgres_table_view_name,
     allow_signup boolean default false not null,
     allow_confirm_signup_attempt boolean default false not null,
+    check ((allow_signup <> jaaql__email_template.allow_confirm_signup_attempt) AND allow_signup),
     deleted timestamptz default null
 );
 CREATE UNIQUE INDEX jaaql__email_template_unq
