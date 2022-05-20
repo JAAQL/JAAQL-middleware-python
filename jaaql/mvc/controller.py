@@ -52,11 +52,11 @@ class JAAQLController(BaseJAAQLController):
             return self.model.is_installed(response)
 
         @self.cors_route('/internal/applications', DOCUMENTATION__applications)
-        def applications(http_inputs: dict, jaaql_connection: DBInterface):
+        def applications(http_inputs: dict, jaaql_connection: DBInterface, ip_address: str, user_agent: str, response: JAAQLResponse):
             if self.is_get():
                 return self.model.get_applications(http_inputs, jaaql_connection)
             elif self.is_post():
-                self.model.add_application(http_inputs, jaaql_connection)
+                self.model.add_application(http_inputs, jaaql_connection, ip_address, user_agent, response)
             elif self.is_put():
                 self.model.update_application(http_inputs, jaaql_connection)
             else:  # self.is_delete()

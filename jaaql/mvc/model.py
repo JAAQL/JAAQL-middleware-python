@@ -52,6 +52,8 @@ ERR__unexpected_parameters = "Signup data not expected"
 ERR__unexpected_validation_column = "Unexpected column in the input parameters '%s'"
 ERR__user_does_not_exist = "The user does not exist, cannot resend the email"
 
+SQL__err_duplicate_user = "duplicate key value violates unique constraint \"jaaql__user_unq_email\""
+
 USERNAME__jaaql = "jaaql"
 USERNAME__superjaaql = "superjaaql"
 USERNAME__postgres = "postgres"
@@ -64,6 +66,7 @@ CONFIGURATION__host = "host"
 FUNC__jaaql_create_node = "jaaql__create_node"
 
 ATTR__email = "email"
+ATTR__public_credentials = "public_credentials"
 ATTR__mobile = "mobile"
 ATTR__the_user = "the_user"
 ATTR__existed = "existed"
@@ -354,8 +357,7 @@ class JAAQLModel(BaseJAAQLModel):
             db_interface.close()
 
             jaaql_password = resp['rows'][0][0]
-            self.jaaql_lookup_connection = create_interface(self.config, address, port, db, USERNAME__jaaql,
-                                                                        jaaql_password)
+            self.jaaql_lookup_connection = create_interface(self.config, address, port, db, USERNAME__jaaql, jaaql_password)
 
             conn = self.jaaql_lookup_connection.get_conn()
             self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts,
@@ -519,13 +521,26 @@ class JAAQLModel(BaseJAAQLModel):
 
         iv = user[KEY__totp_iv]
         return create_interface(self.config, auth[KEY__address], auth[KEY__port], DB__jaaql,
-                                            auth[KEY__username], auth[KEY__password]
-                                            ), user[KEY__id], ip_id, ua_id, iv, user[ATTR__password_hash], last_totp, username, user[KEY__is_public]
+                                auth[KEY__username], auth[KEY__password]
+                                ), user[KEY__id], ip_id, ua_id, iv, user[ATTR__password_hash], last_totp, username, user[KEY__is_public]
 
-    def add_application(self, inputs: dict, jaaql_connection: DBInterface):
+    def add_application(self, inputs: dict, jaaql_connection: DBInterface, ip_address: str, user_agent: str, response: JAAQLResponse):
         default_url = self.url + SEPARATOR__dir + DIR__apps
+        public_username = inputs.pop(KEY__public_username)
         inputs[KEY__application_url] = inputs[KEY__application_url].replace("{{DEFAULT}}", default_url)
         execute_supplied_statement(jaaql_connection, QUERY__application_ins, inputs)
+        if public_username is not None:
+            password = str(uuid.uuid4())
+            crypt_utils.validate_password(password)
+            self.sign_up_user(jaaql_connection, public_username, password,
+                              self.create_user(jaaql_connection, public_username, public_application=inputs[KEY__application_name]),
+                              ip_address, user_agent, response=response)
+            mup_inputs = {
+                KEY__username: public_username,
+                KEY__password: password,
+                KEY__application: inputs[KEY__application_name]
+            }
+            self.make_user_public(mup_inputs, jaaql_connection)
 
     def delete_application(self, inputs: dict):
         return {KEY__deletion_key: self.request_deletion_key(DELETION_PURPOSE__application, inputs)}
@@ -551,7 +566,7 @@ class JAAQLModel(BaseJAAQLModel):
                                                        as_objects=True, encryption_key=self.get_db_crypt_key(),
                                                        decrypt_columns=[KEY__username, KEY__password])
             interface = create_interface(self.config, res[KEY__address], res[KEY__port], DB__empty,
-                                                     res[KEY__username], res[KEY__password])
+                                         res[KEY__username], res[KEY__password])
             execute_supplied_statement(interface, QUERY__drop_database % parameters_drop[KEY__database_name])
 
     def get_applications(self, inputs: dict, jaaql_connection: DBInterface):
@@ -618,7 +633,7 @@ class JAAQLModel(BaseJAAQLModel):
                                                        as_objects=True, encryption_key=self.get_db_crypt_key(),
                                                        decrypt_columns=[KEY__username, KEY__password])
             interface = create_interface(self.config, res[KEY__address], res[KEY__port], DB__empty,
-                                                     res[KEY__username], res[KEY__password])
+                                         res[KEY__username], res[KEY__password])
             execute_supplied_statement(interface, QUERY__create_database % inputs[KEY__database_name])
 
     def update_application(self, inputs: dict, jaaql_connection: DBInterface):
@@ -823,14 +838,14 @@ class JAAQLModel(BaseJAAQLModel):
                 crypt_utils.ENCODING__ascii)):
             raise HttpStatusException(ERR__password_incorrect, HTTPStatus.UNAUTHORIZED)
 
-        if totp_iv is None and inputs[KEY__mfa_key] is not None:
+        if totp_iv is None and inputs.get(KEY__mfa_key) is not None:
             raise HttpStatusException(ERR__unexpected_mfa_token)
         elif totp_iv is not None:
-            self.verify_mfa(inputs[KEY__mfa_key], totp_iv, last_totp, user_id)
+            self.verify_mfa(inputs.get(KEY__mfa_key), totp_iv, last_totp, user_id)
             execute_supplied_statement(jaaql_connection, QUERY__disable_mfa, {KEY__user_id: user_id})
 
-        new_password = inputs[KEY__new_password]
-        new_password_confirm = inputs[KEY__new_password_confirm]
+        new_password = inputs.get(KEY__new_password)
+        new_password_confirm = inputs.get(KEY__new_password_confirm)
 
         if new_password != new_password_confirm:
             raise HttpStatusException(ERR__passwords_do_not_match)
@@ -880,7 +895,8 @@ class JAAQLModel(BaseJAAQLModel):
         if len(users) != 0:
             raise HttpStatusException(ERR__already_signed_up, response_code=HTTPStatus.CONFLICT)
 
-        res = self.sign_up_user(self.jaaql_lookup_connection, username, password, None, ip_address, user_agent, response=response)
+        res = self.sign_up_user(self.jaaql_lookup_connection, username, password, None, ip_address, user_agent, response=response,
+                                allow_password_error=True)
         res[KEY__email] = username
         if token.get(JWT__invite_template):
             if token.get(JWT__invite_lookup):
@@ -908,13 +924,16 @@ class JAAQLModel(BaseJAAQLModel):
 
     def sign_up_user(self, jaaql_connection: DBInterface, username: str, password: str, user_id: str = None,
                      ip_address: str = None, user_agent: str = None, use_mfa: bool = False,
-                     response: JAAQLResponse = None):
+                     response: JAAQLResponse = None, allow_password_error: bool = False):
         if user_id is None:
-            resp = execute_supplied_statement_singleton(jaaql_connection, QUERY__user_id_from_username, {KEY__username: username},
-                                                        as_objects=True, encryption_key=self.get_db_crypt_key())
-            user_id = resp[KEY__id]
+            user_id = execute_supplied_statement_singleton(jaaql_connection, QUERY__user_id_from_username, {KEY__username: username},
+                                                           as_objects=True)[KEY__id]
 
-        self.add_password(jaaql_connection, user_id, password)
+        try:
+            self.add_password(jaaql_connection, user_id, password)
+        except HttpStatusException as ex:
+            if not allow_password_error:
+                raise ex
 
         totp_uri = None
         totp_b64_qr = None
@@ -943,8 +962,8 @@ class JAAQLModel(BaseJAAQLModel):
     def fetch_allowed_recipients_for_email_template(self, username: str, template: Union[str, dict], get_address: bool = False):
         if isinstance(template, str):
             template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_by_name, {
-                KEY__email_template_name: template
-            })
+                KEY__email_template: template
+            }, as_objects=True)
 
         vw_name = template[KEY__recipient_validation_view]
         if vw_name is None:
@@ -981,7 +1000,7 @@ class JAAQLModel(BaseJAAQLModel):
         sanitized_params = execute_supplied_statement_singleton(self.jaaql_lookup_connection, sel_query, pkey_vals,
                                                                 as_objects=True)
 
-        return sanitized_params
+        return {key: value for key, value in sanitized_params.items() if key not in pkey_vals}
 
     def fetch_email_templates(self, inputs: dict, jaaql_connection: DBInterface):
         paging_dict, parameters = self.setup_paging_parameters(inputs)
@@ -1031,8 +1050,8 @@ class JAAQLModel(BaseJAAQLModel):
                                                        {KEY__application: inputs[KEY__application]},
                                                        as_objects=True)[KEY__application_url]
         template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_by_name, {
-            KEY__email_template_name: inputs[KEY__email_template]
-        })
+            KEY__email_template: inputs[KEY__email_template]
+        }, as_objects=True)
 
         params = inputs[KEY__parameters]
         if params is not None and template[KEY__data_validation_table] is None:
@@ -1053,8 +1072,8 @@ class JAAQLModel(BaseJAAQLModel):
         val_table = template[KEY__data_validation_table]
         val_cols = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_table_columns,
                                               {KEY__table_name: val_table}, as_objects=True)
-        val_cols = [val_col[KEY__column_name] for val_col in val_cols]
         primary_cols = [val_col[KEY__column_name] for val_col in val_cols if val_col[KEY__is_primary]]
+        val_cols = [val_col[KEY__column_name] for val_col in val_cols]
 
         for col in params.keys():
             if col not in val_cols:
@@ -1085,23 +1104,27 @@ class JAAQLModel(BaseJAAQLModel):
         try:
             user_id = self.create_user(self.jaaql_lookup_connection, inputs[KEY__email])
         except HttpStatusException as hs:
-            if hs.response_code != HTTPStatus.CONFLICT:
+            if not hs.message.startswith(SQL__err_duplicate_user):
                 raise hs  # Unrelated exception, raise it
 
             try:
-                user_id = self.fetch_user_from_username(inputs[KEY__email], self.jaaql_lookup_connection)
+                user_id = self.fetch_user_from_username(inputs[KEY__email], self.jaaql_lookup_connection)[KEY__id]
                 user_existed = True
             except HttpStatusException as sub_hs:
                 if sub_hs.response_code != HTTPStatus.UNAUTHORIZED:
                     raise sub_hs  # Unrelated exception, raise it
 
+            if user_id is None:
+                user_id = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__user_id_from_username,
+                                                               {KEY__username: inputs[KEY__email]}, as_objects=True)[KEY__id]
+
         template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_by_name, {
-            KEY__email_template_name: inputs[KEY__email_template]
-        })
+            KEY__email_template: inputs[KEY__email_template]
+        }, as_objects=True)
         template_already_exists = execute_supplied_statement_singleton(
             self.jaaql_lookup_connection, QUERY__fetch_email_template_by_name, {
-                KEY__email_template_name: inputs[KEY__already_signed_up_email_template]
-            }
+                KEY__email_template: inputs[KEY__already_signed_up_email_template]
+            }, as_objects=True
         )
 
         if not template[KEY__allow_signup] or not template_already_exists[KEY__allow_confirm_signup_attempt]:
@@ -1130,20 +1153,10 @@ class JAAQLModel(BaseJAAQLModel):
         optional_params = {EMAIL_PARAM__signup_key: invite_key}
 
         self.email_manager.construct_and_send_email(self.url, app_url, template, user_id, inputs[KEY__email],
-                                                    sanitized_params, optional_params)
-
-    def pre_sign_up_user_with_email(self, email: str):
-        if self.invite_only:
-            raise HttpStatusException(ERR__cannot_self_sign_up, HTTPStatus.UNAUTHORIZED)
-
-        self.create_user(self.jaaql_lookup_connection, email)
-
-        return {
-            KEY__invite_key: self.user_invite({KEY__email: email})
-        }
+                                                    None, sanitized_params, optional_params)
 
     def create_user(self, jaaql_connection: DBInterface, username: str, db_password: str = None, mobile: str = None,
-                    attach_as: str = None, precedence: int = None, roles: str = ""):
+                    attach_as: str = None, precedence: int = None, roles: str = "", public_application: str = None):
         if db_password is None:
             db_password = str(uuid.uuid4())
 
@@ -1153,7 +1166,10 @@ class JAAQLModel(BaseJAAQLModel):
         parameters = {
             ATTR__email: username,
             ATTR__mobile: mobile,
-            ATTR__alias: attach_as if attach_as != username else None
+            ATTR__alias: attach_as if attach_as != username else None,
+            KEY__is_public: public_application is not None,
+            KEY__application: public_application,
+            ATTR__public_credentials: str(username + ":") if public_application is not None else None
         }
 
         user_id = execute_supplied_statement_singleton(jaaql_connection, QUERY__user_ins, parameters,

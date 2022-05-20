@@ -56,12 +56,12 @@ ARG_RES__filtered_records = [
 ]
 
 
-def rename_arg(arg_res: SwaggerArgumentResponse, new_name: str):
+def rename_arg(arg_res: SwaggerArgumentResponse, new_name: str, new_description: str = None, new_examples = None):
     return SwaggerArgumentResponse(
         new_name,
-        arg_res.description,
+        arg_res.description if new_description is None else new_description,
         arg_res.arg_type,
-        arg_res.example,
+        arg_res.example if new_examples is None else new_examples,
         arg_res.required,
         arg_res.condition
     )

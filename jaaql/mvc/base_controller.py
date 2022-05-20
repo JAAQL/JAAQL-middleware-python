@@ -110,9 +110,13 @@ class BaseJAAQLController:
             if isinstance(arg.arg_type, SwaggerList):
                 if not isinstance(data[arg.name], list):
                     raise HttpStatusException(ERR__argument_wrong_type % (arg.name, str(type(data[arg.name])),
-                                                                          str(type(list)), HTTPStatus.BAD_REQUEST))
+                                                                          str(type(list))), HTTPStatus.BAD_REQUEST)
                 for itm in data[arg.name]:
                     BaseJAAQLController.validate_data_rec(arg.arg_type.responses, itm, fill_missing)
+            elif arg.name in data and arg.arg_type == ARG_RESP__allow_all:
+                if not isinstance(data[arg.name], dict):
+                    raise HttpStatusException(ERR__argument_wrong_type % (arg.name, str(type(data[arg.name])),
+                                                                          str(type(dict))), HTTPStatus.BAD_REQUEST)
             elif arg.name in data and not isinstance(data[arg.name], arg.arg_type):
                 was_err = True
                 if arg.arg_type == int:
@@ -234,14 +238,15 @@ class BaseJAAQLController:
                         continue
                 if isinstance(real_resp[swag_resp.name], datetime):
                     real_resp[swag_resp.name] = str(real_resp[swag_resp.name])
-                if not is_complex and not isinstance(real_resp[swag_resp.name], swag_resp.arg_type):
-                    if real_resp[swag_resp.name] is not None or swag_resp.required:
-                        BaseJAAQLController.bi_cast(real_resp, swag_resp.name, swag_resp.arg_type)
+                if swag_resp.arg_type != ARG_RESP__allow_all:
+                    if not is_complex and not isinstance(real_resp[swag_resp.name], swag_resp.arg_type):
+                        if real_resp[swag_resp.name] is not None or swag_resp.required:
+                            BaseJAAQLController.bi_cast(real_resp, swag_resp.name, swag_resp.arg_type)
 
-                if is_complex:
-                    mock_resp = SwaggerResponse(MOCK__description, response=swag_resp.arg_type)
-                    real_resp[swag_resp.name] = BaseJAAQLController.validate_output(mock_resp,
-                                                                                    real_resp[swag_resp.name])
+                    if is_complex:
+                        mock_resp = SwaggerResponse(MOCK__description, response=swag_resp.arg_type)
+                        real_resp[swag_resp.name] = BaseJAAQLController.validate_output(mock_resp,
+                                                                                        real_resp[swag_resp.name])
 
                 match_alpha_resp[swag_resp.name] = real_resp[swag_resp.name]
             real_resp = match_alpha_resp

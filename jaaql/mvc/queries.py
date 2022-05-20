@@ -1,8 +1,8 @@
 from jaaql.constants import DB__jaaql, NODE__host_node
 
-QUERY__fetch_table_columns = "SELECT column_name, is_primary FROM information_schema.columns WHERE table_schema = 'public' AND table_name = :table_name"
-QUERY__fetch_email_template = "SELECT * FROM jaaql__email_template WHERE id = :id AND is_deleted is NULL"
-QUERY__fetch_email_template_by_name = "SELECT * FROM jaaql__email_template WHERE name = :email_template AND is_deleted is NULL"
+QUERY__fetch_table_columns = "SELECT column_name, is_primary FROM table_cols_marked_primary WHERE table_name = :table_name"
+QUERY__fetch_email_template = "SELECT * FROM jaaql__email_template WHERE id = :id AND deleted is NULL"
+QUERY__fetch_email_template_by_name = "SELECT * FROM jaaql__email_template WHERE name = :email_template AND deleted is NULL"
 QUERY__make_user_public = "UPDATE jaaql__user SET public_credentials = concat(:username, ':', :new_password), application = :application, is_public = TRUE WHERE deleted is null AND id = :user_id"
 QUERY__fetch_url_from_application_name = "SELECT url FROM jaaql__application WHERE name = :application"
 QUERY__fetch_application_public_user_credentials = "SELECT split_part(public_credentials, ':', 1) as username, split_part(public_credentials, ':', 2) as password FROM jaaql__user WHERE application = :application"
@@ -61,7 +61,7 @@ QUERY__node_credentials_del = "UPDATE jaaql__credentials_node SET deleted = curr
 QUERY__node_credentials_sel = "SELECT id, node, role, deleted FROM jaaql__credentials_node"
 QUERY__role_connection_sel = "SELECT ad.id as id, ad.db_encrypted_username as username, ad.db_encrypted_password as password, nod.address, nod.port FROM jaaql__credentials_node ad INNER JOIN jaaql__node nod ON nod.name = ad.node WHERE role = (SELECT coalesce(alias, email) FROM jaaql__user WHERE email = :role) AND node = :node AND ad.deleted is null AND nod.deleted is null;"
 QUERY__node_credentials_count = "SELECT COUNT(*) FROM jaaql__credentials_node"
-QUERY__user_ins = "INSERT INTO jaaql__user (email, mobile, alias) VALUES (lower(:email), :mobile, :alias) RETURNING id"
+QUERY__user_ins = "INSERT INTO jaaql__user (email, mobile, alias, is_public, application, public_credentials) VALUES (lower(:email), :mobile, :alias, :is_public, :application, :public_credentials) RETURNING id"
 QUERY__revoke_user = "UPDATE jaaql__user SET deleted = current_timestamp WHERE email = lower(:username) AND email not in ('jaaql', 'superjaaql') AND deleted is NULL"
 QUERY__disable_mfa = "UPDATE jaaql__user SET enc_totp_iv = null WHERE id = :user_id"
 QUERY__set_mfa = "UPDATE jaaql__user SET enc_totp_iv = :totp_iv WHERE id = :user_id"

@@ -1,3 +1,5 @@
+import traceback
+
 from jaaql.db.db_interface import DBInterface
 from jaaql.db.db_utils import execute_supplied_statement
 from jaaql.utilities.utils import load_config, await_jaaql_installation, get_jaaql_connection
@@ -27,7 +29,7 @@ KEY__encrypted_body = "encrypted_body"
 KEY__encrypted_attachments = "encrypted_attachments"
 KEY__encrypted_recipients = "encrypted_recipients"
 KEY__encrypted_recipients_keys = "encrypted_recipients_keys"
-QUERY__ins_email_history = "INSERT INTO jaaql__email_history (template, sender, encrypted_subject, encrypted_body, encrypted_attachments, encrypted_recipients) VALUES (:template, :sender, :encrypted_subject, :encrypted_body, :encrypted_attachments, :encrypted_recipients)"
+QUERY__ins_email_history = "INSERT INTO jaaql__email_history (template, sender, encrypted_subject, encrypted_body, encrypted_attachments, encrypted_recipients, encrypted_recipients_keys) VALUES (:template, :sender, :encrypted_subject, :encrypted_body, :encrypted_attachments, :encrypted_recipients, :encrypted_recipients_keys)"
 
 ERR__password_not_found = "Password not found for email account with name '%s'"
 ERR__email_not_found = "Email account not found with name '%s'"
@@ -103,7 +105,7 @@ class Email:
     def repr_json(self):
         return dict(sender=self.sender, template=self.template, from_account=self.from_account, to=self.to, recipient_names=self.recipient_names,
                     subject=self.subject, body=self.body,
-                    attachments=[attachment.repr_json() for attachment in self.attachments],
+                    attachments=[attachment.repr_json() for attachment in self.attachments] if self.attachments is not None else None,
                     is_html=self.is_html)
 
     @staticmethod
@@ -237,6 +239,8 @@ class EmailManagerService:
             except Empty:
                 if account[KEY__id] not in self.email_queues:
                     break
+            except:
+                traceback.print_exc()  # Something went wrong
 
         try:
             conn.quit()

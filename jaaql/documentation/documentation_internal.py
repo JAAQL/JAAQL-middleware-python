@@ -1,11 +1,11 @@
 from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
-from jaaql.documentation.documentation_shared import ARG_RES__jaaql_password, ARG_RES__email,\
-    JWT__invite, gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__deletion_key, RES__deletion_key,\
-    set_nullable, rename_arg, ARG_RES__database_name, EXAMPLE__db, ARG_RES__application_name,\
-    EXAMPLE__application_name, EXAMPLE__application_url, ARG_RES__application_body, EXAMPLE__application_dataset,\
-    ARG_RES__dataset_name, ARG_RES__dataset_description, ARG_RES__reference_dataset,\
-    EXAMPLE__email, ARG_RES__username, ARG_RES__mfa_key, ARG_RES__email_template_name,\
+from jaaql.documentation.documentation_shared import ARG_RES__jaaql_password, ARG_RES__email, \
+    JWT__invite, gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__deletion_key, RES__deletion_key, \
+    set_nullable, rename_arg, ARG_RES__database_name, EXAMPLE__db, ARG_RES__application_name, \
+    EXAMPLE__application_name, EXAMPLE__application_url, ARG_RES__application_body, EXAMPLE__application_dataset, \
+    ARG_RES__dataset_name, ARG_RES__dataset_description, ARG_RES__reference_dataset, \
+    EXAMPLE__email, ARG_RES__username, ARG_RES__mfa_key, ARG_RES__email_template_name, \
     KEY__email_template_name, EXAMPLE__email_template_name, ARG_RES__application
 
 TITLE = "JAAQL Internal API"
@@ -62,8 +62,8 @@ DOCUMENTATION__install = SwaggerDocumentation(
     methods=SwaggerMethod(
         name="Install JAAQL",
         description="Installs JAAQL to the configured database. Please allow a minute after running for the server to "
-        "refresh and reload. A connection string is required for local installation and is not allowed when running "
-        "inside a docker container as the docker container comes with a postgres database and JAAQL will use that",
+                    "refresh and reload. A connection string is required for local installation and is not allowed when running "
+                    "inside a docker container as the docker container comes with a postgres database and JAAQL will use that",
         method=REST__POST,
         body=[
             SwaggerArgumentResponse(
@@ -79,7 +79,7 @@ DOCUMENTATION__install = SwaggerDocumentation(
             SwaggerArgumentResponse(
                 name=KEY__use_mfa,
                 description="To use MFA, if MFA is not forced, otherwise will be true. It is highly recommended that "
-                "mfa is enabled for open production systems due to the access level of the created account(s)",
+                            "mfa is enabled for open production systems due to the access level of the created account(s)",
                 arg_type=bool,
                 example=[True, False],
                 required=False,
@@ -95,10 +95,10 @@ DOCUMENTATION__install = SwaggerDocumentation(
             SwaggerArgumentResponse(
                 name=KEY__superjaaql_password,
                 description="At the postgres level, the postgres user is used to set up the jaaql user. If you want "
-                "access to the postgres user through JAAQL, please provide a password and this user will be setup for "
-                "you. This is a JAAQL login for superjaaql so it is entirely independent of the postgres password at "
-                "the database level. If you do not supply this password, you will not be able to login to jaaql "
-                "authenticating as postgres with the local database node. You can set this up later if you want ",
+                            "access to the postgres user through JAAQL, please provide a password and this user will be setup for "
+                            "you. This is a JAAQL login for superjaaql so it is entirely independent of the postgres password at "
+                            "the database level. If you do not supply this password, you will not be able to login to jaaql "
+                            "authenticating as postgres with the local database node. You can set this up later if you want ",
                 example=["sup3rjaaqlpa55word"],
                 condition="If you want to give the superjaaql user a login",
                 required=False,
@@ -136,7 +136,6 @@ DOCUMENTATION__is_installed = SwaggerDocumentation(
 
 # Not unused. Used to generate html files
 from jaaql.documentation.documentation_shared import DOCUMENTATION__oauth_token, DOCUMENTATION__oauth_refresh
-
 
 EXAMPLE__address = "mydb.abbcdcec9afd.eu-west-1.rds.amazonaws.com"
 
@@ -192,15 +191,15 @@ DOCUMENTATION__nodes = SwaggerDocumentation(
             description="Adds a new node",
             body=[set_nullable(ARG_RES__node_label, condition="If not provided will be automatically generated")] +
                  ARG_RES__node_base + [
-                SwaggerArgumentResponse(
-                    name=KEY__description,
-                    description="Description of the node",
-                    arg_type=str,
-                    condition="Imputed from the node name if not required",
-                    example=["The PROD library node", "The office QA node"],
-                    required=False,
-                )
-            ],
+                     SwaggerArgumentResponse(
+                         name=KEY__description,
+                         description="Description of the node",
+                         arg_type=str,
+                         condition="Imputed from the node name if not required",
+                         example=["The PROD library node", "The office QA node"],
+                         required=False,
+                     )
+                 ],
             method=REST__POST
         ),
         SwaggerMethod(
@@ -314,6 +313,11 @@ DOCUMENTATION__databases_confirm_deletion = SwaggerDocumentation(
     )
 )
 
+ARG_RES__public_username = set_nullable(rename_arg(ARG_RES__username, KEY__public_username,
+                                                   "The username of the public user, conditionally provided if a public user is wanted for the app",
+                                                   "app_username"),
+                                        "Is a public user wanted for the app")
+
 DOCUMENTATION__applications = SwaggerDocumentation(
     tags="Applications",
     methods=[
@@ -321,7 +325,7 @@ DOCUMENTATION__applications = SwaggerDocumentation(
             name="Add application",
             description="Add a new application",
             method=REST__POST,
-            body=ARG_RES__application_body
+            body=ARG_RES__application_body + [ARG_RES__public_username]
         ),
         SwaggerMethod(
             name="Fetch applications",
@@ -633,7 +637,7 @@ DOCUMENTATION__authorization_configuration = SwaggerDocumentation(
         SwaggerMethod(
             name="Revoke role auth for application",
             description="Requests the revoke of a role authorization for an application configuration, returning a "
-            "confirmation key",
+                        "confirmation key",
             method=REST__DELETE,
             arguments=ARG_RES__authorization_configuration,
             response=RES__deletion_key
@@ -729,7 +733,7 @@ DOCUMENTATION__authorization_node_confirm_deletion = SwaggerDocumentation(
 ARG_RES__roles = SwaggerArgumentResponse(
     name=KEY__roles,
     description="The internal roles for which to assign to the user along with the default roles (if "
-    "any). Comma separated. The user must be signed up with an invite key before usage",
+                "any). Comma separated. The user must be signed up with an invite key before usage",
     arg_type=str,
     example=["admin,moderator"],
     required=False,
@@ -787,7 +791,7 @@ DOCUMENTATION__user_default_roles = SwaggerDocumentation(
         SwaggerMethod(
             name="Fetch default user roles",
             description="A default user role is a role that is assigned to a user automatically upon creation of "
-            "the user which can occur from the internal endpoint public or the sign up endpoint. ",
+                        "the user which can occur from the internal endpoint public or the sign up endpoint. ",
             method=REST__GET,
             arguments=gen_arg_res_sort_pageable(KEY__role, example_one=EXAMPLE__role),
             response=SwaggerResponse(
@@ -826,8 +830,8 @@ DOCUMENTATION__user_make_public = SwaggerDocumentation(
     methods=SwaggerMethod(
         name="Make user public",
         description="Make a user public. WARNING! This user will be available to EVERYONE. By making this user public, "
-        "you make all it's underlying database user and privileges available to everyone. A public user has MFA "
-        "disabled and cannot be made private again",
+                    "you make all it's underlying database user and privileges available to everyone. A public user has MFA "
+                    "disabled and cannot be made private again",
         method=REST__POST,
         body=[
             ARG_RES__username,
@@ -846,7 +850,7 @@ DOCUMENTATION__deploy = SwaggerDocumentation(
         SwaggerMethod(
             name="Redeploys the JAAQL service",
             description="Will redeploy the JAAQL service, loading the latest version from git. In the future will "
-            "support loading a specific tagged version",
+                        "support loading a specific tagged version",
             method=REST__POST
         )
     ]
@@ -957,9 +961,9 @@ ARG_RES__email_template_body = [
     SwaggerArgumentResponse(
         name=KEY__app_relative_path,
         description="The path of the template in relation to the app. Can only contain alphanumeric "
-        "characters, - and _. For example if the app runs at jaaql.io/apps/my_app.html and the path is "
-        "'my_template', the template can be found at jaaql.io/email_templates/my_template.html. Leave it "
-        "null and no email will be sent upon request",
+                    "characters, - and _. For example if the app runs at jaaql.io/apps/my_app.html and the path is "
+                    "'my_template', the template can be found at jaaql.io/email_templates/my_template.html. Leave it "
+                    "null and no email will be sent upon request",
         arg_type=str,
         example=["my_template"],
         required=False,
@@ -983,7 +987,7 @@ ARG_RES__email_template_body = [
     SwaggerArgumentResponse(
         name=KEY__allow_confirm_signup_attempt,
         description="Allow this email to be sent to the user, notifying them that their account already exists and an "
-        "attempt to signup was already made ",
+                    "attempt to signup was already made ",
         arg_type=bool,
         required=False,
         condition="Is this parameter specified"
@@ -991,10 +995,10 @@ ARG_RES__email_template_body = [
     SwaggerArgumentResponse(
         name=KEY__data_validation_table,
         description="A table that is used for data validation. A row is inserted into this table with the "
-        "data supplied when sending the email along with a generated UUID. The row is then selected from "
-        "this table with the UUID and the row data is then used to replace data in the template. If null "
-        "no data can be replaced in the email. The data is then deleted unless the email template is marked as "
-        "allow_signup is true. Then it is deleted when the user is signed up ",
+                    "data supplied when sending the email along with a generated UUID. The row is then selected from "
+                    "this table with the UUID and the row data is then used to replace data in the template. If null "
+                    "no data can be replaced in the email. The data is then deleted unless the email template is marked as "
+                    "allow_signup is true. Then it is deleted when the user is signed up ",
         arg_type=str,
         example=["my_data_validation_table"],
         required=False,
@@ -1003,8 +1007,8 @@ ARG_RES__email_template_body = [
     SwaggerArgumentResponse(
         name=KEY__recipient_validation_view,
         description="Allowed recipients are SELECT key, email FROM this_view WHERE "
-        "pg_has_role(role, 'MEMBER'). The user then selects from the keys. key, email should be a "
-        "bijective mapping. If no view is present, the email can be sent only to the current user",
+                    "pg_has_role(role, 'MEMBER'). The user then selects from the keys. key, email should be a "
+                    "bijective mapping. If no view is present, the email can be sent only to the current user",
         arg_type=str,
         example=["my_recipient_validation_view"],
         required=False,
