@@ -19,5 +19,8 @@ class HttpStatusException(Exception):
     def __init__(self, message: str, response_code: int = HTTPStatus.UNPROCESSABLE_ENTITY):
         super().__init__(message)
 
+        if response_code is None:
+            response_code = HTTPStatus.UNPROCESSABLE_ENTITY
+
         self.message = message
         self.response_code = response_code

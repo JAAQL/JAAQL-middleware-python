@@ -1,4 +1,3 @@
-CREATE DOMAIN jaaql__email AS varchar(254) CHECK ((VALUE ~* '^[A-Za-z0-9._%-]+@[A-Za-z0-9.-]+[.][A-Za-z]+$' OR VALUE IN ('jaaql', 'superjaaql')) AND lower(VALUE) = VALUE);
 CREATE DOMAIN postgres_table_view_name AS varchar(64) CHECK (VALUE ~* '^[A-Za-z*0-9_\-]+$');
 
 create table jaaql__application (
@@ -10,7 +9,7 @@ create table jaaql__application (
 
 create table jaaql__user (
     id uuid primary key not null default gen_random_uuid(),
-    email    jaaql__email not null,
+    email    varchar(255) not null,
     created timestamptz not null default current_timestamp,
     mobile   bigint,                 -- with null [allows for SMS-based 2FA login later] )
     deleted timestamptz,
@@ -18,6 +17,7 @@ create table jaaql__user (
     last_totp varchar(6),
     alias varchar(32),
     is_public boolean default false not null,
+    check ((is_public or (email ~* '^[A-Za-z0-9._%-]+@[A-Za-z0-9.-]+[.][A-Za-z]+$' OR email IN ('jaaql', 'superjaaql'))) AND lower(email) = email),
     public_credentials text,
     application varchar(64),
     check (not is_public = (public_credentials is null)),
@@ -53,7 +53,7 @@ create table jaaql__user_password (
     the_user uuid not null,
     created timestamptz not null default current_timestamp,
     password_hash varchar(254) not null,
-    PRIMARY KEY (the_user, created),
+    PRIMARY KEY (the_user, password_hash),
     FOREIGN KEY (the_user) REFERENCES jaaql__user
 );
 
@@ -417,6 +417,7 @@ create table jaaql__email_template (
     recipient_validation_view postgres_table_view_name,
     allow_signup boolean default false not null,
     allow_confirm_signup_attempt boolean default false not null,
+    check ((allow_signup <> jaaql__email_template.allow_confirm_signup_attempt) or not allow_signup),
     deleted timestamptz default null
 );
 CREATE UNIQUE INDEX jaaql__email_template_unq
@@ -438,7 +439,7 @@ create view jaaql__email_templates as (
 );
 
 create table jaaql__email_history (
-    id uuid PRIMARY KEY NOT NULL,
+    id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
     template uuid not null,
     FOREIGN KEY (template) REFERENCES jaaql__email_template,
     sender uuid not null,

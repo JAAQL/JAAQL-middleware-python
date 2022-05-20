@@ -1,3 +1,5 @@
+import traceback
+
 from jaaql.db.db_interface import DBInterface
 from jaaql.db.db_utils import execute_supplied_statement
 from jaaql.utilities.utils import load_config, await_jaaql_installation, get_jaaql_connection
@@ -16,7 +18,7 @@ import sys
 from flask import Flask, jsonify, request
 from jaaql.utilities.vault import Vault, DIR__vault
 from jaaql.constants import VAULT_KEY__db_crypt_key, KEY__encrypted_password, KEY__id, KEY__template, KEY__sender, ENCODING__ascii, PORT__ems, \
-    ENDPOINT__reload_accounts
+    ENDPOINT__reload_accounts, KEY__email_account_name
 
 QUERY__update_email_account_password = "UPDATE jaaql__email_account SET encrypted_password = :encrypted_password WHERE id = :id"
 QUERY__load_email_accounts = "SELECT * FROM jaaql__email_account WHERE deleted is null"
@@ -27,13 +29,12 @@ KEY__encrypted_body = "encrypted_body"
 KEY__encrypted_attachments = "encrypted_attachments"
 KEY__encrypted_recipients = "encrypted_recipients"
 KEY__encrypted_recipients_keys = "encrypted_recipients_keys"
-QUERY__ins_email_history = "INSERT INTO jaaql__email_history (template, sender, encrypted_subject, encrypted_body, encrypted_attachments, encrypted_recipients) VALUES (:template, :sender, :encrypted_subject, :encrypted_body, :encrypted_attachments, :encrypted_recipients)"
+QUERY__ins_email_history = "INSERT INTO jaaql__email_history (template, sender, encrypted_subject, encrypted_body, encrypted_attachments, encrypted_recipients, encrypted_recipients_keys) VALUES (:template, :sender, :encrypted_subject, :encrypted_body, :encrypted_attachments, :encrypted_recipients, :encrypted_recipients_keys)"
 
 ERR__password_not_found = "Password not found for email account with name '%s'"
 ERR__email_not_found = "Email account not found with name '%s'"
 ERR__invalid_call_to_internal_email_service = "Invalid call to internal email service"
 
-KEY__account_name = "account_name"
 KEY__account_protocol = "protocol"
 KEY__account_host = "host"
 KEY__account_username = "username"
@@ -104,7 +105,7 @@ class Email:
     def repr_json(self):
         return dict(sender=self.sender, template=self.template, from_account=self.from_account, to=self.to, recipient_names=self.recipient_names,
                     subject=self.subject, body=self.body,
-                    attachments=[attachment.repr_json() for attachment in self.attachments],
+                    attachments=[attachment.repr_json() for attachment in self.attachments] if self.attachments is not None else None,
                     is_html=self.is_html)
 
     @staticmethod
@@ -137,17 +138,20 @@ class EmailManagerService:
         email_queues = {}
 
         for account in accounts:
-            if account[KEY__account_name] not in self.email_credentials and account[KEY__encrypted_password] is None:
-                raise Exception(ERR__password_not_found % account[KEY__account_name])
-            elif account[KEY__account_name] in self.email_credentials and account[KEY__encrypted_password] is None:
+            if account[KEY__email_account_name] not in self.email_credentials and account[KEY__encrypted_password] is None:
+                raise Exception(ERR__password_not_found % account[KEY__email_account_name])
+            elif account[KEY__email_account_name] in self.email_credentials and account[KEY__encrypted_password] is None:
                 execute_supplied_statement(self.connection, QUERY__update_email_account_password,  # Stores the password
-                                           {KEY__encrypted_password: self.email_credentials[account[KEY__account_name]],
+                                           {KEY__encrypted_password: self.email_credentials[account[KEY__email_account_name]],
                                             KEY__id: account[KEY__id]},
                                            encrypt_parameters=[KEY__encrypted_password])
             cur_queue = Queue()
             if account[KEY__id] not in self.email_queues:
                 email_queues[account[KEY__id]] = cur_queue
-                method_args = [account, cur_queue, self.email_credentials[account[KEY__account_name]]]
+                password = account[KEY__encrypted_password]
+                if password is None:
+                    password = self.email_credentials[account[KEY__email_account_name]]
+                method_args = [account, cur_queue, password]
                 threading.Thread(target=self.email_connection_thread, args=method_args, daemon=True).start()
 
         self.email_queues = email_queues
@@ -235,6 +239,8 @@ class EmailManagerService:
             except Empty:
                 if account[KEY__id] not in self.email_queues:
                     break
+            except:
+                traceback.print_exc()  # Something went wrong
 
         try:
             conn.quit()
@@ -272,7 +278,7 @@ def create_flask_app(vault_key=None, email_credentials=None, is_gunicorn: bool =
     await_jaaql_installation(config, is_gunicorn)
     vault = Vault(vault_key, DIR__vault)
     jaaql_lookup_connection = get_jaaql_connection(config, vault)
-    db_crypt_key = vault.get_obj(VAULT_KEY__db_crypt_key)
+    db_crypt_key = vault.get_obj(VAULT_KEY__db_crypt_key).encode(ENCODING__ascii)
 
     flask_app = create_app(EmailManagerService(jaaql_lookup_connection, email_credentials, db_crypt_key))
     print("Created email manager app host, running flask", file=sys.stderr)

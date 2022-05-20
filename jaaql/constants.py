@@ -9,6 +9,7 @@ KEY__exception = "exception"
 KEY__install_key = "install_key"
 KEY__deletion_key = "deletion_key"
 KEY__superjaaql_password = "superjaaql_password"
+KEY__public_username = "public_username"
 KEY__records_total = "records_total"
 KEY__records_filtered = "records_filtered"
 KEY__data = "data"
@@ -139,6 +140,8 @@ JWT_PURPOSE__pre_auth = "pre_auth"
 JWT_PURPOSE__invite = "invite"
 JWT_PURPOSE__connection = "connection"
 
+ERR__not_yet_installed = "JAAQL has not yet been installed!"
+
 NODE__host_node = "host"
 DB__jaaql = "jaaql"
 
@@ -146,4 +149,4 @@ PORT__ems = 6061
 
 ENDPOINT__reload_accounts = "/reload-accounts"
 
-VERSION = "2.13.0"
+VERSION = "2.14.0"
