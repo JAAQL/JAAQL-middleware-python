@@ -1005,6 +1005,16 @@ ARG_RES__email_template_body = [
         condition="Is data being replaced"
     ),
     SwaggerArgumentResponse(
+        name=KEY__data_validation_view,
+        description="A view which is used to select the data from after insertion into the data validation table. Cannot be present if the data "
+        "validation table is null. If null and data validation table is present, data will be selected from the data validation table. Data is "
+        "selected using the primary key of the data validation table from which one and only one row must be returned from the view",
+        arg_type=str,
+        example=["my_data_validation_table"],
+        required=False,
+        condition="Is a view being used to replace data"
+    ),
+    SwaggerArgumentResponse(
         name=KEY__recipient_validation_view,
         description="Allowed recipients are SELECT key, email FROM this_view WHERE "
                     "pg_has_role(role, 'MEMBER'). The user then selects from the keys. key, email should be a "
