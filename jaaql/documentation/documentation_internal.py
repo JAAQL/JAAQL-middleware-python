@@ -99,7 +99,7 @@ DOCUMENTATION__install = SwaggerDocumentation(
                             "you. This is a JAAQL login for superjaaql so it is entirely independent of the postgres password at "
                             "the database level. If you do not supply this password, you will not be able to login to jaaql "
                             "authenticating as postgres with the local database node. You can set this up later if you want ",
-                example=["sup3rjaaqlpa55word"],
+                example=["passw0rd"],
                 condition="If you want to give the superjaaql user a login",
                 required=False,
                 arg_type=str
