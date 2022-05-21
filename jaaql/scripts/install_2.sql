@@ -414,6 +414,8 @@ create table jaaql__email_template (
     app_relative_path postgres_table_view_name,  -- Not a mistake for this domain type
     check ((subject is null) = (app_relative_path is null)),
     data_validation_table postgres_table_view_name,
+    data_validation_view postgres_table_view_name,
+    CHECK ((data_validation_table is null and data_validation_view is null) or data_validation_table is not null),
     recipient_validation_view postgres_table_view_name,
     allow_signup boolean default false not null,
     allow_confirm_signup_attempt boolean default false not null,

@@ -16,7 +16,7 @@ CREDS = [
     },
     {
         "username": "superjaaql",
-        "password": "sup3rjaaqlpa55word"
+        "password": "passw0rd"
     }
 ]
 

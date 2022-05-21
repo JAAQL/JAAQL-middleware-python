@@ -120,7 +120,7 @@ def validate_password(password: str):
     if not has_number and not has_special_character and not has_upper_case:
         raise HttpStatusException(ERR__password_not_complex_enough)
 
-    has_letters = not all([str(num) in password for num in list(range(0, 9))])
+    has_letters = not all([letter in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"] for letter in password])
     if not has_letters:
         raise HttpStatusException(ERR__password_no_letters)
 

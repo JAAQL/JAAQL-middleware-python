@@ -22,6 +22,7 @@ let ID_ADD_APP = "add-application";
 let ID_ADD_APP_NAME = "add-application-name";
 let ID_ADD_APP_DESCRIPTION = "add-application-description";
 let ID_ADD_APP_URL = "add-application-url";
+let ID_ADD_PUBLIC_USERNAME = "add-application-public-username";
 let ID_TABLE_ASSIGNED_DATABASES = "assigned-databases";
 let ID_TABLE_AUTHS = "conf-auths";
 let ID_TABLE_DATABASES = "node-databases";
@@ -53,7 +54,7 @@ function renderAddAuth(modal, appName, config) {
         <label>Application: <input id="${ID_ADD_AUTH_APP}" disabled/></label><br>
         <label>Configuration: <input id="${ID_ADD_AUTH_CONF}" disabled/></label><br>
         <label>Role: <input id="${ID_ADD_AUTH_ROLE}"/></label><br>
-    `).buildChild("button").buildText("Assign Database").buildEventListener("click", function() {
+    `).buildChild("button").buildText("Add Auth").buildEventListener("click", function() {
         let data = {};
         data[JEQL.KEY_APPLICATION] = document.getElementById(ID_ADD_AUTH_APP).value;
         data[JEQL.KEY_CONFIGURATION] = document.getElementById(ID_ADD_AUTH_CONF).value;
@@ -84,7 +85,7 @@ function renderAssignDatabase(modal, appName, config) {
         data[JEQL.KEY_DATASET] = document.getElementById(ID_ADD_ARG_PARAM).value;
         data[JEQL.KEY_NODE] = document.getElementById(ID_ADD_ARG_NODE).value;
         data[JEQL.KEY_DATABASE] = document.getElementById(ID_ADD_ARG_DATABASE).value;
-        JEQL.requests.makeBody(window.JEQL_CONFIG, JEQL.ACTION_INTERNAL_DATASETS_ADD, function() {
+        JEQL.requests.makeBody(window.JEQL_CONFIG, JEQL.ACTION_INTERNAL_ASSIGNED_DATABASE_ADD, function() {
             JEQL.renderModalOk("Successfully assigned database to configuration", function() {
                 modal.closeModal();
                 JEQL.getPagedSearchingTableRefreshButton(ID_TABLE_ASSIGNED_DATABASES).click();
@@ -117,7 +118,7 @@ function assignedDatabaseTableRowRenderer(rowElem, data, idx, superRowRenderer) 
 
 function refreshAssignedDatabaseTable(page, size, search, sort) {
     JEQL.requests.makeBody(window.JEQL_CONFIG,
-        JEQL.ACTION_INTERNAL_DATABASES,
+        JEQL.ACTION_INTERNAL_ASSIGNED_DATABASES,
         function(data) {
             let table = document.getElementById(ID_TABLE_ASSIGNED_DATABASES);
             JEQL.pagedTableUpdate(table, data);
@@ -560,11 +561,16 @@ function addAppModal(modal) {
         <label>Name: <input id="${ID_ADD_APP_NAME}" /></label><br>
         <label>Description: <input id="${ID_ADD_APP_DESCRIPTION}" /></label><br>
         <label>Url: <input id="${ID_ADD_APP_URL}" /></label><br>
+        <label>Public Username: <input id="${ID_ADD_PUBLIC_USERNAME}" /></label><br>
     `).buildChild("button").buildText("Add").buildEventListener("click", function() {
         let data = {};
         data[JEQL.KEY_NAME] = document.getElementById(ID_ADD_APP_NAME).value;
         data[JEQL.KEY_DESCRIPTION] = document.getElementById(ID_ADD_APP_DESCRIPTION).value;
         data[JEQL.KEY_URL] = document.getElementById(ID_ADD_APP_URL).value;
+        data[JEQL.KEY_PUBLIC_USERNAME] = document.getElementById(ID_ADD_PUBLIC_USERNAME).value;
+        if (data[JEQL.KEY_PUBLIC_USERNAME].length === 0) {
+            delete data[JEQL.KEY_PUBLIC_USERNAME];
+        }
         JEQL.requests.makeJson(window.JEQL_CONFIG, JEQL.ACTION_INTERNAL_APPLICATIONS_ADD, function() {
             JEQL.renderModalOk("Successfully added application", function() {
                 modal.closeModal();

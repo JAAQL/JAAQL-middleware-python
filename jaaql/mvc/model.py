@@ -51,6 +51,7 @@ ERR__cannot_make_user_public = "Cannot make user with this username public"
 ERR__unexpected_parameters = "Signup data not expected"
 ERR__unexpected_validation_column = "Unexpected column in the input parameters '%s'"
 ERR__user_does_not_exist = "The user does not exist, cannot resend the email"
+ERR__data_validation_table_no_primary = "Data validation table has no primary key"
 
 SQL__err_duplicate_user = "duplicate key value violates unique constraint \"jaaql__user_unq_email\""
 
@@ -531,6 +532,7 @@ class JAAQLModel(BaseJAAQLModel):
         execute_supplied_statement(jaaql_connection, QUERY__application_ins, inputs)
         if public_username is not None:
             password = str(uuid.uuid4())
+            public_username = public_username.lower()
             crypt_utils.validate_password(password)
             self.sign_up_user(jaaql_connection, public_username, password,
                               self.create_user(jaaql_connection, public_username, public_application=inputs[KEY__application_name]),
@@ -1082,11 +1084,14 @@ class JAAQLModel(BaseJAAQLModel):
         cols = ", ".join(['"' + col + '"' for col in val_cols if col in params.keys()])
         ins = ", ".join([':' + col for col in val_cols if col in params.keys()])
         pkeys = ", ".join(['"' + col + '"' for col in primary_cols])
+        if len(pkeys) == 0:
+            raise HttpStatusException(ERR__data_validation_table_no_primary)
         val_table_esc = '"%s"' % val_table
         ins_query = "INSERT INTO " + val_table_esc + " (" + cols + ") VALUES (" + ins + ") RETURNING " + pkeys
         pkey_vals = execute_supplied_statement_singleton(self.jaaql_lookup_connection, ins_query, params, as_objects=True)
 
-        return self.select_from_data_validation_table(val_table, pkey_vals), pkey_vals
+        select_table = template[KEY__data_validation_view] if template[KEY__data_validation_view] is not None else val_table
+        return self.select_from_data_validation_table(select_table, pkey_vals), pkey_vals
 
     def request_signup(self, inputs: dict):
         if self.invite_only:
