@@ -144,6 +144,11 @@ elif [ "$IS_HTTPS" = "TRUE" ] && [ -d "$CERT_DIR" ] ; then
 fi
 
 docker-entrypoint.sh postgres &
+PG_PID=$!
+sleep 10
+kill -9 "$PG_PID"
+sed -i 's/trust/md5/g' /var/lib/postgresql/data/pg_hba.conf
+docker-entrypoint.sh postgres &
 
 if [ "$IS_HTTPS" = "TRUE" ] ; then
   /pypy3.7-v7.3.5-linux64/bin/certbot renew --dry-run &

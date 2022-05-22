@@ -1,6 +1,6 @@
 from datetime import datetime
 import requests
-from jaaql.utilities.utils import time_delta_ms
+from jaaql.utilities.utils_no_project_imports import time_delta_ms
 import time
 
 MAX_STARTUP_TIME_MS = 120000

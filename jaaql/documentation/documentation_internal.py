@@ -56,6 +56,16 @@ ARG_RES__double_mfa = SwaggerResponse(
     ]
 )
 
+ARG_RES__install_key = SwaggerArgumentResponse(
+    name=KEY__install_key,
+    description="Single use/purpose key. Find in the logs, line starting with 'INSTALL KEY:' at startup",
+    arg_type=str,
+    example=["aefc1b08-a573-466f-bdd0-706ae281cc99", "ec63aa9a-b189-419f-8e0b-7fcc4ff8c857"],
+    required=True
+)
+
+ARG_RES__uninstall_key = rename_arg(ARG_RES__install_key, KEY__uninstall_key, ARG_RES__install_key.description.replace("INSTALL", "UNINSTALL"))
+
 DOCUMENTATION__install = SwaggerDocumentation(
     tags="Installation",
     security=False,  # This method is not secured as the system is not setup yet. It uses a OTP token system via logs
@@ -85,13 +95,7 @@ DOCUMENTATION__install = SwaggerDocumentation(
                 required=False,
                 condition="Is MFA force enabled"
             ),
-            SwaggerArgumentResponse(
-                name=KEY__install_key,
-                description="Single use/purpose key. Find in the logs, line starting with 'INSTALL KEY:' at startup",
-                arg_type=str,
-                example=["aefc1b08-a573-466f-bdd0-706ae281cc99", "ec63aa9a-b189-419f-8e0b-7fcc4ff8c857"],
-                required=True
-            ),
+            ARG_RES__install_key,
             SwaggerArgumentResponse(
                 name=KEY__superjaaql_password,
                 description="At the postgres level, the postgres user is used to set up the jaaql user. If you want "
@@ -103,6 +107,14 @@ DOCUMENTATION__install = SwaggerDocumentation(
                 condition="If you want to give the superjaaql user a login",
                 required=False,
                 arg_type=str
+            ),
+            SwaggerArgumentResponse(
+                name=KEY__allow_uninstall,
+                description="Allows uninstall. DO NOT USE ON PROD, used to aid with testing. Defaults to false if not supplied",
+                example=[False, True],
+                required=False,
+                condition="If you want to specify if uninstallation allowed",
+                arg_type=bool
             )
         ],
         response=[
@@ -112,6 +124,25 @@ DOCUMENTATION__install = SwaggerDocumentation(
                 code=HTTPStatus.UNPROCESSABLE_ENTITY,
                 body=ERR__already_installed
             )
+        ]
+    )
+)
+
+DOCUMENTATION__uninstall = SwaggerDocumentation(
+    tags="Installation",
+    security=False,  # Would not matter which user uses it, needs root db credentials
+    methods=SwaggerMethod(
+        name="Uninstall JAAQL",
+        description="Uninstalls the JAAQL system",
+        method=REST__POST,
+        body=[
+            SwaggerArgumentResponse(
+                name=KEY__db_super_user_password,
+                description="The password for the database super user account",
+                example=["123456"],
+                arg_type=str
+            ),
+            ARG_RES__uninstall_key
         ]
     )
 )
@@ -126,7 +157,7 @@ DOCUMENTATION__is_installed = SwaggerDocumentation(
         response=[
             SwaggerFlatResponse(),
             SwaggerFlatResponse(
-                description=ERR__already_installed,
+                description=ERR__not_yet_installed,
                 code=HTTPStatus.UNPROCESSABLE_ENTITY,
                 body=ERR__not_yet_installed
             )

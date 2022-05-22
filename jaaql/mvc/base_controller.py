@@ -103,8 +103,9 @@ class BaseJAAQLController:
         for arg in arguments:
             if arg.required is True and arg.name not in data:
                 if arg.local_only and is_prod:
-                    data[arg.name] = None
-                    return
+                    if fill_missing:
+                        data[arg.name] = None
+                    continue
                 raise HttpStatusException(ERR__expected_argument % arg.name, HTTPStatus.BAD_REQUEST)
 
             if isinstance(arg.arg_type, SwaggerList):
@@ -361,8 +362,7 @@ class BaseJAAQLController:
                     method_input = None
                     try:
                         if ARG__http_inputs in inspect.getfullargspec(view_func_local).args:
-                            supply_dict[ARG__http_inputs] = BaseJAAQLController.get_input_as_dictionary(method,
-                                                                                                        self.is_prod)
+                            supply_dict[ARG__http_inputs] = BaseJAAQLController.get_input_as_dictionary(method, self.is_prod)
                             method_input = self.log_safe_dump(supply_dict[ARG__http_inputs])
 
                         if ARG__is_public in inspect.getfullargspec(view_func_local).args:

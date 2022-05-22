@@ -1,9 +1,4 @@
-import coverage
-# cov = coverage.coverage()
-# cov.start()
-
 from os.path import exists
-import os
 from jaaql.jaaql import create_app
 from jaaql.utilities.utils import load_email_templates
 from mvc.controller import CTPController
@@ -28,9 +23,9 @@ def save_coverage():
     # cov.save()
     # cov.html_report(directory="main_coverage" if was_not_install else "install_coverage")
 
-    if was_not_install:
-        open("DO_EXIT", "w").close()
-    os._exit(0)
+    # if was_not_install:
+    #     open("DO_EXIT", "w").close()
+    # os._exit(0)
 
 
 atexit.register(save_coverage)

@@ -16,20 +16,24 @@ def run_component_tests():
         if is_test_file(test_file.replace("\\", ".").replace("/", "."))
     ]
     test_files.sort()
+
     suites = [
         unittest.defaultTestLoader.loadTestsFromName(test_file)
         for test_file in test_files
     ]
     test_suite = unittest.TestSuite(suites)
-    runner = unittest.TextTestRunner()  # For local debugging
+    runner = unittest.TextTestRunner(verbosity=2)  # For local debugging
     result = runner.run(test_suite)
 
     if len(result.errors) != 0 or len(result.failures) != 0:
         print("Component test failure!", file=sys.stderr)
+    else:
+        print("Component tests all passed")
 
     if not sys.platform.lower().startswith('win'):
         pid = open("app.pid", "r").read()
         subprocess.call("kill -HUP " + pid, shell=True)  # Kill gunicorn so coverage report is generated
+
 
 if __name__ == "__main__":
     wait_for_service()
@@ -37,5 +41,5 @@ if __name__ == "__main__":
     run_component_tests()
 
     if not sys.platform.lower().startswith('win'):
-        pid = open("app.pid", "r").read()
-        subprocess.call("kill -HUP " + pid, shell=True)  # Kill gunicorn so coverage report is generated
+        app_pid = open("app.pid", "r").read()
+        subprocess.call("kill -HUP " + app_pid, shell=True)  # Kill gunicorn so coverage report is generated

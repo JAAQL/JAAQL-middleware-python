@@ -1,3 +1,5 @@
+import sys
+
 from jaaql.utilities.vault import Vault, DIR__vault
 from jaaql.db.db_interface import DBInterface
 import jaaql.utilities.crypt_utils as crypt_utils
@@ -62,6 +64,9 @@ FILE__was_installed = "was_installed"
 JWT__data = "data"
 
 ENVIRON__install_path = "INSTALL_PATH"
+
+WARNING__uninstall_allowed = "Due to installation parameters, the system can be uninstalled completely via the API. We do not recommend this being " \
+                             "used in production systems (the super user db password is required to perform uninstallation so it is not 'open') "
 
 
 class JAAQLPivotData:
@@ -194,11 +199,17 @@ class BaseJAAQLModel:
             self.vault.insert_obj(VAULT_KEY__jwt_obj_crypt_key, jwt_obj_crypt_key.decode(crypt_utils.ENCODING__ascii))
 
         if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):
+            if self.vault.has_obj(VAULT_KEY__allow_jaaql_uninstall):
+                self.uninstall_key = str(uuid.uuid4())
+                print(WARNING__uninstall_allowed, file=sys.stderr)
+                print("UNINSTALL KEY: " + self.uninstall_key)
+            else:
+                self.install_key = None
+
             self.has_installed = True
             jaaql_uri = self.vault.get_obj(VAULT_KEY__jaaql_lookup_connection)
             address, port, db, username, password = DBInterface.fracture_uri(jaaql_uri)
-            self.jaaql_lookup_connection = create_interface(self.config, address, port, db, username,
-                                                                        password, is_jaaql_user=True)
+            self.jaaql_lookup_connection = create_interface(self.config, address, port, db, username, password, is_jaaql_user=True)
             run_migrations(self.jaaql_lookup_connection)
 
             if self.migration_db_interface is None:

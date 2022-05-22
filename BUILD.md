@@ -25,4 +25,10 @@ Please run the following component tests before pushing a final build. In order 
     docker build -t jaaql/jaaql-middleware-python -f docker/Dockerfile .
     docker tag jaaql/jaaql-middleware-python local-jaaql-middleware-python
     docker build -t jaaql-middleware-python-ct -f docker/Dockerfile-component .
-    docker run -d -e POSTGRES_PASSWORD=123456 -e JAAQL_VAULT_PASSWORD=pa55word -e JAAQL_EMAIL_CREDENTIALS=eyJDVFAiOiAiVGhlIHdyb25nIHBhc3N3b3JkIn0= -e COMPONENT_EMAIL_PASSWORD=rawcomponentemailpassword jaaql-middleware-python-ct
+    docker run -e POSTGRES_PASSWORD=123456 -e JAAQL_VAULT_PASSWORD=pa55word -e JAAQL_EMAIL_CREDENTIALS=eyJDVFAiOiAiVGhlIHdyb25nIHBhc3N3b3JkIn0= -e COMPONENT_EMAIL_PASSWORD=rawcomponentemailpassword jaaql-middleware-python-ct
+
+Add the environment variable
+
+    -e FAST_JAAQL_COMPONENT_TESTS=True
+
+If you wish to speed up component tests
