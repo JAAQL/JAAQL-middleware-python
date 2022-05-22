@@ -29,6 +29,6 @@ Please run the following component tests before pushing a final build. In order 
 
 Add the environment variable
 
-    -e FAST_JAAQL_COMPONENT_TESTS=True
+    -e FAST_TESTS=True
 
 If you wish to speed up component tests

@@ -12,7 +12,7 @@ KEY_INSTALL_KEY = "install_key"
 PATH_INSTALL = "/install"
 PATH_UNINSTALL = "/uninstall"
 
-ENVIRON__fast_jaaql_component_tests = "FAST_JAAQL_COMPONENT_TESTS"
+ENVIRON__fast_jaaql_component_tests = "FAST_TESTS"
 
 
 class InstallComponent(BaseComponent):
@@ -21,6 +21,8 @@ class InstallComponent(BaseComponent):
         if not bool(os.environ.get(ENVIRON__fast_jaaql_component_tests, False)):
             self.run_test_install()
             self.run_test_install_mfa()
+        else:
+            print("Skipping full install tests as fast tests activated")
         self.run_test_install_superjaaql()
 
     def get_uninstall_data(self, db_user_password: str, uninstall_key: str):

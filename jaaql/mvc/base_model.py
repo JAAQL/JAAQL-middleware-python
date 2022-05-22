@@ -68,6 +68,9 @@ ENVIRON__install_path = "INSTALL_PATH"
 WARNING__uninstall_allowed = "Due to installation parameters, the system can be uninstalled completely via the API. We do not recommend this being " \
                              "used in production systems (the super user db password is required to perform uninstallation so it is not 'open') "
 
+DIR__apps = "apps"
+SEPARATOR__dir = "/"
+
 
 class JAAQLPivotData:
     def __init__(self, level_data: list, matching: list = None):
@@ -247,6 +250,14 @@ class BaseJAAQLModel:
                 paging_dict[SQL__where] = existing + SEPARATOR__space + SQL__and + SEPARATOR__space + deleted_condition
 
         return paging_dict, parameters
+
+    def get_default_app_url(self):
+        return self.url + SEPARATOR__dir + DIR__apps
+
+    def replace_default_app_url(self, url_with_default: str):
+        if url_with_default is None:
+            return None
+        return url_with_default.replace("{{DEFAULT}}", self.get_default_app_url())
 
     def execute_paging_query(self, jaaql_connection: DBInterface, full_query: str, count_query: str, parameters: dict,
                              where_query: str, where_parameters: dict, decrypt_columns: list = None,

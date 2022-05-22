@@ -403,7 +403,7 @@ DOCUMENTATION__applications = SwaggerDocumentation(
                     example=["Browses books in the library", "Helps book meetings"]
                 ),
                 SwaggerArgumentResponse(
-                    name="new_url",
+                    name=KEY__application_new_url,
                     condition="Only updated if supplied",
                     description="New application url",
                     arg_type=str,
