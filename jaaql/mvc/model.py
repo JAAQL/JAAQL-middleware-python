@@ -1,6 +1,6 @@
 from jaaql.db.db_interface import DBInterface, RET__rows
 from jaaql.mvc.base_model import BaseJAAQLModel, CONFIG_KEY__security, CONFIG_KEY_SECURITY__mfa_label, \
-    CONFIG_KEY_SECURITY__mfa_issuer, VAULT_KEY__jwt_obj_crypt_key, VAULT_KEY__jwt_crypt_key
+    CONFIG_KEY_SECURITY__mfa_issuer, VAULT_KEY__jwt_obj_crypt_key, VAULT_KEY__jwt_crypt_key, DIR__apps, SEPARATOR__dir
 from jaaql.exceptions.http_status_exception import HttpStatusException, HTTPStatus, ERR__connection_expired, \
     HTTP_STATUS_CONNECTION_EXPIRED, ERR__already_installed, ERR__passwords_do_not_match, ERR__cannot_override_db, \
     ERR__already_signed_up
@@ -19,7 +19,6 @@ import os
 import json
 import pyotp
 import qrcode
-import qrcode.image.svg
 from base64 import b64encode as b64e, b32encode as b32e
 from io import BytesIO
 from datetime import datetime, timedelta
@@ -52,6 +51,7 @@ ERR__unexpected_parameters = "Signup data not expected"
 ERR__unexpected_validation_column = "Unexpected column in the input parameters '%s'"
 ERR__user_does_not_exist = "The user does not exist, cannot resend the email"
 ERR__data_validation_table_no_primary = "Data validation table has no primary key"
+ERR__uninstallation_not_allowed = "Uninstallation not allowed"
 
 SQL__err_duplicate_user = "duplicate key value violates unique constraint \"jaaql__user_unq_email\""
 
@@ -108,8 +108,6 @@ DATABASE__jaaql_internal_name = "jaaql db"
 
 URI__otp_auth = "otpauth://totp/%s?secret=%s"
 URI__otp_issuer_clause = "&issuer=%s"
-HTML__base64_png = "data:image/png;base64,"
-FORMAT__png = "png"
 
 JWT__username = "username"
 JWT__fully_authenticated = "fully_authenticated"
@@ -121,11 +119,8 @@ JWT__invite_lookup = "invite_lookup"
 JWT__invite_template = "invite_template"
 
 PG__default_connection_string = "postgresql://postgres:%s@localhost:5432/jaaql"
-PG_ENV__password = "POSTGRES_PASSWORD"
 
 DIR__scripts = "scripts"
-DIR__apps = "apps"
-SEPARATOR__dir = "/"
 DIR__www = "www"
 DIR__manager = "manager"
 DIR__playground = "playground"
@@ -338,11 +333,41 @@ class JAAQLModel(BaseJAAQLModel):
             response.response_code = HTTPStatus.UNPROCESSABLE_ENTITY
             return ERR__not_yet_installed
 
+    def uninstall(self, db_super_user_password: str, uninstall_key: str):
+        if not self.vault.has_obj(VAULT_KEY__allow_jaaql_uninstall):
+            raise HttpStatusException(ERR__uninstallation_not_allowed)
+
+        if self.jaaql_lookup_connection is None:
+            raise HttpStatusException(ERR__not_yet_installed)
+
+        if self.uninstall_key != uninstall_key:
+            raise HttpStatusException(ERR__incorrect_install_key, HTTPStatus.UNAUTHORIZED)
+
+        jaaql_uri = self.vault.get_obj(VAULT_KEY__jaaql_lookup_connection)
+        address, port, db, _, _ = DBInterface.fracture_uri(jaaql_uri)
+        super_user_connection = create_interface(self.config, address, port, DB__postgres, USERNAME__postgres, db_super_user_password)
+
+        self.jaaql_lookup_connection.close()
+
+        execute_supplied_statement(super_user_connection, QUERY__uninstall_jaaql_0)
+        execute_supplied_statement(super_user_connection, QUERY__uninstall_jaaql_1)
+        execute_supplied_statement(super_user_connection, QUERY__uninstall_jaaql_2)
+        execute_supplied_statement(super_user_connection, QUERY__uninstall_jaaql_3)
+
+        self.vault.purge_object(VAULT_KEY__allow_jaaql_uninstall)
+        self.vault.purge_object(VAULT_KEY__jaaql_lookup_connection)
+
+        print("Rebooting to allow JAAQL config to be shared among workers")
+        threading.Thread(target=self.exit_jaaql).start()
+
     def install(self, db_connection_string: str, superjaaql_password: str, password: str, install_key: str,
-                use_mfa: bool, ip_address: str, user_agent: str, response: JAAQLResponse):
+                use_mfa: bool, allow_uninstall: bool, ip_address: str, user_agent: str, response: JAAQLResponse):
         if not use_mfa and self.force_mfa:
             raise HttpStatusException(ERR__mfa_must_be_enabled)
         if self.jaaql_lookup_connection is None:
+            if allow_uninstall:
+                self.vault.insert_obj(VAULT_KEY__allow_jaaql_uninstall, True)
+
             if install_key != self.install_key:
                 raise HttpStatusException(ERR__incorrect_install_key, HTTPStatus.UNAUTHORIZED)
 
@@ -526,9 +551,8 @@ class JAAQLModel(BaseJAAQLModel):
                                 ), user[KEY__id], ip_id, ua_id, iv, user[ATTR__password_hash], last_totp, username, user[KEY__is_public]
 
     def add_application(self, inputs: dict, jaaql_connection: DBInterface, ip_address: str, user_agent: str, response: JAAQLResponse):
-        default_url = self.url + SEPARATOR__dir + DIR__apps
         public_username = inputs.pop(KEY__public_username)
-        inputs[KEY__application_url] = inputs[KEY__application_url].replace("{{DEFAULT}}", default_url)
+        inputs[KEY__application_url] = self.replace_default_app_url(inputs[KEY__application_url])
         execute_supplied_statement(jaaql_connection, QUERY__application_ins, inputs)
         if public_username is not None:
             password = str(uuid.uuid4())
@@ -639,6 +663,7 @@ class JAAQLModel(BaseJAAQLModel):
             execute_supplied_statement(interface, QUERY__create_database % inputs[KEY__database_name])
 
     def update_application(self, inputs: dict, jaaql_connection: DBInterface):
+        inputs[KEY__application_new_url] = self.replace_default_app_url(inputs[KEY__application_new_url])
         execute_supplied_statement(jaaql_connection, QUERY__application_upd, inputs)
 
     def get_databases(self, inputs: dict, jaaql_connection: DBInterface):

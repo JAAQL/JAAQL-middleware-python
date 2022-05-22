@@ -8,12 +8,9 @@ from jaaql.db.db_utils import create_interface
 from jaaql.constants import VAULT_KEY__jaaql_lookup_connection
 import configparser
 import time
+from jaaql.utilities.utils_no_project_imports import time_delta_ms  # Do not delete, relied on by others
 
 PATH__migrations = "migrations"
-
-
-def time_delta_ms(start_time: datetime, end_time: datetime) -> int:
-    return int(round((end_time - start_time).total_seconds() * 1000))
 
 
 def get_jaaql_root() -> str:

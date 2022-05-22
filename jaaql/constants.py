@@ -7,6 +7,8 @@ KEY__configuration_name = "name"
 KEY__configuration_description = "configuration_description"
 KEY__exception = "exception"
 KEY__data_validation_view = "data_validation_view"
+KEY__allow_uninstall = "allow_uninstall"
+KEY__uninstall_key = "uninstall_key"
 KEY__install_key = "install_key"
 KEY__deletion_key = "deletion_key"
 KEY__superjaaql_password = "superjaaql_password"
@@ -32,6 +34,7 @@ KEY__app_relative_path = "app_relative_path"
 KEY__sender = "sender"
 KEY__search = "search"
 KEY__application_name = "name"
+KEY__db_super_user_password = "db_super_user_password"
 KEY__dataset = "dataset"
 KEY__dataset_name = "name"
 KEY__dataset_description = "dataset_description"
@@ -41,6 +44,7 @@ KEY__node_name = "name"
 KEY__authorization = "authorization"
 KEY__argument = "argument"
 KEY__is_node = "is_node"
+KEY__application_new_url = "new_url"
 KEY__connection = "connection"
 KEY__node = "node"
 KEY__application_url = "url"
@@ -127,6 +131,7 @@ EXAMPLE__jwt = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.e30.yXvILkvUUCBqAFlAv6wQ1Q-
 VAULT_KEY__db_crypt_key = "db_crypt_key"
 VAULT_KEY__jaaql_local_access_key = "jaaql_access_key"
 VAULT_KEY__jaaql_lookup_connection = "jaaql_lookup_connection"
+VAULT_KEY__allow_jaaql_uninstall = "Allow jaaql uninstall"
 
 ENVIRON__vault_key = "JAAQL_VAULT_PASSWORD"
 ENVIRON__email_credentials = "JAAQL_EMAIL_CREDENTIALS"
@@ -143,11 +148,17 @@ JWT_PURPOSE__connection = "connection"
 
 ERR__not_yet_installed = "JAAQL has not yet been installed!"
 
+PG_ENV__password = "POSTGRES_PASSWORD"
+
+HTML__base64_png = "data:image/png;base64,"
+FORMAT__png = "png"
+
 NODE__host_node = "host"
 DB__jaaql = "jaaql"
+DB__postgres = "postgres"
 
 PORT__ems = 6061
 
 ENDPOINT__reload_accounts = "/reload-accounts"
 
-VERSION = "2.15.0"
+VERSION = "2.16.0"

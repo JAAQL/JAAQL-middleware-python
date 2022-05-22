@@ -5,4 +5,7 @@ COPY jaaql/test/component-test-project $INSTALL_PATH
 COPY jaaql/test/component.py $INSTALL_PATH/component.py
 COPY jaaql/test/components $INSTALL_PATH/components
 
+RUN mv /JAAQL-middleware-python/docker/entrypoint.test.component.sh entrypoint.test.component.sh
+RUN dos2unix entrypoint.test.component.sh
+
 ENTRYPOINT ["sh", "entrypoint.test.component.sh"]

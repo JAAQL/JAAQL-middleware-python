@@ -37,6 +37,7 @@ RUN apt -y install nginx
 
 VOLUME /etc/nginx/sites-available/
 
+RUN apt-get -y install libzbar0
 RUN apt-get install dos2unix
 RUN apt -y install bzip2
 RUN apt -y install wget

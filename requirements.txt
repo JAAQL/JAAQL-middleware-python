@@ -13,3 +13,4 @@ gevent==21.8.0
 psycogreen==1.0.2
 Pillow==8.4.0
 requests==2.27.1
+pyzbar==0.1.9

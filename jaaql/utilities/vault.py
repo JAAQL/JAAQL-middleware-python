@@ -50,6 +50,11 @@ class Vault:
         self._persist()
         self._load()
 
+    def purge_object(self, key: str):
+        self._vault.pop(key)
+        self._persist()
+        self._load()
+
     def has_obj(self, key: str) -> bool:
         return key in self._vault
 

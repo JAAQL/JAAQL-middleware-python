@@ -293,7 +293,7 @@ ARG_RES__application_name = SwaggerArgumentResponse(
 )
 ARG_RES__application = rename_arg(ARG_RES__application_name, KEY__application)
 ARG_RES__application_description = SwaggerArgumentResponse(
-    name="description",
+    name=KEY__description,
     description="Application description",
     arg_type=str,
     example=["Browses books in the library", "Helps book meetings"],

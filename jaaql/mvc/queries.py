@@ -109,3 +109,8 @@ WHERE pg_has_role(jaaql__fetch_alias_from_id(:user_id), node_role, 'MEMBER') AND
     WHERE pg_has_role(jaaql__fetch_alias_from_id(:user_id), node_role, 'MEMBER') AND application = :application AND configuration = :configuration
 );
 """
+
+QUERY__uninstall_jaaql_0 = "SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE pg_stat_activity.datname = 'jaaql' AND pid <> pg_backend_pid();"
+QUERY__uninstall_jaaql_1 = "drop database if exists jaaql"
+QUERY__uninstall_jaaql_2 = "drop role if exists jaaql"
+QUERY__uninstall_jaaql_3 = "create database jaaql"

@@ -47,6 +47,10 @@ class JAAQLController(BaseJAAQLController):
         def install(http_inputs: dict, ip_address: str, user_agent: str, response: JAAQLResponse):
             return self.model.install(**http_inputs, ip_address=ip_address, user_agent=user_agent, response=response)
 
+        @self.cors_route('/internal/uninstall', DOCUMENTATION__uninstall)
+        def uninstall(http_inputs: dict):
+            self.model.uninstall(**http_inputs)
+
         @self.cors_route('/internal/is_installed', DOCUMENTATION__is_installed)
         def is_installed(response: JAAQLResponse):
             return self.model.is_installed(response)
