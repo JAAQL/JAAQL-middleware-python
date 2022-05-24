@@ -1,7 +1,6 @@
 import os
 
 from .base_component import *
-from jaaql.constants import *
 from base64 import b64decode as b64d
 from pyzbar.pyzbar import decode, ZBarSymbol
 import pyotp

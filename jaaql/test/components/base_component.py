@@ -2,6 +2,7 @@ import unittest
 import inspect
 from http import HTTPStatus
 from .component_utils import *
+from jaaql.constants import *
 
 BASE_INTERNAL_URL = BASE_URL + "/internal"
 
@@ -12,6 +13,11 @@ HEADER_AUTH = "Authentication-Token"
 
 
 class BaseComponent(unittest.TestCase):
+
+    def get_jaaql_auth_header_dict(self, username: str = "jaaql", password: str = PASSWORD_JAAQL, run_test: bool = True):
+        return {
+            HEADER_AUTH: self.get_jaaql_auth_header(username, password, run_test)
+        }
 
     def get_jaaql_auth_header(self, username: str = "jaaql", password: str = PASSWORD_JAAQL, run_test: bool = True):
         res = requests.post(BASE_URL + "/oauth/token", json={

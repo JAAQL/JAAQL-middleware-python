@@ -398,7 +398,7 @@ create table jaaql__email_account (
     host varchar(255) not null,
     port integer not null,
     username varchar(255) not null,
-    encrypted_password text not null,
+    encrypted_password text,
     deleted timestamptz default null
 );
 CREATE UNIQUE INDEX jaaql__email_account_unq

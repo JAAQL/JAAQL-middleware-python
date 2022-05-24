@@ -1,6 +1,5 @@
 from .base_component import *
 import requests
-from jaaql.constants import *
 
 
 class ApplicationComponent(BaseComponent):

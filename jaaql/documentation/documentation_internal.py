@@ -286,18 +286,20 @@ ARG_RES__database_base = [
 
 ARG_RES__database_create = SwaggerArgumentResponse(
     name=KEY__create,
-    description="Whether or not to create the database on the node",
+    description="Whether or not to create the database on the node. Defaults to false",
     arg_type=bool,
     example=[True],
-    required=True
+    required=False,
+    condition="If the user specifies to create the database"
 )
 
 ARG_RES__database_drop = SwaggerArgumentResponse(
     name=KEY__drop,
-    description="Whether or not to drop the database on the node",
+    description="Whether or not to drop the database on the node. Defaults to false",
     arg_type=bool,
     example=[True],
-    required=True
+    required=False,
+    condition="If the user specifies to drop the database"
 )
 
 DOCUMENTATION__databases = SwaggerDocumentation(
@@ -306,7 +308,7 @@ DOCUMENTATION__databases = SwaggerDocumentation(
         SwaggerMethod(
             name="Add Database",
             description="Add a new database",
-            arguments=ARG_RES__database_base + [ARG_RES__database_create],
+            body=ARG_RES__database_base + [ARG_RES__database_create],
             method=REST__POST
         ),
         SwaggerMethod(
