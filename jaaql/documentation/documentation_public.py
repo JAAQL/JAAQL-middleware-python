@@ -1,6 +1,6 @@
 from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
-from jaaql.documentation.documentation_shared import RES__totp_mfa_nullable, ARG_RES__jaaql_password, JWT__invite,\
+from jaaql.documentation.documentation_shared import RES__totp_mfa_nullable, ARG_RES__jaaql_password, UUID__invite,\
     gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__mfa_key, RES__oauth_token, RES__deletion_key,\
     ARG_RES__deletion_key, set_nullable, ARG_RES__application_body, ARG_RES__email, rename_arg,\
     ARG_RES__reference_dataset, ARG_RES__dataset_description, combine_response, ARG_RES__username,\
@@ -21,10 +21,14 @@ ARG_RES__configuration = SwaggerArgumentResponse(
 
 ARG_RES__invite_key = SwaggerArgumentResponse(
     name=KEY__invite_key,
-    description="A JWT that functions as an invite for a specific email address",
+    description="A sign up key that functions as an invite for a specific email address",
     arg_type=str,
-    example=[JWT__invite],
+    example=[UUID__invite],
 )
+
+ARG_RES__invite_poll_key = rename_arg(ARG_RES__invite_key,
+                                      new_description="A key returned after signing up that can be used to poll to see if the user has verified their"
+                                      " email address. Can be used to sign up to the server once the signup process has began with the other key")
 
 DOCUMENTATION__sign_up_request_invite = SwaggerDocumentation(
     tags="Signup",
@@ -39,8 +43,39 @@ DOCUMENTATION__sign_up_request_invite = SwaggerDocumentation(
             ARG_RES__parameters,
             ARG_RES__email_template,
             ARG_RES__already_signed_up_email_template,
-            ARG_RES__application
-        ]
+            set_nullable(ARG_RES__application, "Does email template have a path")
+        ],
+        response=SwaggerResponse(
+            description="Sign up response",
+            response=ARG_RES__invite_poll_key
+        )
+    )
+)
+
+DOCUMENTATION__sign_up_poll = SwaggerDocumentation(
+    tags="Signup",
+    # The security is in the invite key. User has not signed up yet so cannot get an oauth token
+    security=False,
+    methods=SwaggerMethod(
+        name="Request invite status",
+        description="Requesting status with the invite key sent to the email will allow the poll key to be used as an invite key",
+        method=REST__GET,
+        arguments=SwaggerArgumentResponse(
+            name=KEY__invite_or_poll_key,
+            description="Either an invite or invite poll key",
+            arg_type=str,
+            example=[UUID__invite]
+        ),
+        response=SwaggerResponse(
+            description="Invite status enumeration",
+            response=SwaggerArgumentResponse(
+                name=KEY__invite_key_status,
+                description="An enumeration of the statuses of an invite key. 0->No sign up, 1->Sign up process started, 2->Signing up again with "
+                "same email, 3->Sign up already finished",
+                arg_type=int,
+                example=[0]
+            )
+        )
     )
 )
 
@@ -51,14 +86,14 @@ DOCUMENTATION__sign_up_with_invite = SwaggerDocumentation(
     methods=SwaggerMethod(
         name="Signup with invite",
         description="Signs up to JAAQL using either the key fetched either from internal methods or from the email. "
-        "Returns the signup parameters if supplied",
+        "Returns the signup parameters if supplied upon signup",
         method=REST__POST,
         body=[
             ARG_RES__invite_key,
-            ARG_RES__jaaql_password,
+            ARG_RES__jaaql_password
         ],
         response=[
-            combine_response(RES__totp_mfa_nullable, [ARG_RES__parameters, ARG_RES__email]),
+            combine_response(RES__totp_mfa_nullable, [ARG_RES__email]),
             SwaggerFlatResponse(
                 description=ERR__already_signed_up,
                 code=HTTPStatus.CONFLICT,
@@ -74,9 +109,12 @@ DOCUMENTATION__sign_up_finish = SwaggerDocumentation(
         name="Finish signup",
         description="Finishes the signup and deletes the data. At this point, signups cannot be re-sent to the user",
         method=REST__POST,
-        arguments=ARG_RES__invite_key,
+        body=ARG_RES__invite_key,
         response=[
-            SwaggerFlatResponse(),
+            SwaggerResponse(
+                description="Finish signup response",
+                response=ARG_RES__parameters
+            ),
             SwaggerFlatResponse(
                 description=ERR__already_signed_up,
                 code=HTTPStatus.CONFLICT,

@@ -113,8 +113,7 @@ class JAAQLController(BaseJAAQLController):
             else:  # self.is_delete()
                 return self.model.delete_application_dataset(http_inputs)
 
-        @self.cors_route('/internal/applications/datasets/confirm-deletion',
-                         DOCUMENTATION__application_datasets_confirm_deletion)
+        @self.cors_route('/internal/applications/datasets/confirm-deletion', DOCUMENTATION__application_datasets_confirm_deletion)
         def confirm_application_dataset_deletion(http_inputs: dict, jaaql_connection: DBInterface):
             self.model.delete_application_dataset_confirm(http_inputs, jaaql_connection)
 
@@ -127,13 +126,11 @@ class JAAQLController(BaseJAAQLController):
             else:  # self.is_delete()
                 return self.model.delete_application_configuration(http_inputs)
 
-        @self.cors_route('/internal/applications/configurations/confirm-deletion',
-                         DOCUMENTATION__application_configurations_confirm_deletion)
+        @self.cors_route('/internal/applications/configurations/confirm-deletion', DOCUMENTATION__application_configurations_confirm_deletion)
         def confirm_application_configuration_deletion(http_inputs: dict, jaaql_connection: DBInterface):
             self.model.delete_application_configuration_confirm(http_inputs, jaaql_connection)
 
-        @self.cors_route('/internal/applications/configurations/assigned-databases',
-                         DOCUMENTATION__assigned_databases)
+        @self.cors_route('/internal/applications/configurations/assigned-databases', DOCUMENTATION__assigned_databases)
         def assigned_databases(sql_inputs: dict, jaaql_connection: DBInterface):
             if self.is_post():
                 self.model.add_database_assignment(sql_inputs, jaaql_connection)
@@ -156,13 +153,11 @@ class JAAQLController(BaseJAAQLController):
             else:  # self.is_delete()
                 return self.model.delete_node_authorization(http_inputs)
 
-        @self.cors_route('/internal/nodes/credentials/confirm-deletion',
-                         DOCUMENTATION__authorization_node_confirm_deletion)
+        @self.cors_route('/internal/nodes/credentials/confirm-deletion', DOCUMENTATION__authorization_node_confirm_deletion)
         def confirm_node_authorization_deletion(http_inputs: dict, jaaql_connection: DBInterface):
             self.model.delete_node_authorization_confirm(http_inputs, jaaql_connection)
 
-        @self.cors_route('/internal/applications/configurations/authorizations',
-                         DOCUMENTATION__authorization_configuration)
+        @self.cors_route('/internal/applications/configurations/authorizations', DOCUMENTATION__authorization_configuration)
         def node_authorization(http_inputs: dict, jaaql_connection: DBInterface):
             if self.is_post():
                 self.model.add_configuration_authorization(http_inputs, jaaql_connection)
@@ -171,8 +166,7 @@ class JAAQLController(BaseJAAQLController):
             else:  # self.is_delete()
                 return self.model.delete_configuration_authorization(http_inputs)
 
-        @self.cors_route('/internal/authorizations/configurations/confirm-deletion',
-                         DOCUMENTATION__authorization_configuration_confirm_deletion)
+        @self.cors_route('/internal/authorizations/configurations/confirm-deletion', DOCUMENTATION__authorization_configuration_confirm_deletion)
         def confirm_node_authorization_deletion(http_inputs: dict, jaaql_connection: DBInterface):
             self.model.delete_configuration_authorization_confirm(http_inputs, jaaql_connection)
 
@@ -206,8 +200,7 @@ class JAAQLController(BaseJAAQLController):
             elif self.is_delete():
                 return self.model.delete_user_default_role(http_inputs)
 
-        @self.cors_route('/internal/users/default-roles/confirm-deletion',
-                         DOCUMENTATION__user_default_roles_confirm_deletion)
+        @self.cors_route('/internal/users/default-roles/confirm-deletion', DOCUMENTATION__user_default_roles_confirm_deletion)
         def confirm_default_role_deletion(http_inputs: dict, jaaql_connection: DBInterface):
             self.model.delete_user_default_role_confirm(http_inputs, jaaql_connection)
 
@@ -249,7 +242,11 @@ class JAAQLController(BaseJAAQLController):
 
         @self.cors_route('/account/signup/request', DOCUMENTATION__sign_up_request_invite)
         def signup_request(http_inputs: dict):
-            self.model.request_signup(http_inputs)
+            return self.model.request_signup(http_inputs)
+
+        @self.cors_route('/account/signup/status', DOCUMENTATION__sign_up_poll)
+        def signup_request(http_inputs: dict):
+            return self.model.signup_status(http_inputs)
 
         @self.cors_route('/account/signup/activate', DOCUMENTATION__sign_up_with_invite)
         def signup_activate(http_inputs: dict, ip_address: str, user_agent: str, response: JAAQLResponse):
@@ -257,7 +254,7 @@ class JAAQLController(BaseJAAQLController):
 
         @self.cors_route('/account/signup/finish', DOCUMENTATION__sign_up_finish)
         def signup_finish(http_inputs: dict):
-            self.model.finish_signup(http_inputs[KEY__invite_key])
+            return self.model.finish_signup(http_inputs[KEY__invite_key])
 
         @self.cors_route('/account/logs', DOCUMENTATION__my_logs)
         def fetch_logs(http_inputs: dict, jaaql_connection: DBInterface, is_public: bool):

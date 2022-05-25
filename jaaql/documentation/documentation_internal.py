@@ -1,7 +1,7 @@
 from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
 from jaaql.documentation.documentation_shared import ARG_RES__jaaql_password, ARG_RES__email, \
-    JWT__invite, gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__deletion_key, RES__deletion_key, \
+    UUID__invite, gen_arg_res_sort_pageable, gen_filtered_records, ARG_RES__deletion_key, RES__deletion_key, \
     set_nullable, rename_arg, ARG_RES__database_name, EXAMPLE__db, ARG_RES__application_name, \
     EXAMPLE__application_name, EXAMPLE__application_url, ARG_RES__application_body, EXAMPLE__application_dataset, \
     ARG_RES__dataset_name, ARG_RES__dataset_description, ARG_RES__reference_dataset, \
@@ -787,8 +787,8 @@ DOCUMENTATION__users = SwaggerDocumentation(
             body=[ARG_RES__email],
             response=[
                 SwaggerFlatResponse(
-                    description="A JWT that can be used along with the email to sign up to the platform",
-                    body=JWT__invite
+                    description="A token that can be used to sign up a specific user to the platform",
+                    body=UUID__invite
                 ),
                 SwaggerFlatResponse(
                     description=ERR__already_signed_up,
@@ -1041,7 +1041,7 @@ ARG_RES__email_template_body = [
         "validation table is null. If null and data validation table is present, data will be selected from the data validation table. Data is "
         "selected using the primary key of the data validation table from which one and only one row must be returned from the view",
         arg_type=str,
-        example=["my_data_validation_table"],
+        example=["my_data_validation_view"],
         required=False,
         condition="Is a view being used to replace data"
     ),
