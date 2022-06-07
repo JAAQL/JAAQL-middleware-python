@@ -30,6 +30,7 @@ import threading
 
 TOKEN__pre_auth_reduction_factor = 15
 
+ERR__not_signed_up = "Not signed up"
 ERR__recipient_not_allowed = "Recipient not allowed"
 ERR__cant_send_attachments = "Cannot send attachments to other people"
 ERR__template_not_signup = "One of the supplied templates is not suitable for signup"
@@ -52,6 +53,8 @@ ERR__unexpected_validation_column = "Unexpected column in the input parameters '
 ERR__user_does_not_exist = "The user does not exist, cannot resend the email"
 ERR__data_validation_table_no_primary = "Data validation table has no primary key"
 ERR__uninstallation_not_allowed = "Uninstallation not allowed"
+ERR__password_required = "Password required"
+ERR__cant_find_sign_up = "Cannot locate sign up with key. The key is either incorrect or has expired"
 
 SQL__err_duplicate_user = "duplicate key value violates unique constraint \"jaaql__user_unq_email\""
 
@@ -77,6 +80,9 @@ ATTR__ip_address = "ip_address"
 ATTR__ua_hash = "ua_hash"
 ATTR__ua = "ua"
 ATTR__alias = "alias"
+ATTR__data_lookup_json = "data_lookup_json"
+ATTR__activated = "activated"
+ATTR__closed = "closed"
 KEY__totp_iv = "totp_iv"
 KEY__user_id = "user_id"
 KEY__occurred = "occurred"
@@ -115,8 +121,6 @@ JWT__password = "password"
 JWT__created = "created"
 JWT__ua = "ua"
 JWT__ip = "ip"
-JWT__invite_lookup = "invite_lookup"
-JWT__invite_template = "invite_template"
 
 PG__default_connection_string = "postgresql://postgres:%s@localhost:5432/jaaql"
 
@@ -132,6 +136,11 @@ DB__wildcard = "*"
 MFA__null_issuer = "None"
 
 PRECEDENCE__super_user = 999
+
+SIGNUP__not_started = 0
+SIGNUP__started = 1
+SIGNUP__already_registered = 2
+SIGNUP__completed = 3
 
 
 class JAAQLModel(BaseJAAQLModel):
@@ -400,8 +409,8 @@ class JAAQLModel(BaseJAAQLModel):
             self.add_database({KEY__node: NODE__host_node, KEY__database_name: DB__jaaql}, self.jaaql_lookup_connection)
 
             user_id = self.create_user(self.jaaql_lookup_connection, USERNAME__jaaql, jaaql_password)
-            mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__jaaql, password, user_id, ip_address,
-                                    user_agent, use_mfa=use_mfa, response=response)
+            mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__jaaql, password, user_id, ip_address, user_agent, use_mfa=use_mfa,
+                                    response=response)
 
             self.add_configuration_authorization({
                 KEY__application: APPLICATION__manager,
@@ -546,8 +555,8 @@ class JAAQLModel(BaseJAAQLModel):
                                                     encryption_key=self.get_db_crypt_key())
 
         iv = user[KEY__totp_iv]
-        return create_interface(self.config, auth[KEY__address], auth[KEY__port], DB__jaaql,
-                                auth[KEY__username], auth[KEY__password]
+
+        return create_interface(self.config, auth[KEY__address], auth[KEY__port], DB__jaaql, auth[KEY__username], auth[KEY__password]
                                 ), user[KEY__id], ip_id, ua_id, iv, user[ATTR__password_hash], last_totp, username, user[KEY__is_public]
 
     def add_application(self, inputs: dict, jaaql_connection: DBInterface, ip_address: str, user_agent: str, response: JAAQLResponse):
@@ -801,13 +810,21 @@ class JAAQLModel(BaseJAAQLModel):
 
         if user_existed:
             raise HttpStatusException(ERR__already_signed_up, response_code=HTTPStatus.CONFLICT)
-        inputs[KEY__email] = crypt_utils.encrypt(self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key), inputs[KEY__email])
-        return self.user_invite(inputs)
 
-    def user_invite(self, inputs: dict):
-        ms_two_weeks = 1000 * 60 * 60 * 24 * 14
-        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), inputs, JWT_PURPOSE__invite,
-                                      ms_two_weeks)
+        return self.user_invite(jaaql_connection, inputs[KEY__email])[KEY__invite_key]
+
+    def user_invite(self, jaaql_connection: DBInterface, email: str, email_template: str = None, template_lookup: dict = None):
+        if template_lookup is not None:
+            template_lookup = json.dumps(template_lookup)
+
+        the_user = execute_supplied_statement_singleton(jaaql_connection, QUERY__user_id_from_username, {KEY__username: email},
+                                                        as_objects=True)[KEY__id]
+        params = {
+            ATTR__data_lookup_json: template_lookup,
+            ATTR__the_user: the_user,
+            KEY__email_template: email_template
+        }
+        return execute_supplied_statement_singleton(jaaql_connection, QUERY__sign_up_insert, params, as_objects=True)
 
     def enable_user_mfa(self, user_id: str):
         totp_iv, totp_uri, totp_b64_qr = self.gen_mfa()
@@ -909,45 +926,37 @@ class JAAQLModel(BaseJAAQLModel):
 
         return totp_iv, totp_uri, totp_b64_qr
 
-    def sign_up_user_with_token(self, token: str, password: str, ip_address: str, user_agent: str,
-                                response: JAAQLResponse):
-        token = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), token, JWT_PURPOSE__invite)
-        obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
+    def sign_up_user_with_token(self, token: str, password: str = None, ip_address: str = None, user_agent: str = None,
+                                response: JAAQLResponse = None):
+        resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_fetch, parameters={KEY__invite_or_poll_key: token},
+                                                    as_objects=True, singleton_message=ERR__cant_find_sign_up)
 
-        username = crypt_utils.decrypt(obj_key, token[KEY__email])
-        inputs = {KEY__username: token[KEY__email]}
-        users = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_user_latest_password, inputs,
-                                           as_objects=True, decrypt_columns=[ATTR__password_hash, KEY__totp_iv],
-                                           encryption_key=self.get_db_crypt_key())
+        username = resp[KEY__email]
+        inputs = {KEY__username: username}
+        users = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_user_latest_password, inputs, as_objects=True,
+                                           decrypt_columns=[ATTR__password_hash, KEY__totp_iv], encryption_key=self.get_db_crypt_key())
         if len(users) != 0:
             raise HttpStatusException(ERR__already_signed_up, response_code=HTTPStatus.CONFLICT)
 
-        res = self.sign_up_user(self.jaaql_lookup_connection, username, password, None, ip_address, user_agent, response=response,
-                                allow_password_error=True)
+        res = self.sign_up_user(self.jaaql_lookup_connection, username, password, None, ip_address, user_agent, response=response)
         res[KEY__email] = username
-        if token.get(JWT__invite_template):
-            if token.get(JWT__invite_lookup):
-                template_id_decrypt = crypt_utils.decrypt(obj_key, token[JWT__invite_template])
-                lookup_decrypt = crypt_utils.decrypt(obj_key, token[JWT__invite_lookup])
-                template_table = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template,
-                                                                      {KEY__id: template_id_decrypt},
-                                                                      as_objects=True)[KEY__data_validation_table]
-                res[KEY__parameters] = self.select_from_data_validation_table(template_table, json.loads(lookup_decrypt))
 
         return res
 
     def finish_signup(self, token: str):
-        obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
-        token = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), token, JWT_PURPOSE__invite)
+        resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_fetch, parameters={KEY__invite_or_poll_key: token},
+                                                    as_objects=True, singleton_message=ERR__cant_find_sign_up)
 
-        if token.get(JWT__invite_template):
-            if token.get(JWT__invite_lookup):
-                template_id_decrypt = crypt_utils.decrypt(obj_key, token[JWT__invite_template])
-                lookup_decrypt = crypt_utils.decrypt(obj_key, token[JWT__invite_lookup])
-                template_table = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template,
-                                                                      {KEY__id: template_id_decrypt},
-                                                                      as_objects=True)[KEY__data_validation_table]
-                self.delete_from_data_validation_table(template_table, json.loads(lookup_decrypt))
+        res = {}
+        if resp[KEY__email_template] and resp[ATTR__data_lookup_json]:
+            template_table = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template,
+                                                                  {KEY__id: resp[KEY__email_template]}, as_objects=True)[KEY__data_validation_table]
+            res[KEY__parameters] = self.select_from_data_validation_table(template_table, json.loads(resp[ATTR__data_lookup_json]))
+            self.delete_from_data_validation_table(template_table, json.loads(resp[ATTR__data_lookup_json]))
+
+        execute_supplied_statement(self.jaaql_lookup_connection, QUERY__sign_up_close, {KEY__invite_key: resp[KEY__invite_key]})
+
+        return res
 
     def sign_up_user(self, jaaql_connection: DBInterface, username: str, password: str, user_id: str = None,
                      ip_address: str = None, user_agent: str = None, use_mfa: bool = False,
@@ -1024,8 +1033,7 @@ class JAAQLModel(BaseJAAQLModel):
         val_table_esc = '"%s"' % val_table
         pkeys_where = " AND ".join(['"' + col + '" = :' + col for col in pkey_vals.keys()])
         sel_query = "SELECT * FROM " + val_table_esc + " WHERE " + pkeys_where
-        sanitized_params = execute_supplied_statement_singleton(self.jaaql_lookup_connection, sel_query, pkey_vals,
-                                                                as_objects=True)
+        sanitized_params = execute_supplied_statement_singleton(self.jaaql_lookup_connection, sel_query, pkey_vals, as_objects=True)
 
         return {key: value for key, value in sanitized_params.items() if key not in pkey_vals}
 
@@ -1035,8 +1043,7 @@ class JAAQLModel(BaseJAAQLModel):
         paging_query, where_query, where_parameters = self.construct_formatted_paging_queries(paging_dict, parameters)
         full_query = QUERY__email_templates_sel + paging_query
 
-        return self.execute_paging_query(jaaql_connection, full_query, QUERY__email_templates_count, parameters, where_query,
-                                         where_parameters)
+        return self.execute_paging_query(jaaql_connection, full_query, QUERY__email_templates_count, parameters, where_query, where_parameters)
 
     def fetch_email_accounts(self, inputs: dict, jaaql_connection: DBInterface):
         paging_dict, parameters = self.setup_paging_parameters(inputs)
@@ -1118,16 +1125,46 @@ class JAAQLModel(BaseJAAQLModel):
         select_table = template[KEY__data_validation_view] if template[KEY__data_validation_view] is not None else val_table
         return self.select_from_data_validation_table(select_table, pkey_vals), pkey_vals
 
+    def signup_status(self, inputs: dict):
+        resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_poll, parameters=inputs, as_objects=True,
+                                                    singleton_message=ERR__cant_find_sign_up)
+
+        existed = False
+        try:
+            _ = self.fetch_user_from_username(resp[KEY__email], self.jaaql_lookup_connection)[KEY__id]
+            existed = True
+        except HttpStatusException as sub_hs:
+            if sub_hs.response_code != HTTPStatus.UNAUTHORIZED:
+                raise sub_hs  # Unrelated exception, raise it
+
+        is_invite_key = resp[KEY__invite_key] == inputs[KEY__invite_or_poll_key]
+
+        status = SIGNUP__not_started
+
+        if resp[ATTR__closed]:
+            status = SIGNUP__completed
+        elif resp[ATTR__activated]:
+            status = SIGNUP__already_registered if existed else SIGNUP__started
+        elif is_invite_key and existed:
+            status = SIGNUP__already_registered
+
+        if is_invite_key:
+            execute_supplied_statement(self.jaaql_lookup_connection, QUERY__sign_up_upd, {KEY__invite_key: resp[KEY__invite_key]})
+            if status == SIGNUP__not_started:
+                status = SIGNUP__started
+
+        return {KEY__invite_key_status: status}
+
     def request_signup(self, inputs: dict):
         if self.invite_only:
             raise HttpStatusException(ERR__cannot_self_sign_up, HTTPStatus.UNAUTHORIZED)
 
-        app_url = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
-                                                       QUERY__fetch_url_from_application_name,
-                                                       {KEY__application: inputs[KEY__application]},
-                                                       as_objects=True)[KEY__application_url]
-
-        obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
+        app_url = None
+        if inputs[KEY__application]:
+            app_url = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
+                                                           QUERY__fetch_url_from_application_name,
+                                                           {KEY__application: inputs[KEY__application]},
+                                                           as_objects=True)[KEY__application_url]
 
         user_existed = False
         user_id = None
@@ -1166,24 +1203,22 @@ class JAAQLModel(BaseJAAQLModel):
         if params is None and template[KEY__data_validation_table] is not None:
             params = {}
 
-        invite_inputs = {KEY__email: inputs[KEY__email]}
         sanitized_params = {}
+        pkey_vals = None
 
         if template[KEY__data_validation_table] is not None:
             if EMAIL_PARAM__signup_key in inputs:
                 raise HttpStatusException(ERR__unexpected_validation_column % EMAIL_PARAM__signup_key)
 
             sanitized_params, pkey_vals = self.fetch_sanitized_email_params(template, params)
-            invite_inputs[JWT__invite_lookup] = crypt_utils.encrypt(obj_key, json.dumps(pkey_vals))
 
         template = template_already_exists if user_existed else template
-        invite_inputs[JWT__invite_template] = crypt_utils.encrypt(obj_key, template[KEY__id])
-        invite_inputs[KEY__email] = crypt_utils.encrypt(obj_key, inputs[KEY__email])
-        invite_key = self.user_invite(invite_inputs)
-        optional_params = {EMAIL_PARAM__signup_key: invite_key}
+        invite_keys = self.user_invite(self.jaaql_lookup_connection, inputs[KEY__email], template[KEY__id], pkey_vals)
+        optional_params = {EMAIL_PARAM__signup_key: invite_keys[KEY__invite_key]}
 
-        self.email_manager.construct_and_send_email(self.url, app_url, template, user_id, inputs[KEY__email],
-                                                    None, sanitized_params, optional_params)
+        self.email_manager.construct_and_send_email(self.url, app_url, template, user_id, inputs[KEY__email], None, sanitized_params, optional_params)
+
+        return {KEY__invite_key: invite_keys[KEY__invite_poll_key]}
 
     def create_user(self, jaaql_connection: DBInterface, username: str, db_password: str = None, mobile: str = None,
                     attach_as: str = None, precedence: int = None, roles: str = "", public_application: str = None):
@@ -1259,6 +1294,7 @@ class JAAQLModel(BaseJAAQLModel):
             ATTR__the_user: user_id,
             ATTR__password_hash: new_password
         }
+
         execute_supplied_statement(jaaql_connection, QUERY__user_password_ins, parameters,
                                    encrypt_parameters=[ATTR__password_hash],
                                    encryption_key=self.get_db_crypt_key(),
@@ -1269,8 +1305,7 @@ class JAAQLModel(BaseJAAQLModel):
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), oauth_token, JWT_PURPOSE__oauth)
         jwt_obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
 
-        if not crypt_utils.verify_password_hash(password_hash, inputs[KEY__password],
-                                                salt=user_id.encode(crypt_utils.ENCODING__ascii)):
+        if not crypt_utils.verify_password_hash(password_hash, inputs[KEY__password], salt=user_id.encode(crypt_utils.ENCODING__ascii)):
             raise HttpStatusException(ERR__password_incorrect, HTTPStatus.UNAUTHORIZED)
 
         self.verify_mfa(inputs[KEY__mfa_key], totp_iv, last_totp, user_id)
@@ -1285,15 +1320,12 @@ class JAAQLModel(BaseJAAQLModel):
 
         decoded[JWT__password] = crypt_utils.encrypt(jwt_obj_key, crypt_utils.hash_password(new_password))
 
-        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), decoded, JWT_PURPOSE__oauth,
-                                      expiry_ms=self.token_expiry_ms)
+        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), decoded, JWT_PURPOSE__oauth, expiry_ms=self.token_expiry_ms)
 
     @staticmethod
     def build_db_addr(row: dict):
         db_name = "" if row[KEY__database] is DB__wildcard else ("/" + row[KEY__database])
-        return row[KEY__username] + ":" + row[KEY__password] + "@" + row[KEY__address] + ":" + str(row[
-                                                                                                       KEY__port
-                                                                                                   ]) + db_name
+        return row[KEY__username] + ":" + row[KEY__password] + "@" + row[KEY__address] + ":" + str(row[KEY__port]) + db_name
 
     def config_assigned_databases(self, inputs: dict, jaaql_connection: DBInterface, user_id: str):
         inputs[KEY__user_id] = user_id

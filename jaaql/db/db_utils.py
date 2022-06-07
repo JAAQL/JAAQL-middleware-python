@@ -118,7 +118,7 @@ def execute_supplied_statement(db_interface, query: str, parameters: dict = None
     return data
 
 
-def force_singleton(data, as_objects: bool = False, singleton_code: int = None):
+def force_singleton(data, as_objects: bool = False, singleton_code: int = None, singleton_message: str = None):
     was_no_singleton = False
     if as_objects:
         if len(data) != 1:
@@ -130,7 +130,10 @@ def force_singleton(data, as_objects: bool = False, singleton_code: int = None):
             data["rows"] = data["rows"][0]
 
     if was_no_singleton:
-        raise HttpStatusException(ERR__expected_single_row % len(data), singleton_code)
+        err = ERR__expected_single_row % len(data)
+        if singleton_message is not None:
+            err = singleton_message
+        raise HttpStatusException(err, singleton_code)
 
     return data[0] if as_objects else data
 
@@ -138,11 +141,12 @@ def force_singleton(data, as_objects: bool = False, singleton_code: int = None):
 def execute_supplied_statement_singleton(db_interface, query, parameters: dict = None,
                                          as_objects: bool = False, encrypt_parameters: list = None,
                                          decrypt_columns: list = None, encryption_key: bytes = None,
-                                         encryption_salts: dict = None, singleton_code: int = None):
+                                         encryption_salts: dict = None, singleton_code: int = None,
+                                         singleton_message: str = None):
     data = execute_supplied_statement(db_interface, query, parameters, as_objects, encrypt_parameters,
                                       decrypt_columns, encryption_key, encryption_salts)
 
-    return force_singleton(data, as_objects, singleton_code)
+    return force_singleton(data, as_objects, singleton_code, singleton_message)
 
 
 def execute_supplied_statements(db_interface, queries: Union[str, list],

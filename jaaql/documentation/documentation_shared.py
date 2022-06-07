@@ -9,8 +9,7 @@ import copy
 
 OUTPUT = False
 
-JWT__invite = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFhcm9uQGphYXFsLmNvbSJ9.6HcT-BIJEozzy9j8mxMppFpThpMp" \
-              "u02crWWx1ZPh8Pw"
+UUID__invite = "137adf50-76a3-4314-b933-b94e6686489e"
 
 ENDPOINT__refresh = "/oauth/refresh"
 EXAMPLE__email = "aaron@jaaql.com"
@@ -56,9 +55,9 @@ ARG_RES__filtered_records = [
 ]
 
 
-def rename_arg(arg_res: SwaggerArgumentResponse, new_name: str, new_description: str = None, new_examples = None):
+def rename_arg(arg_res: SwaggerArgumentResponse, new_name: str = None, new_description: str = None, new_examples = None):
     return SwaggerArgumentResponse(
-        new_name,
+        arg_res.name if new_name is None else new_name,
         arg_res.description if new_description is None else new_description,
         arg_res.arg_type,
         arg_res.example if new_examples is None else new_examples,
@@ -222,8 +221,16 @@ def combine_response(res: SwaggerResponse, args: Union[SwaggerArgumentResponse, 
     return res
 
 
+DESCRIPTION__oauth = "A temporary JWT token that can be used to authenticate with the server"
+ARG_RES__oauth_token = SwaggerArgumentResponse(
+    name=KEY__oauth_token,
+    description=DESCRIPTION__oauth,
+    arg_type=str,
+    example=EXAMPLE__jwt
+)
+
 RES__oauth_token = SwaggerFlatResponse(
-    description="A temporary JWT token that can be used to authenticate with the server",
+    description=DESCRIPTION__oauth,
     body=EXAMPLE__jwt
 )
 

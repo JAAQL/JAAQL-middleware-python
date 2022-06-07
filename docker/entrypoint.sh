@@ -6,6 +6,7 @@ if [ -z "${JEQL_BRANCH}" ]; then
 else
   echo "Switching to JEQL version $JEQL_BRANCH"
   cd JEQL
+  git pull
   git checkout $JEQL_BRANCH
   cd ../
 fi

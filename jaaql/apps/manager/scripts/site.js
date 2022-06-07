@@ -5,7 +5,9 @@ let ID_CONF_APP = "configuration-table";
 let ID_PARAMETER_APP = "parameter-table";
 let ID_APPLICATION_LIST = "application-list";
 let ID_NODE_LIST = "node-list";
+let ID_EMAIL_ACCOUNT_LIST = "email-account-list";
 let ID_ADD_NODE = "add-node";
+let ID_ADD_EMAIL_ACCOUNT = "add-email-account";
 let ID_ADD_NODE_NAME = "add-node-name";
 let ID_ADD_NODE_ADDRESS = "add-node-address";
 let ID_ADD_NODE_PORT = "add-node-port";
@@ -26,8 +28,10 @@ let ID_ADD_PUBLIC_USERNAME = "add-application-public-username";
 let ID_TABLE_ASSIGNED_DATABASES = "assigned-databases";
 let ID_TABLE_AUTHS = "conf-auths";
 let ID_TABLE_DATABASES = "node-databases";
+let ID_TABLE_EMAIL_TEMPLATES = "email-templates";
 let ID_TABLE_NODE_AUTHS = "node-auths";
 let ID_ADD_NODE_DATABASE = "add-node-database";
+let ID_ADD_EMAIL_TEMPLATE = "add-email-template";
 let ID_ADD_NODE_DATABASE_NODE = "add-node-database-node";
 let ID_ADD_NODE_DATABASE_NAME = "add-node-database-name";
 let ID_ADD_NODE_DATABASE_CREATE = "add-node-database-create";
@@ -47,6 +51,22 @@ let ID_ADD_AUTH = "add-auth";
 let ID_ADD_AUTH_APP = "add-auth-app";
 let ID_ADD_AUTH_CONF = "add-auth-conf";
 let ID_ADD_AUTH_ROLE = "add-auth-role";
+let ID_ADD_EMAIL_TEMPLATE_NAME = "add-email-template-name";
+let ID_ADD_EMAIL_TEMPLATE_ACCOUNT = "add-email-template-account";
+let ID_ADD_EMAIL_TEMPLATE_DESCRIPTION = "add-email-template-description";
+let ID_ADD_EMAIL_TEMPLATE_APP_RELATIVE_PATH = "add-email-template-app-relative-path";
+let ID_ADD_EMAIL_TEMPLATE_SUBJECT = "add-email-template-subject";
+let ID_ADD_EMAIL_TEMPLATE_ALLOW_SIGNUP = "add-email-template-allow-signup";
+let ID_ADD_EMAIL_TEMPLATE_ALLOW_ALREADY_EXISTS = "add-email-template-allow-already-exists";
+let ID_ADD_EMAIL_TEMPLATE_DATA_VALIDATION_TABLE = "add-email-template-data-validation-table";
+let ID_ADD_EMAIL_TEMPLATE_DATA_VALIDATION_VIEW = "add-email-template-data-validation-view";
+let ID_ADD_EMAIL_TEMPLATE_RECIPIENT_VALIDATION_VIEW = "add-email-template-recipient-validation-view";
+let ID_ADD_EMAIL_ACCOUNT_NAME = "add-email-account-name";
+let ID_ADD_EMAIL_ACCOUNT_SEND_NAME = "add-email-account-send-name";
+let ID_ADD_EMAIL_ACCOUNT_HOST = "add-email-account-host";
+let ID_ADD_EMAIL_ACCOUNT_PORT = "add-email-account-port";
+let ID_ADD_EMAIL_ACCOUNT_USERNAME = "add-email-account-username";
+let ID_ADD_EMAIL_ACCOUNT_PASSWORD = "add-email-account-password";
 
 function renderAddAuth(modal, appName, config) {
     modal.buildHTML(`
@@ -353,6 +373,48 @@ function rowRenderer(rowElem, data, idx, superRowRenderer) {
     });
 }
 
+function renderAddEmailTemplate(modal, emailAccount) {
+    modal.buildHTML(`
+        <h1>Add a Email Template</h1><br>
+        <label>Name: <input id="${ID_ADD_EMAIL_TEMPLATE_NAME}"/></label><br>
+        <label>Account: <input id="${ID_ADD_EMAIL_TEMPLATE_ACCOUNT}" disabled/></label><br>
+        <label>Description: <input id="${ID_ADD_EMAIL_TEMPLATE_DESCRIPTION}"/></label><br>
+        <label>App Relative Path: <input id="${ID_ADD_EMAIL_TEMPLATE_APP_RELATIVE_PATH}"/></label><br>
+        <label>Subject: <input id="${ID_ADD_EMAIL_TEMPLATE_SUBJECT}"/></label><br>
+        <label>Allow Signup: <input id="${ID_ADD_EMAIL_TEMPLATE_ALLOW_SIGNUP}" type="checkbox"/></label><br>
+        <label>Allow Already Exists: <input id="${ID_ADD_EMAIL_TEMPLATE_ALLOW_ALREADY_EXISTS}" type="checkbox"/></label><br>
+        <label>Data Validation Table: <input id="${ID_ADD_EMAIL_TEMPLATE_DATA_VALIDATION_TABLE}"/></label><br>
+        <label>Data Validation View: <input id="${ID_ADD_EMAIL_TEMPLATE_DATA_VALIDATION_VIEW}"/></label><br>
+        <label>Recipient Validation View: <input id="${ID_ADD_EMAIL_TEMPLATE_RECIPIENT_VALIDATION_VIEW}"/></label><br>
+    `).buildChild("button").buildText("Add").buildEventListener("click", function() {
+        let submitObj = {};
+        submitObj[JEQL.KEY_NAME] = document.getElementById(ID_ADD_EMAIL_TEMPLATE_NAME).value;
+        submitObj[JEQL.KEY_DESCRIPTION] = document.getElementById(ID_ADD_EMAIL_TEMPLATE_DESCRIPTION).value;
+        submitObj[JEQL.KEY_APP_RELATIVE_PATH] = document.getElementById(ID_ADD_EMAIL_TEMPLATE_APP_RELATIVE_PATH).value;
+        submitObj[JEQL.KEY_SUBJECT] = document.getElementById(ID_ADD_EMAIL_TEMPLATE_SUBJECT).value;
+        submitObj[JEQL.KEY_ACCOUNT] = emailAccount;
+        submitObj[JEQL.KEY_ALLOW_SIGNUP] = document.getElementById(ID_ADD_EMAIL_TEMPLATE_ALLOW_SIGNUP).checked;
+        submitObj[JEQL.KEY_ALLOW_CONFIRM_SIGNUP_ATTEMPT] = document.getElementById(ID_ADD_EMAIL_TEMPLATE_ALLOW_ALREADY_EXISTS).checked;
+        if (document.getElementById(ID_ADD_EMAIL_TEMPLATE_DATA_VALIDATION_TABLE).value) {
+            submitObj[JEQL.KEY_DATA_VALIDATION_TABLE] = document.getElementById(ID_ADD_EMAIL_TEMPLATE_DATA_VALIDATION_TABLE).value;
+        }
+        if (document.getElementById(ID_ADD_EMAIL_TEMPLATE_DATA_VALIDATION_VIEW).value) {
+            submitObj[JEQL.KEY_DATA_VALIDATION_VIEW] = document.getElementById(ID_ADD_EMAIL_TEMPLATE_DATA_VALIDATION_VIEW).value;
+        }
+        if (document.getElementById(ID_ADD_EMAIL_TEMPLATE_RECIPIENT_VALIDATION_VIEW).value) {
+            submitObj[JEQL.KEY_RECIPIENT_VALIDATION_VIEW] = document.getElementById(ID_ADD_EMAIL_TEMPLATE_RECIPIENT_VALIDATION_VIEW).value;
+        }
+
+        JEQL.requests.makeJson(window.JEQL_CONFIG, JEQL.ACTION_INTERNAL_EMAIL_TEMPLATES_ADD, function() {
+            JEQL.renderModalOk("Successfully added email template", function() {
+                modal.closeModal();
+                JEQL.getPagedSearchingTableRefreshButton(ID_TABLE_EMAIL_TEMPLATES).click();
+            });
+        }, submitObj);
+    });
+    document.getElementById(ID_ADD_EMAIL_TEMPLATE_ACCOUNT).value = emailAccount;
+}
+
 function renderAddDatabase(modal, node) {
     modal.buildHTML(`
         <h1>Add a Database</h1><br>
@@ -472,6 +534,60 @@ function refreshCredentialsTable(page, size, search, sort) {
     );
 }
 
+function emailTemplatesTableTableRowRenderer(rowElem, data, idx, superRowRenderer) {
+    superRowRenderer();
+    let rowObj = JEQL.tupleToObject(data[JEQL.KEY_ROWS][idx], data[JEQL.KEY_COLUMNS]);
+
+    rowElem.buildChild("td").buildChild("button").buildBoolean("disabled", rowObj[JEQL.KEY_DELETED]).buildText("Delete"
+    ).buildEventListener("click", function() {
+        JEQL.renderModalAreYouSure("Would you like to delete this email template?", function() {
+            let delData = {};
+            delData[JEQL.KEY_NAME] = rowObj[JEQL.KEY_NAME];
+            JEQL.doConfirmDelete(window.JEQL_CONFIG, delData, JEQL.ACTION_INTERNAL_EMAIL_TEMPLATES_DEL,
+                JEQL.ACTION_INTERNAL_EMAIL_TEMPLATES_DELCONF,
+                function() { JEQL.getPagedSearchingTableRefreshButton(ID_TABLE_NODE_AUTHS).click(); }
+            );
+        });
+    });
+}
+
+function refreshEmailTemplateTable(page, size, search, sort) {
+    JEQL.requests.makeBody(window.JEQL_CONFIG,
+        JEQL.ACTION_INTERNAL_EMAIL_TEMPLATES,
+        function(data) {
+            let table = document.getElementById(ID_TABLE_EMAIL_TEMPLATES);
+            JEQL.pagedTableUpdate(table, data);
+            JEQL.tableRenderer(JEQL.objectsToTuples(data[JEQL.KEY_DATA]), table, emailTemplatesTableTableRowRenderer, [JEQL.KEY_ID]);
+        },
+        JEQL.getSearchObj(page, size, search, sort)
+    );
+}
+
+function renderEmailAccountModal(modal, emailAccount) {
+    modal.buildHTML(`
+        <h1>Email Account</h1>
+        <table id="${ID_TABLE_EMAIL_TEMPLATES}">
+            
+        </table>
+        <button id="${ID_ADD_EMAIL_TEMPLATE}">Add Email Template</button>
+    `);
+    document.getElementById(ID_ADD_EMAIL_TEMPLATE).addEventListener("click", function() {
+        JEQL.renderModal(function(modal) { renderAddEmailTemplate(modal, emailAccount); });
+    });
+
+    let emailAccountSearchFunc = function(searchText) {
+        let preSearch = JEQL.KEY_ACCOUNT + "='" + emailAccount + "'";
+        let searchFields = [JEQL.KEY_NAME, JEQL.KEY_SUBJECT, JEQL.KEY_DESCRIPTION, JEQL.KEY_APP_RELATIVE_PATH, JEQL.KEY_DATA_VALIDATION_TABLE,
+            JEQL.KEY_DATA_VALIDATION_VIEW, JEQL.KEY_RECIPIENT_VALIDATION_VIEW];
+        let search = JEQL.simpleSearchTransformer(searchFields)(searchText);
+        if (search !== '') {
+            preSearch += " AND " + search;
+        }
+        return preSearch;
+    };
+    JEQL.pagedSearchingTable(document.getElementById(ID_TABLE_EMAIL_TEMPLATES), refreshEmailTemplateTable, emailAccountSearchFunc);
+}
+
 function renderNodeModal(modal, node) {
     modal.buildHTML(`
         <h1>Databases</h1>
@@ -508,8 +624,27 @@ function renderNodeModal(modal, node) {
         return preSearch;
     };
     JEQL.pagedSearchingTable(document.getElementById(ID_TABLE_DATABASES), refreshDatabasesTable, databaseSearchFunc);
-    JEQL.pagedSearchingTable(document.getElementById(ID_TABLE_NODE_AUTHS), refreshCredentialsTable,
-        credentialsSearchFunc);
+    JEQL.pagedSearchingTable(document.getElementById(ID_TABLE_NODE_AUTHS), refreshCredentialsTable, credentialsSearchFunc);
+}
+
+function emailAccountTableRowRenderer(rowElem, data, idx, superRowRenderer) {
+    superRowRenderer();
+    let rowObj = JEQL.tupleToObject(data[JEQL.KEY_ROWS][idx], data[JEQL.KEY_COLUMNS]);
+
+    rowElem.buildChild("td").buildChild("button").buildBoolean("disabled", rowObj[JEQL.KEY_DELETED]).buildText("Select"
+    ).buildEventListener("click", function() {
+        JEQL.renderModal(function(modal) { renderEmailAccountModal(modal, rowObj[JEQL.KEY_NAME]); }, true, JEQL.CLS_MODAL_WIDEST);
+    }).getParent().buildSibling("td").buildChild("button").buildBoolean("disabled", rowObj[JEQL.KEY_DELETED]
+    ).buildText("Delete").buildEventListener("click", function() {
+        JEQL.renderModalAreYouSure("Would you like to delete the email account?", function() {
+            let delData = {};
+            delData[JEQL.KEY_NAME] = rowObj[JEQL.KEY_NAME];
+            JEQL.doConfirmDelete(window.JEQL_CONFIG, delData, JEQL.ACTION_INTERNAL_EMAIL_ACCOUNTS_DEL,
+                JEQL.ACTION_INTERNAL_EMAIL_ACCOUNTS_DELCONF,
+                function() { JEQL.getPagedSearchingTableRefreshButton(ID_EMAIL_ACCOUNT_LIST).click(); }
+            );
+        });
+    });
 }
 
 function nodeTableRowRenderer(rowElem, data, idx, superRowRenderer) {
@@ -529,6 +664,33 @@ function nodeTableRowRenderer(rowElem, data, idx, superRowRenderer) {
                 function() { JEQL.getPagedSearchingTableRefreshButton(ID_NODE_LIST).click(); }
             );
         });
+    });
+}
+
+function addEmailAccountModal(modal) {
+    modal.buildHTML(`
+        <h1>Add Email Account</h1>
+        <label>Name: <input id="${ID_ADD_EMAIL_ACCOUNT_NAME}" /></label><br>
+        <label>Send as Name: <input id="${ID_ADD_EMAIL_ACCOUNT_SEND_NAME}" /></label><br>
+        <label>Host: <input id="${ID_ADD_EMAIL_ACCOUNT_HOST}" /></label><br>
+        <label>Port: <input id="${ID_ADD_EMAIL_ACCOUNT_PORT}" /></label><br>
+        <label>Username: <input id="${ID_ADD_EMAIL_ACCOUNT_USERNAME}" /></label><br>
+        <label>Password: <input id="${ID_ADD_EMAIL_ACCOUNT_PASSWORD}" /></label><br>
+    `).buildChild("button").buildText("Add").buildEventListener("click", function() {
+        let data = {};
+        data[JEQL.KEY_NAME] = document.getElementById(ID_ADD_EMAIL_ACCOUNT_NAME).value;
+        data[JEQL.KEY_SEND_NAME] = document.getElementById(ID_ADD_EMAIL_ACCOUNT_SEND_NAME).value;
+        data[JEQL.KEY_HOST] = document.getElementById(ID_ADD_EMAIL_ACCOUNT_HOST).value;
+        data[JEQL.KEY_PROTOCOL] = "smtp";
+        data[JEQL.KEY_PORT] = document.getElementById(ID_ADD_EMAIL_ACCOUNT_PORT).value;
+        data[JEQL.KEY_USERNAME] = document.getElementById(ID_ADD_EMAIL_ACCOUNT_USERNAME).value;
+        data[JEQL.KEY_PASSWORD] = document.getElementById(ID_ADD_EMAIL_ACCOUNT_PASSWORD).value;
+        JEQL.requests.makeJson(window.JEQL_CONFIG, JEQL.ACTION_INTERNAL_EMAIL_ACCOUNTS_ADD, function() {
+            JEQL.renderModalOk("Successfully added email account", function() {
+                modal.closeModal();
+                JEQL.getPagedSearchingTableRefreshButton(ID_EMAIL_ACCOUNT_LIST).click();
+            });
+        }, data);
     });
 }
 
@@ -580,6 +742,18 @@ function addAppModal(modal) {
     });
 }
 
+function refreshEmailAccountTable(page, size, search, sort) {
+    JEQL.requests.makeBody(window.JEQL_CONFIG,
+        JEQL.ACTION_INTERNAL_EMAIL_ACCOUNTS,
+        function(data) {
+            let emailAccountTable = document.getElementById(ID_EMAIL_ACCOUNT_LIST);
+            JEQL.pagedTableUpdate(emailAccountTable, data);
+            JEQL.tableRenderer(JEQL.objectsToTuples(data[JEQL.KEY_DATA]), emailAccountTable, emailAccountTableRowRenderer, [JEQL.KEY_ID]);
+        },
+        JEQL.getSearchObj(page, size, search, sort)
+    );
+}
+
 function refreshNodeTable(page, size, search, sort) {
     JEQL.requests.makeBody(window.JEQL_CONFIG,
         JEQL.ACTION_INTERNAL_NODES,
@@ -607,12 +781,17 @@ function refreshAppTable(page, size, search, sort) {
 window.onload = function() {
     document.getElementById(ID_ADD_APP).addEventListener("click", function() { JEQL.renderModal(addAppModal); });
     document.getElementById(ID_ADD_NODE).addEventListener("click", function() { JEQL.renderModal(addNodeModal); });
+    document.getElementById(ID_ADD_EMAIL_ACCOUNT).addEventListener("click", function() { JEQL.renderModal(addEmailAccountModal); });
     JEQL.init(APPLICATION_NAME, function() {
         JEQL.pagedSearchingTable(document.getElementById(ID_APPLICATION_LIST), refreshAppTable,
             JEQL.simpleSearchTransformer([JEQL.KEY_NAME, JEQL.KEY_URL, JEQL.KEY_DESCRIPTION]));
 
         JEQL.pagedSearchingTable(document.getElementById(ID_NODE_LIST), refreshNodeTable, JEQL.simpleSearchTransformer(
             [JEQL.KEY_NAME, JEQL.KEY_PORT, JEQL.KEY_ADDRESS, JEQL.KEY_DESCRIPTION]
+        ));
+
+        JEQL.pagedSearchingTable(document.getElementById(ID_EMAIL_ACCOUNT_LIST), refreshEmailAccountTable, JEQL.simpleSearchTransformer(
+            [JEQL.KEY_NAME, JEQL.KEY_SEND_NAME, JEQL.KEY_HOST, JEQL.KEY_PORT, JEQL.KEY_USERNAME]
         ));
     });
 };

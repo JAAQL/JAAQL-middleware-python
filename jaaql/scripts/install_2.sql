@@ -427,6 +427,7 @@ CREATE UNIQUE INDEX jaaql__email_template_unq
 
 create view jaaql__email_templates as (
     SELECT
+        jet.deleted,
         jet.name,
         jea.name as account,
         jet.description,
@@ -453,6 +454,23 @@ create table jaaql__email_history (
     encrypted_body text,
     encrypted_attachments text
 );
+
+create table jaaql__sign_up (
+    key_a uuid PRIMARY KEY not null default gen_random_uuid(),
+    key_b uuid not null default gen_random_uuid(),
+    activated boolean not null default false,
+    the_user uuid not null,
+    FOREIGN KEY (the_user) REFERENCES jaaql__user,
+    closed timestamptz,
+    created timestamptz default current_timestamp not null,
+    expiry_ms integer not null default 1000 * 60 * 60 * 24 * 14, -- 2 weeks
+    email_template uuid,
+    FOREIGN KEY (email_template) REFERENCES jaaql__email_template,
+    data_lookup_json text,
+    check ((email_template is null) = (data_lookup_json is null))
+);
+
+CREATE UNIQUE INDEX jaaql__sign_up_unq_key_b ON jaaql__sign_up (key_b);
 
 create or replace view jaaql__my_email_history as (
     SELECT

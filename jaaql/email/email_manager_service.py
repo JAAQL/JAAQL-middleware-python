@@ -51,6 +51,8 @@ EMAIL__subject = "Subject"
 
 SPLIT__address = ", "
 
+DEBUG_MODE = True
+
 
 class EmailAttachment:
     def __init__(self, content: bytes, filename: str):
@@ -209,16 +211,27 @@ class EmailManagerService:
         return attachments
 
     def email_connection_thread(self, account: dict, queue: Queue, password: str):
-        conn_lib = imaplib.IMAP4 if account[KEY__account_protocol] == PROTOCOL__imap else smtplib.SMTP
-        conn = self.fetch_conn(conn_lib, account, password)
+        conn_lib = None
+        conn = None
+        if not DEBUG_MODE:
+            conn_lib = imaplib.IMAP4 if account[KEY__account_protocol] == PROTOCOL__imap else smtplib.SMTP
+            conn = self.fetch_conn(conn_lib, account, password)
 
         while True:
             try:
                 email: Email = queue.get(timeout=10)
-                if not self.is_connected(conn):
-                    conn = self.fetch_conn(conn_lib, account, password)
+                if not DEBUG_MODE:
+                    if not self.is_connected(conn):
+                        conn = self.fetch_conn(conn_lib, account, password)
                 formatted_body, to_send = self.construct_message(account, email)
-                conn.send_message(to_send, account[KEY__account_username], email.to)
+                if not DEBUG_MODE:
+                    conn.send_message(to_send, account[KEY__account_username], email.to)
+                else:
+                    print("SENDING EMAIL")
+                    print(email.subject)
+                    print(email.body)
+                    print(account[KEY__account_username])
+                    print(email.to)
 
                 execute_supplied_statement(self.connection, QUERY__ins_email_history, {
                         KEY__template: email.template,
