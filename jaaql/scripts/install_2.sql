@@ -458,12 +458,15 @@ create table jaaql__email_history (
 create table jaaql__sign_up (
     key_a uuid PRIMARY KEY not null default gen_random_uuid(),
     key_b uuid not null default gen_random_uuid(),
+    invite_code varchar(4) not null,
     activated boolean not null default false,
+    used_key_a boolean not null default false,
     the_user uuid not null,
     FOREIGN KEY (the_user) REFERENCES jaaql__user,
     closed timestamptz,
     created timestamptz default current_timestamp not null,
     expiry_ms integer not null default 1000 * 60 * 60 * 24 * 14, -- 2 weeks
+    code_expiry_ms integer not null default 1000 * 60 * 15, -- 15 minutes
     email_template uuid,
     FOREIGN KEY (email_template) REFERENCES jaaql__email_template,
     data_lookup_json text,

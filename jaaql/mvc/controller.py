@@ -244,7 +244,7 @@ class JAAQLController(BaseJAAQLController):
         def signup_request(http_inputs: dict):
             return self.model.request_signup(http_inputs)
 
-        @self.cors_route('/account/signup/status', DOCUMENTATION__sign_up_poll)
+        @self.cors_route('/account/signup/status', DOCUMENTATION__sign_up_status)
         def signup_request(http_inputs: dict):
             return self.model.signup_status(http_inputs)
 
