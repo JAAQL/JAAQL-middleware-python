@@ -1,3 +1,5 @@
+import random
+
 from jaaql.db.db_interface import DBInterface, RET__rows
 from jaaql.mvc.base_model import BaseJAAQLModel, CONFIG_KEY__security, CONFIG_KEY_SECURITY__mfa_label, \
     CONFIG_KEY_SECURITY__mfa_issuer, VAULT_KEY__jwt_obj_crypt_key, VAULT_KEY__jwt_crypt_key, DIR__apps, SEPARATOR__dir
@@ -30,6 +32,8 @@ import threading
 
 TOKEN__pre_auth_reduction_factor = 15
 
+ERR__incorrect_invite_code = "Incorrect invite code"
+ERR__invite_code_expired = "Invite code expired. Please use the link within the email"
 ERR__not_signed_up = "Not signed up"
 ERR__recipient_not_allowed = "Recipient not allowed"
 ERR__cant_send_attachments = "Cannot send attachments to other people"
@@ -69,6 +73,10 @@ CONFIGURATION__host = "host"
 
 FUNC__jaaql_create_node = "jaaql__create_node"
 
+CODE__all_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+ATTR__expiry_invite_code_ms = "code_expiry_ms"
+ATTR__used_key_a = "used_key_a"
 ATTR__email = "email"
 ATTR__public_credentials = "public_credentials"
 ATTR__mobile = "mobile"
@@ -79,6 +87,7 @@ ATTR__address_hash = "address_hash"
 ATTR__ip_address = "ip_address"
 ATTR__ua_hash = "ua_hash"
 ATTR__ua = "ua"
+ATTR__created = "created"
 ATTR__alias = "alias"
 ATTR__data_lookup_json = "data_lookup_json"
 ATTR__activated = "activated"
@@ -822,7 +831,8 @@ class JAAQLModel(BaseJAAQLModel):
         params = {
             ATTR__data_lookup_json: template_lookup,
             ATTR__the_user: the_user,
-            KEY__email_template: email_template
+            KEY__email_template: email_template,
+            KEY__invite_code: [CODE__all_chars[random.randint(0, len(CODE__all_chars) - 1)] for i in range(4)]
         }
         return execute_supplied_statement_singleton(jaaql_connection, QUERY__sign_up_insert, params, as_objects=True)
 
@@ -1141,17 +1151,26 @@ class JAAQLModel(BaseJAAQLModel):
 
         status = SIGNUP__not_started
 
-        if resp[ATTR__closed]:
-            status = SIGNUP__completed
-        elif resp[ATTR__activated]:
-            status = SIGNUP__already_registered if existed else SIGNUP__started
-        elif is_invite_key and existed:
-            status = SIGNUP__already_registered
+        invite_code_match = inputs.get(KEY__invite_code) == resp[KEY__invite_code]
+        invite_code_expired = resp[ATTR__created] + timedelta(milliseconds=resp[ATTR__expiry_invite_code_ms]) < datetime.now()
 
-        if is_invite_key:
-            execute_supplied_statement(self.jaaql_lookup_connection, QUERY__sign_up_upd, {KEY__invite_key: resp[KEY__invite_key]})
-            if status == SIGNUP__not_started:
+        if is_invite_key or resp[ATTR__activated] or (invite_code_match and not invite_code_expired):
+            if invite_code_match and not resp[ATTR__activated]:
+                execute_supplied_statement(self.jaaql_lookup_connection, QUERY__sign_up_upd, {KEY__invite_key: resp[KEY__invite_key]})
+            elif not resp[ATTR__used_key_a]:
+                execute_supplied_statement(self.jaaql_lookup_connection, QUERY__sign_up_upd_used, {KEY__invite_key: resp[KEY__invite_key]})
+
+            if resp[ATTR__closed]:
+                status = SIGNUP__completed
+            elif existed:
+                status = SIGNUP__already_registered
+            elif resp[ATTR__activated] or resp[ATTR__used_key_a]:
                 status = SIGNUP__started
+
+        elif invite_code_match:
+            raise HttpStatusException(ERR__invite_code_expired)
+        else:
+            raise HttpStatusException(ERR__incorrect_invite_code)
 
         return {KEY__invite_key_status: status}
 
@@ -1214,7 +1233,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         template = template_already_exists if user_existed else template
         invite_keys = self.user_invite(self.jaaql_lookup_connection, inputs[KEY__email], template[KEY__id], pkey_vals)
-        optional_params = {EMAIL_PARAM__signup_key: invite_keys[KEY__invite_key]}
+        optional_params = {EMAIL_PARAM__signup_key: invite_keys[KEY__invite_key], EMAIL_PARAM__invite_code: invite_keys[KEY__invite_code]}
 
         self.email_manager.construct_and_send_email(self.url, app_url, template, user_id, inputs[KEY__email], None, sanitized_params, optional_params)
 

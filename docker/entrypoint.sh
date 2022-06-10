@@ -1,13 +1,13 @@
 #!/bin/bash
 set -e
 
-if [ -z "${JEQL_BRANCH}" ]; then
+if [ -z "${JEQL_VERSION}" ]; then
   echo "Using default JEQL version"
 else
-  echo "Switching to JEQL version $JEQL_BRANCH"
+  echo "Switching to JEQL version $JEQL_VERSION"
   cd JEQL
   git pull
-  git checkout $JEQL_BRANCH
+  git checkout tags/v$JEQL_VERSION
   cd ../
 fi
 if [ -z "${SERVER_ADDRESS}" ]; then

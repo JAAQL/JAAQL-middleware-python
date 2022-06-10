@@ -58,9 +58,10 @@ Additional lines can be used
     -e FORCE_MFA=FALSE \
     -e INVITE_ONLY=FALSE \
     -e JAAQL_EMAIL_CREDENTIALS=base64encodedcredentials \
-    -e JEQL_BRANCH=2.0.0 \
+    -e JEQL_VERSION=2.1.2 \
 
-JAAQL_EMAIL_CREDENTIALS provides SMTP/IMAP email credentials into the JAAQL server. Base64 encoded json dict of the format { \"my_account_name\": \"my_account_password\" }
+JAAQL_EMAIL_CREDENTIALS provides SMTP/IMAP email credentials into the JAAQL server. Base64 encoded json dict of the format { \"my_account_name\": \"my_account_password\" }  
+JEQL_VERSIOn specifies the version of JEQL to use
     
 ## Usage
 Please use the command

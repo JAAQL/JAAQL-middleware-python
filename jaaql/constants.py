@@ -25,6 +25,7 @@ KEY__sort = "sort"
 KEY__invite_key = "invite_key"
 KEY__invite_or_poll_key = "invite_or_poll_key"
 KEY__invite_poll_key = "invite_poll_key"
+KEY__invite_code = "invite_code"
 KEY__invite_key_status = "invite_key_status"
 KEY__parameters = "parameters"
 KEY__oauth_token = "oauth_token"
@@ -141,6 +142,7 @@ ENVIRON__vault_key = "JAAQL_VAULT_PASSWORD"
 ENVIRON__email_credentials = "JAAQL_EMAIL_CREDENTIALS"
 
 EMAIL_PARAM__signup_key = "JAAQL_SIGNUP_KEY"
+EMAIL_PARAM__invite_code = "JAAQL_INVITE_CODE"
 
 CONFIG_KEY__server = "SERVER"
 CONFIG_KEY_SERVER__port = "port"
@@ -164,4 +166,4 @@ PORT__ems = 6061
 
 ENDPOINT__reload_accounts = "/reload-accounts"
 
-VERSION = "2.17.0"
+VERSION = "2.18.0"

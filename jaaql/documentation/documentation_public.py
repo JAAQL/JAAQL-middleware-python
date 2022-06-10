@@ -52,7 +52,7 @@ DOCUMENTATION__sign_up_request_invite = SwaggerDocumentation(
     )
 )
 
-DOCUMENTATION__sign_up_poll = SwaggerDocumentation(
+DOCUMENTATION__sign_up_status = SwaggerDocumentation(
     tags="Signup",
     # The security is in the invite key. User has not signed up yet so cannot get an oauth token
     security=False,
@@ -60,17 +60,27 @@ DOCUMENTATION__sign_up_poll = SwaggerDocumentation(
         name="Request invite status",
         description="Requesting status with the invite key sent to the email will allow the poll key to be used as an invite key",
         method=REST__GET,
-        arguments=SwaggerArgumentResponse(
-            name=KEY__invite_or_poll_key,
-            description="Either an invite or invite poll key",
-            arg_type=str,
-            example=[UUID__invite]
-        ),
+        arguments=[
+            SwaggerArgumentResponse(
+                name=KEY__invite_or_poll_key,
+                description="Either an invite or invite poll key",
+                arg_type=str,
+                example=[UUID__invite]
+            ),
+            SwaggerArgumentResponse(
+                name=KEY__invite_code,
+                description="An invite code received only via email. Used only with the invite poll key",
+                arg_type=str,
+                example=["AG4S"],
+                required=False,
+                condition="Is this the invite poll key"
+            )
+        ],
         response=SwaggerResponse(
             description="Invite status enumeration",
             response=SwaggerArgumentResponse(
                 name=KEY__invite_key_status,
-                description="An enumeration of the statuses of an invite key. 0->No sign up, 1->Sign up process started, 2->Signing up again with "
+                description="An enumeration of the statuses of an invite key. 0->New signup, 1->Sign up process started, 2->Signing up again with "
                 "same email, 3->Sign up already finished",
                 arg_type=int,
                 example=[0]
