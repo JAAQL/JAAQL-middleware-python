@@ -140,6 +140,7 @@ VAULT_KEY__allow_jaaql_uninstall = "Allow jaaql uninstall"
 
 ENVIRON__vault_key = "JAAQL_VAULT_PASSWORD"
 ENVIRON__email_credentials = "JAAQL_EMAIL_CREDENTIALS"
+ENVIRON__install_path = "INSTALL_PATH"
 
 EMAIL_PARAM__signup_key = "JAAQL_SIGNUP_KEY"
 EMAIL_PARAM__invite_code = "JAAQL_INVITE_CODE"
@@ -165,5 +166,6 @@ DB__postgres = "postgres"
 PORT__ems = 6061
 
 ENDPOINT__reload_accounts = "/reload-accounts"
+ENDPOINT__send_email = "/send-email"
 
-VERSION = "2.18.0"
+VERSION = "2.19.0"

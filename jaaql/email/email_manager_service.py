@@ -271,7 +271,7 @@ def create_app(ems: EmailManagerService):
 
     app = Flask(__name__, instance_relative_config=True)
 
-    @app.route("/send-email", methods=["POST"])
+    @app.route(ENDPOINT__send_email, methods=["POST"])
     def send_email():
         ems.send_email(Email.deserialize(request.json))
 

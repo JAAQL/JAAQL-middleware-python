@@ -15,10 +15,10 @@ ERR__unexpected_parameter_in_template = "Unexpected parameter in template '%s'"
 class EmailManager:
 
     def send_email(self, email: Email):
-        requests.post("http://127.0.0.1:" + str(PORT__ems) + "/send-email", json=email.repr_json())
+        requests.post("http://127.0.0.1:" + str(PORT__ems) + ENDPOINT__send_email, json=email.repr_json())
 
     def reload_service(self):
-        requests.post("http://127.0.0.1:" + str(PORT__ems) + "/" + ENDPOINT__reload_accounts)
+        requests.post("http://127.0.0.1:" + str(PORT__ems) + ENDPOINT__reload_accounts)
 
     def construct_and_send_email(self, base_url: str, app_url: str, template: dict, sender: str, to_email: str, to_name: str,
                                  parameters: dict = None, optional_parameters: dict = None, attachments: TYPE__email_attachments = None):

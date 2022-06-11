@@ -1,13 +1,14 @@
-from datetime import datetime
 import requests
 from os.path import join, exists, dirname
+import os
 import glob
-from jaaql.constants import DIR__config, FILE__config, CONFIG_KEY__server, CONFIG_KEY_SERVER__port
+from jaaql.constants import DIR__config, FILE__config, CONFIG_KEY__server, CONFIG_KEY_SERVER__port, ENVIRON__install_path
 from jaaql.db.db_interface import DBInterface
 from jaaql.db.db_utils import create_interface
 from jaaql.constants import VAULT_KEY__jaaql_lookup_connection
 import configparser
 import time
+import urllib.parse
 from jaaql.utilities.utils_no_project_imports import time_delta_ms  # Do not delete, relied on by others
 
 PATH__migrations = "migrations"
@@ -47,7 +48,7 @@ def load_email_templates():
 
 def get_base_url(config, is_gunicorn: bool):
     if is_gunicorn:
-        return "http://127.0.0.1/api"
+        return "http+unix://" + urllib.parse.quote(os.environ.get(ENVIRON__install_path + "/jaaql.sock"), safe='') + "/api"
     else:
         return "http://127.0.0.1:" + str(int(config[CONFIG_KEY__server][CONFIG_KEY_SERVER__port]))
 

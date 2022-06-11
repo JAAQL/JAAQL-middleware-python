@@ -63,8 +63,6 @@ FILE__was_installed = "was_installed"
 
 JWT__data = "data"
 
-ENVIRON__install_path = "INSTALL_PATH"
-
 WARNING__uninstall_allowed = "Due to installation parameters, the system can be uninstalled completely via the API. We do not recommend this being " \
                              "used in production systems (the super user db password is required to perform uninstallation so it is not 'open') "
 
