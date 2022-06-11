@@ -25,6 +25,8 @@ let ID_ADD_APP_NAME = "add-application-name";
 let ID_ADD_APP_DESCRIPTION = "add-application-description";
 let ID_ADD_APP_URL = "add-application-url";
 let ID_ADD_PUBLIC_USERNAME = "add-application-public-username";
+let ID_ADD_APP_SIGNUP_TEMPLATE = "add-application-signup-template";
+let ID_ADD_APP_ALREADY_SIGNED_UP_TEMPLATE = "add-application-already-signed-up-template";
 let ID_TABLE_ASSIGNED_DATABASES = "assigned-databases";
 let ID_TABLE_AUTHS = "conf-auths";
 let ID_TABLE_DATABASES = "node-databases";
@@ -724,14 +726,24 @@ function addAppModal(modal) {
         <label>Description: <input id="${ID_ADD_APP_DESCRIPTION}" /></label><br>
         <label>Url: <input id="${ID_ADD_APP_URL}" /></label><br>
         <label>Public Username: <input id="${ID_ADD_PUBLIC_USERNAME}" /></label><br>
+        <label>Signup Template: <input id="${ID_ADD_APP_SIGNUP_TEMPLATE}" /></label><br>
+        <label>Already Signed Up Template: <input id="${ID_ADD_APP_ALREADY_SIGNED_UP_TEMPLATE}" /></label><br>
     `).buildChild("button").buildText("Add").buildEventListener("click", function() {
         let data = {};
         data[JEQL.KEY_NAME] = document.getElementById(ID_ADD_APP_NAME).value;
         data[JEQL.KEY_DESCRIPTION] = document.getElementById(ID_ADD_APP_DESCRIPTION).value;
         data[JEQL.KEY_URL] = document.getElementById(ID_ADD_APP_URL).value;
         data[JEQL.KEY_PUBLIC_USERNAME] = document.getElementById(ID_ADD_PUBLIC_USERNAME).value;
+        data[JEQL.KEY_DEFAULT_EMAIL_SIGNUP_TEMPLATE] = document.getElementById(ID_ADD_APP_SIGNUP_TEMPLATE).value;
+        data[JEQL.KEY_DEFAULT_EMAIL_ALREADY_SIGNED_UP_TEMPLATE] = document.getElementById(ID_ADD_APP_ALREADY_SIGNED_UP_TEMPLATE).value;
         if (data[JEQL.KEY_PUBLIC_USERNAME].length === 0) {
             delete data[JEQL.KEY_PUBLIC_USERNAME];
+        }
+        if (data[JEQL.KEY_DEFAULT_EMAIL_SIGNUP_TEMPLATE].length === 0) {
+            delete data[JEQL.KEY_DEFAULT_EMAIL_SIGNUP_TEMPLATE];
+        }
+        if (data[JEQL.KEY_DEFAULT_EMAIL_ALREADY_SIGNED_UP_TEMPLATE].length === 0) {
+            delete data[JEQL.KEY_DEFAULT_EMAIL_ALREADY_SIGNED_UP_TEMPLATE];
         }
         JEQL.requests.makeJson(window.JEQL_CONFIG, JEQL.ACTION_INTERNAL_APPLICATIONS_ADD, function() {
             JEQL.renderModalOk("Successfully added application", function() {
