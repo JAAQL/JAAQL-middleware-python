@@ -18,7 +18,7 @@ import sys
 from flask import Flask, jsonify, request
 from jaaql.utilities.vault import Vault, DIR__vault
 from jaaql.constants import VAULT_KEY__db_crypt_key, KEY__encrypted_password, KEY__id, KEY__template, KEY__sender, ENCODING__ascii, PORT__ems, \
-    ENDPOINT__reload_accounts, KEY__email_account_name
+    ENDPOINT__reload_accounts, ENDPOINT__send_email, KEY__email_account_name
 
 QUERY__update_email_account_password = "UPDATE jaaql__email_account SET encrypted_password = :encrypted_password WHERE id = :id"
 QUERY__load_email_accounts = "SELECT * FROM jaaql__email_account WHERE deleted is null"
