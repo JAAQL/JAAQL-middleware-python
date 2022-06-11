@@ -96,6 +96,8 @@ KEY__allow_signup = "allow_signup"
 KEY__email_account_name = "name"
 KEY__email_sent = "sent"
 KEY__body = "body"
+KEY__default_email_signup_template = "default_email_signup_template"
+KEY__default_email_already_signed_up_template = "default_email_already_signed_up_template"
 
 ATTR__deleted = "deleted"
 
@@ -168,4 +170,4 @@ PORT__ems = 6061
 ENDPOINT__reload_accounts = "/reload-accounts"
 ENDPOINT__send_email = "/send-email"
 
-VERSION = "2.21.0"
+VERSION = "2.22.0"

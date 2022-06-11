@@ -571,6 +571,15 @@ class JAAQLModel(BaseJAAQLModel):
     def add_application(self, inputs: dict, jaaql_connection: DBInterface, ip_address: str, user_agent: str, response: JAAQLResponse):
         public_username = inputs.pop(KEY__public_username)
         inputs[KEY__application_url] = self.replace_default_app_url(inputs[KEY__application_url])
+        if inputs[KEY__default_email_signup_template] is not None:
+            inputs[KEY__default_email_signup_template] = execute_supplied_statement_singleton(jaaql_connection, QUERY__fetch_email_template_by_name, {
+                KEY__template: inputs[KEY__default_email_signup_template]
+            }, as_objects=True)[KEY__id]
+        if inputs[KEY__default_email_already_signed_up_template] is not None:
+            inputs[KEY__default_email_already_signed_up_template] = execute_supplied_statement_singleton(
+                jaaql_connection, QUERY__fetch_email_template_by_name, {
+                    KEY__template: inputs[KEY__default_email_already_signed_up_template]
+                }, as_objects=True)[KEY__id]
         execute_supplied_statement(jaaql_connection, QUERY__application_ins, inputs)
         if public_username is not None:
             password = str(uuid.uuid4())
@@ -622,6 +631,11 @@ class JAAQLModel(BaseJAAQLModel):
 
     def get_my_applications(self, jaaql_connection: DBInterface):
         return execute_supplied_statement(jaaql_connection, QUERY__fetch_my_applications, as_objects=True)
+
+    def get_default_templates_for_application(self, application: str):
+        return execute_supplied_statement_singleton(self.jaaql_lookup_connection,
+                                                    QUERY__fetch_application_default_templates,
+                                                    {KEY__application: application}, as_objects=True)
 
     def get_public_user_credentials_for_application(self, application: str):
         return execute_supplied_statement_singleton(self.jaaql_lookup_connection,

@@ -74,6 +74,10 @@ class JAAQLController(BaseJAAQLController):
         def application_public_user_credentials(http_inputs: dict):
             return self.model.get_public_user_credentials_for_application(http_inputs[KEY__application])
 
+        @self.cors_route('/applications/default-templates', DOCUMENTATION__applications_default_email_templates)
+        def application_public_user_credentials(http_inputs: dict):
+            return self.model.get_default_templates_for_application(http_inputs[KEY__application])
+
         @self.cors_route('/internal/applications/confirm-deletion', DOCUMENTATION__applications_confirm_deletion)
         def confirm_application_deletion(http_inputs: dict, jaaql_connection: DBInterface):
             self.model.delete_application_confirm(http_inputs, jaaql_connection)

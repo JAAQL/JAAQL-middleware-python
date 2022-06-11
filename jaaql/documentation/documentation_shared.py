@@ -331,7 +331,26 @@ ARG_RES__dataset_description = SwaggerArgumentResponse(
 )
 ARG_RES__reference_dataset = rename_arg(ARG_RES__dataset_name, KEY__dataset)
 
-ARG_RES__application_body = [ARG_RES__application_name, ARG_RES__application_description, ARG_RES__application_uri]
+ARG_RES__application_default_email_signup_template = SwaggerArgumentResponse(
+    name=KEY__default_email_signup_template,
+    description="The default signup template, if one is being used",
+    arg_type=str,
+    example=["jaaql_signup"],
+    required=False,
+    condition="If a signup template is being used"
+)
+
+ARG_RES__application_default_email_already_signed_up_template = SwaggerArgumentResponse(
+    name=KEY__default_email_already_signed_up_template,
+    description="The default already signed up template, if one is being used",
+    arg_type=str,
+    example=["jaaql_already_signed_up"],
+    required=False,
+    condition="If a signup template is being used"
+)
+
+ARG_RES__application_body = [ARG_RES__application_name, ARG_RES__application_description, ARG_RES__application_uri,
+                             ARG_RES__application_default_email_signup_template, ARG_RES__application_default_email_already_signed_up_template]
 
 CONDITION__pre_auth = "Is during 1st stage authentication"
 

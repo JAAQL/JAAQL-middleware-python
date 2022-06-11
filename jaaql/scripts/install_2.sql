@@ -1,10 +1,50 @@
 CREATE DOMAIN postgres_table_view_name AS varchar(64) CHECK (VALUE ~* '^[A-Za-z*0-9_\-]+$');
 
+create table jaaql__email_account (
+    id uuid PRIMARY KEY NOT NULL not null default gen_random_uuid(),
+    name varchar(255) not null,
+    send_name varchar(255) not null,
+    protocol varchar(4) not null,
+    check (protocol in ('smtp', 'imap')),
+    host varchar(255) not null,
+    port integer not null,
+    username varchar(255) not null,
+    encrypted_password text not null,
+    deleted timestamptz default null
+);
+CREATE UNIQUE INDEX jaaql__email_account_unq
+    ON jaaql__email_account (name) WHERE (deleted is null);
+
+create table jaaql__email_template (
+    id uuid PRIMARY KEY NOT NULL not null default gen_random_uuid(),
+    name varchar(60) NOT NULL,
+    subject varchar(255),
+    account uuid NOT NULL,
+    FOREIGN KEY (account) REFERENCES jaaql__email_account,
+    description text,
+    app_relative_path postgres_table_view_name,  -- Not a mistake for this domain type
+    check ((subject is null) = (app_relative_path is null)),
+    data_validation_table postgres_table_view_name,
+    data_validation_view postgres_table_view_name,
+    CHECK ((data_validation_table is null and data_validation_view is null) or data_validation_table is not null),
+    recipient_validation_view postgres_table_view_name,
+    allow_signup boolean default false not null,
+    allow_confirm_signup_attempt boolean default false not null,
+    check ((allow_signup <> jaaql__email_template.allow_confirm_signup_attempt) or not allow_signup),
+    deleted timestamptz default null
+);
+CREATE UNIQUE INDEX jaaql__email_template_unq
+    ON jaaql__email_template (name) WHERE (deleted is null);
+
 create table jaaql__application (
     name varchar(64) not null primary key,
     description varchar(256) not null,
     url text not null,
-    created timestamptz not null default current_timestamp
+    created timestamptz not null default current_timestamp,
+    default_email_signup_template uuid,
+    FOREIGN KEY (default_email_signup_template) REFERENCES jaaql__email_template,
+    default_email_already_signed_up_template uuid,
+    FOREIGN KEY (default_email_already_signed_up_template) REFERENCES jaaql__email_template
 );
 
 create table jaaql__user (
@@ -388,42 +428,6 @@ BEGIN
     UPDATE jaaql__node SET "name" = (left("name", 180) || '_deleted_') || current_timestamp::text, deleted = current_timestamp WHERE name = node_name;
 END
 $$ language plpgsql;
-
-create table jaaql__email_account (
-    id uuid PRIMARY KEY NOT NULL not null default gen_random_uuid(),
-    name varchar(255) not null,
-    send_name varchar(255) not null,
-    protocol varchar(4) not null,
-    check (protocol in ('smtp', 'imap')),
-    host varchar(255) not null,
-    port integer not null,
-    username varchar(255) not null,
-    encrypted_password text not null,
-    deleted timestamptz default null
-);
-CREATE UNIQUE INDEX jaaql__email_account_unq
-    ON jaaql__email_account (name) WHERE (deleted is null);
-
-create table jaaql__email_template (
-    id uuid PRIMARY KEY NOT NULL not null default gen_random_uuid(),
-    name varchar(60) NOT NULL,
-    subject varchar(255),
-    account uuid NOT NULL,
-    FOREIGN KEY (account) REFERENCES jaaql__email_account,
-    description text,
-    app_relative_path postgres_table_view_name,  -- Not a mistake for this domain type
-    check ((subject is null) = (app_relative_path is null)),
-    data_validation_table postgres_table_view_name,
-    data_validation_view postgres_table_view_name,
-    CHECK ((data_validation_table is null and data_validation_view is null) or data_validation_table is not null),
-    recipient_validation_view postgres_table_view_name,
-    allow_signup boolean default false not null,
-    allow_confirm_signup_attempt boolean default false not null,
-    check ((allow_signup <> jaaql__email_template.allow_confirm_signup_attempt) or not allow_signup),
-    deleted timestamptz default null
-);
-CREATE UNIQUE INDEX jaaql__email_template_unq
-    ON jaaql__email_template (name) WHERE (deleted is null);
 
 create view jaaql__email_templates as (
     SELECT

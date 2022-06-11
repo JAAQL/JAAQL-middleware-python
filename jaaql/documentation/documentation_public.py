@@ -168,6 +168,24 @@ DOCUMENTATION__applications_public_user_credentials = SwaggerDocumentation(
     )
 )
 
+DOCUMENTATION__applications_default_email_templates = SwaggerDocumentation(
+    tags="Applications",
+    security=False,
+    methods=SwaggerMethod(
+        name="Fetch app default email templates",
+        description="Fetches the app default signup email templates",
+        method=REST__GET,
+        arguments=ARG_RES__application,
+        response=SwaggerResponse(
+            description="Default email template associated with an application",
+            response=[
+                ARG_RES__email_template,
+                ARG_RES__already_signed_up_email_template
+            ]
+        )
+    )
+)
+
 DOCUMENTATION__my_configs = SwaggerDocumentation(
     tags="Configuration",
     methods=SwaggerMethod(
