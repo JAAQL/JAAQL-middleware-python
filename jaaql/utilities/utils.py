@@ -48,7 +48,7 @@ def load_email_templates():
 
 def get_base_url(config, is_gunicorn: bool):
     if is_gunicorn:
-        return "http+unix://" + urllib.parse.quote(os.environ.get(ENVIRON__install_path + "/jaaql.sock"), safe='') + "/api"
+        return "http+unix://" + urllib.parse.quote(os.environ.get(ENVIRON__install_path) + "/jaaql.sock", safe='') + "/api"
     else:
         return "http://127.0.0.1:" + str(int(config[CONFIG_KEY__server][CONFIG_KEY_SERVER__port]))
 

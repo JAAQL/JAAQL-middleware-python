@@ -6,6 +6,7 @@ if [ -z "${JEQL_VERSION}" ]; then
 else
   echo "Switching to JEQL version $JEQL_VERSION"
   cd JEQL
+  git checkout -
   git pull
   git checkout tags/v$JEQL_VERSION
   cd ../
