@@ -14,7 +14,7 @@ COPY . $INSTALL_PATH
 
 RUN git clone https://github.com/JAAQL/JEQL.git
 WORKDIR JEQL
-RUN git checkout tags/v2.1.8
+RUN git checkout tags/v2.1.9
 WORKDIR /
 
 RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini
@@ -48,7 +48,9 @@ RUN ./pypy3.7-v7.3.5-linux64/bin/pypy -mpip install -U pip wheel
 RUN ./pypy3.7-v7.3.5-linux64/bin/pypy -mpip install certbot-nginx==1.2.0
 RUN ./pypy3.7-v7.3.5-linux64/bin/pypy -mpip install -r $INSTALL_PATH/requirements.txt
 
-RUN mv $INSTALL_PATH/docker/jaaql.sql /docker-entrypoint-initdb.d/jaaql.sql
+RUN mv $INSTALL_PATH/docker/jaaql.sql /docker-entrypoint-initdb.d/01-jaaql.sql
+RUN dos2unix $INSTALL_PATH/docker/pg_reload.sh
+RUN mv $INSTALL_PATH/docker/pg_reload.sh /docker-entrypoint-initdb.d/02-pg_reload.sh
 RUN mv $INSTALL_PATH/docker/entrypoint.sh entrypoint.sh
 RUN dos2unix entrypoint.sh
 RUN dos2unix $INSTALL_PATH/base_reboot.sh
