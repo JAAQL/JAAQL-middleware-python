@@ -30,6 +30,7 @@ sed -ri '1s@^.*$@'"$JEQL_REPLACE"'@' /JAAQL-middleware-python/jaaql/apps/playgro
 cp -r /JAAQL-middleware-python/jaaql/apps $INSTALL_PATH/www/apps
 
 LOG_FILE=$INSTALL_PATH/log/gunicorn.log
+ACCESS_LOG_FILE=$INSTALL_PATH/log/gunicorn_access.log
 
 if [ "$LOG_TO_OUTPUT" = "TRUE" ] ; then
   LOG_FILE='-'
@@ -116,6 +117,12 @@ replace_config() {
     sed -i 's/{{INVITE_ONLY}}/true/g' /JAAQL-middleware-python/jaaql/config/config.ini
   fi
 
+  if [ "$OUTPUT_QUERY_EXCEPTIONS" = "TRUE" ] ; then
+    sed -i 's/{{OUTPUT_QUERY_EXCEPTIONS}}/true/g' /JAAQL-middleware-python/jaaql/config/config.ini
+  else
+    sed -i 's/{{OUTPUT_QUERY_EXCEPTIONS}}/false/g' /JAAQL-middleware-python/jaaql/config/config.ini
+  fi
+
   if [ "$DO_AUDIT" = "FALSE" ] ; then
     sed -i 's/{{DO_AUDIT}}/false/g' /JAAQL-middleware-python/jaaql/config/config.ini
   else
@@ -163,7 +170,7 @@ echo "from wsgi import build_app" >> wsgi_patch.py
 
 while :
 do
-  $PYPY_PATH/bin/gunicorn -p app.pid --bind unix:jaaql.sock -m 777 --config /JAAQL-middleware-python/docker/gunicorn_config.py --log-file $LOG_FILE --capture-output --log-level info 'wsgi_patch:build_app()'
+  $PYPY_PATH/bin/gunicorn -p app.pid --bind unix:jaaql.sock -m 777 --config /JAAQL-middleware-python/docker/gunicorn_config.py --access-logformat '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(M)sms"' --access-logfile $ACCESS_LOG_FILE --log-file $LOG_FILE --capture-output --log-level info 'wsgi_patch:build_app()'
   chmod +777 /JAAQL-middleware-python/base_reboot.sh
   /JAAQL-middleware-python/base_reboot.sh
   replace_config

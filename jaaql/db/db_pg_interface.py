@@ -1,7 +1,6 @@
 from psycopg import OperationalError
-from psycopg_pool import ConnectionPool, NullConnectionPool
+from psycopg_pool import ConnectionPool
 
-import logging
 import traceback
 
 from jaaql.db.db_interface import DBInterface, ECHO__none, CHAR__newline
@@ -12,7 +11,7 @@ ERR__connect_db = "Could not create connection to database!"
 
 PGCONN__min_conns = 5
 PGCONN__max_conns = 1
-PGCONN__max_conns_jaaql_user = 40
+PGCONN__max_conns_jaaql_user = 10
 
 
 class DBPGInterface(DBInterface):
@@ -20,6 +19,8 @@ class DBPGInterface(DBInterface):
     def __init__(self, config, host: str, port: int, db_name: str, username: str, password: str, is_jaaql_user: bool,
                  dev_mode: bool):
         super().__init__(config, host, username, dev_mode)
+
+        self.output_query_exceptions = config["DEBUG"]["output_query_exceptions"].lower() == "true"
 
         # Created connection pool, allowing for 1 connection for this specific user
         # Allows for the lookup of multiple users at the same time when providing jaaql user
@@ -50,7 +51,6 @@ class DBPGInterface(DBInterface):
                 raise Exception
         except Exception as ex:
             traceback.print_exc()
-            logging.critical(ex, exc_info=True)
             raise HttpStatusException(ERR__connect_db, HTTPStatus.INTERNAL_SERVER_ERROR)
 
         return conn
@@ -80,7 +80,13 @@ class DBPGInterface(DBInterface):
                     self.pg_pool.check()
                     conn = self.get_conn()
                 else:
+                    if self.output_query_exceptions:
+                        traceback.print_exc()
                     raise ex
+            except Exception as ex:
+                if self.output_query_exceptions:
+                    traceback.print_exc()
+                raise ex
 
 
     def commit(self, conn):

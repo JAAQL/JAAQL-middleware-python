@@ -57,6 +57,7 @@ Additional lines can be used
     -e DO_AUDIT=FALSE \
     -e FORCE_MFA=FALSE \
     -e INVITE_ONLY=FALSE \
+    -e OUTPUT_QUERY_EXCEPTIONS=TRUE \
     -e JAAQL_EMAIL_CREDENTIALS=base64encodedcredentials \
     -e JEQL_VERSION=2.1.2 \
 

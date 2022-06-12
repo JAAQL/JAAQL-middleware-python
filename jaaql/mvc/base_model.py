@@ -165,6 +165,12 @@ class BaseJAAQLModel:
 
         return ret
 
+    def set_jaaql_lookup_connection(self):
+        if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):
+            jaaql_uri = self.vault.get_obj(VAULT_KEY__jaaql_lookup_connection)
+            address, port, db, username, password = DBInterface.fracture_uri(jaaql_uri)
+            self.jaaql_lookup_connection = create_interface(self.config, address, port, db, username, password, is_jaaql_user=True)
+
     def __init__(self, config, vault_key: str, migration_db_interface=None, migration_project_name: str = None,
                  migration_folder: str = None, is_container: bool = False, url: str = None):
         self.config = config
@@ -206,11 +212,10 @@ class BaseJAAQLModel:
                 print("UNINSTALL KEY: " + self.uninstall_key)
             else:
                 self.install_key = None
-
             self.has_installed = True
-            jaaql_uri = self.vault.get_obj(VAULT_KEY__jaaql_lookup_connection)
-            address, port, db, username, password = DBInterface.fracture_uri(jaaql_uri)
-            self.jaaql_lookup_connection = create_interface(self.config, address, port, db, username, password, is_jaaql_user=True)
+
+        self.set_jaaql_lookup_connection()
+        if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):
             run_migrations(self.jaaql_lookup_connection)
 
             if self.migration_db_interface is None:
@@ -218,6 +223,9 @@ class BaseJAAQLModel:
 
             run_migrations(self.jaaql_lookup_connection, migration_project_name, migration_folder=migration_folder,
                            update_db_interface=self.migration_db_interface)
+
+            if self.is_container:
+                self.jaaql_lookup_connection.close()  # Each individual class will have one
 
             self.email_manager = EmailManager()
         else:

@@ -8,6 +8,10 @@ preload_app = True
 has_checked_for_install = False
 
 
+def post_worker_init(worker):
+    worker.wsgi.model.set_jaaql_lookup_connection()
+
+
 def child_exit(server, worker):
     global has_checked_for_install
     if not has_checked_for_install:

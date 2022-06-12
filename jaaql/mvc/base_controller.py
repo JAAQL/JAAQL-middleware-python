@@ -85,6 +85,7 @@ class BaseJAAQLController:
         self.app.config[FLASK__max_content_length] = 1024 * 100 * 2  # 2 MB
         self._init_error_handlers(self.app)
         self.model = model
+        self.app.model = model
         self.is_prod = is_prod
 
     def diff_ms(self, start, now):
