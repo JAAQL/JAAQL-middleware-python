@@ -436,6 +436,7 @@ create view jaaql__email_templates as (
         jet.allow_signup,
         jet.allow_confirm_signup_attempt,
         jet.data_validation_table,
+        jet.data_validation_view,
         jet.recipient_validation_view
     FROM jaaql__email_template jet
         INNER JOIN jaaql__email_account jea ON jea.id = jet.account

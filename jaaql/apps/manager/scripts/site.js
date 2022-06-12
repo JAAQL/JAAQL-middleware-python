@@ -567,7 +567,7 @@ function refreshEmailTemplateTable(page, size, search, sort) {
 
 function renderEmailAccountModal(modal, emailAccount) {
     modal.buildHTML(`
-        <h1>Email Account</h1>
+        <h1>Email Templates</h1>
         <table id="${ID_TABLE_EMAIL_TEMPLATES}">
             
         </table>
