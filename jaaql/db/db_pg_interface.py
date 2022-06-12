@@ -11,7 +11,7 @@ ERR__connect_db = "Could not create connection to database!"
 
 PGCONN__min_conns = 5
 PGCONN__max_conns = 1
-PGCONN__max_conns_jaaql_user = 20
+PGCONN__max_conns_jaaql_user = 40
 
 
 class DBPGInterface(DBInterface):
@@ -32,9 +32,9 @@ class DBPGInterface(DBInterface):
                 conn_str += " port=" + str(port)
 
             if is_jaaql_user:
-                self.pg_pool = ConnectionPool(conn_str, min_size=PGCONN__min_conns, max_size=PGCONN__max_conns_jaaql_user)
+                self.pg_pool = ConnectionPool(conn_str, min_size=PGCONN__min_conns, max_size=PGCONN__max_conns_jaaql_user, max_lifetime=60 * 30)
             else:
-                self.pg_pool = ConnectionPool(conn_str, min_size=1, max_size=4)
+                self.pg_pool = ConnectionPool(conn_str, min_size=1, max_size=5)
 
         except OperationalError as ex:
             if "does not exist" in str(ex).split("\"")[-1]:
