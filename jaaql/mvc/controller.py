@@ -6,8 +6,6 @@ from jaaql.documentation.documentation_shared import *
 from jaaql.mvc.response import JAAQLResponse
 from jaaql.db.db_interface import DBInterface
 
-ERR__user_public = "Cannot perform this action on a public user!"
-
 
 class JAAQLController(BaseJAAQLController):
 
@@ -56,11 +54,11 @@ class JAAQLController(BaseJAAQLController):
             return self.model.is_installed(response)
 
         @self.cors_route('/internal/applications', DOCUMENTATION__applications)
-        def applications(http_inputs: dict, jaaql_connection: DBInterface, ip_address: str, response: JAAQLResponse):
+        def applications(http_inputs: dict, jaaql_connection: DBInterface, ip_address: str, user_id: str, response: JAAQLResponse):
             if self.is_get():
                 return self.model.get_applications(http_inputs, jaaql_connection)
             elif self.is_post():
-                self.model.add_application(http_inputs, jaaql_connection, ip_address, response)
+                self.model.add_application(http_inputs, jaaql_connection, ip_address, user_id, response)
             elif self.is_put():
                 self.model.update_application(http_inputs, jaaql_connection)
             else:  # self.is_delete()
@@ -83,7 +81,7 @@ class JAAQLController(BaseJAAQLController):
             self.model.delete_application_confirm(http_inputs, jaaql_connection)
 
         @self.cors_route('/internal/databases', DOCUMENTATION__databases)
-        def databases(http_inputs: dict, jaaql_connection: DBInterface, user_id: int):
+        def databases(http_inputs: dict, jaaql_connection: DBInterface, user_id: str):
             if self.is_post():
                 self.model.add_database(http_inputs, jaaql_connection, user_id)
             elif self.is_get():
@@ -256,9 +254,13 @@ class JAAQLController(BaseJAAQLController):
         def signup_activate(http_inputs: dict, ip_address: str, response: JAAQLResponse):
             return self.model.sign_up_user_with_token(http_inputs[KEY__invite_key], http_inputs[KEY__password], ip_address, response)
 
+        @self.cors_route('/account/signup/fetch', DOCUMENTATION__sign_up_fetch)
+        def signup_fetch(http_inputs: dict):
+            return self.model.fetch_signup(http_inputs[KEY__invite_key])
+
         @self.cors_route('/account/signup/finish', DOCUMENTATION__sign_up_finish)
         def signup_finish(http_inputs: dict):
-            return self.model.finish_signup(http_inputs[KEY__invite_key])
+            self.model.finish_signup(http_inputs[KEY__invite_key])
 
         @self.cors_route('/account/logs', DOCUMENTATION__my_logs)
         def fetch_logs(http_inputs: dict, jaaql_connection: DBInterface, is_public: bool):
@@ -273,16 +275,26 @@ class JAAQLController(BaseJAAQLController):
             return self.model.my_ips(http_inputs, jaaql_connection)
 
         @self.cors_route('/account/password', DOCUMENTATION__password)
-        def change_password(http_inputs: dict, totp_iv: str, oauth_token: str, password_hash: str, user_id: str,
-                            last_totp: str, jaaql_connection: DBInterface, is_public: bool):
+        def change_password(http_inputs: dict, totp_iv: str, oauth_token: str, password_hash: str, user_id: str, last_totp: str,
+                            jaaql_connection: DBInterface, is_public: bool):
             if is_public:
                 raise HttpStatusException(ERR__user_public, HTTPStatus.UNAUTHORIZED)
-            return self.model.change_password(http_inputs, totp_iv, oauth_token, password_hash, user_id, last_totp,
-                                              jaaql_connection)
+            return self.model.change_password(http_inputs, totp_iv, oauth_token, password_hash, user_id, last_totp, jaaql_connection)
+
+        @self.cors_route('/account/reset-password', DOCUMENTATION__reset_password)
+        def reset_password(http_inputs: dict):
+            return self.model.send_reset_password_email(http_inputs)
+
+        @self.cors_route('/account/reset-password/status', DOCUMENTATION__reset_password_status)
+        def reset_password_status(http_inputs: dict):
+            return self.model.reset_password_status(http_inputs)
+
+        @self.cors_route('/account/reset-password/reset', DOCUMENTATION__reset_password_with_invite)
+        def reset_password_reset(http_inputs: dict):
+            return self.model.reset_password_perform_reset(http_inputs)
 
         @self.cors_route('/account/close', DOCUMENTATION__account_close)
-        def close_account(http_inputs: dict, totp_iv: str, password_hash: str, user_id: str, last_totp: str,
-                          is_public: bool):
+        def close_account(http_inputs: dict, totp_iv: str, password_hash: str, user_id: str, last_totp: str, is_public: bool):
             if is_public:
                 raise HttpStatusException(ERR__user_public, HTTPStatus.UNAUTHORIZED)
             return self.model.close_account(http_inputs, totp_iv, password_hash, user_id, last_totp)

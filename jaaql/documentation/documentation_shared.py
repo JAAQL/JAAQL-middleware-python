@@ -182,6 +182,7 @@ ARG_RES__email = SwaggerArgumentResponse(
     arg_type=str,
     example=["aaron@jaaql.com", "graham@jaaql.com"],
     required=True,
+    lower=True
 )
 
 ARG_RES__totp_mfa = [
@@ -286,7 +287,10 @@ ARG_RES__email_template_name = SwaggerArgumentResponse(
     example=[EXAMPLE__email_template_name]
 )
 ARG_RES__email_template = rename_arg(ARG_RES__email_template_name, KEY__email_template)
-ARG_RES__already_signed_up_email_template = rename_arg(ARG_RES__email_template_name, KEY__already_signed_up_email_template)
+ARG_RES__reset_password_email_template = rename_arg(ARG_RES__email_template_name, KEY__email_template,
+                                                    "The email template for resetting the password")
+ARG_RES__already_signed_up_email_template = rename_arg(ARG_RES__email_template_name, KEY__already_signed_up_email_template,
+                                                       "The email template sent if the user already exists")
 
 EXAMPLE__application_name = "Library Browser"
 EXAMPLE__application_url = "https://jaaql.com/demos/library-application"
@@ -346,11 +350,22 @@ ARG_RES__application_default_email_already_signed_up_template = SwaggerArgumentR
     arg_type=str,
     example=["jaaql_already_signed_up"],
     required=False,
-    condition="If a signup template is being used"
+    condition="If a already signed up template is being used"
 )
 
+ARG_RES__application_default_reset_password_template = SwaggerArgumentResponse(
+    name=KEY__default_reset_password_template,
+    description="The default reset password template, if one is being used",
+    arg_type=str,
+    example=["jaaql_reset_password"],
+    required=False,
+    condition="If a forgot password template is being used"
+)
+
+
 ARG_RES__application_body = [ARG_RES__application_name, ARG_RES__application_description, ARG_RES__application_uri,
-                             ARG_RES__application_default_email_signup_template, ARG_RES__application_default_email_already_signed_up_template]
+                             ARG_RES__application_default_email_signup_template, ARG_RES__application_default_email_already_signed_up_template,
+                             ARG_RES__application_default_reset_password_template]
 
 CONDITION__pre_auth = "Is during 1st stage authentication"
 

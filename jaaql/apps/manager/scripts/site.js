@@ -27,6 +27,8 @@ let ID_ADD_APP_URL = "add-application-url";
 let ID_ADD_PUBLIC_USERNAME = "add-application-public-username";
 let ID_ADD_APP_SIGNUP_TEMPLATE = "add-application-signup-template";
 let ID_ADD_APP_ALREADY_SIGNED_UP_TEMPLATE = "add-application-already-signed-up-template";
+let ID_ADD_APP_RESET_PASSWORD_TEMPLATE = "add-application-reset-password-template";
+let ID_ADD_APP_DEFAULT_DATABASE = "add-application-default-database";
 let ID_TABLE_ASSIGNED_DATABASES = "assigned-databases";
 let ID_TABLE_AUTHS = "conf-auths";
 let ID_TABLE_DATABASES = "node-databases";
@@ -60,6 +62,7 @@ let ID_ADD_EMAIL_TEMPLATE_APP_RELATIVE_PATH = "add-email-template-app-relative-p
 let ID_ADD_EMAIL_TEMPLATE_SUBJECT = "add-email-template-subject";
 let ID_ADD_EMAIL_TEMPLATE_ALLOW_SIGNUP = "add-email-template-allow-signup";
 let ID_ADD_EMAIL_TEMPLATE_ALLOW_ALREADY_EXISTS = "add-email-template-allow-already-exists";
+let ID_ADD_EMAIL_TEMPLATE_ALLOW_RESET_PASSWORD = "add-email-template-allow-reset-password";
 let ID_ADD_EMAIL_TEMPLATE_DATA_VALIDATION_TABLE = "add-email-template-data-validation-table";
 let ID_ADD_EMAIL_TEMPLATE_DATA_VALIDATION_VIEW = "add-email-template-data-validation-view";
 let ID_ADD_EMAIL_TEMPLATE_RECIPIENT_VALIDATION_VIEW = "add-email-template-recipient-validation-view";
@@ -385,6 +388,7 @@ function renderAddEmailTemplate(modal, emailAccount) {
         <label>Subject: <input id="${ID_ADD_EMAIL_TEMPLATE_SUBJECT}"/></label><br>
         <label>Allow Signup: <input id="${ID_ADD_EMAIL_TEMPLATE_ALLOW_SIGNUP}" type="checkbox"/></label><br>
         <label>Allow Already Exists: <input id="${ID_ADD_EMAIL_TEMPLATE_ALLOW_ALREADY_EXISTS}" type="checkbox"/></label><br>
+        <label>Allow Reset Password: <input id="${ID_ADD_EMAIL_TEMPLATE_ALLOW_RESET_PASSWORD}" type="checkbox"/></label><br>
         <label>Data Validation Table: <input id="${ID_ADD_EMAIL_TEMPLATE_DATA_VALIDATION_TABLE}"/></label><br>
         <label>Data Validation View: <input id="${ID_ADD_EMAIL_TEMPLATE_DATA_VALIDATION_VIEW}"/></label><br>
         <label>Recipient Validation View: <input id="${ID_ADD_EMAIL_TEMPLATE_RECIPIENT_VALIDATION_VIEW}"/></label><br>
@@ -397,6 +401,7 @@ function renderAddEmailTemplate(modal, emailAccount) {
         submitObj[JEQL.KEY_ACCOUNT] = emailAccount;
         submitObj[JEQL.KEY_ALLOW_SIGNUP] = document.getElementById(ID_ADD_EMAIL_TEMPLATE_ALLOW_SIGNUP).checked;
         submitObj[JEQL.KEY_ALLOW_CONFIRM_SIGNUP_ATTEMPT] = document.getElementById(ID_ADD_EMAIL_TEMPLATE_ALLOW_ALREADY_EXISTS).checked;
+        submitObj[JEQL.KEY_ALLOW_RESET_PASSWORD] = document.getElementById(ID_ADD_EMAIL_TEMPLATE_ALLOW_RESET_PASSWORD).checked;
         if (document.getElementById(ID_ADD_EMAIL_TEMPLATE_DATA_VALIDATION_TABLE).value) {
             submitObj[JEQL.KEY_DATA_VALIDATION_TABLE] = document.getElementById(ID_ADD_EMAIL_TEMPLATE_DATA_VALIDATION_TABLE).value;
         }
@@ -728,6 +733,8 @@ function addAppModal(modal) {
         <label>Public Username: <input id="${ID_ADD_PUBLIC_USERNAME}" /></label><br>
         <label>Signup Template: <input id="${ID_ADD_APP_SIGNUP_TEMPLATE}" /></label><br>
         <label>Already Signed Up Template: <input id="${ID_ADD_APP_ALREADY_SIGNED_UP_TEMPLATE}" /></label><br>
+        <label>Reset Password Template: <input id="${ID_ADD_APP_RESET_PASSWORD_TEMPLATE}" /></label><br>
+        <label>Default Database: <input id="${ID_ADD_APP_DEFAULT_DATABASE}" /></label><br>
     `).buildChild("button").buildText("Add").buildEventListener("click", function() {
         let data = {};
         data[JEQL.KEY_NAME] = document.getElementById(ID_ADD_APP_NAME).value;
@@ -736,6 +743,8 @@ function addAppModal(modal) {
         data[JEQL.KEY_PUBLIC_USERNAME] = document.getElementById(ID_ADD_PUBLIC_USERNAME).value;
         data[JEQL.KEY_DEFAULT_EMAIL_SIGNUP_TEMPLATE] = document.getElementById(ID_ADD_APP_SIGNUP_TEMPLATE).value;
         data[JEQL.KEY_DEFAULT_EMAIL_ALREADY_SIGNED_UP_TEMPLATE] = document.getElementById(ID_ADD_APP_ALREADY_SIGNED_UP_TEMPLATE).value;
+        data[JEQL.KEY_DEFAULT_EMAIL_RESET_PASSWORD_TEMPLATE] = document.getElementById(ID_ADD_APP_RESET_PASSWORD_TEMPLATE).value;
+        data[JEQL.KEY_DEFAULT_DATABASE] = document.getElementById(ID_ADD_APP_DEFAULT_DATABASE).value;
         if (data[JEQL.KEY_PUBLIC_USERNAME].length === 0) {
             delete data[JEQL.KEY_PUBLIC_USERNAME];
         }
@@ -744,6 +753,12 @@ function addAppModal(modal) {
         }
         if (data[JEQL.KEY_DEFAULT_EMAIL_ALREADY_SIGNED_UP_TEMPLATE].length === 0) {
             delete data[JEQL.KEY_DEFAULT_EMAIL_ALREADY_SIGNED_UP_TEMPLATE];
+        }
+        if (data[JEQL.KEY_DEFAULT_EMAIL_RESET_PASSWORD_TEMPLATE].length === 0) {
+            delete data[JEQL.KEY_DEFAULT_EMAIL_RESET_PASSWORD_TEMPLATE];
+        }
+        if (data[JEQL.KEY_DEFAULT_DATABASE].length === 0) {
+            delete data[JEQL.KEY_DEFAULT_DATABASE];
         }
         JEQL.requests.makeJson(window.JEQL_CONFIG, JEQL.ACTION_INTERNAL_APPLICATIONS_ADD, function() {
             JEQL.renderModalOk("Successfully added application", function() {

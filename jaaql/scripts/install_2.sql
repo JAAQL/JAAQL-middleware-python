@@ -1,5 +1,5 @@
 CREATE DOMAIN postgres_table_view_name AS varchar(64) CHECK (VALUE ~* '^[A-Za-z*0-9_\-]+$');
-CREATE DOMAIN email_address AS varchar(255) CHECK ((VALUE ~* '^[A-Za-z0-9._%-]+@[A-Za-z0-9.-]+[.][A-Za-z]+$' AND lower(VALUE) = VALUE) OR VALUE IN ('jaaql', 'superjaaql'));
+CREATE DOMAIN email_address AS varchar(255) CHECK ((VALUE ~* '^[A-Za-z0-9._%-]+([+][A-Za-z0-9._%-]+){0,1}@[A-Za-z0-9.-]+[.][A-Za-z]+$' AND lower(VALUE) = VALUE) OR VALUE IN ('jaaql', 'superjaaql'));
 
 create table jaaql__email_account (
     id uuid PRIMARY KEY NOT NULL not null default gen_random_uuid(),
@@ -31,7 +31,9 @@ create table jaaql__email_template (
     recipient_validation_view postgres_table_view_name,
     allow_signup boolean default false not null,
     allow_confirm_signup_attempt boolean default false not null,
-    check ((allow_signup <> jaaql__email_template.allow_confirm_signup_attempt) or not allow_signup),
+    allow_reset_password boolean default false not null,
+    check (allow_signup::int + allow_confirm_signup_attempt::int + allow_reset_password::int < 2),
+    check ((allow_reset_password = (data_validation_table is null)) or not allow_reset_password),
     deleted timestamptz default null
 );
 CREATE UNIQUE INDEX jaaql__email_template_unq
@@ -45,7 +47,9 @@ create table jaaql__application (
     default_email_signup_template uuid,
     FOREIGN KEY (default_email_signup_template) REFERENCES jaaql__email_template,
     default_email_already_signed_up_template uuid,
-    FOREIGN KEY (default_email_already_signed_up_template) REFERENCES jaaql__email_template
+    FOREIGN KEY (default_email_already_signed_up_template) REFERENCES jaaql__email_template,
+    default_reset_password_template uuid,
+    FOREIGN KEY (default_reset_password_template) REFERENCES jaaql__email_template
 );
 
 create table jaaql__user (
@@ -58,7 +62,7 @@ create table jaaql__user (
     last_totp varchar(6),
     alias varchar(32),
     is_public boolean default false not null,
-    check (is_public or (email::email_address)),
+    check (is_public or (email::email_address = email::email_address)),
     public_credentials text,
     application varchar(64),
     check (not is_public = (public_credentials is null)),
@@ -436,6 +440,7 @@ create view jaaql__email_templates as (
         jet.subject,
         jet.allow_signup,
         jet.allow_confirm_signup_attempt,
+        jet.allow_reset_password,
         jet.data_validation_table,
         jet.data_validation_view,
         jet.recipient_validation_view
@@ -457,10 +462,37 @@ create table jaaql__email_history (
     encrypted_attachments text
 );
 
+create table jaaql__fake_reset_password (
+    key_b uuid PRIMARY KEY not null default gen_random_uuid(),
+    email email_address NOT NULL,
+    created timestamptz default current_timestamp not null,
+    code_attempts int default 0 not null,
+    expiry_ms integer not null default 1000 * 60 * 60 * 2, -- 2 hours
+    code_expiry_ms integer not null default 1000 * 60 * 15 -- 15 minutes
+);
+
+create table jaaql__reset_password (
+    key_a uuid PRIMARY KEY not null default gen_random_uuid(),
+    key_b uuid not null default gen_random_uuid(),
+    reset_code varchar(8) not null,
+    code_attempts int default 0 not null,
+    activated boolean not null default false,
+    used_key_a boolean not null default false,
+    the_user uuid not null,
+    FOREIGN KEY (the_user) REFERENCES jaaql__user,
+    closed timestamptz,
+    created timestamptz default current_timestamp not null,
+    expiry_ms integer not null default 1000 * 60 * 60 * 2, -- 2 hours. Important this is the same as above fake table
+    code_expiry_ms integer not null default 1000 * 60 * 15, -- 15 minutes. Important this is the same as above fake table
+    email_template uuid,
+    FOREIGN KEY (email_template) REFERENCES jaaql__email_template
+);
+
 create table jaaql__sign_up (
     key_a uuid PRIMARY KEY not null default gen_random_uuid(),
     key_b uuid not null default gen_random_uuid(),
-    invite_code varchar(4) not null,
+    invite_code varchar(5) not null,
+    code_attempts int default 0 not null,
     activated boolean not null default false,
     used_key_a boolean not null default false,
     the_user uuid not null,
@@ -472,7 +504,7 @@ create table jaaql__sign_up (
     email_template uuid,
     FOREIGN KEY (email_template) REFERENCES jaaql__email_template,
     data_lookup_json text,
-    check ((email_template is null) = (data_lookup_json is null))
+    check ((data_lookup_json is null and email_template is null) or email_template is not null)
 );
 
 CREATE UNIQUE INDEX jaaql__sign_up_unq_key_b ON jaaql__sign_up (key_b);
