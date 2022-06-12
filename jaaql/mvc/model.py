@@ -1136,7 +1136,7 @@ class JAAQLModel(BaseJAAQLModel):
         val_table_esc = '"%s"' % val_table
         ins_query = "INSERT INTO " + val_table_esc + " (" + cols + ") VALUES (" + ins + ") RETURNING " + pkeys
         pkey_vals = execute_supplied_statement_singleton(self.jaaql_lookup_connection, ins_query, params, as_objects=True)
-
+        pkey_vals = {key: str(val) if isinstance(val, uuid.UUID) else val for key, val in pkey_vals.items()}
         select_table = template[KEY__data_validation_view] if template[KEY__data_validation_view] is not None else val_table
         return self.select_from_data_validation_table(select_table, pkey_vals), pkey_vals
 

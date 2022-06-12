@@ -1,4 +1,5 @@
 CREATE DOMAIN postgres_table_view_name AS varchar(64) CHECK (VALUE ~* '^[A-Za-z*0-9_\-]+$');
+CREATE DOMAIN email_address AS varchar(255) CHECK ((VALUE ~* '^[A-Za-z0-9._%-]+@[A-Za-z0-9.-]+[.][A-Za-z]+$' AND lower(VALUE) = VALUE) OR VALUE IN ('jaaql', 'superjaaql'));
 
 create table jaaql__email_account (
     id uuid PRIMARY KEY NOT NULL not null default gen_random_uuid(),
@@ -57,7 +58,7 @@ create table jaaql__user (
     last_totp varchar(6),
     alias varchar(32),
     is_public boolean default false not null,
-    check ((is_public or (email ~* '^[A-Za-z0-9._%-]+@[A-Za-z0-9.-]+[.][A-Za-z]+$' OR email IN ('jaaql', 'superjaaql'))) AND lower(email) = email),
+    check (is_public or (email::email_address)),
     public_credentials text,
     application varchar(64),
     check (not is_public = (public_credentials is null)),
