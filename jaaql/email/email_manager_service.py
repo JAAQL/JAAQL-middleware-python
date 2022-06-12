@@ -123,7 +123,7 @@ class EmailManagerService:
 
     def __init__(self, connection: DBInterface, email_credentials: Optional[str], db_crypt_key: bytes):
         if email_credentials is None:
-            self.email_credentials = None
+            self.email_credentials = {}
         else:
             self.email_credentials = json.loads(b64d(email_credentials).decode(ENCODING__ascii))
         self.db_crypt_key = db_crypt_key
