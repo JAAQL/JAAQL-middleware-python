@@ -256,9 +256,13 @@ class JAAQLController(BaseJAAQLController):
         def signup_activate(http_inputs: dict, ip_address: str, response: JAAQLResponse):
             return self.model.sign_up_user_with_token(http_inputs[KEY__invite_key], http_inputs[KEY__password], ip_address, response)
 
+        @self.cors_route('/account/signup/fetch', DOCUMENTATION__sign_up_fetch)
+        def signup_fetch(http_inputs: dict):
+            return self.model.fetch_signup(http_inputs[KEY__invite_key])
+
         @self.cors_route('/account/signup/finish', DOCUMENTATION__sign_up_finish)
         def signup_finish(http_inputs: dict):
-            return self.model.finish_signup(http_inputs[KEY__invite_key])
+            self.model.finish_signup(http_inputs[KEY__invite_key])
 
         @self.cors_route('/account/logs', DOCUMENTATION__my_logs)
         def fetch_logs(http_inputs: dict, jaaql_connection: DBInterface, is_public: bool):

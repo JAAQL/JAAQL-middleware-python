@@ -51,8 +51,6 @@ EMAIL__subject = "Subject"
 
 SPLIT__address = ", "
 
-DEBUG_MODE = True
-
 
 class EmailAttachment:
     def __init__(self, content: bytes, filename: str):
@@ -121,7 +119,7 @@ class Email:
 
 class EmailManagerService:
 
-    def __init__(self, connection: DBInterface, email_credentials: Optional[str], db_crypt_key: bytes):
+    def __init__(self, connection: DBInterface, email_credentials: Optional[str], db_crypt_key: bytes, is_gunicorn: str):
         if email_credentials is None:
             self.email_credentials = {}
         else:
@@ -130,6 +128,8 @@ class EmailManagerService:
         self.connection = connection
 
         self.email_queues = {}
+
+        self.is_gunicorn = is_gunicorn
 
         self.reload_accounts()
 
@@ -148,8 +148,8 @@ class EmailManagerService:
                                             KEY__id: account[KEY__id]},
                                            encrypt_parameters=[KEY__encrypted_password])
             cur_queue = Queue()
-            if account[KEY__id] not in self.email_queues:
-                email_queues[account[KEY__id]] = cur_queue
+            if str(account[KEY__id]) not in self.email_queues:
+                email_queues[str(account[KEY__id])] = cur_queue
                 password = account[KEY__encrypted_password]
                 if password is None:
                     password = self.email_credentials[account[KEY__email_account_name]]
@@ -213,18 +213,18 @@ class EmailManagerService:
     def email_connection_thread(self, account: dict, queue: Queue, password: str):
         conn_lib = None
         conn = None
-        if not DEBUG_MODE:
+        if self.is_gunicorn:
             conn_lib = imaplib.IMAP4 if account[KEY__account_protocol] == PROTOCOL__imap else smtplib.SMTP
             conn = self.fetch_conn(conn_lib, account, password)
 
         while True:
             try:
                 email: Email = queue.get(timeout=10)
-                if not DEBUG_MODE:
+                if self.is_gunicorn:
                     if not self.is_connected(conn):
                         conn = self.fetch_conn(conn_lib, account, password)
                 formatted_body, to_send = self.construct_message(account, email)
-                if not DEBUG_MODE:
+                if self.is_gunicorn:
                     conn.send_message(to_send, account[KEY__account_username], email.to)
                 else:
                     print("SENDING EMAIL")
@@ -250,7 +250,7 @@ class EmailManagerService:
                     ]
                 )
             except Empty:
-                if account[KEY__id] not in self.email_queues:
+                if str(account[KEY__id]) not in self.email_queues:
                     break
             except:
                 traceback.print_exc()  # Something went wrong
@@ -264,6 +264,8 @@ class EmailManagerService:
         if email.from_account in self.email_queues:
             self.email_queues[email.from_account].put(email)
         else:
+            print("Available email accounts:")
+            print(self.email_queues.keys())
             raise Exception(ERR__email_not_found % email.from_account)
 
 
@@ -293,6 +295,6 @@ def create_flask_app(vault_key=None, email_credentials=None, is_gunicorn: bool =
     jaaql_lookup_connection = get_jaaql_connection(config, vault)
     db_crypt_key = vault.get_obj(VAULT_KEY__db_crypt_key).encode(ENCODING__ascii)
 
-    flask_app = create_app(EmailManagerService(jaaql_lookup_connection, email_credentials, db_crypt_key))
+    flask_app = create_app(EmailManagerService(jaaql_lookup_connection, email_credentials, db_crypt_key, is_gunicorn))
     print("Created email manager app host, running flask", file=sys.stderr)
     flask_app.run(port=PORT__ems, host="0.0.0.0", threaded=True)

@@ -960,7 +960,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         return res
 
-    def finish_signup(self, token: str):
+    def fetch_signup(self, token: str):
         resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_fetch, parameters={KEY__invite_or_poll_key: token},
                                                     as_objects=True, singleton_message=ERR__cant_find_sign_up)
 
@@ -969,11 +969,19 @@ class JAAQLModel(BaseJAAQLModel):
             template_table = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template,
                                                                   {KEY__id: resp[KEY__email_template]}, as_objects=True)[KEY__data_validation_table]
             res[KEY__parameters] = self.select_from_data_validation_table(template_table, json.loads(resp[ATTR__data_lookup_json]))
+
+        return res
+
+    def finish_signup(self, token: str):
+        resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_fetch, parameters={KEY__invite_or_poll_key: token},
+                                                    as_objects=True, singleton_message=ERR__cant_find_sign_up)
+
+        if resp[KEY__email_template] and resp[ATTR__data_lookup_json]:
+            template_table = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template,
+                                                                  {KEY__id: resp[KEY__email_template]}, as_objects=True)[KEY__data_validation_table]
             self.delete_from_data_validation_table(template_table, json.loads(resp[ATTR__data_lookup_json]))
 
         execute_supplied_statement(self.jaaql_lookup_connection, QUERY__sign_up_close, {KEY__invite_key: resp[KEY__invite_key]})
-
-        return res
 
     def sign_up_user(self, jaaql_connection: DBInterface, username: str, password: str, user_id: str = None, ip_address: str = None,
                      use_mfa: bool = False, response: JAAQLResponse = None, allow_password_error: bool = False):
@@ -1141,7 +1149,8 @@ class JAAQLModel(BaseJAAQLModel):
         return self.select_from_data_validation_table(select_table, pkey_vals), pkey_vals
 
     def signup_status(self, inputs: dict):
-        resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_poll, parameters=inputs, as_objects=True,
+        select_param = {KEY__invite_or_poll_key: inputs[KEY__invite_or_poll_key]}
+        resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_poll, parameters=select_param, as_objects=True,
                                                     singleton_message=ERR__cant_find_sign_up)
 
         existed = False
@@ -1157,7 +1166,8 @@ class JAAQLModel(BaseJAAQLModel):
         status = SIGNUP__not_started
 
         invite_code_match = inputs.get(KEY__invite_code) == resp[KEY__invite_code]
-        invite_code_expired = resp[ATTR__created] + timedelta(milliseconds=resp[ATTR__expiry_invite_code_ms]) < datetime.now()
+        timezone = resp[ATTR__created].tzinfo
+        invite_code_expired = resp[ATTR__created] + timedelta(milliseconds=resp[ATTR__expiry_invite_code_ms]) < datetime.now(timezone)
 
         if is_invite_key or resp[ATTR__activated] or (invite_code_match and not invite_code_expired):
             if invite_code_match and not resp[ATTR__activated]:
@@ -1239,8 +1249,9 @@ class JAAQLModel(BaseJAAQLModel):
         template = template_already_exists if user_existed else template
         invite_keys = self.user_invite(self.jaaql_lookup_connection, inputs[KEY__email], template[KEY__id], pkey_vals)
         optional_params = {EMAIL_PARAM__signup_key: invite_keys[KEY__invite_key], EMAIL_PARAM__invite_code: invite_keys[KEY__invite_code]}
+        optional_params = {**optional_params, **sanitized_params}
 
-        self.email_manager.construct_and_send_email(self.url, app_url, template, user_id, inputs[KEY__email], None, sanitized_params, optional_params)
+        self.email_manager.construct_and_send_email(self.url, app_url, template, user_id, inputs[KEY__email], None, {}, optional_params)
 
         return {KEY__invite_key: invite_keys[KEY__invite_poll_key]}
 

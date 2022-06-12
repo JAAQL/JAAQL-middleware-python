@@ -28,8 +28,8 @@ class EmailManager:
 
         subject, loaded_template = self.perform_replacements(template[KEY__subject], loaded_template, parameters, optional_parameters)
 
-        self.send_email(Email(sender, template[KEY__id], template[KEY__account], to_email, to_name, subject=subject, body=loaded_template,
-                              is_html=True, attachments=attachments))
+        self.send_email(Email(str(sender), str(template[KEY__id]), str(template[KEY__account]), to_email, to_name, subject=subject,
+                              body=loaded_template, is_html=True, attachments=attachments))
 
     def load_template(self, base_url: str, app_url: str, app_relative_path: str):
         if app_relative_path is None:

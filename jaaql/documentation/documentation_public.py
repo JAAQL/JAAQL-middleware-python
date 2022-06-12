@@ -113,24 +113,29 @@ DOCUMENTATION__sign_up_with_invite = SwaggerDocumentation(
     )
 )
 
-DOCUMENTATION__sign_up_finish = SwaggerDocumentation(
+DOCUMENTATION__sign_up_fetch = SwaggerDocumentation(
     tags="Signup",
     methods=SwaggerMethod(
-        name="Finish signup",
-        description="Finishes the signup and deletes the data. At this point, signups cannot be re-sent to the user",
-        method=REST__POST,
-        body=ARG_RES__invite_key,
+        name="Fetch signup data",
+        description="Fetches the signup data",
+        method=REST__GET,
+        arguments=ARG_RES__invite_key,
         response=[
             SwaggerResponse(
                 description="Finish signup response",
                 response=ARG_RES__parameters
-            ),
-            SwaggerFlatResponse(
-                description=ERR__already_signed_up,
-                code=HTTPStatus.CONFLICT,
-                body=ERR__already_signed_up
             )
         ]
+    )
+)
+
+DOCUMENTATION__sign_up_finish = SwaggerDocumentation(
+    tags="Signup",
+    methods=SwaggerMethod(
+        name="Finish signup",
+        description="Deletes the signup data",
+        method=REST__POST,
+        body=ARG_RES__invite_key
     )
 )
 
