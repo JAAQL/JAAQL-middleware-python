@@ -840,7 +840,7 @@ class JAAQLModel(BaseJAAQLModel):
             ATTR__data_lookup_json: template_lookup,
             ATTR__the_user: the_user,
             KEY__email_template: email_template,
-            KEY__invite_code: [CODE__all_chars[random.randint(0, len(CODE__all_chars) - 1)] for i in range(4)]
+            KEY__invite_code: "".join([CODE__all_chars[random.randint(0, len(CODE__all_chars) - 1)] for i in range(4)])
         }
         return execute_supplied_statement_singleton(jaaql_connection, QUERY__sign_up_insert, params, as_objects=True)
 
