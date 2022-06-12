@@ -137,6 +137,7 @@ class DBInterface(ABC):
                         new_parameters[key] = str(value)
                     else:
                         new_parameters[key] = value
+
             columns, rows = self.execute_query(conn, query, new_parameters)
 
             ret = {

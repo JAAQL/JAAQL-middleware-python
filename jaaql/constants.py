@@ -74,7 +74,6 @@ KEY__address = "address"
 KEY__jaaql_name = "jaaql_name"
 KEY__otp_uri = "otp_uri"
 KEY__otp_qr = "otp_qr"
-KEY__user_agent = "user_agent"
 KEY__jaaql_otp_uri = "jaaql_otp_uri"
 KEY__jaaql_otp_qr = "jaaql_otp_qr"
 KEY__superjaaql_otp_uri = "superjaaql_otp_uri"
@@ -170,4 +169,4 @@ PORT__ems = 6061
 ENDPOINT__reload_accounts = "/reload-accounts"
 ENDPOINT__send_email = "/send-email"
 
-VERSION = "2.25.0"
+VERSION = "2.26.0"

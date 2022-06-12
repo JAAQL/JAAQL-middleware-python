@@ -10,5 +10,3 @@ BEGIN
     return secure_pass;
 END
 $$ language plpgsql;
-
-SELECT setup_jaaql_role();

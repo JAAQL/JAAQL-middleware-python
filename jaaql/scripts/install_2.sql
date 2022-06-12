@@ -78,17 +78,6 @@ create table jaaql__user_ip (
     constraint jaaql__user_ip_unq unique (the_user, address_hash)
 );
 
-create table jaaql__user_ua (
-    id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
-    the_user uuid not null,
-    ua_hash varchar(254),
-    encrypted_ua varchar(512),
-    first_use timestamptz not null default current_timestamp,
-    most_recent_use timestamptz not null default current_timestamp,
-    FOREIGN KEY (the_user) REFERENCES jaaql__user,
-    constraint jaaql__user_ua_unq unique (the_user, ua_hash)
-);
-
 create table jaaql__user_password (
     the_user uuid not null,
     created timestamptz not null default current_timestamp,
@@ -116,6 +105,17 @@ create view jaaql__user_latest_password as (
         jaaql__user us ON us.id = the_user
     WHERE
         sub.change_count <= 1 AND us.deleted is null
+);
+
+create view jaaql__user_latest_credentials as (
+    SELECT
+        julp.*,
+        juip.id as ip_id,
+        juip.address_hash
+    FROM
+        jaaql__user_latest_password julp
+    INNER JOIN
+        jaaql__user_ip juip ON juip.the_user = julp.id
 );
 
 create table jaaql__node (
@@ -242,11 +242,9 @@ create table jaaql__log (
     encrypted_exception text,
     encrypted_input text,
     ip uuid not null,
-    ua uuid,
     status int not null,
     endpoint varchar(64) not null,
     FOREIGN KEY (the_user) REFERENCES jaaql__user,
-    FOREIGN KEY (ua) REFERENCES jaaql__user_ua,
     FOREIGN KEY (ip) REFERENCES jaaql__user_ip
 );
 
@@ -262,7 +260,6 @@ create view jaaql__my_logs as (
     SELECT
         log.occurred,
         ip.encrypted_address,
-        ua.encrypted_ua,
         log.status,
         log.endpoint,
         log.duration_ms,
@@ -271,7 +268,6 @@ create view jaaql__my_logs as (
          jaaql__log log
     INNER JOIN jaaql__user us ON us.id = log.the_user AND us.deleted is null AND us.email = current_user
     INNER JOIN jaaql__user_ip ip ON log.ip = ip.id
-    LEFT JOIN jaaql__user_ua ua ON log.ua = ua.id
     ORDER BY occurred DESC
 );
 grant select on jaaql__my_logs to public;

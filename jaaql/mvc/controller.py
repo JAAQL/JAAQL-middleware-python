@@ -17,7 +17,7 @@ class JAAQLController(BaseJAAQLController):
     def create_app(self):
 
         @self.cors_route('/oauth/token', DOCUMENTATION__oauth_token)
-        def fetch_oauth_token(sql_inputs: dict, ip_address: str, user_agent: str, response: JAAQLResponse):
+        def fetch_oauth_token(sql_inputs: dict, ip_address: str, response: JAAQLResponse):
             if KEY__pre_auth_key in sql_inputs:
                 if KEY__username in sql_inputs or KEY__password in sql_inputs:
                     rep_var = KEY__username if KEY__username in sql_inputs else KEY__password
@@ -25,7 +25,7 @@ class JAAQLController(BaseJAAQLController):
                 if KEY__mfa_key not in sql_inputs:
                     raise HttpStatusException(ERR__expected_argument % KEY__mfa_key, HTTPStatus.BAD_REQUEST)
                 return self.model.authenticate_with_mfa_key(sql_inputs[KEY__pre_auth_key], sql_inputs[KEY__mfa_key],
-                                                            ip_address, user_agent, response)
+                                                            ip_address, response)
             else:
                 if KEY__username not in sql_inputs or KEY__password not in sql_inputs:
                     rep_var = KEY__username if KEY__username in sql_inputs else KEY__password
@@ -33,7 +33,7 @@ class JAAQLController(BaseJAAQLController):
                 if KEY__mfa_key in sql_inputs:
                     raise HttpStatusException(ERR__unexpected_argument % KEY__mfa_key, HTTPStatus.BAD_REQUEST)
                 return self.model.authenticate(username=sql_inputs[KEY__username], password=sql_inputs[KEY__password],
-                                               ip_address=ip_address, user_agent=user_agent, response=response)
+                                               ip_address=ip_address, response=response)
 
         @self.cors_route('/internal/redeploy', DOCUMENTATION__deploy)
         def redeploy():
@@ -44,8 +44,8 @@ class JAAQLController(BaseJAAQLController):
             return self.model.refresh(oauth_token)
 
         @self.cors_route('/internal/install', DOCUMENTATION__install)
-        def install(http_inputs: dict, ip_address: str, user_agent: str, response: JAAQLResponse):
-            return self.model.install(**http_inputs, ip_address=ip_address, user_agent=user_agent, response=response)
+        def install(http_inputs: dict, ip_address: str, response: JAAQLResponse):
+            return self.model.install(**http_inputs, ip_address=ip_address, response=response)
 
         @self.cors_route('/internal/uninstall', DOCUMENTATION__uninstall)
         def uninstall(http_inputs: dict):
@@ -56,11 +56,11 @@ class JAAQLController(BaseJAAQLController):
             return self.model.is_installed(response)
 
         @self.cors_route('/internal/applications', DOCUMENTATION__applications)
-        def applications(http_inputs: dict, jaaql_connection: DBInterface, ip_address: str, user_agent: str, response: JAAQLResponse):
+        def applications(http_inputs: dict, jaaql_connection: DBInterface, ip_address: str, response: JAAQLResponse):
             if self.is_get():
                 return self.model.get_applications(http_inputs, jaaql_connection)
             elif self.is_post():
-                self.model.add_application(http_inputs, jaaql_connection, ip_address, user_agent, response)
+                self.model.add_application(http_inputs, jaaql_connection, ip_address, response)
             elif self.is_put():
                 self.model.update_application(http_inputs, jaaql_connection)
             else:  # self.is_delete()
@@ -253,8 +253,8 @@ class JAAQLController(BaseJAAQLController):
             return self.model.signup_status(http_inputs)
 
         @self.cors_route('/account/signup/activate', DOCUMENTATION__sign_up_with_invite)
-        def signup_activate(http_inputs: dict, ip_address: str, user_agent: str, response: JAAQLResponse):
-            return self.model.sign_up_user_with_token(http_inputs[KEY__invite_key], http_inputs[KEY__password], ip_address, user_agent, response)
+        def signup_activate(http_inputs: dict, ip_address: str, response: JAAQLResponse):
+            return self.model.sign_up_user_with_token(http_inputs[KEY__invite_key], http_inputs[KEY__password], ip_address, response)
 
         @self.cors_route('/account/signup/finish', DOCUMENTATION__sign_up_finish)
         def signup_finish(http_inputs: dict):

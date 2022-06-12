@@ -430,17 +430,6 @@ DOCUMENTATION__my_logs = SwaggerDocumentation(
                     ARG_RES__occurred,
                     ARG_RES__address,
                     SwaggerArgumentResponse(
-                        name=KEY__user_agent,
-                        description="The user agent",
-                        arg_type=str,
-                        example=["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chro"
-                                 "me/77.0.3865.90 Safari/537.36", "Mozilla/5.0 (iPhone; CPU iPhone OS 11_3_1 like Mac O"
-                                                                  "S X) AppleWebKit/603.1.30 (KHTML, like Gecko) Versio"
-                                                                  "n/10.0 Mobile/14E304 Safari/602.1"],
-                        required=False,
-                        condition="If a user agent is associated with this"
-                    ),
-                    SwaggerArgumentResponse(
                         name="status",
                         description="The response status code",
                         arg_type=int,

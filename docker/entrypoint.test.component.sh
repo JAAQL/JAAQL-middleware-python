@@ -1,7 +1,7 @@
 cd $INSTALL_PATH
 export PYTHONUNBUFFERED=TRUE
 export PYTHONPATH=.
-/pypy3.7-v7.3.5-linux64/bin/pypy $INSTALL_PATH/component.py &
+$PYPY_PATH/bin/pypy $INSTALL_PATH/component.py &
 cd /
 ./entrypoint.sh
 

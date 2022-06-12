@@ -1,5 +1,5 @@
-import psycopg2
-from psycopg2 import pool, OperationalError
+from psycopg import OperationalError
+from psycopg_pool import ConnectionPool
 
 import logging
 
@@ -9,7 +9,7 @@ from jaaql.exceptions.custom_http_status import CustomHTTPStatus
 
 ERR__connect_db = "Could not create connection to database!"
 
-PGCONN__min_conns = 1
+PGCONN__min_conns = 5
 PGCONN__max_conns = 1
 PGCONN__max_conns_jaaql_user = 20
 
@@ -23,15 +23,19 @@ class DBPGInterface(DBInterface):
         # Created connection pool, allowing for 1 connection for this specific user
         # Allows for the lookup of multiple users at the same time when providing jaaql user
         try:
-            self.pg_pool = psycopg2.pool.ThreadedConnectionPool(
-                PGCONN__min_conns,
-                PGCONN__max_conns_jaaql_user if is_jaaql_user else PGCONN__max_conns,
-                user=username,
-                password=password,
-                host=host,
-                port=port,
-                database=db_name
-            )
+            conn_str = "user=" + username + " password=" + password + " dbname=" + db_name
+
+            # Important we don't list the host as this will force a unix socket
+            if host not in ['localhost', '127.0.0.1']:
+                conn_str += " host=" + host
+            if str(port) != "5432":
+                conn_str += " port=" + str(port)
+
+            if is_jaaql_user:
+                self.pg_pool = ConnectionPool(conn_str, min_size=PGCONN__min_conns, max_size=PGCONN__max_conns_jaaql_user)
+            else:
+                self.pg_pool = ConnectionPool(conn_str, min_size=1, max_size=4)
+
         except OperationalError as ex:
             if "does not exist" in str(ex).split("\"")[-1]:
                 raise HttpStatusException(str(ex), CustomHTTPStatus.DATABASE_NO_EXIST)
@@ -41,6 +45,7 @@ class DBPGInterface(DBInterface):
     def get_conn(self):
         try:
             conn = self.pg_pool.getconn()
+
             if conn is None:
                 raise Exception
         except Exception as ex:
@@ -53,18 +58,18 @@ class DBPGInterface(DBInterface):
         return self.pg_pool.putconn(conn)
 
     def close(self):
-        self.pg_pool.closeall()
+        self.pg_pool.close()
 
-    def execute_query(self, conn, query, parameters):
-        cursor = conn.cursor()
-        if parameters is None or len(parameters.keys()) == 0:
-            cursor.execute(query)
-        else:
-            cursor.execute(query, parameters)
-        if cursor.description is None:
-            return [], []
-        else:
-            return [desc[0] for desc in cursor.description], cursor.fetchall()
+    def execute_query(self, conn, query, parameters=None):
+        with conn.cursor() as cursor:
+            if parameters is None or len(parameters.keys()) == 0:
+                cursor.execute(query)
+            else:
+                cursor.execute(query, parameters)
+            if cursor.description is None:
+                return [], []
+            else:
+                return [desc[0] for desc in cursor.description], cursor.fetchall()
 
     def commit(self, conn):
         conn.commit()

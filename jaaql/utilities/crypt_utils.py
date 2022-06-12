@@ -1,5 +1,6 @@
 from argon2 import PasswordHasher, low_level
 from argon2.exceptions import *
+import uuid
 from jaaql.exceptions.http_status_exception import HttpStatusException
 import os
 from typing import Optional, Union
@@ -68,6 +69,8 @@ def decrypt(secret_key: bytes, data: Optional[str] = None) -> Optional[str]:
 
 
 def encrypt(secret_key: bytes, data: str) -> str:
+    if isinstance(data, uuid.UUID):
+        data = str(data)
     message = data.encode(ENCODING__ascii)
     return Fernet(secret_key).encrypt(message).decode(ENCODING__ascii)
 
@@ -130,7 +133,9 @@ def key_stretcher(key: str, salt: bytes = None, length: int = FERNET__key_length
 
     if salt is None:
         salt = os.urandom(defaults.salt_len)
-
+    if len(salt) < 8:
+        salt = salt * 8
+        salt = salt[0:8]
     return salt, b64e(low_level.hash_secret_raw(
         secret=key.encode(ENCODING__ascii),
         salt=salt,

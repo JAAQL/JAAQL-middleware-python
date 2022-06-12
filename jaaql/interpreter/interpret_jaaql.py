@@ -1,6 +1,7 @@
 from jaaql.exceptions.http_status_exception import *
 from datetime import datetime
 import re
+import uuid
 from jaaql.db.db_interface import DBInterface, ECHO__none
 
 ERR_malformed_statement = "Malformed query, expecting string or dictionary"
@@ -127,7 +128,7 @@ class InterpretJAAQL:
             if len(operation) != 1 and force_transactional:
                 raise HttpStatusException("Can only use force_transactional for singular queries")
 
-            conn.set_session(autocommit=len(operation) == 1 and not force_transactional)
+            conn.autocommit = len(operation) == 1 and not force_transactional
 
             for query, parameters, echo, cur_assert in zip(query_list, parameters_list, echo_list, assert_list):
                 last_echo = echo
@@ -136,8 +137,7 @@ class InterpretJAAQL:
                 last_query, found_parameter_dictionary = self.pre_prepare_statement(query,
                                                                                     {**parameters, **past_parameters},
                                                                                     parameters)
-                res = self.db_interface.execute_query_fetching_results(conn, last_query, found_parameter_dictionary,
-                                                                       echo)
+                res = self.db_interface.execute_query_fetching_results(conn, last_query, found_parameter_dictionary, echo)
 
                 if len(res['rows']) == 1:
                     for column, row in zip(res['columns'], res['rows'][0]):
@@ -217,6 +217,8 @@ class InterpretJAAQL:
         elif isinstance(value, float):
             return PYFORMAT_str
         elif isinstance(value, datetime):
+            return PYFORMAT_str
+        elif isinstance(value, uuid.UUID):
             return PYFORMAT_str
         else:
             raise HttpStatusException(ERR_mistyped_parameter % (type(value).__name__, key), HTTPStatus.BAD_REQUEST)

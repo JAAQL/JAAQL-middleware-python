@@ -1,3 +1,4 @@
+import threading
 import traceback
 from functools import wraps
 from werkzeug.exceptions import HTTPException
@@ -23,7 +24,6 @@ ARG__is_public = "is_public"
 ARG__sql_inputs = "sql_inputs"
 ARG__totp_iv = "totp_iv"
 ARG__user_id = "user_id"
-ARG__user_agent = "user_agent"
 ARG__jaaql_connection = "jaaql_connection"
 ARG__ip_address = "ip_address"
 ARG__response = "response"
@@ -335,12 +335,9 @@ class BaseJAAQLController:
                 if not BaseJAAQLController.is_options():
                     method = BaseJAAQLController.get_method(swagger_documentation)
 
-                    user_agent = request.headers.get('User-Agent', None)
-
                     jaaql_connection = None
                     user_id = None
                     ip_id = None
-                    ua_id = None
                     totp_iv = None
                     username = None
                     password_hash = None
@@ -350,8 +347,8 @@ class BaseJAAQLController:
                     ip_addr = request.headers.get(HEADER__real_ip, request.remote_addr).split(",")[0]
 
                     if swagger_documentation.security:
-                        jaaql_connection, user_id, ip_id, ua_id, totp_iv, password_hash, l_totp, username, is_public = \
-                            self.model.verify_jwt(request.headers.get(HEADER__security), ip_addr, user_agent,
+                        jaaql_connection, user_id, ip_id, totp_iv, password_hash, l_totp, username, is_public = \
+                            self.model.verify_jwt(request.headers.get(HEADER__security), ip_addr,
                                                   route == ENDPOINT__refresh,
                                                   request.headers.get(HEADER__security_bypass))
 
@@ -400,9 +397,6 @@ class BaseJAAQLController:
                                 raise Exception(ERR__method_required_password_hash)
                             supply_dict[ARG__username] = username
 
-                        if ARG__user_agent in inspect.getfullargspec(view_func_local).args:
-                            supply_dict[ARG__user_agent] = user_agent
-
                         if ARG__ip_address in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__ip_address] = ip_addr
 
@@ -425,7 +419,6 @@ class BaseJAAQLController:
                         if not swagger_documentation.security:
                             user_id = jaaql_resp.user_id
                             ip_id = jaaql_resp.ip_id
-                            ua_id = jaaql_resp.ua_id
 
                         status = jaaql_resp.response_code
                         method_response = BaseJAAQLController.get_response(method, status)
@@ -468,12 +461,11 @@ class BaseJAAQLController:
                         throw_ex = ex
 
                     if jaaql_connection is not None:
-                        jaaql_connection.pg_pool.closeall()
+                        threading.Thread(target=jaaql_connection.close).start()
 
                     duration = round((datetime.now() - start_time).total_seconds() * 1000)
                     if user_id is not None:
-                        self.model.log(user_id, start_time, duration, ex_msg, method_input, ip_id, ua_id, ret_status,
-                                       route)
+                        self.model.log(user_id, start_time, duration, ex_msg, method_input, ip_id, ret_status, route)
 
                     if throw_ex is not None:
                         raise throw_ex

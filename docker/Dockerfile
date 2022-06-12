@@ -14,7 +14,7 @@ COPY . $INSTALL_PATH
 
 RUN git clone https://github.com/JAAQL/JEQL.git
 WORKDIR JEQL
-RUN git checkout tags/v2.1.9
+RUN git checkout tags/v2.2.1
 WORKDIR /
 
 RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini
@@ -41,12 +41,14 @@ RUN apt-get -y install libzbar0
 RUN apt-get install dos2unix
 RUN apt -y install bzip2
 RUN apt -y install wget
-RUN wget https://downloads.python.org/pypy/pypy3.7-v7.3.5-linux64.tar.bz2
-RUN tar xf pypy3.7-v7.3.5-linux64.tar.bz2
-RUN ./pypy3.7-v7.3.5-linux64/bin/pypy -m ensurepip --default-pip
-RUN ./pypy3.7-v7.3.5-linux64/bin/pypy -mpip install -U pip wheel
-RUN ./pypy3.7-v7.3.5-linux64/bin/pypy -mpip install certbot-nginx==1.2.0
-RUN ./pypy3.7-v7.3.5-linux64/bin/pypy -mpip install -r $INSTALL_PATH/requirements.txt
+RUN wget https://downloads.python.org/pypy/pypy3.8-v7.3.9-linux64.tar.bz2
+RUN tar xf pypy3.8-v7.3.9-linux64.tar.bz2
+ENV PYPY_PATH /pypy3.8-v7.3.9-linux64
+RUN .$PYPY_PATH/bin/pypy -m ensurepip --default-pip
+RUN .$PYPY_PATH/bin/pypy -mpip install -U pip wheel
+RUN .$PYPY_PATH/bin/pypy -mpip install certbot-nginx==1.2.0
+RUN sed -i 's/psycopg\[binary\]/psycopg/g' /JAAQL-middleware-python/requirements.txt
+RUN .$PYPY_PATH/bin/pypy -mpip install -r $INSTALL_PATH/requirements.txt
 
 RUN mv $INSTALL_PATH/docker/jaaql.sql /docker-entrypoint-initdb.d/01-jaaql.sql
 RUN dos2unix $INSTALL_PATH/docker/pg_reload.sh
@@ -56,9 +58,9 @@ RUN dos2unix entrypoint.sh
 RUN dos2unix $INSTALL_PATH/base_reboot.sh
 
 WORKDIR $INSTALL_PATH
-RUN /pypy3.7-v7.3.5-linux64/bin/python setup.py sdist bdist_wheel
+RUN $PYPY_PATH/bin/python setup.py sdist bdist_wheel
 
-RUN VERSION=$(grep '^VERSION = ' /JAAQL-middleware-python/jaaql/constants.py | cut -d'=' -f2 | cut -d'"' -f2) && /pypy3.7-v7.3.5-linux64/bin/pip install --no-deps /JAAQL-middleware-python/dist/jaaql_middleware_python-"$VERSION"-py3-none-any.whl
+RUN VERSION=$(grep '^VERSION = ' /JAAQL-middleware-python/jaaql/constants.py | cut -d'=' -f2 | cut -d'"' -f2) && $PYPY_PATH/bin/pip install --no-deps /JAAQL-middleware-python/dist/jaaql_middleware_python-"$VERSION"-py3-none-any.whl
 WORKDIR /
 
 ENTRYPOINT ["sh", "entrypoint.sh"]

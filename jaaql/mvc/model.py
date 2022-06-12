@@ -10,8 +10,7 @@ from jaaql.exceptions.http_status_exception import HttpStatusException, HTTPStat
 from typing import Union
 from base64 import urlsafe_b64decode as b64d
 from jaaql.mvc.queries import *
-from typing import Optional
-from jaaql.db.db_utils import execute_supplied_statement, execute_supplied_statement_singleton, create_interface
+from jaaql.db.db_utils import execute_supplied_statement, execute_supplied_statement_singleton, create_interface, jaaql__encrypt
 from jaaql.mvc.response import JAAQLResponse
 from collections import Counter
 from os.path import dirname
@@ -44,7 +43,6 @@ ERR__incorrect_credentials = "Incorrect credentials!"
 ERR__password_incorrect = "Your password is incorrect!"
 ERR__invalid_token = "Invalid token!"
 ERR__new_ip = "Token being used from an ip address not associated with these credentials. Please refresh it"
-ERR__new_ua = "Token being used from a different browser. Please refresh it"
 ERR__refresh_expired = "Token too old to be used for refresh. Please authenticate again"
 ERR__duplicated_database = "User %s has a duplicate database precedence with databases '%s'"
 ERR__not_sole_owner = "You are not the sole owner of this connection"
@@ -75,6 +73,7 @@ FUNC__jaaql_create_node = "jaaql__create_node"
 
 CODE__all_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
+ATTR__ip_id = "ip_id"
 ATTR__expiry_invite_code_ms = "code_expiry_ms"
 ATTR__used_key_a = "used_key_a"
 ATTR__email = "email"
@@ -85,8 +84,6 @@ ATTR__existed = "existed"
 ATTR__password_hash = "password_hash"
 ATTR__address_hash = "address_hash"
 ATTR__ip_address = "ip_address"
-ATTR__ua_hash = "ua_hash"
-ATTR__ua = "ua"
 ATTR__created = "created"
 ATTR__alias = "alias"
 ATTR__data_lookup_json = "data_lookup_json"
@@ -98,7 +95,6 @@ KEY__occurred = "occurred"
 KEY__duration_ms = "duration_ms"
 KEY__input = "input"
 KEY__ip = "ip"
-KEY__ua = "ua"
 KEY__status = "status"
 KEY__endpoint = "endpoint"
 KEY__dat_name = "datname"
@@ -128,7 +124,6 @@ JWT__username = "username"
 JWT__fully_authenticated = "fully_authenticated"
 JWT__password = "password"
 JWT__created = "created"
-JWT__ua = "ua"
 JWT__ip = "ip"
 
 PG__default_connection_string = "postgresql://postgres:%s@localhost:5432/jaaql"
@@ -157,16 +152,27 @@ class JAAQLModel(BaseJAAQLModel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def fetch_user_from_username(self, username: str, jaaql_connection: DBInterface):
+    def fetch_user_from_username(self, username: str, jaaql_connection: DBInterface, hashed_ip: str = None):
         inputs = {KEY__username: username}
-        users = execute_supplied_statement(jaaql_connection, QUERY__fetch_user_latest_password, inputs, as_objects=True,
+        the_query = QUERY__fetch_user_latest_password
+        if hashed_ip is not None:
+            inputs[ATTR__address_hash] = hashed_ip
+            the_query = QUERY__fetch_user_latest_credentials
+
+        users = execute_supplied_statement(jaaql_connection, the_query, inputs, as_objects=True,
                                            decrypt_columns=[ATTR__password_hash, KEY__totp_iv],
                                            encryption_key=self.get_db_crypt_key())
 
-        if len(users) == 0:
+        if len(users) != 1:
             raise HttpStatusException(ERR__incorrect_credentials, HTTPStatus.UNAUTHORIZED)
 
-        return users[0]
+        user = users[0]
+        user[KEY__id] = str(user[KEY__id])
+
+        if ATTR__ip_id in user:
+            user[ATTR__ip_id] = str(user[ATTR__ip_id])
+
+        return user
 
     def add_email_account(self, inputs: dict, jaaql_interface: DBInterface):
         execute_supplied_statement(jaaql_interface, QUERY__email_account_ins, inputs, encryption_key=self.get_db_crypt_key(),
@@ -183,7 +189,7 @@ class JAAQLModel(BaseJAAQLModel):
         execute_supplied_statement(jaaql_interface, QUERY__email_template_ins, inputs)
 
     def delete_email_account(self, inputs: dict, jaaql_connection: DBInterface):
-        res = execute_supplied_statement(jaaql_connection, QUERY__email_account_sel, inputs, as_objects=True)[KEY__id]
+        res = execute_supplied_statement_singleton(jaaql_connection, QUERY__email_account_sel, inputs, as_objects=True)[KEY__id]
         return {KEY__deletion_key: self.request_deletion_key(DELETION_PURPOSE__email_account, res)}
 
     def delete_email_account_confirm(self, inputs: dict, jaaql_interface: DBInterface):
@@ -192,53 +198,49 @@ class JAAQLModel(BaseJAAQLModel):
         self.email_manager.reload_service()
 
     def unregister_email_template(self, inputs: dict, jaaql_connection: DBInterface):
-        res = execute_supplied_statement(jaaql_connection, QUERY__email_account_sel, inputs, as_objects=True)[KEY__id]
+        res = execute_supplied_statement_singleton(jaaql_connection, QUERY__email_account_sel, inputs, as_objects=True)[KEY__id]
         return {KEY__deletion_key: self.request_deletion_key(DELETION_PURPOSE__email_template, res)}
 
     def unregister_email_template_confirm(self, inputs: dict, jaaql_interface: DBInterface):
         params = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__email_template)
         execute_supplied_statement_singleton(jaaql_interface, QUERY__email_template_del, params)
 
-    def verify_user(self, username: str, ip_address: str, user_agent: str):
+    def verify_user(self, username: str, ip_address: str):
         username = username.lower()
 
-        user = self.fetch_user_from_username(username, self.jaaql_lookup_connection)
+        # Hash by username to save time but security issue as a deleted user will share usernames. Potential reverse hash lookup. Minor
+        hash_username = username.encode(crypt_utils.ENCODING__ascii)
+        if len(hash_username) < 8:
+            hash_username = hash_username * 8
+            hash_username = hash_username[0:8]
+        hashed_ip = crypt_utils.hash_password(ip_address, hash_username)
+        hashed_ip = jaaql__encrypt(hashed_ip, self.get_db_crypt_key(), hash_username)
 
-        hashed_ip = crypt_utils.hash_password(ip_address, user[KEY__id].encode(crypt_utils.ENCODING__ascii))
-        inputs = {
-            KEY__id: user[KEY__id],
-            ATTR__address_hash: hashed_ip,
-            ATTR__ip_address: ip_address
-        }
+        existed_ip = False
+        ip_id = None
 
-        resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__user_ip_ins, inputs,
-                                                    as_objects=True,
-                                                    encrypt_parameters=[ATTR__address_hash, ATTR__ip_address],
-                                                    encryption_key=self.get_db_crypt_key(),
-                                                    encryption_salts={ATTR__address_hash: user[KEY__id]})
-        existed_ip = resp[ATTR__existed]
-        ip_id = resp[KEY__id]
+        try:
+            user = self.fetch_user_from_username(username, self.jaaql_lookup_connection, hashed_ip)
+            existed_ip = True
+            ip_id = user[ATTR__ip_id]
+        except HttpStatusException:
+            user = self.fetch_user_from_username(username, self.jaaql_lookup_connection)
 
-        existed_ua = None
-        ua_id = None
-
-        if user_agent is not None:
-            hashed_ua = crypt_utils.hash_password(user_agent, user[KEY__id].encode(crypt_utils.ENCODING__ascii))
+        if not existed_ip:
             inputs = {
                 KEY__id: user[KEY__id],
-                ATTR__ua_hash: hashed_ua,
-                ATTR__ua: user_agent
+                ATTR__address_hash: hashed_ip,
+                ATTR__ip_address: ip_address
             }
 
-            resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__user_ua_ins, inputs,
+            resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__user_ip_ins, inputs,
                                                         as_objects=True,
-                                                        encrypt_parameters=[ATTR__ua_hash, ATTR__ua],
-                                                        encryption_key=self.get_db_crypt_key(),
-                                                        encryption_salts={ATTR__ua_hash: user[KEY__id]})
-            existed_ua = resp[ATTR__existed]
-            ua_id = resp[KEY__id]
+                                                        encrypt_parameters=[ATTR__ip_address],
+                                                        encryption_key=self.get_db_crypt_key())
+            existed_ip = resp[ATTR__existed]
+            ip_id = resp[KEY__id]
 
-        return user, existed_ip, existed_ua, ip_id, ua_id, user[KEY__last_totp]
+        return user, existed_ip, str(ip_id), user[KEY__last_totp]
 
     def refresh(self, oauth_token: str):
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), oauth_token, JWT_PURPOSE__oauth,
@@ -257,7 +259,6 @@ class JAAQLModel(BaseJAAQLModel):
             JWT__username: crypt_utils.encrypt(jwt_obj_key, crypt_utils.decrypt(jwt_obj_key, decoded[JWT__username])),
             JWT__password: crypt_utils.encrypt(jwt_obj_key, crypt_utils.decrypt(jwt_obj_key, decoded[JWT__password])),
             JWT__fully_authenticated: True,
-            JWT__ua: crypt_utils.encrypt(jwt_obj_key, crypt_utils.decrypt(jwt_obj_key, decoded[JWT__ua])),
             JWT__ip: crypt_utils.encrypt(jwt_obj_key, crypt_utils.decrypt(jwt_obj_key, decoded[JWT__ip])),
             JWT__created: crypt_utils.encrypt(jwt_obj_key, created)
         }
@@ -294,7 +295,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         threading.Thread(target=self.exit_jaaql, daemon=True).start()
 
-    def authenticate_with_mfa_key(self, pre_auth: str, mfa_key: str, ip_address: str, user_agent: str,
+    def authenticate_with_mfa_key(self, pre_auth: str, mfa_key: str, ip_address: str,
                                   response: JAAQLResponse):
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), pre_auth, JWT_PURPOSE__pre_auth)
         if not decoded:
@@ -302,20 +303,19 @@ class JAAQLModel(BaseJAAQLModel):
 
         jwt_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
         username = crypt_utils.decrypt(jwt_key, decoded[JWT__username])
-        user, _, _, ip_id, ua_id, last_totp = self.verify_user(username, ip_address, user_agent)
+        user, _, ip_id, last_totp = self.verify_user(username, ip_address)
 
         self.verify_mfa(mfa_key, user[KEY__totp_iv], last_totp, user[KEY__id])
 
         response.user_id = user[KEY__id]
         response.ip_id = ip_id
-        response.ua_id = ua_id
 
         decoded[JWT__fully_authenticated] = True
         return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), decoded, JWT_PURPOSE__oauth,
                                       expiry_ms=self.token_expiry_ms)
 
-    def authenticate(self, username: str, password: str, ip_address: str, user_agent: str, response: JAAQLResponse):
-        user, _, _, ip_id, ua_id, last_totp = self.verify_user(username, ip_address, user_agent)
+    def authenticate(self, username: str, password: str, ip_address: str, response: JAAQLResponse):
+        user, _, ip_id, last_totp = self.verify_user(username, ip_address)
         if not crypt_utils.verify_password_hash(user[ATTR__password_hash], password,
                                                 salt=user[KEY__id].encode(crypt_utils.ENCODING__ascii)):
             raise HttpStatusException(ERR__incorrect_credentials, HTTPStatus.UNAUTHORIZED)
@@ -327,14 +327,12 @@ class JAAQLModel(BaseJAAQLModel):
             JWT__username: crypt_utils.encrypt(jwt_obj_key, username),
             JWT__password: crypt_utils.encrypt(jwt_obj_key, crypt_utils.hash_password(user[ATTR__password_hash])),
             JWT__fully_authenticated: not needs_further_auth,
-            JWT__ua: crypt_utils.encrypt(jwt_obj_key, ua_id),
             JWT__ip: crypt_utils.encrypt(jwt_obj_key, ip_id),
             JWT__created: crypt_utils.encrypt(jwt_obj_key, datetime.now().isoformat())
         }
 
         response.user_id = user[KEY__id]
         response.ip_id = ip_id
-        response.ua_id = ua_id
 
         expiry_time = self.token_expiry_ms
         purpose = JWT_PURPOSE__oauth
@@ -379,7 +377,7 @@ class JAAQLModel(BaseJAAQLModel):
         threading.Thread(target=self.exit_jaaql).start()
 
     def install(self, db_connection_string: str, superjaaql_password: str, password: str, install_key: str,
-                use_mfa: bool, allow_uninstall: bool, ip_address: str, user_agent: str, response: JAAQLResponse):
+                use_mfa: bool, allow_uninstall: bool, ip_address: str, response: JAAQLResponse):
         if not use_mfa and self.force_mfa:
             raise HttpStatusException(ERR__mfa_must_be_enabled)
         if self.jaaql_lookup_connection is None:
@@ -396,16 +394,16 @@ class JAAQLModel(BaseJAAQLModel):
 
             db_interface = create_interface(self.config, address, port, db, username, db_password)
             conn = db_interface.get_conn()
-            resp = db_interface.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "install_1.sql"))
+            db_interface.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "install_1.sql"))
+            resp = db_interface.execute_query(conn, QUERY__setup_jaaql_role)
+            jaaql_password = resp[1][0][0]
+            db_interface.commit(conn)
             db_interface.put_conn(conn)
             db_interface.close()
-
-            jaaql_password = resp['rows'][0][0]
             self.jaaql_lookup_connection = create_interface(self.config, address, port, db, USERNAME__jaaql, jaaql_password)
 
             conn = self.jaaql_lookup_connection.get_conn()
-            self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts,
-                                                                        "install_2.sql"))
+            self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "install_2.sql"))
             self.jaaql_lookup_connection.put_conn(conn)
 
             self.add_node({
@@ -418,7 +416,7 @@ class JAAQLModel(BaseJAAQLModel):
             self.add_database({KEY__node: NODE__host_node, KEY__database_name: DB__jaaql}, self.jaaql_lookup_connection)
 
             user_id = self.create_user(self.jaaql_lookup_connection, USERNAME__jaaql, jaaql_password)
-            mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__jaaql, password, user_id, ip_address, user_agent, use_mfa=use_mfa,
+            mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__jaaql, password, user_id, ip_address, use_mfa=use_mfa,
                                     response=response)
 
             self.add_configuration_authorization({
@@ -447,7 +445,7 @@ class JAAQLModel(BaseJAAQLModel):
                                                  superjaaql_db_password, attach_as=USERNAME__postgres,
                                                  precedence=PRECEDENCE__super_user)
                 super_mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__superjaaql, superjaaql_password,
-                                              super_used_id, ip_address, user_agent, use_mfa=use_mfa)
+                                              super_used_id, ip_address, use_mfa=use_mfa)
                 super_otp_uri = super_mfa[KEY__otp_uri]
                 super_otp_qr = super_mfa[KEY__otp_qr]
                 self.add_configuration_authorization({
@@ -493,8 +491,12 @@ class JAAQLModel(BaseJAAQLModel):
         else:
             raise HttpStatusException(ERR__already_installed)
 
-    def log(self, user_id: str, occurred: datetime, duration_ms: int, exception: str, contr_input: str, ip: str,
-            ua: Optional[str], status: int, endpoint: str, databases: list = None):
+    def log(self, user_id: str, occurred: datetime, duration_ms: int, exception: str, contr_input: str, ip: str, status: int,
+                 endpoint: str, databases: list = None):
+        threading.Thread(target=self.log_sync, args=[user_id, occurred, duration_ms, exception, contr_input, ip, status, endpoint, databases]).start()
+
+    def log_sync(self, user_id: str, occurred: datetime, duration_ms: int, exception: str, contr_input: str, ip: str, status: int, endpoint: str,
+                 databases: list = None):
         if not self.do_audit:
             return
         if databases is None:
@@ -509,7 +511,6 @@ class JAAQLModel(BaseJAAQLModel):
             KEY__exception: exception,
             KEY__input: contr_input,
             KEY__ip: ip,
-            KEY__ua: ua,
             KEY__status: int(status),
             KEY__endpoint: endpoint
         }
@@ -520,13 +521,12 @@ class JAAQLModel(BaseJAAQLModel):
 
         # TODO do databases. Link the used database auth with the log
 
-    def verify_jwt(self, jwt_token: str, ip_address: str, user_agent: str,
-                   was_refresh: bool, bypass: str = None) -> [DBInterface, str, str]:
+    def verify_jwt(self, jwt_token: str, ip_address: str, was_refresh: bool, bypass: str = None) -> [DBInterface, str, str]:
         username = None
 
         if bypass is not None and bypass == self.local_access_key:
             username = USERNAME__jaaql
-            user, _, _, ip_id, ua_id, last_totp = self.verify_user(username, ip_address, user_agent)
+            user, _, ip_id, last_totp = self.verify_user(username, ip_address)
         else:
             decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_token,
                                              JWT_PURPOSE__oauth, was_refresh)
@@ -541,19 +541,13 @@ class JAAQLModel(BaseJAAQLModel):
             double_hashed_password = crypt_utils.decrypt(self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key),
                                                          decoded[JWT__password])
 
-            user, _, _, ip_id, ua_id, last_totp = self.verify_user(username, ip_address, user_agent)
+            user, _, ip_id, last_totp = self.verify_user(username, ip_address)
             if not crypt_utils.verify_password_hash(double_hashed_password, user[ATTR__password_hash]):
                 raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
             jwt_ip_id = crypt_utils.decrypt(jwt_key, decoded[JWT__ip])
             if ip_id != jwt_ip_id:
                 raise HttpStatusException(ERR__new_ip, HTTPStatus.UNAUTHORIZED)
-
-            if jwt_ip_id is None and ua_id is not None:
-                raise HttpStatusException(ERR__new_ua, HTTPStatus.UNAUTHORIZED)
-            jwt_ua_id = crypt_utils.decrypt(jwt_key, decoded[JWT__ua])
-            if ua_id != jwt_ua_id:
-                raise HttpStatusException(ERR__new_ua, HTTPStatus.UNAUTHORIZED)
 
         params = {
             KEY__role: username,
@@ -566,9 +560,9 @@ class JAAQLModel(BaseJAAQLModel):
         iv = user[KEY__totp_iv]
 
         return create_interface(self.config, auth[KEY__address], auth[KEY__port], DB__jaaql, auth[KEY__username], auth[KEY__password]
-                                ), user[KEY__id], ip_id, ua_id, iv, user[ATTR__password_hash], last_totp, username, user[KEY__is_public]
+                                ), user[KEY__id], ip_id, iv, user[ATTR__password_hash], last_totp, username, user[KEY__is_public]
 
-    def add_application(self, inputs: dict, jaaql_connection: DBInterface, ip_address: str, user_agent: str, response: JAAQLResponse):
+    def add_application(self, inputs: dict, jaaql_connection: DBInterface, ip_address: str, response: JAAQLResponse):
         public_username = inputs.pop(KEY__public_username)
         inputs[KEY__application_url] = self.replace_default_app_url(inputs[KEY__application_url])
         if inputs[KEY__default_email_signup_template] is not None:
@@ -587,7 +581,7 @@ class JAAQLModel(BaseJAAQLModel):
             crypt_utils.validate_password(password)
             self.sign_up_user(jaaql_connection, public_username, password,
                               self.create_user(jaaql_connection, public_username, public_application=inputs[KEY__application_name]),
-                              ip_address, user_agent, response=response)
+                              ip_address, response=response)
             mup_inputs = {
                 KEY__username: public_username,
                 KEY__password: password,
@@ -950,8 +944,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         return totp_iv, totp_uri, totp_b64_qr
 
-    def sign_up_user_with_token(self, token: str, password: str = None, ip_address: str = None, user_agent: str = None,
-                                response: JAAQLResponse = None):
+    def sign_up_user_with_token(self, token: str, password: str = None, ip_address: str = None, response: JAAQLResponse = None):
         resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_fetch, parameters={KEY__invite_or_poll_key: token},
                                                     as_objects=True, singleton_message=ERR__cant_find_sign_up)
 
@@ -962,7 +955,7 @@ class JAAQLModel(BaseJAAQLModel):
         if len(users) != 0:
             raise HttpStatusException(ERR__already_signed_up, response_code=HTTPStatus.CONFLICT)
 
-        res = self.sign_up_user(self.jaaql_lookup_connection, username, password, None, ip_address, user_agent, response=response)
+        res = self.sign_up_user(self.jaaql_lookup_connection, username, password, None, ip_address, response=response)
         res[KEY__email] = username
 
         return res
@@ -982,13 +975,12 @@ class JAAQLModel(BaseJAAQLModel):
 
         return res
 
-    def sign_up_user(self, jaaql_connection: DBInterface, username: str, password: str, user_id: str = None,
-                     ip_address: str = None, user_agent: str = None, use_mfa: bool = False,
-                     response: JAAQLResponse = None, allow_password_error: bool = False):
+    def sign_up_user(self, jaaql_connection: DBInterface, username: str, password: str, user_id: str = None, ip_address: str = None,
+                     use_mfa: bool = False, response: JAAQLResponse = None, allow_password_error: bool = False):
         if user_id is None:
             user_id = execute_supplied_statement_singleton(jaaql_connection, QUERY__user_id_from_username, {KEY__username: username},
                                                            as_objects=True)[KEY__id]
-
+            user_id = str(user_id)
         try:
             self.add_password(jaaql_connection, user_id, password)
         except HttpStatusException as ex:
@@ -1002,10 +994,9 @@ class JAAQLModel(BaseJAAQLModel):
             totp_uri, totp_b64_qr = self.enable_user_mfa(user_id)
 
         if response is not None:
-            _, _, _, ip_id, ua_id, _ = self.verify_user(username, ip_address, user_agent)
+            _, _, ip_id, _ = self.verify_user(username, ip_address)
 
             response.user_id = user_id
-            response.ua_id = ua_id
             response.ip_id = ip_id
 
         resp = {
@@ -1298,7 +1289,7 @@ class JAAQLModel(BaseJAAQLModel):
             # This is not SQL injection. We are protected by the postgres level access control of the connection
             execute_supplied_statement(jaaql_connection, QUERY__grant_role % (role, attach_as))
 
-        return user_id
+        return str(user_id)
 
     def my_logs(self, inputs: dict, jaaql_connection: DBInterface):
         paging_query, where_query, where_parameters, parameters = self.construct_paging_queries(inputs)
@@ -1306,7 +1297,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         return self.execute_paging_query(jaaql_connection, full_query, QUERY__user_log_count, parameters, where_query,
                                          where_parameters,
-                                         decrypt_columns=[KEY__address, KEY__user_agent, KEY__exception],
+                                         decrypt_columns=[KEY__address, KEY__exception],
                                          encryption_key=self.get_db_crypt_key())
 
     def my_ips(self, inputs: dict, jaaql_connection: DBInterface):
