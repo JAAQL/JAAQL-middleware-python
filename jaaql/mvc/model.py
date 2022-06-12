@@ -1406,8 +1406,7 @@ class JAAQLModel(BaseJAAQLModel):
             is_node = jwt_decoded[KEY__is_node]
             db_url = jwt_decoded[KEY__db_url]
             db_url = crypt_utils.decrypt(obj_key, db_url)
-            address, port, database, username, password = DBInterface.fracture_uri(db_url,
-                                                                                   allow_missing_database=is_node)
+            address, port, database, username, password = DBInterface.fracture_uri(db_url, allow_missing_database=is_node)
             non_null_db = KEY__database in inputs and inputs[KEY__database] is not None
             if is_node:
                 database = inputs[KEY__database] if non_null_db else DB__empty
@@ -1436,7 +1435,7 @@ class JAAQLModel(BaseJAAQLModel):
             caught_ex = ex
 
         if not was_connection_none:
-            connection.pg_pool.closeall()
+            threading.Thread(target=connection.close).start()
 
         if caught_ex is not None:
             raise caught_ex

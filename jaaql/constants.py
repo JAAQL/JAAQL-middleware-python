@@ -169,4 +169,4 @@ PORT__ems = 6061
 ENDPOINT__reload_accounts = "/reload-accounts"
 ENDPOINT__send_email = "/send-email"
 
-VERSION = "2.26.0"
+VERSION = "3.0.0"
