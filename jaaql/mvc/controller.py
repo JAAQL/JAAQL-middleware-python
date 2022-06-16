@@ -6,8 +6,6 @@ from jaaql.documentation.documentation_shared import *
 from jaaql.mvc.response import JAAQLResponse
 from jaaql.db.db_interface import DBInterface
 
-ERR__user_public = "Cannot perform this action on a public user!"
-
 
 class JAAQLController(BaseJAAQLController):
 
@@ -277,16 +275,26 @@ class JAAQLController(BaseJAAQLController):
             return self.model.my_ips(http_inputs, jaaql_connection)
 
         @self.cors_route('/account/password', DOCUMENTATION__password)
-        def change_password(http_inputs: dict, totp_iv: str, oauth_token: str, password_hash: str, user_id: str,
-                            last_totp: str, jaaql_connection: DBInterface, is_public: bool):
+        def change_password(http_inputs: dict, totp_iv: str, oauth_token: str, password_hash: str, user_id: str, last_totp: str,
+                            jaaql_connection: DBInterface, is_public: bool):
             if is_public:
                 raise HttpStatusException(ERR__user_public, HTTPStatus.UNAUTHORIZED)
-            return self.model.change_password(http_inputs, totp_iv, oauth_token, password_hash, user_id, last_totp,
-                                              jaaql_connection)
+            return self.model.change_password(http_inputs, totp_iv, oauth_token, password_hash, user_id, last_totp, jaaql_connection)
+
+        @self.cors_route('/account/reset-password', DOCUMENTATION__reset_password)
+        def reset_password(http_inputs: dict):
+            return self.model.send_reset_password_email(http_inputs)
+
+        @self.cors_route('/account/reset-password/status', DOCUMENTATION__reset_password_status)
+        def reset_password_status(http_inputs: dict):
+            return self.model.reset_password_status(http_inputs)
+
+        @self.cors_route('/account/reset-password/reset', DOCUMENTATION__reset_password_with_invite)
+        def reset_password_reset(http_inputs: dict):
+            return self.model.reset_password_perform_reset(http_inputs)
 
         @self.cors_route('/account/close', DOCUMENTATION__account_close)
-        def close_account(http_inputs: dict, totp_iv: str, password_hash: str, user_id: str, last_totp: str,
-                          is_public: bool):
+        def close_account(http_inputs: dict, totp_iv: str, password_hash: str, user_id: str, last_totp: str, is_public: bool):
             if is_public:
                 raise HttpStatusException(ERR__user_public, HTTPStatus.UNAUTHORIZED)
             return self.model.close_account(http_inputs, totp_iv, password_hash, user_id, last_totp)

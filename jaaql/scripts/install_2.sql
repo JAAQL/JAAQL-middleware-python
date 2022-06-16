@@ -31,7 +31,9 @@ create table jaaql__email_template (
     recipient_validation_view postgres_table_view_name,
     allow_signup boolean default false not null,
     allow_confirm_signup_attempt boolean default false not null,
-    check ((allow_signup <> jaaql__email_template.allow_confirm_signup_attempt) or not allow_signup),
+    allow_reset_password boolean default false not null,
+    check (allow_signup::int + allow_confirm_signup_attempt::int + allow_reset_password::int < 2),
+    check ((allow_reset_password = (data_validation_table is null)) or not allow_reset_password),
     deleted timestamptz default null
 );
 CREATE UNIQUE INDEX jaaql__email_template_unq
@@ -45,7 +47,9 @@ create table jaaql__application (
     default_email_signup_template uuid,
     FOREIGN KEY (default_email_signup_template) REFERENCES jaaql__email_template,
     default_email_already_signed_up_template uuid,
-    FOREIGN KEY (default_email_already_signed_up_template) REFERENCES jaaql__email_template
+    FOREIGN KEY (default_email_already_signed_up_template) REFERENCES jaaql__email_template,
+    default_reset_password_template uuid,
+    FOREIGN KEY (default_reset_password_template) REFERENCES jaaql__email_template
 );
 
 create table jaaql__user (
@@ -436,6 +440,7 @@ create view jaaql__email_templates as (
         jet.subject,
         jet.allow_signup,
         jet.allow_confirm_signup_attempt,
+        jet.allow_reset_password,
         jet.data_validation_table,
         jet.data_validation_view,
         jet.recipient_validation_view
@@ -457,10 +462,28 @@ create table jaaql__email_history (
     encrypted_attachments text
 );
 
+create table jaaql__reset_password (
+    key_a uuid PRIMARY KEY not null default gen_random_uuid(),
+    key_b uuid not null default gen_random_uuid(),
+    reset_code varchar(8) not null,
+    code_attempts int default 0 not null,
+    activated boolean not null default false,
+    used_key_a boolean not null default false,
+    the_user uuid not null,
+    FOREIGN KEY (the_user) REFERENCES jaaql__user,
+    closed timestamptz,
+    created timestamptz default current_timestamp not null,
+    expiry_ms integer not null default 1000 * 60 * 60 * 2, -- 2 hours
+    code_expiry_ms integer not null default 1000 * 60 * 15, -- 15 minutes
+    email_template uuid,
+    FOREIGN KEY (email_template) REFERENCES jaaql__email_template
+);
+
 create table jaaql__sign_up (
     key_a uuid PRIMARY KEY not null default gen_random_uuid(),
     key_b uuid not null default gen_random_uuid(),
-    invite_code varchar(4) not null,
+    invite_code varchar(5) not null,
+    code_attempts int default 0 not null,
     activated boolean not null default false,
     used_key_a boolean not null default false,
     the_user uuid not null,

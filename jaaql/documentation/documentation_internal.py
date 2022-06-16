@@ -1024,6 +1024,13 @@ ARG_RES__email_template_body = [
         condition="Is this parameter specified"
     ),
     SwaggerArgumentResponse(
+        name=KEY__allow_reset_password,
+        description="Allow this email to be sent to the user if they have forgotten their password",
+        arg_type=bool,
+        required=False,
+        condition="Is this parameter specified"
+    ),
+    SwaggerArgumentResponse(
         name=KEY__data_validation_table,
         description="A table that is used for data validation. A row is inserted into this table with the "
                     "data supplied when sending the email along with a generated UUID. The row is then selected from "

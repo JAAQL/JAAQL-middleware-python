@@ -14,7 +14,7 @@ COPY . $INSTALL_PATH
 
 RUN git clone https://github.com/JAAQL/JEQL.git
 WORKDIR JEQL
-RUN git checkout tags/v2.2.10
+RUN git checkout tags/v2.2.11
 WORKDIR /
 
 RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini

@@ -32,11 +32,14 @@ import threading
 TOKEN__pre_auth_reduction_factor = 15
 
 ERR__incorrect_invite_code = "Incorrect invite code"
+ERR__incorrect_reset_code = "Incorrect reset code"
 ERR__invite_code_expired = "Invite code expired. Please use the link within the email"
+ERR__reset_code_expired = "Reset code expired. Please use the link within the email"
 ERR__not_signed_up = "Not signed up"
 ERR__recipient_not_allowed = "Recipient not allowed"
 ERR__cant_send_attachments = "Cannot send attachments to other people"
 ERR__template_not_signup = "One of the supplied templates is not suitable for signup"
+ERR__template_reset_password = "You cannot use this template to reset your password"
 ERR__please_sign_in = "Please sign in, this user already exists and is signed up!"
 ERR__incorrect_install_key = "Incorrect install key!"
 ERR__incorrect_credentials = "Incorrect credentials!"
@@ -57,6 +60,9 @@ ERR__data_validation_table_no_primary = "Data validation table has no primary ke
 ERR__uninstallation_not_allowed = "Uninstallation not allowed"
 ERR__password_required = "Password required"
 ERR__cant_find_sign_up = "Cannot locate sign up with key. The key is either incorrect or has expired"
+ERR__too_many_signup_attempts = "Too many signup attempts"
+ERR__too_many_reset_requests = "Too many reset requests"
+ERR__too_many_code_attempts = "Code disabled due to too many incorrect attempts. Please use the link in the email"
 
 SQL__err_duplicate_user = "duplicate key value violates unique constraint \"jaaql__user_unq_email\""
 
@@ -71,10 +77,18 @@ CONFIGURATION__host = "host"
 
 FUNC__jaaql_create_node = "jaaql__create_node"
 
-CODE__all_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+CODE__letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+CODE__alphanumeric = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+CODE__invite_length = 5
+CODE__reset_length = 8
+CODE__max_attempts = 3
+RESEND__invite_max = 2
+RESEND__invite_not_registered_max = 3
+RESEND__reset_max = 2
 
+ATTR__count = "count"
 ATTR__ip_id = "ip_id"
-ATTR__expiry_invite_code_ms = "code_expiry_ms"
+ATTR__expiry_code_ms = "code_expiry_ms"
 ATTR__used_key_a = "used_key_a"
 ATTR__email = "email"
 ATTR__public_credentials = "public_credentials"
@@ -89,6 +103,7 @@ ATTR__alias = "alias"
 ATTR__data_lookup_json = "data_lookup_json"
 ATTR__activated = "activated"
 ATTR__closed = "closed"
+ATTR__code_attempts = "code_attempts"
 KEY__totp_iv = "totp_iv"
 KEY__user_id = "user_id"
 KEY__occurred = "occurred"
@@ -145,6 +160,10 @@ SIGNUP__not_started = 0
 SIGNUP__started = 1
 SIGNUP__already_registered = 2
 SIGNUP__completed = 3
+
+RESET__not_started = 0
+RESET__started = 1
+RESET__completed = 2
 
 
 class JAAQLModel(BaseJAAQLModel):
@@ -840,7 +859,7 @@ class JAAQLModel(BaseJAAQLModel):
             ATTR__data_lookup_json: template_lookup,
             ATTR__the_user: the_user,
             KEY__email_template: email_template,
-            KEY__invite_code: "".join([CODE__all_chars[random.randint(0, len(CODE__all_chars) - 1)] for i in range(4)])
+            KEY__invite_code: "".join([CODE__letters[random.randint(0, len(CODE__letters) - 1)] for _ in range(CODE__invite_length)])
         }
         return execute_supplied_statement_singleton(jaaql_connection, QUERY__sign_up_insert, params, as_objects=True)
 
@@ -1163,11 +1182,14 @@ class JAAQLModel(BaseJAAQLModel):
 
         is_invite_key = resp[KEY__invite_key] == inputs[KEY__invite_or_poll_key]
 
+        if not is_invite_key and not resp[ATTR__activated] and resp[ATTR__code_attempts] >= CODE__max_attempts:
+            raise HttpStatusException(ERR__too_many_code_attempts, HTTPStatus.TOO_MANY_REQUESTS)
+
         status = SIGNUP__not_started
 
         invite_code_match = inputs.get(KEY__invite_code) == resp[KEY__invite_code]
         timezone = resp[ATTR__created].tzinfo
-        invite_code_expired = resp[ATTR__created] + timedelta(milliseconds=resp[ATTR__expiry_invite_code_ms]) < datetime.now(timezone)
+        invite_code_expired = resp[ATTR__created] + timedelta(milliseconds=resp[ATTR__expiry_code_ms]) < datetime.now(timezone)
 
         if is_invite_key or resp[ATTR__activated] or (invite_code_match and not invite_code_expired):
             if invite_code_match and not resp[ATTR__activated]:
@@ -1185,6 +1207,7 @@ class JAAQLModel(BaseJAAQLModel):
         elif invite_code_match:
             raise HttpStatusException(ERR__invite_code_expired)
         else:
+            execute_supplied_statement(self.jaaql_lookup_connection, QUERY__sign_up_increment_attempts, {KEY__invite_key: resp[KEY__invite_key]})
             raise HttpStatusException(ERR__incorrect_invite_code)
 
         return {KEY__invite_key_status: status}
@@ -1219,6 +1242,11 @@ class JAAQLModel(BaseJAAQLModel):
                 user_id = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__user_id_from_username,
                                                                {KEY__username: inputs[KEY__email]}, as_objects=True)[KEY__id]
 
+        attempts = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_count, {ATTR__the_user: user_id},
+                                                        as_objects=True)[ATTR__count]
+        if user_existed and attempts >= RESEND__invite_max or attempts >= RESEND__invite_not_registered_max:
+            raise HttpStatusException(ERR__too_many_signup_attempts, HTTPStatus.TOO_MANY_REQUESTS)
+
         template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_by_name, {
             KEY__email_template: inputs[KEY__email_template]
         }, as_objects=True)
@@ -1241,7 +1269,7 @@ class JAAQLModel(BaseJAAQLModel):
         pkey_vals = None
 
         if template[KEY__data_validation_table] is not None:
-            if EMAIL_PARAM__signup_key in inputs:
+            if EMAIL_PARAM__signup_key in params:
                 raise HttpStatusException(ERR__unexpected_validation_column % EMAIL_PARAM__signup_key)
 
             sanitized_params, pkey_vals = self.fetch_sanitized_email_params(template, params)
@@ -1254,6 +1282,91 @@ class JAAQLModel(BaseJAAQLModel):
         self.email_manager.construct_and_send_email(self.url, app_url, template, user_id, inputs[KEY__email], None, {}, optional_params)
 
         return {KEY__invite_key: invite_keys[KEY__invite_poll_key]}
+
+    def send_reset_password_email(self, inputs: dict):
+        app_url = None
+        if inputs[KEY__application]:
+            app_url = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_url_from_application_name,
+                                                           {KEY__application: inputs[KEY__application]}, as_objects=True)[KEY__application_url]
+        user = self.fetch_user_from_username(inputs[KEY__email], self.jaaql_lookup_connection)
+        if user[KEY__is_public]:
+            raise HttpStatusException(ERR__user_public, HTTPStatus.UNAUTHORIZED)
+
+        attempts = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_count, {ATTR__the_user: user[KEY__id]},
+                                                        as_objects=True)[ATTR__count]
+        if attempts >= RESEND__reset_max:
+            raise HttpStatusException(ERR__too_many_reset_requests, HTTPStatus.TOO_MANY_REQUESTS)
+
+        template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_by_name, {
+            KEY__email_template: inputs[KEY__email_template]
+        }, as_objects=True)
+
+        if not template[KEY__allow_reset_password]:
+            raise HttpStatusException(ERR__template_reset_password)
+
+        sanitized_params = {}
+
+        params = {
+            ATTR__the_user: user[KEY__id],
+            KEY__email_template: template[KEY__id],
+            KEY__reset_code: "".join([CODE__alphanumeric[random.randint(0, len(CODE__alphanumeric) - 1)] for _ in range(CODE__reset_length)])
+        }
+        reset_keys = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__reset_insert, params, as_objects=True)
+
+        optional_params = {EMAIL_PARAM__reset_key: reset_keys[KEY__reset_key], EMAIL_PARAM__reset_code: reset_keys[KEY__reset_code]}
+        optional_params = {**optional_params, **sanitized_params}
+
+        self.email_manager.construct_and_send_email(self.url, app_url, template, user[KEY__id], inputs[KEY__email], None, {}, optional_params)
+
+        return {KEY__reset_key: reset_keys[KEY__invite_poll_key]}
+
+    def reset_password_status(self, inputs: dict):
+        select_param = {KEY__reset_or_poll_key: inputs[KEY__reset_or_poll_key]}
+        resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__reset_poll, parameters=select_param, as_objects=True,
+                                                    singleton_message=ERR__cant_find_sign_up)
+
+        is_reset_key = resp[KEY__reset_key] == inputs[KEY__reset_or_poll_key]
+
+        if not is_reset_key and not resp[ATTR__activated] and resp[ATTR__code_attempts] >= CODE__max_attempts:
+            raise HttpStatusException(ERR__too_many_code_attempts, HTTPStatus.TOO_MANY_REQUESTS)
+
+        status = RESET__not_started
+
+        reset_code_match = inputs.get(KEY__reset_code) == resp[KEY__reset_code]
+        timezone = resp[ATTR__created].tzinfo
+        reset_code_expired = resp[ATTR__created] + timedelta(milliseconds=resp[ATTR__expiry_code_ms]) < datetime.now(timezone)
+
+        if is_reset_key or resp[ATTR__activated] or (reset_code_match and not reset_code_expired):
+            if reset_code_match and not resp[ATTR__activated]:
+                execute_supplied_statement(self.jaaql_lookup_connection, QUERY__reset_upd, {KEY__reset_key: resp[KEY__reset_key]})
+            elif not resp[ATTR__used_key_a]:
+                execute_supplied_statement(self.jaaql_lookup_connection, QUERY__reset_upd_used, {KEY__reset_key: resp[KEY__reset_key]})
+
+            if resp[ATTR__closed]:
+                status = RESET__completed
+            elif resp[ATTR__activated] or resp[ATTR__used_key_a]:
+                status = RESET__started
+
+        elif reset_code_match:
+            raise HttpStatusException(ERR__reset_code_expired)
+        else:
+            execute_supplied_statement(self.jaaql_lookup_connection, QUERY__reset_increment_attempts, {KEY__reset_key: resp[KEY__reset_key]})
+            raise HttpStatusException(ERR__incorrect_reset_code)
+
+        return {KEY__reset_key_status: status}
+
+    def reset_password_perform_reset(self, inputs: dict):
+        token = inputs[KEY__reset_key]
+        password = inputs[KEY__password]
+
+        resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__reset_fetch, parameters={KEY__reset_or_poll_key: token},
+                                                    as_objects=True, singleton_message=ERR__cant_find_sign_up)
+
+        self.add_password(self.jaaql_lookup_connection, resp[ATTR__the_user], password)
+
+        return {
+            KEY__email: resp[KEY__email]
+        }
 
     def create_user(self, jaaql_connection: DBInterface, username: str, db_password: str = None, mobile: str = None,
                     attach_as: str = None, precedence: int = None, roles: str = "", public_application: str = None):
