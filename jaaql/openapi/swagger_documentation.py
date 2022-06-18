@@ -175,7 +175,7 @@ class SwaggerArgumentResponse:
     def __init__(self, name: str, description: str,
                  arg_type: Union[type, List['SwaggerArgumentResponse'], 'SwaggerList', SwaggerSimpleList],
                  example: Optional[TYPE__example] = None, required: bool = True, condition: str = None,
-                 local_only: bool = False):
+                 local_only: bool = False, strip: bool = True, lower: bool = False):
         self.name = name
         self.description = description
         if arg_type == bool and example is None:
@@ -185,6 +185,8 @@ class SwaggerArgumentResponse:
         self.arg_type = arg_type
         self.condition = condition
         self.local_only = local_only
+        self.strip = strip
+        self.lower = lower
 
         if not required and condition is None and name != DOCUMENTATION__allow_all:
             raise SwaggerException(ERR__condition_needed % name)
@@ -277,9 +279,11 @@ MOCK__description = ""
 
 class SwaggerResponse:
 
-    def __init__(self, description: str, code: HTTPStatus = HTTPStatus.OK, response: TYPE__argument_response = None):
+    def __init__(self, description: str, code: HTTPStatus = HTTPStatus.OK, response: TYPE__argument_response = None,
+                 error_on_unexpected_field: bool = False):
         self.code = code
         self.description = description
+        self.error_on_unexpected_field = error_on_unexpected_field
 
         validate_argument_responses(response)
 

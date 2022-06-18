@@ -5,7 +5,7 @@ from jaaql.documentation.documentation_shared import RES__totp_mfa_nullable, ARG
     ARG_RES__deletion_key, set_nullable, ARG_RES__application_body, ARG_RES__email, rename_arg,\
     ARG_RES__reference_dataset, ARG_RES__dataset_description, combine_response, ARG_RES__username,\
     ARG_RES__application, ARG_RES__email_template, ARG_RES__parameters, ARG_RES__already_signed_up_email_template, \
-    ARG_RES__occurred, EXAMPLE__email_template_name, EXAMPLE__occurred
+    ARG_RES__occurred, EXAMPLE__email_template_name, EXAMPLE__occurred, ARG_RES__reset_password_email_template
 
 TITLE = "JAAQL API"
 DESCRIPTION = "Collection of methods in the JAAQL API"
@@ -27,8 +27,15 @@ ARG_RES__invite_key = SwaggerArgumentResponse(
 )
 
 ARG_RES__invite_poll_key = rename_arg(ARG_RES__invite_key,
-                                      new_description="A key returned after signing up that can be used to poll to see if the user has verified their"
-                                      " email address. Can be used to sign up to the server once the signup process has began with the other key")
+                                      new_description="A key returned after signing up that can be used to sign up to the server once the signup "
+                                                      "process has began with the other key or the 5 digit signup code has been input")
+
+ARG_RES__reset_key = rename_arg(ARG_RES__invite_key, KEY__reset_key,
+                                new_description="A key that can be used to reset a password of a specific user")
+
+ARG_RES__reset_poll_key = rename_arg(ARG_RES__reset_key,
+                                     new_description="A key returned after requesting a reset password email that can be used to reset "
+                                     "password once the process has began with the other key or the 8 length reset code has been input")
 
 DOCUMENTATION__sign_up_request_invite = SwaggerDocumentation(
     tags="Signup",
@@ -45,10 +52,17 @@ DOCUMENTATION__sign_up_request_invite = SwaggerDocumentation(
             ARG_RES__already_signed_up_email_template,
             set_nullable(ARG_RES__application, "Does email template have a path")
         ],
-        response=SwaggerResponse(
-            description="Sign up response",
-            response=ARG_RES__invite_poll_key
-        )
+        response=[
+            SwaggerResponse(
+                description="Sign up response",
+                response=ARG_RES__invite_poll_key
+            ),
+            SwaggerFlatResponse(
+                description=ERR__too_many_signup_attempts,
+                code=HTTPStatus.TOO_MANY_REQUESTS,
+                body=ERR__too_many_signup_attempts
+            )
+        ]
     )
 )
 
@@ -69,23 +83,32 @@ DOCUMENTATION__sign_up_status = SwaggerDocumentation(
             ),
             SwaggerArgumentResponse(
                 name=KEY__invite_code,
-                description="An invite code received only via email. Used only with the invite poll key",
+                description="An 5 length invite code received only via email. Used only with the invite poll key and valid only for 15 minutes. "
+                "The invite key in the email is valid much longer (2 weeks default) but due to the ease of guessing a 5 letter code (~13M "
+                "combinations) it is kept short for security reasons",
                 arg_type=str,
-                example=["AG4S"],
+                example=["AGZSB"],
                 required=False,
                 condition="Is this the invite poll key"
             )
         ],
-        response=SwaggerResponse(
-            description="Invite status enumeration",
-            response=SwaggerArgumentResponse(
-                name=KEY__invite_key_status,
-                description="An enumeration of the statuses of an invite key. 0->New signup, 1->Sign up process started, 2->Signing up again with "
-                "same email, 3->Sign up already finished",
-                arg_type=int,
-                example=[0]
+        response=[
+            SwaggerResponse(
+                description="Invite status enumeration",
+                response=SwaggerArgumentResponse(
+                    name=KEY__invite_key_status,
+                    description="An enumeration of the statuses of an invite key. 0->New signup, 1->Sign up process started, "
+                    "2->Signing up again with same email, 3->Sign up already finished",
+                    arg_type=int,
+                    example=[0]
+                )
+            ),
+            SwaggerFlatResponse(
+                description=ERR__too_many_code_attempts,
+                code=HTTPStatus.LOCKED,
+                body=ERR__too_many_code_attempts
             )
-        )
+        ]
     )
 )
 
@@ -185,7 +208,8 @@ DOCUMENTATION__applications_default_email_templates = SwaggerDocumentation(
             description="Default email template associated with an application",
             response=[
                 ARG_RES__email_template,
-                ARG_RES__already_signed_up_email_template
+                ARG_RES__already_signed_up_email_template,
+                rename_arg(ARG_RES__reset_password_email_template, KEY__default_reset_password_template)
             ]
         )
     )
@@ -341,6 +365,98 @@ DOCUMENTATION__my_ips = SwaggerDocumentation(
                 ]
             )
         )
+    )
+)
+
+DOCUMENTATION__reset_password = SwaggerDocumentation(
+    security=False,
+    tags="Account",
+    methods=SwaggerMethod(
+        name="Reset Password",
+        description="Send reset password email",
+        method=REST__POST,
+        body=[
+            ARG_RES__email,
+            ARG_RES__reset_password_email_template,
+            set_nullable(ARG_RES__application, "Does email template have a path")
+        ],
+        response=[
+            SwaggerResponse(
+                description="Sign up response",
+                response=ARG_RES__reset_poll_key
+            ),
+            SwaggerFlatResponse(
+                description=ERR__too_many_reset_requests,
+                code=HTTPStatus.TOO_MANY_REQUESTS,
+                body=ERR__too_many_signup_attempts
+            )
+        ]
+    )
+)
+
+DOCUMENTATION__reset_password_status = SwaggerDocumentation(
+    tags="Account",
+    # The security is in the invite key. User has not signed up yet so cannot get an oauth token
+    security=False,
+    methods=SwaggerMethod(
+        name="Request password reset status",
+        description="Requesting status with the reset key sent to the email will allow the poll key to be used as a reset key",
+        method=REST__GET,
+        arguments=[
+            SwaggerArgumentResponse(
+                name=KEY__reset_or_poll_key,
+                description="Either an reset or reset poll key",
+                arg_type=str,
+                example=[UUID__invite]
+            ),
+            SwaggerArgumentResponse(
+                name=KEY__reset_code,
+                description="An 8 length reset code received only via email. Used only with the reset poll key and valid only for 15 minutes. "
+                "The reset key in the email is valid much longer (2 hours default)",
+                arg_type=str,
+                example=["7UYJ1TVX"],
+                required=False,
+                condition="Is this the reset poll key"
+            )
+        ],
+        response=[
+            SwaggerResponse(
+                description="Reset status enumeration",
+                response=SwaggerArgumentResponse(
+                    name=KEY__reset_key_status,
+                    description="An enumeration of the statuses of a reset key. 0->New reset key, 1->Reset process started, "
+                    "2->Reset process finished ",
+                    arg_type=int,
+                    example=[0]
+                )
+            ),
+            SwaggerFlatResponse(
+                description=ERR__too_many_code_attempts,
+                code=HTTPStatus.LOCKED,
+                body=ERR__too_many_code_attempts
+            )
+        ]
+    )
+)
+
+DOCUMENTATION__reset_password_with_invite = SwaggerDocumentation(
+    tags="Account",
+    # The security is in the invite key. User has not signed up yet so cannot get an oauth token
+    security=False,
+    methods=SwaggerMethod(
+        name="Reset password with key",
+        description="Resets password using either the key fetched either from internal methods or from the email",
+        method=REST__POST,
+        body=[
+            ARG_RES__reset_key,
+            ARG_RES__jaaql_password
+        ],
+        response=[
+            SwaggerResponse(
+                description="The email address of the user that has had their password reset it's password",
+                response=ARG_RES__email
+            )
+        ]
     )
 )
 
