@@ -54,11 +54,11 @@ class JAAQLController(BaseJAAQLController):
             return self.model.is_installed(response)
 
         @self.cors_route('/internal/applications', DOCUMENTATION__applications)
-        def applications(http_inputs: dict, jaaql_connection: DBInterface, ip_address: str, response: JAAQLResponse):
+        def applications(http_inputs: dict, jaaql_connection: DBInterface, ip_address: str, user_id: str, response: JAAQLResponse):
             if self.is_get():
                 return self.model.get_applications(http_inputs, jaaql_connection)
             elif self.is_post():
-                self.model.add_application(http_inputs, jaaql_connection, ip_address, response)
+                self.model.add_application(http_inputs, jaaql_connection, ip_address, user_id, response)
             elif self.is_put():
                 self.model.update_application(http_inputs, jaaql_connection)
             else:  # self.is_delete()
@@ -81,7 +81,7 @@ class JAAQLController(BaseJAAQLController):
             self.model.delete_application_confirm(http_inputs, jaaql_connection)
 
         @self.cors_route('/internal/databases', DOCUMENTATION__databases)
-        def databases(http_inputs: dict, jaaql_connection: DBInterface, user_id: int):
+        def databases(http_inputs: dict, jaaql_connection: DBInterface, user_id: str):
             if self.is_post():
                 self.model.add_database(http_inputs, jaaql_connection, user_id)
             elif self.is_get():

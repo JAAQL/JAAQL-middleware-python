@@ -52,10 +52,17 @@ DOCUMENTATION__sign_up_request_invite = SwaggerDocumentation(
             ARG_RES__already_signed_up_email_template,
             set_nullable(ARG_RES__application, "Does email template have a path")
         ],
-        response=SwaggerResponse(
-            description="Sign up response",
-            response=ARG_RES__invite_poll_key
-        )
+        response=[
+            SwaggerResponse(
+                description="Sign up response",
+                response=ARG_RES__invite_poll_key
+            ),
+            SwaggerFlatResponse(
+                description=ERR__too_many_signup_attempts,
+                code=HTTPStatus.TOO_MANY_REQUESTS,
+                body=ERR__too_many_signup_attempts
+            )
+        ]
     )
 )
 
@@ -85,16 +92,23 @@ DOCUMENTATION__sign_up_status = SwaggerDocumentation(
                 condition="Is this the invite poll key"
             )
         ],
-        response=SwaggerResponse(
-            description="Invite status enumeration",
-            response=SwaggerArgumentResponse(
-                name=KEY__invite_key_status,
-                description="An enumeration of the statuses of an invite key. 0->New signup, 1->Sign up process started, 2->Signing up again with "
-                "same email, 3->Sign up already finished",
-                arg_type=int,
-                example=[0]
+        response=[
+            SwaggerResponse(
+                description="Invite status enumeration",
+                response=SwaggerArgumentResponse(
+                    name=KEY__invite_key_status,
+                    description="An enumeration of the statuses of an invite key. 0->New signup, 1->Sign up process started, "
+                    "2->Signing up again with same email, 3->Sign up already finished",
+                    arg_type=int,
+                    example=[0]
+                )
+            ),
+            SwaggerFlatResponse(
+                description=ERR__too_many_code_attempts,
+                code=HTTPStatus.LOCKED,
+                body=ERR__too_many_code_attempts
             )
-        )
+        ]
     )
 )
 
@@ -195,7 +209,7 @@ DOCUMENTATION__applications_default_email_templates = SwaggerDocumentation(
             response=[
                 ARG_RES__email_template,
                 ARG_RES__already_signed_up_email_template,
-                ARG_RES__reset_password_email_template
+                rename_arg(ARG_RES__reset_password_email_template, KEY__default_reset_password_template)
             ]
         )
     )
@@ -366,10 +380,17 @@ DOCUMENTATION__reset_password = SwaggerDocumentation(
             ARG_RES__reset_password_email_template,
             set_nullable(ARG_RES__application, "Does email template have a path")
         ],
-        response=SwaggerResponse(
-            description="Sign up response",
-            response=ARG_RES__reset_poll_key
-        )
+        response=[
+            SwaggerResponse(
+                description="Sign up response",
+                response=ARG_RES__reset_poll_key
+            ),
+            SwaggerFlatResponse(
+                description=ERR__too_many_reset_requests,
+                code=HTTPStatus.TOO_MANY_REQUESTS,
+                body=ERR__too_many_signup_attempts
+            )
+        ]
     )
 )
 
@@ -398,15 +419,23 @@ DOCUMENTATION__reset_password_status = SwaggerDocumentation(
                 condition="Is this the reset poll key"
             )
         ],
-        response=SwaggerResponse(
-            description="Reset status enumeration",
-            response=SwaggerArgumentResponse(
-                name=KEY__reset_key_status,
-                description="An enumeration of the statuses of a reset key. 0->New reset key, 1->Reset process started, 2->Reset process finished ",
-                arg_type=int,
-                example=[0]
+        response=[
+            SwaggerResponse(
+                description="Reset status enumeration",
+                response=SwaggerArgumentResponse(
+                    name=KEY__reset_key_status,
+                    description="An enumeration of the statuses of a reset key. 0->New reset key, 1->Reset process started, "
+                    "2->Reset process finished ",
+                    arg_type=int,
+                    example=[0]
+                )
+            ),
+            SwaggerFlatResponse(
+                description=ERR__too_many_code_attempts,
+                code=HTTPStatus.LOCKED,
+                body=ERR__too_many_code_attempts
             )
-        )
+        ]
     )
 )
 

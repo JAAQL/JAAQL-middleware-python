@@ -64,6 +64,7 @@ KEY__mfa_key = "mfa_key"
 KEY__mfa_enabled = "mfa_enabled"
 KEY__username = "username"
 KEY__password = "password"
+KEY__default_database = "default_database"
 KEY__new_password = "new_password"
 KEY__new_password_confirm = "new_password_confirm"
 KEY__page = "page"
@@ -150,11 +151,11 @@ ENVIRON__vault_key = "JAAQL_VAULT_PASSWORD"
 ENVIRON__email_credentials = "JAAQL_EMAIL_CREDENTIALS"
 ENVIRON__install_path = "INSTALL_PATH"
 
-EMAIL_PARAM__signup_key = "JAAQL_SIGNUP_KEY"
-EMAIL_PARAM__invite_code = "JAAQL_INVITE_CODE"
+EMAIL_PARAM__signup_key = "JAAQL_INVITE_KEY"
+EMAIL_PARAM__invite_code = "JAAQL_INVITE_SHORT_CODE"
 
 EMAIL_PARAM__reset_key = "JAAQL_RESET_KEY"
-EMAIL_PARAM__reset_code = "JAAQL_RESET_CODE"
+EMAIL_PARAM__reset_code = "JAAQL_RESET_SHORT_CODE"
 
 CONFIG_KEY__server = "SERVER"
 CONFIG_KEY_SERVER__port = "port"
@@ -165,6 +166,9 @@ JWT_PURPOSE__connection = "connection"
 
 ERR__not_yet_installed = "JAAQL has not yet been installed!"
 ERR__user_public = "Cannot perform this action on a public user!"
+ERR__too_many_signup_attempts = "Too many signup attempts"
+ERR__too_many_reset_requests = "Too many reset requests"
+ERR__too_many_code_attempts = "Code disabled due to too many incorrect attempts. Please use the link in the email"
 
 PG_ENV__password = "POSTGRES_PASSWORD"
 

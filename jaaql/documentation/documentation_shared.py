@@ -182,6 +182,7 @@ ARG_RES__email = SwaggerArgumentResponse(
     arg_type=str,
     example=["aaron@jaaql.com", "graham@jaaql.com"],
     required=True,
+    lower=True
 )
 
 ARG_RES__totp_mfa = [

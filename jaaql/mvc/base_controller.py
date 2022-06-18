@@ -150,6 +150,11 @@ class BaseJAAQLController:
                                                                           str(arg.arg_type)), HTTPStatus.BAD_REQUEST)
             elif arg.name not in data and fill_missing:
                 data[arg.name] = None
+            elif arg.arg_type == str and arg.name in data and data[arg.name] is not None:
+                if arg.strip:
+                    data[arg.name] = data[arg.name].strip()
+                if arg.lower:
+                    data[arg.name] = data[arg.name].lower()
 
         for key, _ in data.items():
             found = any([arg.name == key for arg in arguments])
@@ -230,6 +235,11 @@ class BaseJAAQLController:
             if not isinstance(real_resp, dict):
                 raise Exception(ERR__expected_response_dict)
 
+            if response.error_on_unexpected_field:
+                for key, _ in real_resp.items():
+                    if not any([swag_resp.name == key for swag_resp in response.responses]):
+                        raise Exception(ERR__unexpected_response_field % key)
+
             match_alpha_resp = {}
             for swag_resp in response.responses:
                 is_complex = isinstance(swag_resp.arg_type, SwaggerList)
@@ -252,10 +262,6 @@ class BaseJAAQLController:
 
                 match_alpha_resp[swag_resp.name] = real_resp[swag_resp.name]
             real_resp = match_alpha_resp
-
-            for key, _ in real_resp.items():
-                if not any([swag_resp.name == key for swag_resp in response.responses]):
-                    raise Exception(ERR__unexpected_response_field % key)
 
         return real_resp
 

@@ -356,7 +356,20 @@ DOCUMENTATION__applications = SwaggerDocumentation(
             name="Add application",
             description="Add a new application",
             method=REST__POST,
-            body=ARG_RES__application_body + [ARG_RES__public_username]
+            body=ARG_RES__application_body + [
+                ARG_RES__public_username,
+                SwaggerArgumentResponse(
+                    name=KEY__default_database,
+                    description="A default database if provided. Will create default configurations giving access to this and set the public user as "
+                                "a default role and set the precedence of the public user to -1 so there are no precedence clashes. Please use the "
+                                "format 'node/dbname' for input for example 'host/jaaql'. If no node is provided, the node is assumed as 'host'. "
+                                "The database will be created if the host exists and the database does not exist. ",
+                    arg_type=str,
+                    example=["host/jaaql"],
+                    required=False,
+                    condition="Is a default database supplied"
+                )
+            ]
         ),
         SwaggerMethod(
             name="Fetch applications",

@@ -59,10 +59,8 @@ ERR__user_does_not_exist = "The user does not exist, cannot resend the email"
 ERR__data_validation_table_no_primary = "Data validation table has no primary key"
 ERR__uninstallation_not_allowed = "Uninstallation not allowed"
 ERR__password_required = "Password required"
-ERR__cant_find_sign_up = "Cannot locate sign up with key. The key is either incorrect or has expired"
-ERR__too_many_signup_attempts = "Too many signup attempts"
-ERR__too_many_reset_requests = "Too many reset requests"
-ERR__too_many_code_attempts = "Code disabled due to too many incorrect attempts. Please use the link in the email"
+ERR__cant_find_sign_up = "Cannot locate sign up with key. The key is either incorrect, has expired or has not been activated with the emailed code"
+ERR__cant_find_reset = "Cannot locate reset with key. The key is either incorrect, has expired or has not been activated with the emailed code"
 
 SQL__err_duplicate_user = "duplicate key value violates unique constraint \"jaaql__user_unq_email\""
 
@@ -85,6 +83,11 @@ CODE__max_attempts = 3
 RESEND__invite_max = 2
 RESEND__invite_not_registered_max = 3
 RESEND__reset_max = 2
+
+CONFIG__default = "Default config"
+CONFIG__default_desc = "Default config description"
+DATASET__default = "Default dataset"
+DATASET__default_desc = "Default dataset description"
 
 ATTR__count = "count"
 ATTR__ip_id = "ip_id"
@@ -511,7 +514,7 @@ class JAAQLModel(BaseJAAQLModel):
             raise HttpStatusException(ERR__already_installed)
 
     def log(self, user_id: str, occurred: datetime, duration_ms: int, exception: str, contr_input: str, ip: str, status: int,
-                 endpoint: str, databases: list = None):
+            endpoint: str, databases: list = None):
         threading.Thread(target=self.log_sync, args=[user_id, occurred, duration_ms, exception, contr_input, ip, status, endpoint, databases]).start()
 
     def log_sync(self, user_id: str, occurred: datetime, duration_ms: int, exception: str, contr_input: str, ip: str, status: int, endpoint: str,
@@ -581,8 +584,9 @@ class JAAQLModel(BaseJAAQLModel):
         return create_interface(self.config, auth[KEY__address], auth[KEY__port], DB__jaaql, auth[KEY__username], auth[KEY__password]
                                 ), user[KEY__id], ip_id, iv, user[ATTR__password_hash], last_totp, username, user[KEY__is_public]
 
-    def add_application(self, inputs: dict, jaaql_connection: DBInterface, ip_address: str, response: JAAQLResponse):
+    def add_application(self, inputs: dict, jaaql_connection: DBInterface, ip_address: str, user_id: str, response: JAAQLResponse):
         public_username = inputs.pop(KEY__public_username)
+        default_database = inputs.pop(KEY__default_database)
         inputs[KEY__application_url] = self.replace_default_app_url(inputs[KEY__application_url])
         if inputs[KEY__default_email_signup_template] is not None:
             inputs[KEY__default_email_signup_template] = execute_supplied_statement_singleton(jaaql_connection, QUERY__fetch_email_template_by_name, {
@@ -593,6 +597,10 @@ class JAAQLModel(BaseJAAQLModel):
                 jaaql_connection, QUERY__fetch_email_template_by_name, {
                     KEY__template: inputs[KEY__default_email_already_signed_up_template]
                 }, as_objects=True)[KEY__id]
+        if inputs[KEY__default_reset_password_template] is not None:
+            template_inputs = {KEY__template: inputs[KEY__default_reset_password_template]}
+            inputs[KEY__default_reset_password_template] = execute_supplied_statement_singleton(jaaql_connection, QUERY__fetch_email_template_by_name,
+                                                                                                template_inputs, as_objects=True)[KEY__id]
         execute_supplied_statement(jaaql_connection, QUERY__application_ins, inputs)
         if public_username is not None:
             password = str(uuid.uuid4())
@@ -607,6 +615,28 @@ class JAAQLModel(BaseJAAQLModel):
                 KEY__application: inputs[KEY__application_name]
             }
             self.make_user_public(mup_inputs, jaaql_connection)
+
+        if default_database is not None:
+            default_node = default_database.split("/")[0] if "/" in default_database else NODE__host_node
+
+            try:
+                self.add_database({KEY__create: True, KEY__node: default_node, KEY__database_name: default_database}, jaaql_connection, user_id)
+            except:
+                pass  # Sometimes the database may already exist
+
+            self.add_application_configuration({KEY__configuration_name: CONFIG__default, KEY__description: CONFIG__default_desc,
+                                                KEY__application: inputs[KEY__application_name]}, jaaql_connection)
+            self.add_application_dataset({KEY__dataset_name: DATASET__default, KEY__description: DATASET__default_desc,
+                                          KEY__application: inputs[KEY__application_name]}, jaaql_connection)
+            self.add_database_assignment({KEY__application: inputs[KEY__application_name], KEY__configuration: CONFIG__default,
+                                          KEY__database: default_database, KEY__node: default_node, KEY__dataset: DATASET__default}, jaaql_connection)
+
+            if public_username is not None:
+                execute_supplied_statement(jaaql_connection, QUERY__node_credentials_set_public_user, {KEY__username: public_username,
+                                                                                                       KEY__node: default_node})
+                self.add_user_default_role({KEY__role: public_username}, jaaql_connection)
+                self.add_configuration_authorization({KEY__application: inputs[KEY__application_name], KEY__configuration: CONFIG__default,
+                                                      KEY__role: public_username}, jaaql_connection)
 
     def delete_application(self, inputs: dict):
         return {KEY__deletion_key: self.request_deletion_key(DELETION_PURPOSE__application, inputs)}
@@ -639,8 +669,7 @@ class JAAQLModel(BaseJAAQLModel):
         paging_query, where_query, where_parameters, parameters = self.construct_paging_queries(inputs)
         full_query = QUERY__application_sel + paging_query
 
-        return self.execute_paging_query(jaaql_connection, full_query, QUERY__application_count, parameters,
-                                         where_query, where_parameters)
+        return self.execute_paging_query(jaaql_connection, full_query, QUERY__application_count, parameters, where_query, where_parameters)
 
     def get_my_applications(self, jaaql_connection: DBInterface):
         return execute_supplied_statement(jaaql_connection, QUERY__fetch_my_applications, as_objects=True)
@@ -691,7 +720,7 @@ class JAAQLModel(BaseJAAQLModel):
         parameters = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__node)
         execute_supplied_statement(jaaql_connection, QUERY__node_del, parameters)
 
-    def add_database(self, inputs: dict, jaaql_connection: DBInterface, user_id: int = None):
+    def add_database(self, inputs: dict, jaaql_connection: DBInterface, user_id: str = None):
         inputs_create = inputs.copy()
         if KEY__create in inputs:
             inputs.pop(KEY__create)
@@ -752,8 +781,7 @@ class JAAQLModel(BaseJAAQLModel):
 
     def delete_application_configuration_confirm(self, inputs: dict, jaaql_connection: DBInterface):
         parameters = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__application_configuration)
-        execute_supplied_statement(jaaql_connection, QUERY__application_configuration_del, parameters,
-                                   as_objects=True)
+        execute_supplied_statement(jaaql_connection, QUERY__application_configuration_del, parameters, as_objects=True)
 
     def add_database_assignment(self, inputs: dict, jaaql_connection: DBInterface):
         execute_supplied_statement(jaaql_connection, QUERY__assigned_database_ins, inputs)
@@ -770,8 +798,7 @@ class JAAQLModel(BaseJAAQLModel):
 
     def remove_database_assignment_confirm(self, inputs: dict, jaaql_connection: DBInterface):
         parameters = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__database_assignment)
-        execute_supplied_statement(jaaql_connection, QUERY__assigned_database_del, parameters,
-                                   as_objects=True)
+        execute_supplied_statement(jaaql_connection, QUERY__assigned_database_del, parameters, as_objects=True)
 
     def add_node_authorization(self, inputs: dict, connection: DBInterface):
         execute_supplied_statement(connection, QUERY__node_credentials_ins, inputs,
@@ -1180,10 +1207,10 @@ class JAAQLModel(BaseJAAQLModel):
             if sub_hs.response_code != HTTPStatus.UNAUTHORIZED:
                 raise sub_hs  # Unrelated exception, raise it
 
-        is_invite_key = resp[KEY__invite_key] == inputs[KEY__invite_or_poll_key]
+        is_invite_key = str(resp[KEY__invite_key]) == inputs[KEY__invite_or_poll_key]
 
         if not is_invite_key and not resp[ATTR__activated] and resp[ATTR__code_attempts] >= CODE__max_attempts:
-            raise HttpStatusException(ERR__too_many_code_attempts, HTTPStatus.TOO_MANY_REQUESTS)
+            raise HttpStatusException(ERR__too_many_code_attempts, HTTPStatus.LOCKED)
 
         status = SIGNUP__not_started
 
@@ -1288,12 +1315,19 @@ class JAAQLModel(BaseJAAQLModel):
         if inputs[KEY__application]:
             app_url = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_url_from_application_name,
                                                            {KEY__application: inputs[KEY__application]}, as_objects=True)[KEY__application_url]
-        user = self.fetch_user_from_username(inputs[KEY__email], self.jaaql_lookup_connection)
-        if user[KEY__is_public]:
+        user_exists = True
+        user = None
+        try:
+            user = self.fetch_user_from_username(inputs[KEY__email], self.jaaql_lookup_connection)
+        except HttpStatusException:
+            user_exists = False
+
+        if user_exists and user[KEY__is_public]:
             raise HttpStatusException(ERR__user_public, HTTPStatus.UNAUTHORIZED)
 
-        attempts = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_count, {ATTR__the_user: user[KEY__id]},
-                                                        as_objects=True)[ATTR__count]
+        query = QUERY__reset_count if user_exists else QUERY__fake_reset_count
+        attempt_inputs = {ATTR__the_user: user[KEY__id]} if user_exists else {KEY__email: inputs[KEY__email]}
+        attempts = execute_supplied_statement_singleton(self.jaaql_lookup_connection, query, attempt_inputs, as_objects=True)[ATTR__count]
         if attempts >= RESEND__reset_max:
             raise HttpStatusException(ERR__too_many_reset_requests, HTTPStatus.TOO_MANY_REQUESTS)
 
@@ -1304,31 +1338,47 @@ class JAAQLModel(BaseJAAQLModel):
         if not template[KEY__allow_reset_password]:
             raise HttpStatusException(ERR__template_reset_password)
 
-        sanitized_params = {}
+        reset_keys = {}
+        if user_exists:
+            sanitized_params = {}
 
-        params = {
-            ATTR__the_user: user[KEY__id],
-            KEY__email_template: template[KEY__id],
-            KEY__reset_code: "".join([CODE__alphanumeric[random.randint(0, len(CODE__alphanumeric) - 1)] for _ in range(CODE__reset_length)])
-        }
-        reset_keys = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__reset_insert, params, as_objects=True)
+            params = {
+                ATTR__the_user: user[KEY__id],
+                KEY__email_template: template[KEY__id],
+                KEY__reset_code: "".join([CODE__alphanumeric[random.randint(0, len(CODE__alphanumeric) - 1)] for _ in range(CODE__reset_length)])
+            }
+            reset_keys = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__reset_insert, params, as_objects=True)
+            optional_params = {EMAIL_PARAM__reset_key: reset_keys[KEY__reset_key], EMAIL_PARAM__reset_code: reset_keys[KEY__reset_code]}
+            optional_params = {**optional_params, **sanitized_params}
 
-        optional_params = {EMAIL_PARAM__reset_key: reset_keys[KEY__reset_key], EMAIL_PARAM__reset_code: reset_keys[KEY__reset_code]}
-        optional_params = {**optional_params, **sanitized_params}
+            self.email_manager.construct_and_send_email(self.url, app_url, template, user[KEY__id], inputs[KEY__email], None, {}, optional_params)
+        else:
+            params = {
+                KEY__email: inputs[KEY__email]
+            }
+            reset_keys = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fake_reset_insert, params, as_objects=True)
 
-        self.email_manager.construct_and_send_email(self.url, app_url, template, user[KEY__id], inputs[KEY__email], None, {}, optional_params)
-
-        return {KEY__reset_key: reset_keys[KEY__invite_poll_key]}
+        return {KEY__reset_key: reset_keys[KEY__reset_poll_key]}
 
     def reset_password_status(self, inputs: dict):
         select_param = {KEY__reset_or_poll_key: inputs[KEY__reset_or_poll_key]}
-        resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__reset_poll, parameters=select_param, as_objects=True,
-                                                    singleton_message=ERR__cant_find_sign_up)
+        was_fake = False
 
-        is_reset_key = resp[KEY__reset_key] == inputs[KEY__reset_or_poll_key]
+        try:
+            resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__reset_poll, parameters=select_param, as_objects=True,
+                                                        singleton_message=ERR__cant_find_reset)
+        except HttpStatusException as se:
+            if se.response_code == HTTPStatus.UNPROCESSABLE_ENTITY:
+                resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fake_reset_poll, parameters=select_param,
+                                                            as_objects=True, singleton_message=ERR__cant_find_reset)
+                was_fake = True
+            else:
+                raise se
+
+        is_reset_key = str(resp[KEY__reset_key]) == inputs[KEY__reset_or_poll_key]
 
         if not is_reset_key and not resp[ATTR__activated] and resp[ATTR__code_attempts] >= CODE__max_attempts:
-            raise HttpStatusException(ERR__too_many_code_attempts, HTTPStatus.TOO_MANY_REQUESTS)
+            raise HttpStatusException(ERR__too_many_code_attempts, HTTPStatus.LOCKED)
 
         status = RESET__not_started
 
@@ -1350,7 +1400,11 @@ class JAAQLModel(BaseJAAQLModel):
         elif reset_code_match:
             raise HttpStatusException(ERR__reset_code_expired)
         else:
-            execute_supplied_statement(self.jaaql_lookup_connection, QUERY__reset_increment_attempts, {KEY__reset_key: resp[KEY__reset_key]})
+            if was_fake:
+                execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fake_reset_increment_attempts,
+                                           {KEY__reset_key: inputs[KEY__reset_or_poll_key]})
+            else:
+                execute_supplied_statement(self.jaaql_lookup_connection, QUERY__reset_increment_attempts, {KEY__reset_key: resp[KEY__reset_key]})
             raise HttpStatusException(ERR__incorrect_reset_code)
 
         return {KEY__reset_key_status: status}
@@ -1361,8 +1415,8 @@ class JAAQLModel(BaseJAAQLModel):
 
         resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__reset_fetch, parameters={KEY__reset_or_poll_key: token},
                                                     as_objects=True, singleton_message=ERR__cant_find_sign_up)
-
-        self.add_password(self.jaaql_lookup_connection, resp[ATTR__the_user], password)
+        self.add_password(self.jaaql_lookup_connection, str(resp[ATTR__the_user]), password)
+        execute_supplied_statement(self.jaaql_lookup_connection, QUERY__reset_close, parameters={KEY__reset_key: token})
 
         return {
             KEY__email: resp[KEY__email]
