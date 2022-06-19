@@ -21,7 +21,8 @@ class EmailManager:
         requests.post("http://127.0.0.1:" + str(PORT__ems) + ENDPOINT__reload_accounts)
 
     def construct_and_send_email(self, base_url: str, app_url: str, template: dict, sender: str, to_email: str, to_name: str,
-                                 parameters: dict = None, optional_parameters: dict = None, attachments: TYPE__email_attachments = None):
+                                 parameters: dict = None, optional_parameters: dict = None, attachments: TYPE__email_attachments = None,
+                                 attachment_access_token: str = None):
         loaded_template = self.load_template(base_url, app_url, template[KEY__app_relative_path])
         if loaded_template is None:
             return
@@ -29,7 +30,7 @@ class EmailManager:
         subject, loaded_template = self.perform_replacements(template[KEY__subject], loaded_template, parameters, optional_parameters)
 
         self.send_email(Email(str(sender), str(template[KEY__id]), str(template[KEY__account]), to_email, to_name, subject=subject,
-                              body=loaded_template, is_html=True, attachments=attachments))
+                              body=loaded_template, is_html=True, attachments=attachments, attachment_access_token=attachment_access_token))
 
     def load_template(self, base_url: str, app_url: str, app_relative_path: str):
         if app_relative_path is None:

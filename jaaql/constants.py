@@ -1,5 +1,6 @@
 KEY__id = "id"
 KEY__last_totp = "last_totp"
+KEY__attachment_name = "name"
 KEY__application = "application"
 KEY__application_description = "application_description"
 KEY__configuration = "configuration"
@@ -11,6 +12,8 @@ KEY__allow_uninstall = "allow_uninstall"
 KEY__uninstall_key = "uninstall_key"
 KEY__install_key = "install_key"
 KEY__deletion_key = "deletion_key"
+KEY__render_as = "render_as"
+KEY__url = "url"
 KEY__superjaaql_password = "superjaaql_password"
 KEY__public_username = "public_username"
 KEY__records_total = "records_total"
@@ -35,8 +38,10 @@ KEY__reset_key_status = "reset_key_status"
 KEY__parameters = "parameters"
 KEY__oauth_token = "oauth_token"
 KEY__template = "template"
+KEY__create_file = "create_file"
 KEY__subject = "subject"
 KEY__recipient = "recipient"
+KEY__completed = "completed"
 KEY__filename = "filename"
 KEY__content = "content"
 KEY__attachments = "attachments"
@@ -105,6 +110,8 @@ KEY__body = "body"
 KEY__default_email_signup_template = "default_email_signup_template"
 KEY__default_email_already_signed_up_template = "default_email_already_signed_up_template"
 KEY__default_reset_password_template = "default_reset_password_template"
+KEY__document_id = "document_id"
+KEY__as_attachment = "as_attachment"
 
 ATTR__deleted = "deleted"
 
@@ -136,6 +143,9 @@ SEPARATOR__space = " "
 JAAQL__arg_marker = ":"
 
 DIR__config = "config"
+DIR__www = "www"
+DIR__render_template = "rendered_documents"
+
 FILE__config = "config.ini"
 
 ENCODING__utf = "UTF-8"
@@ -169,6 +179,8 @@ ERR__user_public = "Cannot perform this action on a public user!"
 ERR__too_many_signup_attempts = "Too many signup attempts"
 ERR__too_many_reset_requests = "Too many reset requests"
 ERR__too_many_code_attempts = "Code disabled due to too many incorrect attempts. Please use the link in the email"
+ERR__document_still_rendering = "Document still rendering"
+ERR__document_id_not_found = "Document id not found"
 
 PG_ENV__password = "POSTGRES_PASSWORD"
 
@@ -184,4 +196,8 @@ PORT__ems = 6061
 ENDPOINT__reload_accounts = "/reload-accounts"
 ENDPOINT__send_email = "/send-email"
 
-VERSION = "3.0.7"
+VERSION = "3.0.8"
+
+HTTP_STATUS__too_early = 425  # Shiv for python 3.8
+
+USERNAME__jaaql = "jaaql"

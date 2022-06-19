@@ -2,7 +2,7 @@ CREATE DOMAIN postgres_table_view_name AS varchar(64) CHECK (VALUE ~* '^[A-Za-z*
 CREATE DOMAIN email_address AS varchar(255) CHECK ((VALUE ~* '^[A-Za-z0-9._%-]+([+][A-Za-z0-9._%-]+){0,1}@[A-Za-z0-9.-]+[.][A-Za-z]+$' AND lower(VALUE) = VALUE) OR VALUE IN ('jaaql', 'superjaaql'));
 
 create table jaaql__email_account (
-    id uuid PRIMARY KEY NOT NULL not null default gen_random_uuid(),
+    id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
     name varchar(255) not null,
     send_name varchar(255) not null,
     protocol varchar(4) not null,
@@ -17,7 +17,7 @@ CREATE UNIQUE INDEX jaaql__email_account_unq
     ON jaaql__email_account (name) WHERE (deleted is null);
 
 create table jaaql__email_template (
-    id uuid PRIMARY KEY NOT NULL not null default gen_random_uuid(),
+    id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
     name varchar(60) NOT NULL,
     subject varchar(255),
     account uuid NOT NULL,
@@ -523,7 +523,7 @@ create or replace view jaaql__my_email_history as (
 );
 grant select on jaaql__my_email_history to public;
 
-create or replace view table_primary_cols as (
+create view table_primary_cols as (
     SELECT c.column_name, tc.table_name
     FROM information_schema.table_constraints tc
     JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name)
@@ -532,7 +532,7 @@ create or replace view table_primary_cols as (
     WHERE constraint_type = 'PRIMARY KEY' AND c.table_schema = 'public'
 );
 
-create or replace view table_cols_marked_primary as (
+create view table_cols_marked_primary as (
     SELECT
         col.table_name,
         col.column_name,
@@ -540,4 +540,33 @@ create or replace view table_cols_marked_primary as (
     FROM information_schema.columns col
     LEFT JOIN table_primary_cols tpc ON tpc.table_name = col.table_name AND col.column_name = tpc.column_name
     WHERE col.table_schema = 'public'
+);
+
+create table jaaql__renderable_document (
+    name      varchar(40) PRIMARY KEY NOT null,
+    url       text not null,
+    render_as varchar(10) default 'pdf' not null,
+    check (render_as in ('pdf'))
+);
+
+create table jaaql__rendered_document (
+    document_id uuid PRIMARY KEY not null default gen_random_uuid(),
+    document varchar(40) NOT NULL,
+    created timestamptz not null default current_timestamp,
+    encrypted_parameters text,
+    encrypted_access_token text,
+    create_file boolean not null,
+    FOREIGN KEY (document) REFERENCES jaaql__renderable_document,
+    completed timestamptz,
+    content bytea,
+    filename varchar(100),
+    check ((completed is null) or (filename is not null))
+);
+
+create table jaaql__renderable_document_template (
+    attachment varchar(40),
+    template   uuid not null,
+    PRIMARY KEY (attachment, template),
+    FOREIGN KEY (template) references jaaql__email_template,
+    FOREIGN KEY (attachment) references jaaql__renderable_document
 );

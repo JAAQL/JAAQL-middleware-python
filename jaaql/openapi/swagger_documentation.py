@@ -230,6 +230,7 @@ class SwaggerList:
 TYPE__swagger_list_like = Union[SwaggerSimpleList, SwaggerList]
 
 ARG_RESP__allow_all = SwaggerArgumentResponse(DOCUMENTATION__allow_all, DOCUMENTATION__allow_all, str)
+BODY__file = "JAAQL_IS_FILE"
 
 TYPE__argument_response = Optional[Union[List[SwaggerArgumentResponse], SwaggerArgumentResponse, SwaggerList,
                                          SwaggerSimpleList]]
@@ -401,7 +402,10 @@ def _build_yaml(yaml: str, indent: int, attr: str, value: Union[str, List[str]] 
 
 
 def _http_status_to_integer(code: HTTPStatus) -> int:
-    return code.value
+    if isinstance(code, int):
+        return code
+    else:
+        return code.value
 
 
 def _insert_yaml_line(yaml: str) -> str:

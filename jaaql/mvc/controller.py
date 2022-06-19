@@ -328,16 +328,27 @@ class JAAQLController(BaseJAAQLController):
             return self.model.fetch_allowed_recipients_for_email_template(inputs[KEY__email_template], username)
 
         @self.cors_route('/emails', DOCUMENTATION__email)
-        def emails(http_inputs: dict, jaaql_connection: DBInterface, username: str, is_public: bool):
+        def emails(http_inputs: dict, jaaql_connection: DBInterface, username: str, is_public: bool, oauth_token: str, user_id: str):
             if is_public:
                 raise HttpStatusException(ERR__user_public, HTTPStatus.UNAUTHORIZED)
             if self.is_get():
                 return self.model.fetch_user_email_history(http_inputs, jaaql_connection)
             else:
-                return self.model.send_email(http_inputs, username)
+                return self.model.send_email(http_inputs, username, oauth_token, user_id)
 
         @self.cors_route('/emails/history', DOCUMENTATION__email_history)
         def emails_history(http_inputs: dict, user_id: str, is_public: bool):
             if is_public:
                 raise HttpStatusException(ERR__user_public, HTTPStatus.UNAUTHORIZED)
             return self.model.fetch_user_singular_email_history(http_inputs[KEY__id], user_id)
+
+        @self.cors_route('/documents', DOCUMENTATION__document)
+        def documents(http_inputs: dict, oauth_token: str, response: JAAQLResponse):
+            if self.is_get():
+                return self.model.fetch_document(http_inputs, response)
+            else:
+                return self.model.render_document(http_inputs, oauth_token)
+
+        @self.cors_route('/rendered_documents', DOCUMENTATION__rendered_document)
+        def documents(http_inputs: dict):
+            return self.model.fetch_document_stream(http_inputs)

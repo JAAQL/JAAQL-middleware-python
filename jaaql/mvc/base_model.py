@@ -225,7 +225,7 @@ class BaseJAAQLModel:
                            update_db_interface=self.migration_db_interface)
 
             if self.is_container:
-                self.jaaql_lookup_connection.close()  # Each individual class will have one
+                self.jaaql_lookup_connection.close(force=True)  # Each individual class will have one
 
             self.email_manager = EmailManager()
         else:

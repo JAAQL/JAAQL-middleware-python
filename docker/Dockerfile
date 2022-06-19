@@ -14,7 +14,7 @@ COPY . $INSTALL_PATH
 
 RUN git clone https://github.com/JAAQL/JEQL.git
 WORKDIR JEQL
-RUN git checkout tags/v2.2.12
+RUN git checkout tags/v2.2.14
 WORKDIR /
 
 RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini
@@ -62,5 +62,25 @@ RUN $PYPY_PATH/bin/python setup.py sdist bdist_wheel
 
 RUN VERSION=$(grep '^VERSION = ' /JAAQL-middleware-python/jaaql/constants.py | cut -d'=' -f2 | cut -d'"' -f2) && $PYPY_PATH/bin/pip install --no-deps /JAAQL-middleware-python/dist/jaaql_middleware_python-"$VERSION"-py3-none-any.whl
 WORKDIR /
+
+ARG CHROME_VERSION="95.0.4638.69-1"
+RUN wget --no-verbose -O /tmp/chrome.deb https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb \
+  && apt install -y /tmp/chrome.deb \
+  && rm /tmp/chrome.deb
+
+RUN mkdir -p $INSTALL_PATH/log
+
+RUN apt-get install unzip
+RUN wget -N https://chromedriver.storage.googleapis.com/95.0.4638.69/chromedriver_linux64.zip -P ~/
+RUN unzip ~/chromedriver_linux64.zip -d ~/
+RUN rm ~/chromedriver_linux64.zip
+RUN mv -f ~/chromedriver /usr/local/bin/chromedriver
+RUN chown root:root /usr/local/bin/chromedriver
+RUN chmod 0755 /usr/local/bin/chromedriver
+RUN apt-get install -y gstreamer1.0-libav libnss3-tools libatk-bridge2.0-0 libcups2-dev libxkbcommon-x11-0 libxcomposite-dev libxrandr2 libgbm-dev libgtk-3-0
+RUN apt-get install -y xvfb
+RUN DEBIAN_FRONTEND=noninteractive apt-get -y install xorg xvfb gtk2-engines-pixbuf
+RUN apt-get -y install dbus-x11 xfonts-base xfonts-100dpi xfonts-75dpi xfonts-cyrillic xfonts-scalable
+RUN apt-get -y install imagemagick x11-apps
 
 ENTRYPOINT ["sh", "entrypoint.sh"]

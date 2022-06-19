@@ -7,3 +7,5 @@ docker.md
 examples.md
 Dockerfile
 .gitignore
+
+chromedriver.exe

@@ -177,8 +177,12 @@ class BaseJAAQLController:
         if not isinstance(status, int):
             match_value = status.value
         for resp in method.responses:
-            if resp.code.value == match_value:
-                return resp
+            if isinstance(resp.code, int):
+                if resp.code == match_value:
+                    return resp
+            else:
+                if resp.code.value == match_value:
+                    return resp
 
         raise Exception(ERR__unexpected_response_code % status.value)
 
@@ -478,7 +482,8 @@ class BaseJAAQLController:
                         raise throw_ex
 
                 if jaaql_resp.response_type == resp_type:
-                    resp = jsonify(resp)
+                    if not isinstance(resp, Response):
+                        resp = jsonify(resp)
                     resp.status = jaaql_resp.response_code
                 else:
                     resp = Response(resp, mimetype=jaaql_resp.response_type, status=jaaql_resp.response_code)

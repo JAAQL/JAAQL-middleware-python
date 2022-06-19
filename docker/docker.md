@@ -4,7 +4,17 @@ For those entirely new to docker, the following will be helpful so you can setup
 Please download and install docker
 
     curl -fsSL https://get.docker.com -o get-docker.sh
-    sh ./get-docker.sh  
+    sh ./get-docker.sh
+
+On Almalinux run the following and input y for the prompts
+
+    sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+    sudo dnf remove podman buildah
+    sudo dnf install docker-ce docker-ce-cli containerd.io
+    sudo systemctl start docker.service
+    sudo systemctl enable docker.service
+    sudo systemctl enable docker
+    sudo service docker start
     
 ## Using pre-built image
 For ease of use, you can pull our pre-built docker image to get you started quickly. If speed and simplicity is the name of the game, we recommend you do this

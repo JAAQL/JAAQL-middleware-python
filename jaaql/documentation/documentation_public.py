@@ -632,30 +632,50 @@ ARG_RES__email_body = SwaggerArgumentResponse(
     example=["<html>Email body</html>"]
 )
 
+ARG_RES__attachments_for_history = SwaggerArgumentResponse(
+    name=KEY__attachments,
+    description="The binary attachment data that was sent via the email",
+    arg_type=SwaggerList(
+        SwaggerArgumentResponse(
+            name=KEY__filename,
+            description="The filename of the attachment",
+            arg_type=str,
+            example=["report.pdf"]
+        ),
+        SwaggerArgumentResponse(
+            name=KEY__content,
+            description="The base64 encoded content of the file",
+            arg_type=str,
+            example=["Y29udGVudA=="]
+        )
+    ),
+    required=False,
+    condition="Are attachments supplied"
+)
+
+ARG_RES__renderable_document = [
+    SwaggerArgumentResponse(
+        name=KEY__attachment_name,
+        description="The name of the renderable document in the database",
+        arg_type=str,
+        example=["my_pdf_template"]
+    ),
+    SwaggerArgumentResponse(
+        name=KEY__parameters,
+        description="Any parameters to pass to the url as http GET parameters",
+        arg_type=ARG_RESP__allow_all
+    )
+]
+
+ARG_RES__attachments_for_send = SwaggerArgumentResponse(
+    name=KEY__attachments,
+    description="Any email attachments, if supplied. Uses server side template rendering",
+    arg_type=SwaggerList(*ARG_RES__renderable_document)
+)
+
 ARG_RES__email_base = [
     ARG_RES__email_template,
-    ARG_RES__email_recipient,
-    SwaggerArgumentResponse(
-        name=KEY__attachments,
-        description="Any email attachments, if supplied. Email attachments are only allowed if the recipient is null and therefore the "
-        "email is being sent to the self. Server side template rendering is not yet supported",
-        arg_type=SwaggerList(
-            SwaggerArgumentResponse(
-                name=KEY__filename,
-                description="The filename of the attachment",
-                arg_type=str,
-                example=["report.pdf"]
-            ),
-            SwaggerArgumentResponse(
-                name=KEY__content,
-                description="The base64 encoded content of the file",
-                arg_type=str,
-                example=["Y29udGVudA=="]
-            )
-        ),
-        required=False,
-        condition="Are attachments supplied"
-    )
+    ARG_RES__email_recipient
 ]
 
 ARG_RES__emaiL_sent = rename_arg(ARG_RES__occurred, KEY__email_sent)
@@ -669,7 +689,8 @@ DOCUMENTATION__email = SwaggerDocumentation(
             method=REST__POST,
             body=[
                 ARG_RES__application,
-                ARG_RES__parameters
+                ARG_RES__parameters,
+                ARG_RES__attachments_for_send
             ] + ARG_RES__email_base
         ),
         SwaggerMethod(
@@ -701,6 +722,7 @@ DOCUMENTATION__email_history = SwaggerDocumentation(
         response=SwaggerResponse(
             description="Full email content with attachments",
             response=ARG_RES__email_base + [
+                ARG_RES__attachments_for_history,
                 ARG_RES__emaiL_sent,
                 ARG_RES__email_body,
                 ARG_RES__email_subject
@@ -728,5 +750,86 @@ DOCUMENTATION__submit_file = SwaggerDocumentation(
         method=REST__POST,
         arguments=ARG_RESP__allow_all,
         response=RES__allow_all
+    )
+)
+
+EXAMPLE__document_id = "b47dc954-d608-4e1b-8a8c-d8b754ee554b"
+
+ARG_RES__document_id = SwaggerArgumentResponse(
+    name=KEY__document_id,
+    description="A document that can be used to fetch the document",
+    arg_type=str,
+    example=EXAMPLE__document_id
+)
+
+DOCUMENTATION__document = SwaggerDocumentation(
+    tags="Documents",
+    methods=[
+        SwaggerMethod(
+            name="Triggers a document render",
+            description="Triggers a render of a document which can then be downloaded. Document is available for 5 minutes after the document has "
+            "been rendered",
+            method=REST__POST,
+            body=ARG_RES__renderable_document + [
+                SwaggerArgumentResponse(
+                    name=KEY__create_file,
+                    description="Whether or not to create the file. You will then be provided with a URL when it is ready which can be downloaded "
+                                "from. Otherwise you will be sent back a boolean",
+                    arg_type=bool
+                )
+            ],
+            response=SwaggerResponse(
+                description="A document id",
+                response=ARG_RES__document_id
+            )
+        ),
+        SwaggerMethod(
+            name="Download document",
+            description="Downloads the document. Can also be used as a polling endpoint to see if the document is ready",
+            method=REST__GET,
+            arguments=ARG_RES__document_id,
+            response=[
+                SwaggerFlatResponse(
+                    description="A link to the raw file data. This URL is called with GET and no security parameters. Can only be called once",
+                    body="https://www.jaaql.io/api/rendered_documents/" + EXAMPLE__document_id + ".pdf"
+                ),
+                SwaggerFlatResponse(
+                    description="The url to the document. Will be deleted after 5 minutes",
+                    code=HTTPStatus.CREATED,
+                    body="https://www.jaaql.io/rendered_documents/" + EXAMPLE__document_id + ".pdf"
+                ),
+                SwaggerFlatResponse(
+                    description="Document still rendering",
+                    code=HTTP_STATUS__too_early,
+                    body=ERR__document_still_rendering
+                ),
+                SwaggerFlatResponse(
+                    description="Document id not found. Either expired or did not exist",
+                    body=ERR__document_id_not_found,
+                    code=HTTPStatus.NOT_FOUND
+                )
+            ]
+        )
+    ]
+)
+
+DOCUMENTATION__rendered_document = SwaggerDocumentation(
+    tags="Documents",
+    security=False,
+    methods=SwaggerMethod(
+        name="Stream rendered document",
+        description="Streams a rendered document as a downlaod",
+        method=REST__GET,
+        arguments=[ARG_RES__document_id, SwaggerArgumentResponse(
+            name=KEY__as_attachment,
+            description="Whether in the browser the 'Content-Disposition' header should be set as attachment",
+            arg_type=bool,
+            required=False,
+            condition="Defaults to false"
+        )],
+        response=SwaggerFlatResponse(
+            description="The raw file data. Cannot be re-downloaded after this",
+            body=BODY__file
+        )
     )
 )

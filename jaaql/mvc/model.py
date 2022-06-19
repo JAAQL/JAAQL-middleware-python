@@ -1,6 +1,7 @@
 import random
 
 from jaaql.db.db_interface import DBInterface, RET__rows
+from jaaql.email.email_manager_service import EmailAttachment
 from jaaql.mvc.base_model import BaseJAAQLModel, CONFIG_KEY__security, CONFIG_KEY_SECURITY__mfa_label, \
     CONFIG_KEY_SECURITY__mfa_issuer, VAULT_KEY__jwt_obj_crypt_key, VAULT_KEY__jwt_crypt_key, DIR__apps, SEPARATOR__dir
 from jaaql.exceptions.http_status_exception import HttpStatusException, HTTPStatus, ERR__connection_expired, \
@@ -15,6 +16,7 @@ from jaaql.mvc.response import JAAQLResponse
 from collections import Counter
 from os.path import dirname
 from jaaql.utilities import crypt_utils
+from flask import send_file
 import uuid
 import os
 import json
@@ -31,6 +33,8 @@ import threading
 
 TOKEN__pre_auth_reduction_factor = 15
 
+ERR__document_created_file = "Document is a file, cannot be downloaded in this way"
+ERR__as_attachment_unexpected = "Input 'as_attachment' unexpected as document is returned as a file link"
 ERR__incorrect_invite_code = "Incorrect invite code"
 ERR__incorrect_reset_code = "Incorrect reset code"
 ERR__invite_code_expired = "Invite code expired. Please use the link within the email"
@@ -64,7 +68,6 @@ ERR__cant_find_reset = "Cannot locate reset with key. The key is either incorrec
 
 SQL__err_duplicate_user = "duplicate key value violates unique constraint \"jaaql__user_unq_email\""
 
-USERNAME__jaaql = "jaaql"
 USERNAME__superjaaql = "superjaaql"
 USERNAME__postgres = "postgres"
 
@@ -147,7 +150,6 @@ JWT__ip = "ip"
 PG__default_connection_string = "postgresql://postgres:%s@localhost:5432/jaaql"
 
 DIR__scripts = "scripts"
-DIR__www = "www"
 DIR__manager = "manager"
 DIR__playground = "playground"
 DIR__console = "console"
@@ -226,6 +228,51 @@ class JAAQLModel(BaseJAAQLModel):
     def unregister_email_template_confirm(self, inputs: dict, jaaql_interface: DBInterface):
         params = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__email_template)
         execute_supplied_statement_singleton(jaaql_interface, QUERY__email_template_del, params)
+
+    def render_document(self, inputs: dict, oauth_token: str):
+        inputs[KEY__oauth_token] = self.refresh(oauth_token)
+        return execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__ins_rendered_document, inputs,
+                                                    encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__parameters, KEY__oauth_token],
+                                                    as_objects=True)
+
+    def fetch_document(self, inputs: dict, response: JAAQLResponse):
+        res = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_rendered_document,
+                                                   {KEY__document_id: inputs[KEY__document_id]}, singleton_message=ERR__document_id_not_found,
+                                                   as_objects=True)
+
+        if not res[KEY__completed]:
+            raise HttpStatusException(ERR__document_still_rendering, HTTP_STATUS__too_early)
+
+        if res[KEY__create_file]:
+            if inputs[KEY__as_attachment] is not None:
+                raise HttpStatusException(ERR__as_attachment_unexpected)
+            response.response_code = HTTPStatus.CREATED
+            return self.url + "/" + DIR__render_template + "/" + res[KEY__document_id] + "." + res[KEY__render_as]
+        else:
+            return self.url + "/api/rendered_documents/" + res[KEY__document_id]
+
+    def fetch_document_stream(self, inputs: dict):
+        res = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_rendered_document,
+                                                   {KEY__document_id: inputs[KEY__document_id]}, singleton_message=ERR__document_id_not_found,
+                                                   as_objects=True)
+
+        if not res[KEY__completed]:
+            raise HttpStatusException(ERR__document_still_rendering, HTTP_STATUS__too_early)
+
+        if res[KEY__create_file]:
+            raise HttpStatusException(ERR__document_created_file)
+        else:
+            content = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__purge_rendered_document,
+                                                           {KEY__document_id: inputs[KEY__document_id]}, as_objects=True)[KEY__content]
+            as_attachment = False
+            if inputs[KEY__as_attachment]:
+                as_attachment = True
+
+            buffer = BytesIO()
+            buffer.write(content)
+            buffer.seek(0)
+
+            return send_file(buffer, as_attachment=as_attachment, attachment_filename=res[KEY__filename])
 
     def verify_user(self, username: str, ip_address: str):
         username = username.lower()
@@ -1061,8 +1108,7 @@ class JAAQLModel(BaseJAAQLModel):
         return resp
 
     def fetch_default_roles_as_list(self):
-        return [row[0] for row in execute_supplied_statement(self.jaaql_lookup_connection,
-                                                             QUERY__default_roles_sel)[RET__rows]]
+        return [row[0] for row in execute_supplied_statement(self.jaaql_lookup_connection, QUERY__default_roles_sel)[RET__rows]]
 
     def fetch_allowed_recipients_for_email_template(self, username: str, template: Union[str, dict], get_address: bool = False):
         if isinstance(template, str):
@@ -1144,7 +1190,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         return resp
 
-    def send_email(self, inputs: dict, username: str):
+    def send_email(self, inputs: dict, username: str, oauth_token: str, user_id: str):
         if inputs[KEY__recipient] is not None and inputs[KEY__attachments] is not None:
             raise HttpStatusException(ERR__cant_send_attachments)
 
@@ -1159,17 +1205,19 @@ class JAAQLModel(BaseJAAQLModel):
         params = inputs[KEY__parameters]
         if params is not None and template[KEY__data_validation_table] is None:
             raise HttpStatusException(ERR__unexpected_parameters)
-        if inputs[KEY__data_validation_table] is not None and params is None:
+        if template[KEY__data_validation_table] is not None and params is None:
             params = {}
-        if inputs[KEY__data_validation_table] is not None:
+        if template[KEY__data_validation_table] is not None:
             params, _ = self.fetch_sanitized_email_params(template, params)
 
         allowed_recipients = self.fetch_allowed_recipients_for_email_template(username, template, True)
         if inputs[KEY__recipient] not in allowed_recipients:
             raise HttpStatusException(ERR__recipient_not_allowed)
 
-        self.email_manager.construct_and_send_email(self.url, app_url, template, username, allowed_recipients[inputs[KEY__recipient]],
-                                                    inputs[KEY__recipient], params, attachments=KEY__attachments)
+        self.email_manager.construct_and_send_email(self.url, app_url, template, user_id, allowed_recipients[inputs[KEY__recipient]],
+                                                    inputs[KEY__recipient], params,
+                                                    attachments=EmailAttachment.deserialize_list(inputs[KEY__attachments], template[KEY__id]),
+                                                    attachment_access_token=self.refresh(oauth_token))
 
     def fetch_sanitized_email_params(self, template: dict, params: dict):
         val_table = template[KEY__data_validation_table]
