@@ -193,6 +193,9 @@ class BaseJAAQLModel:
         self.token_expiry_ms = int(config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__token_expiry_ms])
         self.refresh_expiry_ms = int(config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__token_refresh_expiry_ms])
 
+        if not self.vault.has_obj(VAULT_KEY__db_repeatable_salt):
+            self.vault.insert_obj(VAULT_KEY__db_repeatable_salt, crypt_utils.fetch_random_readable_salt().decode(crypt_utils.ENCODING__ascii))
+
         if not self.vault.has_obj(VAULT_KEY__db_crypt_key):
             _, db_crypt_key = crypt_utils.key_stretcher(str(uuid.uuid4()), length=crypt_utils.AES__key_length)
             self.vault.insert_obj(VAULT_KEY__db_crypt_key, db_crypt_key.decode(crypt_utils.ENCODING__ascii))
@@ -239,6 +242,9 @@ class BaseJAAQLModel:
 
     def get_db_crypt_key(self):
         return self.vault.get_obj(VAULT_KEY__db_crypt_key).encode(crypt_utils.ENCODING__ascii)
+
+    def get_repeatable_salt(self):
+        return self.vault.get_obj(VAULT_KEY__db_repeatable_salt).encode(crypt_utils.ENCODING__ascii)
 
     def setup_paging_parameters(self, inputs: dict, has_deleted: bool = True):
         inputs_no_del = inputs.copy()

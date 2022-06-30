@@ -128,11 +128,20 @@ def validate_password(password: str):
         raise HttpStatusException(ERR__password_no_letters)
 
 
+def fetch_random_salt():
+    defaults = PasswordHasher()
+    return os.urandom(defaults.salt_len)
+
+
+def fetch_random_readable_salt():
+    return b64e(fetch_random_salt())
+
+
 def key_stretcher(key: str, salt: bytes = None, length: int = FERNET__key_length):
     defaults = PasswordHasher()
 
     if salt is None:
-        salt = os.urandom(defaults.salt_len)
+        salt = fetch_random_salt()
     if len(salt) < 8:
         salt = salt * 8
         salt = salt[0:8]

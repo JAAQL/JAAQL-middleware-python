@@ -1,5 +1,6 @@
 CREATE DOMAIN postgres_table_view_name AS varchar(64) CHECK (VALUE ~* '^[A-Za-z*0-9_\-]+$');
 CREATE DOMAIN email_address AS varchar(255) CHECK ((VALUE ~* '^[A-Za-z0-9._%-]+([+][A-Za-z0-9._%-]+){0,1}@[A-Za-z0-9.-]+[.][A-Za-z]+$' AND lower(VALUE) = VALUE) OR VALUE IN ('jaaql', 'superjaaql'));
+CREATE DOMAIN jaaql_user_id AS varchar(14) CHECK (left(value, 7) = 'jaaql__' and right(value, 7) ~* '^[0-9]{7}$');
 
 create table jaaql__email_account (
     id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
@@ -17,7 +18,7 @@ CREATE UNIQUE INDEX jaaql__email_account_unq
     ON jaaql__email_account (name) WHERE (deleted is null);
 
 create table jaaql__email_template (
-    id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
+    id   uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
     name varchar(60) NOT NULL,
     subject varchar(255),
     account uuid NOT NULL,
@@ -52,9 +53,11 @@ create table jaaql__application (
     FOREIGN KEY (default_reset_password_template) REFERENCES jaaql__email_template
 );
 
+CREATE SEQUENCE jaaql__user_seq AS bigint INCREMENT BY 1 START 1;
+
 create table jaaql__user (
-    id uuid primary key not null default gen_random_uuid(),
-    email    varchar(255) not null,
+    id       jaaql_user_id primary key not null default concat('jaaql__', LPAD(nextval('jaaql__user_seq')::text, 7, '0')),
+    email    text not null,
     created timestamptz not null default current_timestamp,
     mobile   bigint,                 -- with null [allows for SMS-based 2FA login later] )
     deleted timestamptz,
@@ -62,7 +65,6 @@ create table jaaql__user (
     last_totp varchar(6),
     alias varchar(32),
     is_public boolean default false not null,
-    check (is_public or (email::email_address = email::email_address)),
     public_credentials text,
     application varchar(64),
     check (not is_public = (public_credentials is null)),
@@ -74,7 +76,7 @@ CREATE UNIQUE INDEX jaaql__user_public_application ON jaaql__user (application) 
 
 create table jaaql__user_ip (
     id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
-    the_user uuid not null,
+    the_user jaaql_user_id not null,
     address_hash varchar(254),
     encrypted_address varchar(255),
     first_use timestamptz not null default current_timestamp,
@@ -84,7 +86,7 @@ create table jaaql__user_ip (
 );
 
 create table jaaql__user_password (
-    the_user uuid not null,
+    the_user jaaql_user_id not null,
     created timestamptz not null default current_timestamp,
     password_hash varchar(254) not null,
     PRIMARY KEY (the_user, password_hash),
@@ -241,7 +243,7 @@ CREATE UNIQUE INDEX jaaql__credentials_node_unq
 
 create table jaaql__log (
     id uuid primary key not null default gen_random_uuid(),
-    the_user uuid,
+    the_user jaaql_user_id,
     occurred timestamptz not null default current_timestamp,
     duration_ms integer not null,
     encrypted_exception text,
@@ -390,22 +392,12 @@ BEGIN
 END
 $$ language plpgsql;
 
-create function jaaql__fetch_alias(username text) returns text as
-$$
-DECLARE
-    actual_alias text;
-BEGIN
-    SELECT coalesce(alias, email) into actual_alias FROM jaaql__user WHERE email = username;
-    return actual_alias;
-END
-$$ language plpgsql;
-
 create function jaaql__fetch_alias_from_id(userid text) returns text as
 $$
 DECLARE
     actual_alias text;
 BEGIN
-    SELECT coalesce(alias, email) into actual_alias FROM jaaql__user WHERE id = userid::uuid;
+    SELECT coalesce(alias, userid) into actual_alias FROM jaaql__user WHERE id = userid;
     return actual_alias;
 END
 $$ language plpgsql;
@@ -452,7 +444,7 @@ create table jaaql__email_history (
     id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
     template uuid not null,
     FOREIGN KEY (template) REFERENCES jaaql__email_template,
-    sender uuid not null,
+    sender jaaql_user_id not null,
     FOREIGN KEY (sender) REFERENCES jaaql__user,
     sent timestamptz not null default current_timestamp,
     encrypted_subject text,
@@ -464,7 +456,7 @@ create table jaaql__email_history (
 
 create table jaaql__fake_reset_password (
     key_b uuid PRIMARY KEY not null default gen_random_uuid(),
-    email email_address NOT NULL,
+    email text NOT NULL,
     created timestamptz default current_timestamp not null,
     code_attempts int default 0 not null,
     expiry_ms integer not null default 1000 * 60 * 60 * 2, -- 2 hours
@@ -478,7 +470,7 @@ create table jaaql__reset_password (
     code_attempts int default 0 not null,
     activated boolean not null default false,
     used_key_a boolean not null default false,
-    the_user uuid not null,
+    the_user jaaql_user_id not null,
     FOREIGN KEY (the_user) REFERENCES jaaql__user,
     closed timestamptz,
     created timestamptz default current_timestamp not null,
@@ -495,7 +487,7 @@ create table jaaql__sign_up (
     code_attempts int default 0 not null,
     activated boolean not null default false,
     used_key_a boolean not null default false,
-    the_user uuid not null,
+    the_user jaaql_user_id not null,
     FOREIGN KEY (the_user) REFERENCES jaaql__user,
     closed timestamptz,
     created timestamptz default current_timestamp not null,

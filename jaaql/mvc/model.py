@@ -30,9 +30,13 @@ from jaaql.constants import *
 from os.path import join
 from jaaql.utilities.utils import get_jaaql_root
 import threading
+import re
 
 TOKEN__pre_auth_reduction_factor = 15
 
+ERR__cant_revoke_system_user = "Can't revoke system user"
+ERR__invalid_username = "Invalid signup username. Expected an email address"
+ERR__invalid_username_internal = "Invalid username. Expected something simple (letters, numbers, underscore and dash)"
 ERR__document_created_file = "Document is a file, cannot be downloaded in this way"
 ERR__as_attachment_unexpected = "Input 'as_attachment' unexpected as document is returned as a file link"
 ERR__incorrect_invite_code = "Incorrect invite code"
@@ -65,6 +69,7 @@ ERR__uninstallation_not_allowed = "Uninstallation not allowed"
 ERR__password_required = "Password required"
 ERR__cant_find_sign_up = "Cannot locate sign up with key. The key is either incorrect, has expired or has not been activated with the emailed code"
 ERR__cant_find_reset = "Cannot locate reset with key. The key is either incorrect, has expired or has not been activated with the emailed code"
+ERR__invalid_default_role = "Invalid default role '%s'"
 
 SQL__err_duplicate_user = "duplicate key value violates unique constraint \"jaaql__user_unq_email\""
 
@@ -170,6 +175,9 @@ RESET__not_started = 0
 RESET__started = 1
 RESET__completed = 2
 
+REGEX__email = r'^[A-Za-z0-9._%-]+([+][A-Za-z0-9._%-]+){0,1}@[A-Za-z0-9.-]+[.][A-Za-z]+$'
+REGEX__attach_as = r'^[A-Za-z_-]+$'
+
 
 class JAAQLModel(BaseJAAQLModel):
 
@@ -184,7 +192,9 @@ class JAAQLModel(BaseJAAQLModel):
             the_query = QUERY__fetch_user_latest_credentials
 
         users = execute_supplied_statement(jaaql_connection, the_query, inputs, as_objects=True,
-                                           decrypt_columns=[ATTR__password_hash, KEY__totp_iv],
+                                           encrypt_parameters=[KEY__username],
+                                           encryption_salts={KEY__username: self.get_repeatable_salt()},
+                                           decrypt_columns=[ATTR__password_hash, KEY__totp_iv, KEY__email],
                                            encryption_key=self.get_db_crypt_key())
 
         if len(users) != 1:
@@ -302,26 +312,22 @@ class JAAQLModel(BaseJAAQLModel):
                 ATTR__ip_address: ip_address
             }
 
-            resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__user_ip_ins, inputs,
-                                                        as_objects=True,
-                                                        encrypt_parameters=[ATTR__ip_address],
-                                                        encryption_key=self.get_db_crypt_key())
+            resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__user_ip_ins, inputs, as_objects=True,
+                                                        encrypt_parameters=[ATTR__ip_address], encryption_key=self.get_db_crypt_key())
             existed_ip = resp[ATTR__existed]
             ip_id = resp[KEY__id]
 
         return user, existed_ip, str(ip_id), user[KEY__last_totp]
 
     def refresh(self, oauth_token: str):
-        decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), oauth_token, JWT_PURPOSE__oauth,
-                                         allow_expired=True)
+        decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), oauth_token, JWT_PURPOSE__oauth, allow_expired=True)
         if not decoded:
             raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
         jwt_obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
         created = crypt_utils.decrypt(jwt_obj_key, decoded[JWT__created])
 
-        if datetime.fromisoformat(created) + timedelta(
-                milliseconds=self.refresh_expiry_ms) < datetime.now():
+        if datetime.fromisoformat(created) + timedelta(milliseconds=self.refresh_expiry_ms) < datetime.now():
             raise HttpStatusException(ERR__refresh_expired, HTTPStatus.UNAUTHORIZED)
 
         jwt_data = {
@@ -332,8 +338,7 @@ class JAAQLModel(BaseJAAQLModel):
             JWT__created: crypt_utils.encrypt(jwt_obj_key, created)
         }
 
-        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data, JWT_PURPOSE__oauth,
-                                      expiry_ms=self.token_expiry_ms)
+        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data, JWT_PURPOSE__oauth, expiry_ms=self.token_expiry_ms)
 
     def verify_mfa(self, mfa_key: str, totp_iv: str, last_totp: str, user_id: str):
         if totp_iv is None:
@@ -364,8 +369,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         threading.Thread(target=self.exit_jaaql, daemon=True).start()
 
-    def authenticate_with_mfa_key(self, pre_auth: str, mfa_key: str, ip_address: str,
-                                  response: JAAQLResponse):
+    def authenticate_with_mfa_key(self, pre_auth: str, mfa_key: str, ip_address: str, response: JAAQLResponse):
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), pre_auth, JWT_PURPOSE__pre_auth)
         if not decoded:
             raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
@@ -380,13 +384,11 @@ class JAAQLModel(BaseJAAQLModel):
         response.ip_id = ip_id
 
         decoded[JWT__fully_authenticated] = True
-        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), decoded, JWT_PURPOSE__oauth,
-                                      expiry_ms=self.token_expiry_ms)
+        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), decoded, JWT_PURPOSE__oauth, expiry_ms=self.token_expiry_ms)
 
     def authenticate(self, username: str, password: str, ip_address: str, response: JAAQLResponse):
         user, _, ip_id, last_totp = self.verify_user(username, ip_address)
-        if not crypt_utils.verify_password_hash(user[ATTR__password_hash], password,
-                                                salt=user[KEY__id].encode(crypt_utils.ENCODING__ascii)):
+        if not crypt_utils.verify_password_hash(user[ATTR__password_hash], password, salt=user[KEY__id].encode(crypt_utils.ENCODING__ascii)):
             raise HttpStatusException(ERR__incorrect_credentials, HTTPStatus.UNAUTHORIZED)
 
         needs_further_auth = user.get(KEY__totp_iv) is not None
@@ -410,8 +412,7 @@ class JAAQLModel(BaseJAAQLModel):
             response.response_code = HTTPStatus.ACCEPTED
             purpose = JWT_PURPOSE__pre_auth
 
-        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data, purpose,
-                                      expiry_ms=expiry_time)
+        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data, purpose, expiry_ms=expiry_time)
 
     def is_installed(self, response: JAAQLResponse):
         if not self.has_installed:
@@ -485,8 +486,7 @@ class JAAQLModel(BaseJAAQLModel):
             self.add_database({KEY__node: NODE__host_node, KEY__database_name: DB__jaaql}, self.jaaql_lookup_connection)
 
             user_id = self.create_user(self.jaaql_lookup_connection, USERNAME__jaaql, jaaql_password)
-            mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__jaaql, password, user_id, ip_address, use_mfa=use_mfa,
-                                    response=response)
+            mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__jaaql, password, user_id, ip_address, use_mfa=use_mfa, response=response)
 
             self.add_configuration_authorization({
                 KEY__application: APPLICATION__manager,
@@ -510,11 +510,11 @@ class JAAQLModel(BaseJAAQLModel):
             if superjaaql_password is not None:
                 # Because we are setting this user up as postgres, it has a role of every user. Therefore we set this
                 # precedence as higher to override them
-                super_used_id = self.create_user(self.jaaql_lookup_connection, USERNAME__superjaaql,
+                super_user_id = self.create_user(self.jaaql_lookup_connection, USERNAME__superjaaql,
                                                  superjaaql_db_password, attach_as=USERNAME__postgres,
                                                  precedence=PRECEDENCE__super_user)
                 super_mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__superjaaql, superjaaql_password,
-                                              super_used_id, ip_address, use_mfa=use_mfa)
+                                              super_user_id, ip_address, use_mfa=use_mfa)
                 super_otp_uri = super_mfa[KEY__otp_uri]
                 super_otp_qr = super_mfa[KEY__otp_qr]
                 self.add_configuration_authorization({
@@ -619,7 +619,7 @@ class JAAQLModel(BaseJAAQLModel):
                 raise HttpStatusException(ERR__new_ip, HTTPStatus.UNAUTHORIZED)
 
         params = {
-            KEY__role: username,
+            KEY__user_id: user[KEY__id],
             KEY__node: NODE__host_node
         }
         auth = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__role_connection_sel, params,
@@ -893,7 +893,10 @@ class JAAQLModel(BaseJAAQLModel):
 
     def revoke_user_confirm(self, inputs: dict, jaaql_connection: DBInterface):
         parameters = self.validate_deletion_key(inputs[KEY__deletion_key], DELETION_PURPOSE__user)
-        execute_supplied_statement(jaaql_connection, QUERY__revoke_user, parameters)
+        user = self.fetch_user_from_username(parameters[KEY__email], jaaql_connection)
+        if user[KEY__email] in [USERNAME__jaaql, USERNAME__superjaaql]:
+            raise HttpStatusException(ERR__cant_revoke_system_user)
+        execute_supplied_statement(jaaql_connection, QUERY__revoke_user, {KEY__id: user[KEY__id]})
 
     def close_account(self, inputs: dict, totp_iv: str, password_hash: str, user_id: str,
                       last_totp: str):
@@ -928,7 +931,9 @@ class JAAQLModel(BaseJAAQLModel):
             template_lookup = json.dumps(template_lookup)
 
         the_user = execute_supplied_statement_singleton(jaaql_connection, QUERY__user_id_from_username, {KEY__username: email},
-                                                        as_objects=True)[KEY__id]
+                                                        encryption_key=self.get_db_crypt_key(),
+                                                        encryption_salts={KEY__username: self.get_repeatable_salt()},
+                                                        encrypt_parameters=[KEY__username], as_objects=True)[KEY__id]
         params = {
             ATTR__data_lookup_json: template_lookup,
             ATTR__the_user: the_user,
@@ -1039,12 +1044,14 @@ class JAAQLModel(BaseJAAQLModel):
 
     def sign_up_user_with_token(self, token: str, password: str = None, ip_address: str = None, response: JAAQLResponse = None):
         resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_fetch, parameters={KEY__invite_or_poll_key: token},
+                                                    decrypt_columns=[KEY__email], encryption_key=self.get_db_crypt_key(),
                                                     as_objects=True, singleton_message=ERR__cant_find_sign_up)
 
         username = resp[KEY__email]
         inputs = {KEY__username: username}
         users = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_user_latest_password, inputs, as_objects=True,
-                                           decrypt_columns=[ATTR__password_hash, KEY__totp_iv], encryption_key=self.get_db_crypt_key())
+                                           encrypt_parameters=[KEY__username], encryption_salts={KEY__username: self.get_repeatable_salt()},
+                                           decrypt_columns=[ATTR__password_hash, KEY__totp_iv, KEY__email], encryption_key=self.get_db_crypt_key())
         if len(users) != 0:
             raise HttpStatusException(ERR__already_signed_up, response_code=HTTPStatus.CONFLICT)
 
@@ -1055,6 +1062,7 @@ class JAAQLModel(BaseJAAQLModel):
 
     def fetch_signup(self, token: str):
         resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_fetch, parameters={KEY__invite_or_poll_key: token},
+                                                    decrypt_columns=[KEY__email], encryption_key=self.get_db_crypt_key(),
                                                     as_objects=True, singleton_message=ERR__cant_find_sign_up)
 
         res = {}
@@ -1067,6 +1075,7 @@ class JAAQLModel(BaseJAAQLModel):
 
     def finish_signup(self, token: str):
         resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_fetch, parameters={KEY__invite_or_poll_key: token},
+                                                    decrypt_columns=[KEY__email], encryption_key=self.get_db_crypt_key(),
                                                     as_objects=True, singleton_message=ERR__cant_find_sign_up)
 
         if resp[KEY__email_template] and resp[ATTR__data_lookup_json]:
@@ -1080,7 +1089,9 @@ class JAAQLModel(BaseJAAQLModel):
                      use_mfa: bool = False, response: JAAQLResponse = None, allow_password_error: bool = False):
         if user_id is None:
             user_id = execute_supplied_statement_singleton(jaaql_connection, QUERY__user_id_from_username, {KEY__username: username},
-                                                           as_objects=True)[KEY__id]
+                                                           encryption_key=self.get_db_crypt_key(),
+                                                           encryption_salts={KEY__username: self.get_repeatable_salt()},
+                                                           encrypt_parameters=[KEY__username], as_objects=True)[KEY__id]
             user_id = str(user_id)
         try:
             self.add_password(jaaql_connection, user_id, password)
@@ -1245,6 +1256,7 @@ class JAAQLModel(BaseJAAQLModel):
     def signup_status(self, inputs: dict):
         select_param = {KEY__invite_or_poll_key: inputs[KEY__invite_or_poll_key]}
         resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_poll, parameters=select_param, as_objects=True,
+                                                    decrypt_columns=[KEY__email], encryption_key=self.get_db_crypt_key(),
                                                     singleton_message=ERR__cant_find_sign_up)
 
         existed = False
@@ -1315,7 +1327,10 @@ class JAAQLModel(BaseJAAQLModel):
 
             if user_id is None:
                 user_id = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__user_id_from_username,
-                                                               {KEY__username: inputs[KEY__email]}, as_objects=True)[KEY__id]
+                                                               {KEY__username: inputs[KEY__email]},
+                                                               encryption_key=self.get_db_crypt_key(),
+                                                               encryption_salts={KEY__username: self.get_repeatable_salt()},
+                                                               encrypt_parameters=[KEY__username], as_objects=True)[KEY__id]
 
         attempts = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_count, {ATTR__the_user: user_id},
                                                         as_objects=True)[ATTR__count]
@@ -1373,9 +1388,15 @@ class JAAQLModel(BaseJAAQLModel):
         if user_exists and user[KEY__is_public]:
             raise HttpStatusException(ERR__user_public, HTTPStatus.UNAUTHORIZED)
 
-        query = QUERY__reset_count if user_exists else QUERY__fake_reset_count
-        attempt_inputs = {ATTR__the_user: user[KEY__id]} if user_exists else {KEY__email: inputs[KEY__email]}
-        attempts = execute_supplied_statement_singleton(self.jaaql_lookup_connection, query, attempt_inputs, as_objects=True)[ATTR__count]
+        attempts = None
+        if user_exists:
+            attempts = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__reset_count, {ATTR__the_user: user[KEY__id]},
+                                                            as_objects=True)[ATTR__count]
+        else:
+            attempts = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fake_reset_count, {KEY__email: inputs[KEY__email]},
+                                                            encryption_key=self.get_db_crypt_key(),
+                                                            encryption_salts={KEY__email: self.get_repeatable_salt()},
+                                                            encrypt_parameters=[KEY__email], as_objects=True)[ATTR__count]
         if attempts >= RESEND__reset_max:
             raise HttpStatusException(ERR__too_many_reset_requests, HTTPStatus.TOO_MANY_REQUESTS)
 
@@ -1404,7 +1425,10 @@ class JAAQLModel(BaseJAAQLModel):
             params = {
                 KEY__email: inputs[KEY__email]
             }
-            reset_keys = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fake_reset_insert, params, as_objects=True)
+            reset_keys = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fake_reset_insert, params,
+                                                              encryption_key=self.get_db_crypt_key(),
+                                                              encryption_salts={KEY__email: self.get_repeatable_salt()},
+                                                              encrypt_parameters=[KEY__email], as_objects=True)
 
         return {KEY__reset_key: reset_keys[KEY__reset_poll_key]}
 
@@ -1414,10 +1438,12 @@ class JAAQLModel(BaseJAAQLModel):
 
         try:
             resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__reset_poll, parameters=select_param, as_objects=True,
+                                                        decrypt_columns=[KEY__email], encryption_key=self.get_db_crypt_key(),
                                                         singleton_message=ERR__cant_find_reset)
         except HttpStatusException as se:
             if se.response_code == HTTPStatus.UNPROCESSABLE_ENTITY:
                 resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fake_reset_poll, parameters=select_param,
+                                                            decrypt_columns=[KEY__email], encryption_key=self.get_db_crypt_key(),
                                                             as_objects=True, singleton_message=ERR__cant_find_reset)
                 was_fake = True
             else:
@@ -1462,6 +1488,7 @@ class JAAQLModel(BaseJAAQLModel):
         password = inputs[KEY__password]
 
         resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__reset_fetch, parameters={KEY__reset_or_poll_key: token},
+                                                    decrypt_columns=[KEY__email], encryption_key=self.get_db_crypt_key(),
                                                     as_objects=True, singleton_message=ERR__cant_find_sign_up)
         self.add_password(self.jaaql_lookup_connection, str(resp[ATTR__the_user]), password)
         execute_supplied_statement(self.jaaql_lookup_connection, QUERY__reset_close, parameters={KEY__reset_key: token})
@@ -1475,21 +1502,31 @@ class JAAQLModel(BaseJAAQLModel):
         if db_password is None:
             db_password = str(uuid.uuid4())
 
-        if attach_as is None:
-            attach_as = username
+        if not public_application and username != USERNAME__jaaql and username != USERNAME__superjaaql and not re.match(REGEX__email, username):
+            raise HttpStatusException(ERR__invalid_username)
+        elif public_application and not re.match(REGEX__attach_as, username):
+            raise HttpStatusException(ERR__invalid_username_internal)
+        elif attach_as and not re.match(REGEX__attach_as, username):
+            raise HttpStatusException(ERR__invalid_username_internal)
 
         parameters = {
             ATTR__email: username,
             ATTR__mobile: mobile,
-            ATTR__alias: attach_as if attach_as != username else None,
+            ATTR__alias: attach_as,
             KEY__is_public: public_application is not None,
             KEY__application: public_application,
             ATTR__public_credentials: str(username + ":") if public_application is not None else None
         }
 
         user_id = execute_supplied_statement_singleton(jaaql_connection, QUERY__user_ins, parameters,
+                                                       encrypt_parameters=[ATTR__email],
+                                                       encryption_salts={ATTR__email: self.get_repeatable_salt()},
                                                        encryption_key=self.get_db_crypt_key(),
                                                        as_objects=True)[KEY__id]
+
+        attached = attach_as is not None
+        if attach_as is None:
+            attach_as = user_id
 
         self.add_node_authorization({
             KEY__node: NODE__host_node,
@@ -1499,11 +1536,12 @@ class JAAQLModel(BaseJAAQLModel):
             KEY__precedence: precedence
         }, self.jaaql_lookup_connection)
 
-        inputs = {
-            KEY__username: username,
-            KEY__password: db_password
-        }
-        execute_supplied_statement(self.jaaql_lookup_connection, QUERY__user_create_role, inputs)
+        if not attached:
+            inputs = {
+                KEY__username: user_id,
+                KEY__password: db_password
+            }
+            execute_supplied_statement(self.jaaql_lookup_connection, QUERY__user_create_role, inputs)
 
         if len(roles) == 0:
             roles = []
@@ -1512,7 +1550,9 @@ class JAAQLModel(BaseJAAQLModel):
         roles = roles + self.fetch_default_roles_as_list()
         roles = list(set(roles))
         for role in roles:
-            # This is not SQL injection. We are protected by the postgres level access control of the connection
+            if not re.match(REGEX__attach_as, role):
+                raise HttpStatusException(ERR__invalid_default_role % role)
+            # Parameters sanitised, we _cannot_ bind parameters into grant role
             execute_supplied_statement(jaaql_connection, QUERY__grant_role % (role, attach_as))
 
         return str(user_id)

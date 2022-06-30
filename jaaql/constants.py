@@ -153,6 +153,7 @@ ENCODING__ascii = "ascii"
 EXAMPLE__jwt = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.e30.yXvILkvUUCBqAFlAv6wQ1Q-QRAjfe3eSosO949U73Vo"
 
 VAULT_KEY__db_crypt_key = "db_crypt_key"
+VAULT_KEY__db_repeatable_salt = "repeatable_salt"
 VAULT_KEY__jaaql_local_access_key = "jaaql_access_key"
 VAULT_KEY__jaaql_lookup_connection = "jaaql_lookup_connection"
 VAULT_KEY__allow_jaaql_uninstall = "Allow jaaql uninstall"
@@ -196,7 +197,7 @@ PORT__ems = 6061
 ENDPOINT__reload_accounts = "/reload-accounts"
 ENDPOINT__send_email = "/send-email"
 
-VERSION = "3.0.8"
+VERSION = "3.0.9"
 
 HTTP_STATUS__too_early = 425  # Shiv for python 3.8
 
