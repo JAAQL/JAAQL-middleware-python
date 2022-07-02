@@ -6,8 +6,10 @@ import pkgutil
 from os.path import exists
 import configparser
 from jaaql.openapi.swagger_documentation import produce_all_documentation
+from jaaql.email.email_manager_service import create_flask_app as create_email_service_app
 from jaaql.utilities.options import *
 import sys
+import threading
 import os
 import jaaql.documentation as documentation
 from jaaql.utilities.utils import load_config, get_base_url
@@ -52,7 +54,7 @@ def dir_non_builtins(folder):
 def create_app(is_gunicorn: bool = False, override_config_path: str = None, migration_db_interface=None,
                migration_project_name: str = None, migration_folder: str = None, supplied_documentation = None,
                controllers: [JAAQLControllerInterface] = None, models: [JAAQLModelInterface] = None, additional_options: List[Option] = None,
-               **options):
+               start_email_service: bool = False, **options):
     if controllers is None:
         controllers = []
     if models is None:
@@ -70,6 +72,10 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
     if len(options) == 0 and not is_gunicorn:
         options = parse_options(sys.argv, False, additional_options=additional_options)
 
+    if not is_gunicorn and start_email_service:
+        threading.Thread(target=create_email_service_app, args=[options.get(OPT_KEY__vault_key), options.get(OPT_KEY__email_credentials)],
+                         daemon=True).start()
+
     if OPT_KEY__vault_key in options:
         print(WARNING__vault_key_stdin, file=sys.stderr)
         vault_key = options[OPT_KEY__vault_key]
@@ -80,23 +86,7 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
 
     logging.getLogger("werkzeug").handlers.append(SensitiveHandler())
 
-    config = load_config(is_gunicorn)
-
-    if override_config_path is not None:
-        override_config = configparser.ConfigParser()
-        override_config.sections()
-        if not exists(override_config_path):
-            raise Exception("Could not find override config. Please check working directory has access to '"
-                            + override_config_path + "'")
-        override_config.read(override_config_path)
-        override_config = {s: dict(override_config.items(s)) for s in override_config.sections()}
-        for each, _ in override_config.items():
-            if each in config:
-                for sub_each, val in override_config[each].items():
-                    if sub_each in config[each]:
-                        config[each][sub_each] = val
-            else:
-                config[each] = override_config[each]
+    config = load_config(is_gunicorn, override_config_path)
 
     mfa_name = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__mfa_label]
     if mfa_name == DEFAULT__mfa_label:

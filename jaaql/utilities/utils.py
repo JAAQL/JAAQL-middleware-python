@@ -19,7 +19,7 @@ def get_jaaql_root() -> str:
     return dirname(dirname(__file__))
 
 
-def load_config(is_gunicorn):
+def load_root_config(is_gunicorn):
     config_root = get_jaaql_root()
     if is_gunicorn:
         config_root = "/JAAQL-middleware-python/jaaql"
@@ -31,6 +31,25 @@ def load_config(is_gunicorn):
         raise Exception("Could not find config. Please check working directory has access to '" + config_path + "'")
     config.read(config_path)
     return {s: dict(config.items(s)) for s in config.sections()}
+
+
+def load_config(is_gunicorn, config_path=None):
+    config = load_root_config(is_gunicorn)
+    if config_path is None:
+        config_path = join(DIR__config, FILE__config)
+    if exists(config_path):
+        override_config = configparser.ConfigParser()
+        override_config.sections()
+        override_config.read(config_path)
+        override_config = {s: dict(override_config.items(s)) for s in override_config.sections()}
+        for each, _ in override_config.items():
+            if each in config:
+                for sub_each, val in override_config[each].items():
+                    if sub_each in config[each]:
+                        config[each][sub_each] = val
+            else:
+                config[each] = override_config[each]
+    return config
 
 
 def loc(data: [dict], key: str, val: str):
