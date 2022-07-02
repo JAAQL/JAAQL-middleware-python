@@ -20,12 +20,6 @@ from jaaql.config_constants import *
 
 DEFAULT__mfa_label = "test"
 
-CONFIG_KEY__security = "SECURITY"
-CONFIG_KEY_SECURITY__mfa_label = "mfa_label"
-CONFIG_KEY_SECURITY__do_audit = "do_audit"
-CONFIG_KEY__swagger = "SWAGGER"
-CONFIG_KEY_SWAGGER__url = "url"
-
 WARNING__vault_key_stdin = "MAJOR SECURITY ISSUE! Passing vault key via program arguments is insecure as other progra" \
                            "ms can see the arguments. Please provide via stdin instead!"
 
@@ -57,7 +51,8 @@ def dir_non_builtins(folder):
 
 def create_app(is_gunicorn: bool = False, override_config_path: str = None, migration_db_interface=None,
                migration_project_name: str = None, migration_folder: str = None, supplied_documentation = None,
-               controllers: [JAAQLControllerInterface] = None, models: [JAAQLModelInterface] = None, **options):
+               controllers: [JAAQLControllerInterface] = None, models: [JAAQLModelInterface] = None, additional_options: List[Option] = None,
+               **options):
     if controllers is None:
         controllers = []
     if models is None:
@@ -73,7 +68,7 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
         supplied_documentation = [supplied_documentation]
 
     if len(options) == 0 and not is_gunicorn:
-        options = parse_options(sys.argv, False)
+        options = parse_options(sys.argv, False, additional_options=additional_options)
 
     if OPT_KEY__vault_key in options:
         print(WARNING__vault_key_stdin, file=sys.stderr)

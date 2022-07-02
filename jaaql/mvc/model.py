@@ -70,6 +70,7 @@ ERR__password_required = "Password required"
 ERR__cant_find_sign_up = "Cannot locate sign up with key. The key is either incorrect, has expired or has not been activated with the emailed code"
 ERR__cant_find_reset = "Cannot locate reset with key. The key is either incorrect, has expired or has not been activated with the emailed code"
 ERR__invalid_default_role = "Invalid default role '%s'"
+ERR__keep_alive_failed = "Keep alive failed"
 
 SQL__err_duplicate_user = "duplicate key value violates unique constraint \"jaaql__user_unq_email\""
 
@@ -97,6 +98,7 @@ CONFIG__default_desc = "Default config description"
 DATASET__default = "Default dataset"
 DATASET__default_desc = "Default dataset description"
 
+ATTR__version = "version"
 ATTR__count = "count"
 ATTR__ip_id = "ip_id"
 ATTR__expiry_code_ms = "code_expiry_ms"
@@ -1221,12 +1223,16 @@ class JAAQLModel(BaseJAAQLModel):
         if template[KEY__data_validation_table] is not None:
             params, _ = self.fetch_sanitized_email_params(template, params)
 
-        allowed_recipients = self.fetch_allowed_recipients_for_email_template(username, template, True)
-        if inputs[KEY__recipient] not in allowed_recipients:
-            raise HttpStatusException(ERR__recipient_not_allowed)
+        recipient_names = inputs[KEY__recipient]
+        recipients = inputs[KEY__recipient]
 
-        self.email_manager.construct_and_send_email(self.url, app_url, template, user_id, allowed_recipients[inputs[KEY__recipient]],
-                                                    inputs[KEY__recipient], params,
+        if username != USERNAME__superjaaql:
+            allowed_recipients = self.fetch_allowed_recipients_for_email_template(username, template, True)
+            if inputs[KEY__recipient] not in allowed_recipients:
+                raise HttpStatusException(ERR__recipient_not_allowed)
+            recipient_names = allowed_recipients[inputs[KEY__recipient]]
+
+        self.email_manager.construct_and_send_email(self.url, app_url, template, user_id, recipient_names, recipients, params,
                                                     attachments=EmailAttachment.deserialize_list(inputs[KEY__attachments], template[KEY__id]),
                                                     attachment_access_token=self.refresh(oauth_token))
 
@@ -1576,6 +1582,11 @@ class JAAQLModel(BaseJAAQLModel):
 
     def my_configs(self, jaaql_connection: DBInterface, inputs: dict):
         return execute_supplied_statement(jaaql_connection, QUERY__my_configs, inputs, as_objects=True)
+
+    def is_alive(self):
+        version = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__postgres_version, as_objects=True)[ATTR__version]
+        if "PostgreSQL " not in version:
+            raise HttpStatusException(ERR__keep_alive_failed)
 
     def add_password(self, jaaql_connection: DBInterface, user_id: str, password: str):
         crypt_utils.validate_password(password)

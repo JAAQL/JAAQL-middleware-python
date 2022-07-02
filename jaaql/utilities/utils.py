@@ -2,7 +2,8 @@ import requests
 from os.path import join, exists, dirname
 import os
 import glob
-from jaaql.constants import DIR__config, FILE__config, CONFIG_KEY__server, CONFIG_KEY_SERVER__port, ENVIRON__install_path
+from jaaql.constants import DIR__config, FILE__config, CONFIG_KEY__server, CONFIG_KEY_SERVER__port, ENVIRON__install_path, PORT__ems
+from jaaql.config_constants import *
 from jaaql.db.db_interface import DBInterface
 from jaaql.db.db_utils import create_interface
 from jaaql.constants import VAULT_KEY__jaaql_lookup_connection
@@ -58,6 +59,20 @@ def await_jaaql_installation(config, is_gunicorn: bool):
     while True:
         try:
             if requests.get(base_url + "/internal/is_installed").status_code == 200:
+                break
+        except:
+            pass
+        time.sleep(5)
+
+
+def get_external_url(config):
+    return config[CONFIG_KEY__swagger][CONFIG_KEY_SWAGGER__url]
+
+
+def await_ems_startup():
+    while True:
+        try:
+            if requests.get("http://127.0.0.1:" + str(PORT__ems) + "/").status_code == 200:
                 break
         except:
             pass

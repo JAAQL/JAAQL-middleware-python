@@ -58,15 +58,15 @@ DEFAULT_OPTIONS: List[Option] = [
 ]
 
 
-def parse_options(args: dict, do_print_help: bool = True, require_override: list = None, title: str = None,
+def parse_options(args: List[str], do_print_help: bool = True, additional_options: List[Option] = None, title: str = None,
                   use_options: [Option] = None):
     if use_options is None:
         use_options = DEFAULT_OPTIONS
 
     args = args[1:]
 
-    if require_override is None:
-        require_override = []
+    if additional_options is not None:
+        use_options += additional_options
 
     if len(args) == 0 and do_print_help:
         print_help(title, use_options)
@@ -113,7 +113,6 @@ def parse_options(args: dict, do_print_help: bool = True, require_override: list
         exit(0)
 
     missing_options = [option for option in use_options if option.required and option.long not in found_options]
-    missing_options = [missing for missing in missing_options if missing not in require_override]
     if len(missing_options) != 0:
         raise Exception(ERR__missing_option % missing_options[0].long)
 

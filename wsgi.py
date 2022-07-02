@@ -4,6 +4,9 @@ from jaaql.utilities.options import *
 import sys
 import threading
 from jaaql.email.email_manager_service import create_flask_app as create_email_service_app
+import platform
+
+print("Executing with platform: " + platform.python_implementation())
 
 if __name__ == '__main__':
     options = parse_options(sys.argv, False)

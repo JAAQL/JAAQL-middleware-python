@@ -27,7 +27,8 @@ from flask import Flask, jsonify, request
 from jaaql.utilities.vault import Vault, DIR__vault
 from jaaql.constants import VAULT_KEY__db_crypt_key, KEY__encrypted_password, KEY__id, KEY__template, KEY__sender, ENCODING__ascii, PORT__ems, \
     ENDPOINT__reload_accounts, ENDPOINT__send_email, KEY__email_account_name, KEY__attachment_name, KEY__parameters, KEY__url, KEY__oauth_token, \
-    KEY__document_id, KEY__create_file, DIR__render_template, KEY__render_as, KEY__content, DIR__www
+    KEY__document_id, KEY__create_file, DIR__render_template, KEY__render_as, KEY__content, DIR__www, KEY__email_account_name, \
+    KEY__email_account_send_name, KEY__email_account_protocol, KEY__email_account_host, KEY__email_account_port, KEY__email_account_username
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -59,12 +60,6 @@ ERR__attachment_timeout = "Could not send email! Attachment rendering timed out!
 ERR__attachment_error = "Could not send email! Attachment rendering received error: '%s'"
 ERR__attachment_filename = "Attachment did not render in time or could not find the file name for the attachment. Please check template. Expected " \
     "presence of element with id " + ELE__jaaql_filename + " to be present after page has finished loading"
-
-KEY__account_protocol = "protocol"
-KEY__account_host = "host"
-KEY__account_username = "username"
-KEY__account_port = "port"
-KEY__account_send_from = "send_name"
 
 PROTOCOL__imap = "imap"
 PROTOCOL__smtp = "smtp"
@@ -348,7 +343,7 @@ class EmailManagerService:
         message_final = MIMEMultipart('mixed')
         message_final.attach(message)
         message_final[EMAIL__to] = SPLIT__address.join(email.to)
-        message_final[EMAIL__from] = account[KEY__account_send_from] + " <" + account[KEY__account_username] + ">"
+        message_final[EMAIL__from] = account[KEY__email_account_send_name] + " <" + account[KEY__email_account_username] + ">"
         message_final[EMAIL__subject] = email.subject
 
         if email.attachments is not None:
@@ -366,7 +361,7 @@ class EmailManagerService:
         return True if status == 250 else False
 
     def fetch_conn(self, conn_lib, account: dict, password: str):
-        conn = conn_lib(account[KEY__account_host], port=account[KEY__account_port])
+        conn = conn_lib(account[KEY__email_account_host], port=account[KEY__email_account_port])
 
         context = ssl.SSLContext(ssl.PROTOCOL_TLS)
 
@@ -375,7 +370,7 @@ class EmailManagerService:
         conn.starttls(context=context)
         if conn_lib == smtplib.SMTP_SSL:
             conn.ehlo()
-        conn.login(account[KEY__account_username], password)
+        conn.login(account[KEY__email_account_username], password)
 
         return conn
 
@@ -391,7 +386,7 @@ class EmailManagerService:
         conn_lib = None
         conn = None
         if self.is_gunicorn:
-            conn_lib = imaplib.IMAP4 if account[KEY__account_protocol] == PROTOCOL__imap else smtplib.SMTP
+            conn_lib = imaplib.IMAP4 if account[KEY__email_account_protocol] == PROTOCOL__imap else smtplib.SMTP
             conn = self.fetch_conn(conn_lib, account, password)
 
         while True:
@@ -402,12 +397,12 @@ class EmailManagerService:
                         conn = self.fetch_conn(conn_lib, account, password)
                 formatted_body, to_send = self.construct_message(account, email)
                 if self.is_gunicorn:
-                    conn.send_message(to_send, account[KEY__account_username], email.to)
+                    conn.send_message(to_send, account[KEY__email_account_username], email.to)
                 else:
                     print("SENDING EMAIL")
                     print(email.subject)
                     print(email.body)
-                    print(account[KEY__account_username])
+                    print(account[KEY__email_account_username])
                     print(email.to)
 
                 execute_supplied_statement(self.connection, QUERY__ins_email_history, {
@@ -460,6 +455,10 @@ def create_app(ems: EmailManagerService):
     def refresh_accounts():
         ems.reload_accounts()
 
+        return jsonify("OK")
+
+    @app.route("/", methods=["GET"])
+    def is_alive():
         return jsonify("OK")
 
     return app

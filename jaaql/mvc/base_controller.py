@@ -1,11 +1,15 @@
 import threading
 import traceback
 from functools import wraps
-from werkzeug.exceptions import HTTPException
+from werkzeug.exceptions import HTTPException, InternalServerError
 import inspect
 import json
+import requests
 from datetime import datetime
 from jaaql.exceptions.custom_http_status import CustomHTTPStatus
+import sys
+import os
+from queue import Queue
 
 from flask import Response, Flask, request, jsonify, current_app
 from jaaql.documentation.documentation_shared import ENDPOINT__refresh
@@ -59,6 +63,7 @@ ERR__method_required_is_public = "Method requires is_public input yet marked as 
 ERR__method_required_user_id = "Method requires user id input yet marked as not secure in documentation"
 ERR__method_required_password_hash = "Method requires password hash input yet marked as not secure in documentation"
 ERR__missing_user_id = "Expected user id in response from method as method is without security"
+ERR__sentinel_failed = "Sentinel failed. Reponse code '%d' and content '%s'"
 
 FLASK__json_sort_keys = "JSON_SORT_KEYS"
 FLASK__max_content_length = "MAX_CONTENT_LENGTH"
@@ -78,7 +83,10 @@ BOOL__allowed = {
 
 class BaseJAAQLController:
 
-    def __init__(self, model: JAAQLModel, is_prod):
+    sentinel_errors = None
+    internal_sentinel = False
+
+    def __init__(self, model: JAAQLModel, is_prod: bool, base_url: str):
         super().__init__()
         self.app = Flask(__name__, instance_relative_config=True)
         self.app.config[FLASK__json_sort_keys] = False
@@ -87,6 +95,31 @@ class BaseJAAQLController:
         self.model = model
         self.app.model = model
         self.is_prod = is_prod
+        BaseJAAQLController.sentinel_errors = Queue()
+        self.sentinel_url = os.environ.get(ENVIRON__sentinel_url)
+        if self.sentinel_url:
+            if self.sentinel_url == "_":
+                self.sentinel_url = base_url + ENDPOINT__report_sentinel_error
+                BaseJAAQLController.internal_sentinel = True
+            else:
+                if not self.sentinel_url.startswith("http"):
+                    self.sentinel_url = "https://" + self.sentinel_url
+                if not self.sentinel_url.endswith("/api") and not self.sentinel_url.endswith(ENDPOINT__report_sentinel_error):
+                    self.sentinel_url = self.sentinel_url + "/api"
+                if not self.sentinel_url.endswith(ENDPOINT__report_sentinel_error):
+                    self.sentinel_url = self.sentinel_url + ENDPOINT__report_sentinel_error
+
+            threading.Thread(target=self.sentinel_reporter).start()
+
+    def sentinel_reporter(self):
+        while True:
+            try:
+                se = BaseJAAQLController.sentinel_errors.get()
+                res = requests.post(self.sentinel_url, json=se)
+                if res.status_code != HTTPStatus.OK:
+                    raise Exception(ERR__sentinel_failed % (res.status_code, res.text))
+            except:
+                traceback.print_exc()
 
     def diff_ms(self, start, now):
         return round((now - start).total_seconds() * 1000)
@@ -501,7 +534,25 @@ class BaseJAAQLController:
     @staticmethod
     def _init_error_handlers(app):
         @app.errorhandler(HTTPStatus.INTERNAL_SERVER_ERROR)
-        def handle_server_error(error: Exception):
+        def handle_server_error(error: InternalServerError):
+            if os.environ.get(ENVIRON__sentinel_url):
+                orig = error.original_exception
+
+                tb_frame = sys.exc_info()[2]
+                while tb_frame.tb_next:
+                    tb_frame = tb_frame.tb_next
+                source_file = tb_frame.tb_frame.f_code.co_filename[len(os.getcwd()) + 1:]
+                source_file = source_file.replace("\\", "/")
+
+                BaseJAAQLController.sentinel_errors.put({
+                    "error_condensed": str(orig),
+                    "version": VERSION,
+                    "source_system": "Sentinel" if BaseJAAQLController.internal_sentinel else "JAAQL",
+                    "source_file": source_file,
+                    "file_line_number": tb_frame.tb_lineno,
+                    "stacktrace": ''.join(traceback.format_exception(etype=type(orig), value=orig, tb=orig.__traceback__))
+                })
+
             traceback.print_tb(error.__traceback__)
             return BaseJAAQLController._cors(Response(RESP__default_err_message, RESP__default_err_code))
 

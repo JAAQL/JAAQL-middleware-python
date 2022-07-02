@@ -53,7 +53,7 @@ class JAAQLController(BaseJAAQLController):
         def is_installed(response: JAAQLResponse):
             return self.model.is_installed(response)
 
-        @self.cors_route('/internal/applications', DOCUMENTATION__applications)
+        @self.cors_route(ENDPOINT__internal_applications, DOCUMENTATION__applications)
         def applications(http_inputs: dict, jaaql_connection: DBInterface, ip_address: str, user_id: str, response: JAAQLResponse):
             if self.is_get():
                 return self.model.get_applications(http_inputs, jaaql_connection)
@@ -206,7 +206,7 @@ class JAAQLController(BaseJAAQLController):
         def confirm_default_role_deletion(http_inputs: dict, jaaql_connection: DBInterface):
             self.model.delete_user_default_role_confirm(http_inputs, jaaql_connection)
 
-        @self.cors_route('/internal/emails/accounts', DOCUMENTATION__email_accounts)
+        @self.cors_route(ENDPOINT__internal_accounts, DOCUMENTATION__email_accounts)
         def email_accounts(http_inputs: dict, jaaql_connection: DBInterface):
             if self.is_post():
                 self.model.add_email_account(http_inputs, jaaql_connection)
@@ -219,7 +219,7 @@ class JAAQLController(BaseJAAQLController):
         def email_accounts_confirm_deletion(http_inputs: dict, jaaql_connection: DBInterface):
             self.model.delete_email_account_confirm(http_inputs, jaaql_connection)
 
-        @self.cors_route('/internal/emails/templates', DOCUMENTATION__email_templates)
+        @self.cors_route(ENDPOINT__internal_templates, DOCUMENTATION__email_templates)
         def email_templates(http_inputs: dict, jaaql_connection: DBInterface):
             if self.is_post():
                 self.model.register_email_template(http_inputs, jaaql_connection)
@@ -327,7 +327,7 @@ class JAAQLController(BaseJAAQLController):
         def emails_allowed_recipients(inputs: dict, username: str):
             return self.model.fetch_allowed_recipients_for_email_template(inputs[KEY__email_template], username)
 
-        @self.cors_route('/emails', DOCUMENTATION__email)
+        @self.cors_route(ENDPOINT__jaaql_emails, DOCUMENTATION__email)
         def emails(http_inputs: dict, jaaql_connection: DBInterface, username: str, is_public: bool, oauth_token: str, user_id: str):
             if is_public:
                 raise HttpStatusException(ERR__user_public, HTTPStatus.UNAUTHORIZED)
@@ -352,3 +352,7 @@ class JAAQLController(BaseJAAQLController):
         @self.cors_route('/rendered_documents', DOCUMENTATION__rendered_document)
         def documents(http_inputs: dict):
             return self.model.fetch_document_stream(http_inputs)
+
+        @self.cors_route(ENDPOINT__is_alive, DOCUMENTATION__is_alive)
+        def is_alive():
+            self.model.is_alive()

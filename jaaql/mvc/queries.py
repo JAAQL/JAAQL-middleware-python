@@ -68,6 +68,7 @@ QUERY__ins_rendered_document = "INSERT INTO jaaql__rendered_document (encrypted_
 QUERY__fetch_rendered_document = "SELECT rd.document_id, able.render_as, rd.filename, rd.create_file, rd.completed, rd.encrypted_access_token as oauth_token FROM jaaql__rendered_document rd INNER JOIN jaaql__renderable_document able ON rd.document = able.name WHERE rd.document_id = :document_id"
 QUERY__purge_rendered_document = "DELETE FROM jaaql__rendered_document WHERE completed is not null and document_id = :document_id RETURNING content"
 QUERY__user_ins = "INSERT INTO jaaql__user (email, mobile, alias, is_public, application, public_credentials) VALUES (:email, :mobile, :alias, :is_public, :application, :public_credentials) RETURNING id"
+QUERY__postgres_version = "SELECT version() as version;"
 QUERY__revoke_user = "UPDATE jaaql__user SET deleted = current_timestamp WHERE id = :id AND deleted is NULL"
 QUERY__disable_mfa = "UPDATE jaaql__user SET enc_totp_iv = null WHERE id = :user_id"
 QUERY__set_mfa = "UPDATE jaaql__user SET enc_totp_iv = :totp_iv WHERE id = :user_id"

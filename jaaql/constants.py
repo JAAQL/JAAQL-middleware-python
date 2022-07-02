@@ -112,6 +112,11 @@ KEY__default_email_already_signed_up_template = "default_email_already_signed_up
 KEY__default_reset_password_template = "default_reset_password_template"
 KEY__document_id = "document_id"
 KEY__as_attachment = "as_attachment"
+KEY__email_account_protocol = "protocol"
+KEY__email_account_host = "host"
+KEY__email_account_port = "port"
+KEY__email_account_username = "username"
+KEY__email_account_send_name = "send_name"
 
 ATTR__deleted = "deleted"
 
@@ -161,6 +166,7 @@ VAULT_KEY__allow_jaaql_uninstall = "Allow jaaql uninstall"
 ENVIRON__vault_key = "JAAQL_VAULT_PASSWORD"
 ENVIRON__email_credentials = "JAAQL_EMAIL_CREDENTIALS"
 ENVIRON__install_path = "INSTALL_PATH"
+ENVIRON__sentinel_url = "SENTINEL_URL"
 
 EMAIL_PARAM__signup_key = "JAAQL_INVITE_KEY"
 EMAIL_PARAM__invite_code = "JAAQL_INVITE_SHORT_CODE"
@@ -196,8 +202,14 @@ PORT__ems = 6061
 
 ENDPOINT__reload_accounts = "/reload-accounts"
 ENDPOINT__send_email = "/send-email"
+ENDPOINT__internal_applications = "/internal/applications"
+ENDPOINT__internal_templates = "/internal/emails/templates"
+ENDPOINT__internal_accounts = "/internal/emails/accounts"
+ENDPOINT__is_alive = "/internal/is-alive"
+ENDPOINT__jaaql_emails = "/emails"
+ENDPOINT__report_sentinel_error = "/sentinel/reporting/error"
 
-VERSION = "3.0.9"
+VERSION = "3.0.10"
 
 HTTP_STATUS__too_early = 425  # Shiv for python 3.8
 

@@ -908,7 +908,6 @@ ARG_RES__email_account_name = SwaggerArgumentResponse(
     example=EXAMPLE__email_account_name
 )
 
-KEY__email_account_send_name = "send_name"
 EXAMPLE__email_account_send_name = "JAAQL Admin"
 ARG_RES__email_account_send_name = SwaggerArgumentResponse(
     name=KEY__email_account_send_name,
@@ -921,25 +920,25 @@ ARG_RES__email_account_base = [
     ARG_RES__email_account_name,
     ARG_RES__email_account_send_name,
     SwaggerArgumentResponse(
-        name="protocol",
+        name=KEY__email_account_protocol,
         description="The sending protocol. One of 'smtp', 'imap'",
         arg_type=str,
         example=["smtp", "imap"]
     ),
     SwaggerArgumentResponse(
-        name="host",
+        name=KEY__email_account_host,
         description="The host of the email server",
         arg_type=str,
         example=["smtp.gmail.com"]
     ),
     SwaggerArgumentResponse(
-        name="port",
+        name=KEY__email_account_port,
         description="The port of the email server",
         arg_type=int,
         example=[587]
     ),
     SwaggerArgumentResponse(
-        name="username",
+        name=KEY__email_account_username,
         description="The username to authenticate with the email server",
         arg_type=str,
         example=["user@gmail.com"]
@@ -1117,5 +1116,14 @@ DOCUMENTATION__email_template_confirm_deletion = SwaggerDocumentation(
         description="Confirm the unregistration of an email template, providing a single use deletion key",
         method=REST__POST,
         body=ARG_RES__deletion_key
+    )
+)
+
+DOCUMENTATION__is_alive = SwaggerDocumentation(
+    tags="Is Alive",
+    methods=SwaggerMethod(
+        name="Check is alive",
+        description="An endpoint that can be called by any service to see if the service is alive",
+        method=REST__GET
     )
 )
