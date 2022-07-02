@@ -157,7 +157,12 @@ fi
 docker-entrypoint.sh postgres &
 
 if [ "$IS_HTTPS" = "TRUE" ] ; then
-  $PYPY_PATH/bin/certbot renew --dry-run &
+  if [ "$PIGGYBACK_LETSENCRYPT" = "TRUE" ] ; then
+    echo "Skipping certbot renewal as piggybacking implementation"
+  else
+    $PYPY_PATH/bin/certbot renew --dry-run &
+    echo "0 0,12 * * * root $PYPY_PATH/bin/python -c 'import random; import time; time.sleep(random.random() * 3600)' && $PYPY_PATH/bin/certbot renew -q" | sudo tee -a /etc/crontab > /dev/null
+  fi
 fi
 
 cd $INSTALL_PATH

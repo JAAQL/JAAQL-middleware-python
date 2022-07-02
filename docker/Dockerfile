@@ -10,6 +10,7 @@ RUN apt-get install -y git
 
 ENV INSTALL_PATH /JAAQL-middleware-python
 ENV JAAQL_DEPLOYED true
+ENV PIGGYBACK_LETSENCRYPT FALSE
 COPY . $INSTALL_PATH
 
 RUN git clone https://github.com/JAAQL/JEQL.git
