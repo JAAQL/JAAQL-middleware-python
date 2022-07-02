@@ -10,7 +10,7 @@ from jaaql.utilities.options import *
 import sys
 import os
 import jaaql.documentation as documentation
-from jaaql.utilities.utils import load_config
+from jaaql.utilities.utils import load_config, get_base_url
 from jaaql.mvc.controller import JAAQLController
 from jaaql.mvc.model import JAAQLModel
 from jaaql.mvc.controller_interface import JAAQLControllerInterface
@@ -103,9 +103,9 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
         print("MFA label is set to default. This isn't a security issue but adds a nice name when added to "
               "authenticator apps via QR codes. You can change in the config")
 
-    force_mfa = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__force_mfa] in ("true", "True", True)
-    do_audit = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__do_audit] in ("true", "True", True)
-    invite_only = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__invite_only] in ("true", "True", True)
+    force_mfa = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__force_mfa] in ("true", "True", True, "TRUE")
+    do_audit = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__do_audit] in ("true", "True", True, "TRUE")
+    invite_only = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__invite_only] in ("true", "True", True, "TRUE")
 
     # The following code sets it "properly" in case it is accessed incorrectly from elsewhere
     config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__force_mfa] = force_mfa
@@ -119,7 +119,7 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
 
     model = JAAQLModel(config, vault_key, migration_db_interface, migration_project_name, migration_folder,
                        is_container=is_gunicorn, url=url)
-    controller = JAAQLController(model, is_gunicorn)
+    controller = JAAQLController(model, is_gunicorn, get_base_url(config, is_gunicorn))
     controller.create_app()
 
     for sub_controller in controllers:

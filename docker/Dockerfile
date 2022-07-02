@@ -7,6 +7,7 @@ EXPOSE 443
 RUN apt-get update && apt-get install -y build-essential
 RUN apt install -y libpq-dev
 RUN apt-get install -y git
+RUN apt-get install -y cron
 
 ENV INSTALL_PATH /JAAQL-middleware-python
 ENV JAAQL_DEPLOYED true
@@ -28,7 +29,6 @@ RUN chown -R "$USER":www-data $INSTALL_PATH/www
 RUN mkdir -p /etc/letsencrypt/live
 
 VOLUME /etc/letsencrypt
-VOLUME /etc/cron.d
 VOLUME $INSTALL_PATH/vault
 
 COPY docker/jaaql.service /lib/systemd/system/jaaql.service

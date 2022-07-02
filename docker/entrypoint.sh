@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+service cron start
+
 if [ -z "${JEQL_VERSION}" ]; then
   echo "Using default JEQL version"
 else
@@ -161,7 +163,7 @@ if [ "$IS_HTTPS" = "TRUE" ] ; then
     echo "Skipping certbot renewal as piggybacking implementation"
   else
     $PYPY_PATH/bin/certbot renew --dry-run &
-    echo "0 0,12 * * * root $PYPY_PATH/bin/python -c 'import random; import time; time.sleep(random.random() * 3600)' && $PYPY_PATH/bin/certbot renew -q" | sudo tee -a /etc/crontab > /dev/null
+    echo "0 0,12 * * * root $PYPY_PATH/bin/python -c 'import random; import time; time.sleep(random.random() * 3600)' && $PYPY_PATH/bin/certbot renew -q" | tee -a /etc/crontab > /dev/null
   fi
 fi
 
