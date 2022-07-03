@@ -150,6 +150,7 @@ URI__otp_issuer_clause = "&issuer=%s"
 
 JWT__username = "username"
 JWT__fully_authenticated = "fully_authenticated"
+JWT__super_user = "super_user"
 JWT__password = "password"
 JWT__created = "created"
 JWT__ip = "ip"
@@ -322,6 +323,14 @@ class JAAQLModel(BaseJAAQLModel):
         return user, existed_ip, str(ip_id), user[KEY__last_totp]
 
     def refresh(self, oauth_token: str):
+        if oauth_token is None:  # The local bypass headers are being used
+            jwt_data = {JWT__super_user: "true"}
+
+            expiry_time = self.token_expiry_ms
+            purpose = JWT_PURPOSE__oauth
+
+            return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data, purpose, expiry_ms=expiry_time)
+
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), oauth_token, JWT_PURPOSE__oauth, allow_expired=True)
         if not decoded:
             raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
@@ -601,24 +610,29 @@ class JAAQLModel(BaseJAAQLModel):
         else:
             decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_token,
                                              JWT_PURPOSE__oauth, was_refresh)
-            if not decoded:
-                raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
-            if not decoded[JWT__fully_authenticated]:
-                raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
+            if JWT__super_user in decoded and ('localhost' in ip_address or '127.0.0.1' in ip_address):
+                username = USERNAME__superjaaql
+                user, _, ip_id, last_totp = self.verify_user(USERNAME__superjaaql, ip_address)
+            else:
+                if not decoded:
+                    raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
-            jwt_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
-            username = crypt_utils.decrypt(jwt_key, decoded[JWT__username])
-            double_hashed_password = crypt_utils.decrypt(self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key),
-                                                         decoded[JWT__password])
+                if not decoded[JWT__fully_authenticated]:
+                    raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
-            user, _, ip_id, last_totp = self.verify_user(username, ip_address)
-            if not crypt_utils.verify_password_hash(double_hashed_password, user[ATTR__password_hash]):
-                raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
+                jwt_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
+                username = crypt_utils.decrypt(jwt_key, decoded[JWT__username])
+                double_hashed_password = crypt_utils.decrypt(self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key),
+                                                             decoded[JWT__password])
 
-            jwt_ip_id = crypt_utils.decrypt(jwt_key, decoded[JWT__ip])
-            if ip_id != jwt_ip_id:
-                raise HttpStatusException(ERR__new_ip, HTTPStatus.UNAUTHORIZED)
+                user, _, ip_id, last_totp = self.verify_user(username, ip_address)
+                if not crypt_utils.verify_password_hash(double_hashed_password, user[ATTR__password_hash]):
+                    raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
+
+                jwt_ip_id = crypt_utils.decrypt(jwt_key, decoded[JWT__ip])
+                if ip_id != jwt_ip_id and 'localhost' not in ip_address and '127.0.0.1' not in ip_address:
+                    raise HttpStatusException(ERR__new_ip, HTTPStatus.UNAUTHORIZED)
 
         params = {
             KEY__user_id: user[KEY__id],
