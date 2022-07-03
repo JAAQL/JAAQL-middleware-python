@@ -667,6 +667,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         if default_database is not None:
             default_node = default_database.split("/")[0] if "/" in default_database else NODE__host_node
+            default_database = default_database.split("/")[1] if "/" in default_database else default_database
 
             try:
                 self.add_database({KEY__create: True, KEY__node: default_node, KEY__database_name: default_database}, jaaql_connection, user_id)

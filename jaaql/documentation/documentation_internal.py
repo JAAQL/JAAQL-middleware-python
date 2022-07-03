@@ -1120,6 +1120,7 @@ DOCUMENTATION__email_template_confirm_deletion = SwaggerDocumentation(
 )
 
 DOCUMENTATION__is_alive = SwaggerDocumentation(
+    security=False,
     tags="Is Alive",
     methods=SwaggerMethod(
         name="Check is alive",

@@ -670,7 +670,9 @@ ARG_RES__renderable_document = [
 ARG_RES__attachments_for_send = SwaggerArgumentResponse(
     name=KEY__attachments,
     description="Any email attachments, if supplied. Uses server side template rendering",
-    arg_type=SwaggerList(*ARG_RES__renderable_document)
+    arg_type=SwaggerList(*ARG_RES__renderable_document),
+    required=False,
+    condition="If emails are attached"
 )
 
 ARG_RES__email_base = [
