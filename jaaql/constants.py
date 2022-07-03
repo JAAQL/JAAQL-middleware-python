@@ -209,7 +209,7 @@ ENDPOINT__is_alive = "/internal/is-alive"
 ENDPOINT__jaaql_emails = "/emails"
 ENDPOINT__report_sentinel_error = "/sentinel/reporting/error"
 
-VERSION = "3.0.14"
+VERSION = "3.0.15"
 
 HTTP_STATUS__too_early = 425  # Shiv for python 3.8
 

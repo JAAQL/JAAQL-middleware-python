@@ -142,7 +142,7 @@ class BaseJAAQLController:
                     continue
                 raise HttpStatusException(ERR__expected_argument % arg.name, HTTPStatus.BAD_REQUEST)
 
-            if isinstance(arg.arg_type, SwaggerList):
+            if isinstance(arg.arg_type, SwaggerList) and arg.name in data:
                 if not isinstance(data[arg.name], list):
                     raise HttpStatusException(ERR__argument_wrong_type % (arg.name, str(type(data[arg.name])),
                                                                           str(type(list))), HTTPStatus.BAD_REQUEST)
