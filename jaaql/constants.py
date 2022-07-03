@@ -200,6 +200,7 @@ DB__postgres = "postgres"
 
 PORT__ems = 6061
 
+ENDPOINT__configuration_authorizations = "/internal/applications/configurations/authorizations"
 ENDPOINT__reload_accounts = "/reload-accounts"
 ENDPOINT__send_email = "/send-email"
 ENDPOINT__internal_applications = "/internal/applications"
@@ -209,8 +210,13 @@ ENDPOINT__is_alive = "/internal/is-alive"
 ENDPOINT__jaaql_emails = "/emails"
 ENDPOINT__report_sentinel_error = "/sentinel/reporting/error"
 
-VERSION = "3.0.17"
+CONFIG__default = "Default config"
+CONFIG__default_desc = "Default config description"
+DATASET__default = "Default dataset"
+DATASET__default_desc = "Default dataset description"
 
 HTTP_STATUS__too_early = 425  # Shiv for python 3.8
 
 USERNAME__jaaql = "jaaql"
+
+VERSION = "3.0.18"

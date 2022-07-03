@@ -93,11 +93,6 @@ RESEND__invite_max = 2
 RESEND__invite_not_registered_max = 3
 RESEND__reset_max = 2
 
-CONFIG__default = "Default config"
-CONFIG__default_desc = "Default config description"
-DATASET__default = "Default dataset"
-DATASET__default_desc = "Default dataset description"
-
 ATTR__version = "version"
 ATTR__count = "count"
 ATTR__ip_id = "ip_id"

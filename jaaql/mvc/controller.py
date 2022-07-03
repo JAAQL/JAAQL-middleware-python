@@ -159,7 +159,7 @@ class JAAQLController(BaseJAAQLController):
         def confirm_node_authorization_deletion(http_inputs: dict, jaaql_connection: DBInterface):
             self.model.delete_node_authorization_confirm(http_inputs, jaaql_connection)
 
-        @self.cors_route('/internal/applications/configurations/authorizations', DOCUMENTATION__authorization_configuration)
+        @self.cors_route(ENDPOINT__configuration_authorizations, DOCUMENTATION__authorization_configuration)
         def node_authorization(http_inputs: dict, jaaql_connection: DBInterface):
             if self.is_post():
                 self.model.add_configuration_authorization(http_inputs, jaaql_connection)
