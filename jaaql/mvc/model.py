@@ -611,13 +611,13 @@ class JAAQLModel(BaseJAAQLModel):
             decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_token,
                                              JWT_PURPOSE__oauth, was_refresh)
 
+            if not decoded:
+                raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
+
             if JWT__super_user in decoded and ('localhost' in ip_address or '127.0.0.1' in ip_address):
                 username = USERNAME__superjaaql
                 user, _, ip_id, last_totp = self.verify_user(USERNAME__superjaaql, ip_address)
             else:
-                if not decoded:
-                    raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
-
                 if not decoded[JWT__fully_authenticated]:
                     raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
