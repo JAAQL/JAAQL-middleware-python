@@ -29,7 +29,7 @@ sed -ri '1s@^.*$@'"$JEQL_REPLACE"'@' /JAAQL-middleware-python/jaaql/apps/console
 sed -ri '1s@^.*$@'"$JEQL_REPLACE"'@' /JAAQL-middleware-python/jaaql/apps/manager/scripts/site.js
 sed -ri '1s@^.*$@'"$JEQL_REPLACE"'@' /JAAQL-middleware-python/jaaql/apps/playground/scripts/site.js
 
-cp -r /JAAQL-middleware-python/jaaql/apps $INSTALL_PATH/www/apps
+cp -r /JAAQL-middleware-python/jaaql/apps $INSTALL_PATH/www
 
 LOG_FILE=$INSTALL_PATH/log/gunicorn.log
 LOG_FILE_EMAILS=$INSTALL_PATH/log/mail_service.log
@@ -107,7 +107,7 @@ fi
 
 replace_config() {
   sed -i 's/{{SERVER_ADDRESS}}/'$SERVER_PROTOCOL$SERVER_ADDRESS'/g' /JAAQL-middleware-python/jaaql/config/config.ini
-  sed -i 's/{{MFA_LABEL}}/'$MFA_LABEL'/g' /JAAQL-middleware-python/jaaql/config/config.ini
+  sed -i 's/{{MFA_LABEL}}/$MFA_LABEL/g' /JAAQL-middleware-python/jaaql/config/config.ini
 
   if [ "$FORCE_MFA" = "TRUE" ] ; then
     sed -i 's/{{FORCE_MFA}}/true/g' /JAAQL-middleware-python/jaaql/config/config.ini

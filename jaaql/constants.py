@@ -164,6 +164,7 @@ VAULT_KEY__jaaql_lookup_connection = "jaaql_lookup_connection"
 VAULT_KEY__allow_jaaql_uninstall = "Allow jaaql uninstall"
 
 ENVIRON__vault_key = "JAAQL_VAULT_PASSWORD"
+ENVIRON__jaaql_profiling = "JAAQL_PROFILING"
 ENVIRON__email_credentials = "JAAQL_EMAIL_CREDENTIALS"
 ENVIRON__install_path = "INSTALL_PATH"
 ENVIRON__sentinel_url = "SENTINEL_URL"
@@ -219,4 +220,4 @@ HTTP_STATUS__too_early = 425  # Shiv for python 3.8
 
 USERNAME__jaaql = "jaaql"
 
-VERSION = "3.1.0"
+VERSION = "3.1.1"

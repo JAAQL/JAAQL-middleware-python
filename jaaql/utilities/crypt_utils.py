@@ -7,6 +7,7 @@ from typing import Optional, Union
 from cryptography.fernet import Fernet
 from base64 import urlsafe_b64encode as b64e, urlsafe_b64decode as b64d
 import jwt
+import math
 from datetime import datetime, timezone
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
@@ -82,7 +83,9 @@ def encrypt_raw(secret_key: bytes, data: any, iv: bytes = None) -> str:
         iv = os.urandom(AES__iv_length)
 
     if len(iv) != AES__iv_length:
-        _, iv = key_stretcher(iv.decode(ENCODING__ascii), iv, AES__iv_length_b64)
+        if len(iv) < AES__iv_length:
+            iv = iv * math.ceil(AES__iv_length / len(iv))
+        iv = iv[0:AES__iv_length]
 
     backend = default_backend()
     padder = padding.PKCS7(PKCS7__length).padder()
@@ -137,15 +140,17 @@ def fetch_random_readable_salt():
     return b64e(fetch_random_salt())
 
 
-def key_stretcher(key: str, salt: bytes = None, length: int = FERNET__key_length):
+def key_stretcher(key: str, salt: bytes = None, length: int = FERNET__key_length, profiler = None):
     defaults = PasswordHasher()
+    if profiler:
+        profiler.perform_profile("Initialise password hasher")
 
     if salt is None:
         salt = fetch_random_salt()
     if len(salt) < 8:
         salt = salt * 8
         salt = salt[0:8]
-    return salt, b64e(low_level.hash_secret_raw(
+    hashed = b64e(low_level.hash_secret_raw(
         secret=key.encode(ENCODING__ascii),
         salt=salt,
         time_cost=defaults.time_cost,
@@ -154,13 +159,23 @@ def key_stretcher(key: str, salt: bytes = None, length: int = FERNET__key_length
         hash_len=length,
         type=low_level.Type.ID
     ))
+    if profiler:
+        profiler.perform_profile("Hash function")
+    return salt, hashed
 
 
-def hash_password(data: str, salt: bytes = None):
+def hash_password(data: str, salt: bytes = None, profiler=None):
     if salt is not None:
-        salt, data_hash = key_stretcher(data, salt)
+        salt, data_hash = key_stretcher(data, salt, profiler=profiler)
         return data_hash.decode(ENCODING__ascii)
-    return PasswordHasher().hash(data)
+
+    hasher = PasswordHasher()
+    if profiler:
+        profiler.perform_profile("Initialise Hasher")
+    res = hasher.hash(data)
+    if profiler:
+        profiler.perform_profile("Perform Hash")
+    return res
 
 
 def verify_password_hash(check_hash: str, password: str, salt: bytes = None):

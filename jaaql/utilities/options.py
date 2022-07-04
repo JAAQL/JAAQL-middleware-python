@@ -31,6 +31,7 @@ class Option:
 OPT_KEY__vault_key = "vault-key"
 OPT_KEY__email_credentials = "email-credentials"
 OPT_KEY__help = "help"
+OPT_KEY__profiling = "profiling"
 
 DEFAULT_OPTIONS: List[Option] = [
     Option(
@@ -54,6 +55,13 @@ DEFAULT_OPTIONS: List[Option] = [
         description="Provides SMTP/IMAP email credentials into the JAAQL server. Base64 encoded json dict of the format"
         " { \"my_account_name\": \"my_account_password\" }",
         is_flag=False
+    ),
+    Option(
+        short="p",
+        long=OPT_KEY__profiling,
+        required=False,
+        description="Will now output profiling information about the request",
+        is_flag=True
     )
 ]
 

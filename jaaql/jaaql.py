@@ -1,10 +1,8 @@
 from logging import StreamHandler
-from jaaql.constants import ENVIRON__vault_key
+from jaaql.constants import ENVIRON__vault_key, ENVIRON__jaaql_profiling
 import re
 import logging
 import pkgutil
-from os.path import exists
-import configparser
 from jaaql.openapi.swagger_documentation import produce_all_documentation
 from jaaql.email.email_manager_service import create_flask_app as create_email_service_app
 from jaaql.utilities.options import *
@@ -109,7 +107,8 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
 
     model = JAAQLModel(config, vault_key, migration_db_interface, migration_project_name, migration_folder,
                        is_container=is_gunicorn, url=url)
-    controller = JAAQLController(model, is_gunicorn, get_base_url(config, is_gunicorn))
+    controller = JAAQLController(model, is_gunicorn, get_base_url(config, is_gunicorn),
+                                 OPT_KEY__profiling in options or os.environ.get(ENVIRON__jaaql_profiling))
     controller.create_app()
 
     for sub_controller in controllers:

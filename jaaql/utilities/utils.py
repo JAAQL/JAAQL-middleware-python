@@ -1,5 +1,6 @@
 import requests
 from os.path import join, exists, dirname
+from datetime import datetime
 import os
 import glob
 from jaaql.constants import DIR__config, FILE__config, CONFIG_KEY__server, CONFIG_KEY_SERVER__port, ENVIRON__install_path, PORT__ems
@@ -13,6 +14,24 @@ import urllib.parse
 from jaaql.utilities.utils_no_project_imports import time_delta_ms  # Do not delete, relied on by others
 
 PATH__migrations = "migrations"
+
+
+class Profiler:
+    def __init__(self, profile_id, do_profiling: bool):
+        self.profile_id = profile_id
+        self.do_profiling = do_profiling
+        self.cur_time = datetime.now()
+
+    def perform_profile(self, description: str):
+        if not self.do_profiling:
+            return
+
+        cur_time = str(time_delta_ms(self.cur_time, datetime.now()))
+        print("PROFILING: " + str(self.profile_id) + " " + cur_time + " " + description)
+        self.cur_time = datetime.now()
+
+    def copy(self):
+        return Profiler(self.profile_id, self.do_profiling)
 
 
 def get_jaaql_root() -> str:

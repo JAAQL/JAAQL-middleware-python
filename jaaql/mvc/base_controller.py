@@ -1,5 +1,6 @@
 import threading
 import traceback
+import uuid
 from functools import wraps
 from werkzeug.exceptions import HTTPException, InternalServerError
 import inspect
@@ -10,7 +11,7 @@ from jaaql.exceptions.custom_http_status import CustomHTTPStatus
 import sys
 import os
 from queue import Queue
-
+from jaaql.utilities.utils import time_delta_ms, Profiler
 from flask import Response, Flask, request, jsonify, current_app
 from jaaql.documentation.documentation_shared import ENDPOINT__refresh
 from jaaql.constants import *
@@ -35,6 +36,7 @@ ARG__oauth_token = "oauth_token"
 ARG__password_hash = "password_hash"
 ARG__last_totp = "last_totp"
 ARG__username = "username"
+ARG__profiler = "profiler"
 
 CONTENT__encoding = "charset=utf-8"
 CONTENT__json = "application/json"
@@ -86,13 +88,15 @@ class BaseJAAQLController:
     sentinel_errors = None
     internal_sentinel = False
 
-    def __init__(self, model: JAAQLModel, is_prod: bool, base_url: str):
+    def __init__(self, model: JAAQLModel, is_prod: bool, base_url: str, do_profiling: bool = False):
         super().__init__()
         self.app = Flask(__name__, instance_relative_config=True)
         self.app.config[FLASK__json_sort_keys] = False
         self.app.config[FLASK__max_content_length] = 1024 * 100 * 2  # 2 MB
         self._init_error_handlers(self.app)
         self.model = model
+        self.do_profiling = do_profiling
+        self.profiling_request_ids = {}
         self.app.model = model
         self.is_prod = is_prod
         BaseJAAQLController.sentinel_errors = Queue()
@@ -346,6 +350,30 @@ class BaseJAAQLController:
         else:
             return data
 
+    def perform_profile(self, profile_id, description: str = None, route: str = None, method: str = None):
+        if not self.do_profiling:
+            return
+
+        if profile_id in self.profiling_request_ids:
+            if description is None:
+                raise Exception("Expected profiling description")
+            if route is not None:
+                raise Exception("Expected no profiling route")
+            if method is not None:
+                raise Exception("Expected no profiling method")
+            cur_time = str(time_delta_ms(self.profiling_request_ids[profile_id], datetime.now()))
+            print("PROFILING: " + str(profile_id) + " " + cur_time + " " + description)
+            self.profiling_request_ids[profile_id] = datetime.now()
+        elif description is not None:
+            raise Exception("Expected no profiling description")
+        else:
+            if route is None:
+                raise Exception("Expected profiling route")
+            if method is None:
+                raise Exception("Expected profiling method")
+            print("PROFILING: " + str(profile_id) + " " + method + " " + route)
+            self.profiling_request_ids[profile_id] = datetime.now()
+
     def log_safe_dump(self, data):
         """
         Performs a log safe json dump of the data
@@ -370,6 +398,8 @@ class BaseJAAQLController:
         def wrap_func(view_func):
             @wraps(view_func)
             def routed_function(view_func_local):
+                request_id = uuid.uuid4()
+                self.perform_profile(request_id, route=route, method=request.method)
                 start_time = datetime.now()
                 resp = None
                 resp_type = current_app.config["JSONIFY_MIMETYPE"]
@@ -378,6 +408,7 @@ class BaseJAAQLController:
 
                 if not BaseJAAQLController.is_options():
                     method = BaseJAAQLController.get_method(swagger_documentation)
+                    self.perform_profile(request_id, "Fetch method")
 
                     jaaql_connection = None
                     user_id = None
@@ -391,10 +422,12 @@ class BaseJAAQLController:
                     ip_addr = request.headers.get(HEADER__real_ip, request.remote_addr).split(",")[0]
 
                     if swagger_documentation.security:
+                        profiler = Profiler(request_id, self.do_profiling)
                         jaaql_connection, user_id, ip_id, totp_iv, password_hash, l_totp, username, is_public = \
                             self.model.verify_jwt(request.headers.get(HEADER__security), ip_addr,
-                                                  route == ENDPOINT__refresh,
+                                                  route == ENDPOINT__refresh, profiler,
                                                   request.headers.get(HEADER__security_bypass))
+                        self.perform_profile(request_id, "Verify JWT")
 
                     supply_dict = {}
 
@@ -458,7 +491,13 @@ class BaseJAAQLController:
                                 raise Exception(ERR__method_required_token)
                             supply_dict[ARG__oauth_token] = request.headers.get(HEADER__security)
 
+                        self.perform_profile(request_id, "Fetch args")
+                        if ARG__profiler in inspect.getfullargspec(view_func_local).args:
+                            supply_dict[ARG__profiler] = Profiler(request_id, self.do_profiling)
+
                         resp = view_func_local(**supply_dict)
+
+                        self.perform_profile(request_id, "Perform work")
 
                         if not swagger_documentation.security:
                             user_id = jaaql_resp.user_id
@@ -473,6 +512,8 @@ class BaseJAAQLController:
                         if not do_allow_all:
                             resp = BaseJAAQLController.validate_output(method_response, resp)
                         ret_status = status
+
+                        self.perform_profile(request_id, "Validate output")
                     except Exception as ex:
                         if not self.is_prod:
                             traceback.print_exc()  # Debugging
@@ -511,6 +552,8 @@ class BaseJAAQLController:
                     if user_id is not None:
                         self.model.log(user_id, start_time, duration, ex_msg, method_input, ip_id, ret_status, route)
 
+                    self.perform_profile(request_id, "Cleanup")
+
                     if throw_ex is not None:
                         raise throw_ex
 
@@ -522,6 +565,7 @@ class BaseJAAQLController:
                     resp = Response(resp, mimetype=jaaql_resp.response_type, status=jaaql_resp.response_code)
 
                 self._cors(resp)
+                self.perform_profile(request_id, "Jsonify")
                 return resp
 
             self.app.add_url_rule(route, view_func=lambda: routed_function(view_func), methods=methods,

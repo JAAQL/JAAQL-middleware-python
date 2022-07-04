@@ -77,12 +77,11 @@ CREATE UNIQUE INDEX jaaql__user_public_application ON jaaql__user (application) 
 create table jaaql__user_ip (
     id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
     the_user jaaql_user_id not null,
-    address_hash varchar(254),
     encrypted_address varchar(255),
     first_use timestamptz not null default current_timestamp,
     most_recent_use timestamptz not null default current_timestamp,
     FOREIGN KEY (the_user) REFERENCES jaaql__user,
-    constraint jaaql__user_ip_unq unique (the_user, address_hash)
+    constraint jaaql__user_ip_unq unique (the_user, encrypted_address)
 );
 
 create table jaaql__user_password (
@@ -98,6 +97,7 @@ create view jaaql__user_latest_password as (
         us.id,
         us.email,
         password_hash,
+        password_created,
         us.enc_totp_iv,
         us.last_totp,
         us.is_public
@@ -105,6 +105,7 @@ create view jaaql__user_latest_password as (
         (SELECT
             the_user,
             password_hash,
+            created as password_created,
             row_number() over (PARTITION BY the_user) as change_count
         FROM jaaql__user_password
         ORDER BY created desc) as sub
@@ -118,7 +119,7 @@ create view jaaql__user_latest_credentials as (
     SELECT
         julp.*,
         juip.id as ip_id,
-        juip.address_hash
+        juip.encrypted_address
     FROM
         jaaql__user_latest_password julp
     INNER JOIN

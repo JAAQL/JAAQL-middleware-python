@@ -1,4 +1,5 @@
 import random
+import platform
 
 from jaaql.db.db_interface import DBInterface, RET__rows
 from jaaql.email.email_manager_service import EmailAttachment
@@ -28,7 +29,7 @@ from datetime import datetime, timedelta
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL, KEY_query
 from jaaql.constants import *
 from os.path import join
-from jaaql.utilities.utils import get_jaaql_root
+from jaaql.utilities.utils import get_jaaql_root, Profiler
 import threading
 import re
 
@@ -104,9 +105,9 @@ ATTR__mobile = "mobile"
 ATTR__the_user = "the_user"
 ATTR__existed = "existed"
 ATTR__password_hash = "password_hash"
-ATTR__address_hash = "address_hash"
 ATTR__ip_address = "ip_address"
 ATTR__created = "created"
+ATTR__password_created = "password_created"
 ATTR__alias = "alias"
 ATTR__data_lookup_json = "data_lookup_json"
 ATTR__activated = "activated"
@@ -182,11 +183,11 @@ class JAAQLModel(BaseJAAQLModel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def fetch_user_from_username(self, username: str, jaaql_connection: DBInterface, hashed_ip: str = None):
+    def fetch_user_from_username(self, username: str, jaaql_connection: DBInterface, ip_address: str = None):
         inputs = {KEY__username: username}
         the_query = QUERY__fetch_user_latest_password
-        if hashed_ip is not None:
-            inputs[ATTR__address_hash] = hashed_ip
+        if ip_address is not None:
+            inputs[ATTR__ip_address] = ip_address
             the_query = QUERY__fetch_user_latest_credentials
 
         users = execute_supplied_statement(jaaql_connection, the_query, inputs, as_objects=True,
@@ -282,7 +283,7 @@ class JAAQLModel(BaseJAAQLModel):
 
             return send_file(buffer, as_attachment=as_attachment, attachment_filename=res[KEY__filename])
 
-    def verify_user(self, username: str, ip_address: str):
+    def verify_user(self, username: str, ip_address: str, profiler: Profiler = None):
         username = username.lower()
 
         # Hash by username to save time but security issue as a deleted user will share usernames. Potential reverse hash lookup. Minor
@@ -290,30 +291,35 @@ class JAAQLModel(BaseJAAQLModel):
         if len(hash_username) < 8:
             hash_username = hash_username * 8
             hash_username = hash_username[0:8]
-        hashed_ip = crypt_utils.hash_password(ip_address, hash_username)
-        hashed_ip = jaaql__encrypt(hashed_ip, self.get_db_crypt_key(), hash_username)
+        if profiler:
+            profiler.perform_profile("Pre verify user")
 
+        encrypted_ip = jaaql__encrypt(ip_address, self.get_db_crypt_key(), hash_username)
         existed_ip = False
         ip_id = None
 
         try:
-            user = self.fetch_user_from_username(username, self.jaaql_lookup_connection, hashed_ip)
+            user = self.fetch_user_from_username(username, self.jaaql_lookup_connection, encrypted_ip)
             existed_ip = True
             ip_id = user[ATTR__ip_id]
         except HttpStatusException:
             user = self.fetch_user_from_username(username, self.jaaql_lookup_connection)
 
+        if profiler:
+            profiler.perform_profile("Fetch user")
+
         if not existed_ip:
             inputs = {
                 KEY__id: user[KEY__id],
-                ATTR__address_hash: hashed_ip,
                 ATTR__ip_address: ip_address
             }
 
-            resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__user_ip_ins, inputs, as_objects=True,
-                                                        encrypt_parameters=[ATTR__ip_address], encryption_key=self.get_db_crypt_key())
+            resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__user_ip_ins, inputs, as_objects=True)
             existed_ip = resp[ATTR__existed]
             ip_id = resp[KEY__id]
+
+        if profiler:
+            profiler.perform_profile("Insert ip")
 
         return user, existed_ip, str(ip_id), user[KEY__last_totp]
 
@@ -402,7 +408,7 @@ class JAAQLModel(BaseJAAQLModel):
         jwt_obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
         jwt_data = {
             JWT__username: crypt_utils.encrypt(jwt_obj_key, username),
-            JWT__password: crypt_utils.encrypt(jwt_obj_key, crypt_utils.hash_password(user[ATTR__password_hash])),
+            JWT__password: crypt_utils.encrypt(jwt_obj_key, str(user[ATTR__password_created])),
             JWT__fully_authenticated: not needs_further_auth,
             JWT__ip: crypt_utils.encrypt(jwt_obj_key, ip_id),
             JWT__created: crypt_utils.encrypt(jwt_obj_key, datetime.now().isoformat())
@@ -450,6 +456,7 @@ class JAAQLModel(BaseJAAQLModel):
         self.vault.purge_object(VAULT_KEY__jaaql_lookup_connection)
 
         print("Rebooting to allow JAAQL config to be shared among workers")
+        print("Executing with platform: " + platform.python_implementation())
         threading.Thread(target=self.exit_jaaql).start()
 
     def install(self, db_connection_string: str, superjaaql_password: str, password: str, install_key: str,
@@ -555,6 +562,7 @@ class JAAQLModel(BaseJAAQLModel):
                                        {KEY__application: APPLICATION__playground})
 
             print("Rebooting to allow JAAQL config to be shared among workers")
+            print("Executing with platform: " + platform.python_implementation())
             threading.Thread(target=self.exit_jaaql).start()
 
             return {
@@ -596,15 +604,15 @@ class JAAQLModel(BaseJAAQLModel):
 
         # TODO do databases. Link the used database auth with the log
 
-    def verify_jwt(self, jwt_token: str, ip_address: str, was_refresh: bool, bypass: str = None) -> [DBInterface, str, str]:
+    def verify_jwt(self, jwt_token: str, ip_address: str, was_refresh: bool, profiler: Profiler, bypass: str = None) -> [DBInterface, str, str]:
         username = None
 
         if bypass is not None and bypass == self.local_access_key:
             username = USERNAME__superjaaql
             user, _, ip_id, last_totp = self.verify_user(username, ip_address)
         else:
-            decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_token,
-                                             JWT_PURPOSE__oauth, was_refresh)
+            decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_token, JWT_PURPOSE__oauth, was_refresh)
+            profiler.perform_profile("JWT decode")
 
             if not decoded:
                 raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
@@ -618,16 +626,19 @@ class JAAQLModel(BaseJAAQLModel):
 
                 jwt_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
                 username = crypt_utils.decrypt(jwt_key, decoded[JWT__username])
-                double_hashed_password = crypt_utils.decrypt(self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key),
-                                                             decoded[JWT__password])
+                decoded_created = crypt_utils.decrypt(self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key), decoded[JWT__password])
+                profiler.perform_profile("Decode password")
 
-                user, _, ip_id, last_totp = self.verify_user(username, ip_address)
-                if not crypt_utils.verify_password_hash(double_hashed_password, user[ATTR__password_hash]):
+                user, _, ip_id, last_totp = self.verify_user(username, ip_address, profiler=profiler.copy())
+                profiler.perform_profile("Verify user")
+                if decoded_created != str(user[ATTR__password_created]):
                     raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
+                profiler.perform_profile("Verify password hash")
 
                 jwt_ip_id = crypt_utils.decrypt(jwt_key, decoded[JWT__ip])
                 if ip_id != jwt_ip_id and 'localhost' not in ip_address and '127.0.0.1' not in ip_address:
                     raise HttpStatusException(ERR__new_ip, HTTPStatus.UNAUTHORIZED)
+                profiler.perform_profile("Verify ip")
 
         params = {
             KEY__user_id: user[KEY__id],
@@ -636,11 +647,13 @@ class JAAQLModel(BaseJAAQLModel):
         auth = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__role_connection_sel, params,
                                                     as_objects=True, decrypt_columns=[KEY__username, KEY__password],
                                                     encryption_key=self.get_db_crypt_key())
+        profiler.perform_profile("Select auth")
 
         iv = user[KEY__totp_iv]
-
-        return create_interface(self.config, auth[KEY__address], auth[KEY__port], DB__jaaql, auth[KEY__username], auth[KEY__password]
-                                ), user[KEY__id], ip_id, iv, user[ATTR__password_hash], last_totp, username, user[KEY__is_public]
+        interface = create_interface(self.config, auth[KEY__address], auth[KEY__port], DB__jaaql, auth[KEY__username], auth[KEY__password]
+                                     ), user[KEY__id], ip_id, iv, user[ATTR__password_hash], last_totp, username, user[KEY__is_public]
+        profiler.perform_profile("Interface creation")
+        return interface
 
     def add_application(self, inputs: dict, jaaql_connection: DBInterface, ip_address: str, user_id: str, response: JAAQLResponse):
         public_username = inputs.pop(KEY__public_username)

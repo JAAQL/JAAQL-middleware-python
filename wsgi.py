@@ -1,8 +1,6 @@
 from jaaql.jaaql import create_app
 import jaaql.documentation as documentation
-import platform
 
-print("Executing with platform: " + platform.python_implementation())
 
 if __name__ == '__main__':
     port, flask_app = create_app(supplied_documentation=documentation, start_email_service=True)

@@ -1,4 +1,4 @@
-FROM postgres:14.3
+FROM postgres:14.4
 LABEL maintainer="jaaql.io"
 
 EXPOSE 80

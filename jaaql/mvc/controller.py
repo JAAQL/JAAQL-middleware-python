@@ -9,8 +9,8 @@ from jaaql.db.db_interface import DBInterface
 
 class JAAQLController(BaseJAAQLController):
 
-    def __init__(self, model: JAAQLModel, is_prod: bool, base_url: str):
-        super().__init__(model, is_prod, base_url)
+    def __init__(self, model: JAAQLModel, is_prod: bool, base_url: str, do_profiling: bool = False):
+        super().__init__(model, is_prod, base_url, do_profiling)
 
     def create_app(self):
 
