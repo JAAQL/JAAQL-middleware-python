@@ -21,6 +21,7 @@ if [ -f "/JAAQL-middleware-python/redeploy" ] ; then
     cd /JAAQL-middleware-python
     rm -rf dist
     $PYPY_PATH/bin/python setup.py sdist bdist_wheel
+    $PYPY_PATH/bin/pip uninstall jaaql_middleware_python -y
     VERSION=$(grep '^VERSION = ' /JAAQL-middleware-python/jaaql/constants.py | cut -d'=' -f2 | cut -d'"' -f2) && $PYPY_PATH/bin/pip install --no-deps /JAAQL-middleware-python/dist/jaaql_middleware_python-"$VERSION"-py3-none-any.whl
     echo "Removed deployment code"
 fi
