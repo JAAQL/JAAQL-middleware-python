@@ -17,6 +17,11 @@ if [ -f "/JAAQL-middleware-python/redeploy" ] ; then
     mv /JAAQL-middleware-python/jaaql/config/config-docker.ini /JAAQL-middleware-python/jaaql/config/config.ini
     echo "Moved config"
     rm -rf /JAAQL-middleware-python/redeploy
-    echo "Finished redeploy"
+    echo "Removed deployment code"
+    cd /JAAQL-middleware-python
+    rm -rf dist
+    $PYPY_PATH/bin/python setup.py sdist bdist_wheel
+    VERSION=$(grep '^VERSION = ' /JAAQL-middleware-python/jaaql/constants.py | cut -d'=' -f2 | cut -d'"' -f2) && $PYPY_PATH/bin/pip install --no-deps /JAAQL-middleware-python/dist/jaaql_middleware_python-"$VERSION"-py3-none-any.whl
+    echo "Removed deployment code"
 fi
 echo "Exiting base reboot script"

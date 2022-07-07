@@ -373,7 +373,10 @@ class JAAQLModel(BaseJAAQLModel):
         })
 
     def redeploy(self):
-        f = open(join(dirname(get_jaaql_root()), "redeploy"), "w")
+        if self.is_container:
+            f = open("/JAAQL-middleware-python/redeploy", "w")
+        else:
+            f = open(join(dirname(get_jaaql_root()), "redeploy"), "w")
         f.write("Will be detected and redeployment will now happen")
         f.close()
 
