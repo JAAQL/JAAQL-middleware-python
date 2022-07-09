@@ -1393,6 +1393,8 @@ class JAAQLModel(BaseJAAQLModel):
         if template[KEY__data_validation_table] is not None:
             if EMAIL_PARAM__signup_key in params:
                 raise HttpStatusException(ERR__unexpected_validation_column % EMAIL_PARAM__signup_key)
+            if EMAIL_PARAM__invite_code in params:
+                raise HttpStatusException(ERR__unexpected_validation_column % EMAIL_PARAM__invite_code)
 
             sanitized_params, pkey_vals = self.fetch_sanitized_email_params(template, params)
 
@@ -1441,13 +1443,33 @@ class JAAQLModel(BaseJAAQLModel):
 
         reset_keys = {}
         if user_exists:
-            sanitized_params = {}
+            params = inputs[KEY__parameters]
+            if params is not None and template[KEY__data_validation_table] is None:
+                raise HttpStatusException(ERR__unexpected_parameters)
+            if params is None and template[KEY__data_validation_table] is not None:
+                params = {}
 
+            sanitized_params = {}
+            pkey_vals = None
+
+            if template[KEY__data_validation_table] is not None:
+                if EMAIL_PARAM__reset_key in params:
+                    raise HttpStatusException(ERR__unexpected_validation_column % EMAIL_PARAM__reset_key)
+                if EMAIL_PARAM__reset_code in params:
+                    raise HttpStatusException(ERR__unexpected_validation_column % EMAIL_PARAM__reset_code)
+
+                sanitized_params, pkey_vals = self.fetch_sanitized_email_params(template, params)
+
+            template_lookup = None
+            if pkey_vals is not None:
+                template_lookup = json.dumps(pkey_vals)
             params = {
+                ATTR__data_lookup_json: template_lookup,
                 ATTR__the_user: user[KEY__id],
                 KEY__email_template: template[KEY__id],
                 KEY__reset_code: "".join([CODE__alphanumeric[random.randint(0, len(CODE__alphanumeric) - 1)] for _ in range(CODE__reset_length)])
             }
+
             reset_keys = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__reset_insert, params, as_objects=True)
             optional_params = {EMAIL_PARAM__reset_key: reset_keys[KEY__reset_key], EMAIL_PARAM__reset_code: reset_keys[KEY__reset_code]}
             optional_params = {**optional_params, **sanitized_params}
@@ -1525,9 +1547,15 @@ class JAAQLModel(BaseJAAQLModel):
         self.add_password(self.jaaql_lookup_connection, str(resp[ATTR__the_user]), password)
         execute_supplied_statement(self.jaaql_lookup_connection, QUERY__reset_close, parameters={KEY__reset_key: token})
 
-        return {
+        res = {
             KEY__email: resp[KEY__email]
         }
+        if resp[KEY__email_template] and resp[ATTR__data_lookup_json]:
+            template_table = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template,
+                                                                  {KEY__id: resp[KEY__email_template]}, as_objects=True)[KEY__data_validation_table]
+            res[KEY__parameters] = self.select_from_data_validation_table(template_table, json.loads(resp[ATTR__data_lookup_json]))
+
+        return res
 
     def create_user(self, jaaql_connection: DBInterface, username: str, db_password: str = None, mobile: str = None,
                     attach_as: str = None, precedence: int = None, roles: str = "", public_application: str = None):

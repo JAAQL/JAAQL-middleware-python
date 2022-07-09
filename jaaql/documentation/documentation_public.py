@@ -378,7 +378,8 @@ DOCUMENTATION__reset_password = SwaggerDocumentation(
         body=[
             ARG_RES__email,
             ARG_RES__reset_password_email_template,
-            set_nullable(ARG_RES__application, "Does email template have a path")
+            set_nullable(ARG_RES__application, "Does email template have a path"),
+            ARG_RES__parameters
         ],
         response=[
             SwaggerResponse(
@@ -454,7 +455,7 @@ DOCUMENTATION__reset_password_with_invite = SwaggerDocumentation(
         response=[
             SwaggerResponse(
                 description="The email address of the user that has had their password reset it's password",
-                response=ARG_RES__email
+                response=[ARG_RES__email, ARG_RES__parameters]
             )
         ]
     )

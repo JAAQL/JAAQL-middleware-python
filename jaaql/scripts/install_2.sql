@@ -34,7 +34,6 @@ create table jaaql__email_template (
     allow_confirm_signup_attempt boolean default false not null,
     allow_reset_password boolean default false not null,
     check (allow_signup::int + allow_confirm_signup_attempt::int + allow_reset_password::int < 2),
-    check ((allow_reset_password = (data_validation_table is null)) or not allow_reset_password),
     deleted timestamptz default null
 );
 CREATE UNIQUE INDEX jaaql__email_template_unq
@@ -69,7 +68,7 @@ create table jaaql__user (
     application varchar(64),
     check (not is_public = (public_credentials is null)),
     check (not is_public = (application is null)),
-    FOREIGN KEY (application) REFERENCES jaaql__application
+    FOREIGN KEY (application) REFERENCES jaaql__application ON DELETE CASCADE ON UPDATE CASCADE
 );
 CREATE UNIQUE INDEX jaaql__user_unq_email ON jaaql__user (email) WHERE (deleted is null);
 CREATE UNIQUE INDEX jaaql__user_public_application ON jaaql__user (application) WHERE (deleted is null);
@@ -478,6 +477,7 @@ create table jaaql__reset_password (
     expiry_ms integer not null default 1000 * 60 * 60 * 2, -- 2 hours. Important this is the same as above fake table
     code_expiry_ms integer not null default 1000 * 60 * 15, -- 15 minutes. Important this is the same as above fake table
     email_template uuid,
+    data_lookup_json text,
     FOREIGN KEY (email_template) REFERENCES jaaql__email_template
 );
 
