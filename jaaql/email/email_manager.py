@@ -35,8 +35,8 @@ class EmailManager:
         if loaded_template is None:
             return
 
-        subject, loaded_template = self.perform_replacements(template[KEY__subject], loaded_template, REPLACE__uri_encoded_str, str,
-                                                             REGEX__email_parameter, parameters, optional_parameters)
+        subject, loaded_template = self.perform_replacements(template[KEY__subject], loaded_template, REPLACE__str, str, REGEX__email_parameter,
+                                                             parameters, optional_parameters)
         subject, loaded_template = self.perform_replacements(subject, loaded_template, REPLACE__uri_encoded_str, EmailManager.uri_encode_replace,
                                                              REGEX__email_uri_encoded_parameter, parameters, optional_parameters)
 
