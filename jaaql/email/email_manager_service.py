@@ -175,7 +175,7 @@ class DrivenChrome:
                     url = execute_supplied_statement_singleton(self.db_interface, QUERY__fetch_email_template,
                                                                {KEY__attachment_name: current_attachment.name,
                                                                 KEY__template: current_attachment.template}, as_objects=True)[KEY__url]
-                    content, filename = self.chrome_page_to_pdf(url, current_attachment.access_token, current_attachment.parameters)
+                    filename, content = self.chrome_page_to_pdf(url, current_attachment.access_token, current_attachment.parameters)
                     current_attachment.content = content
                     current_attachment.filename = filename
                 except HttpStatusException as ex:
