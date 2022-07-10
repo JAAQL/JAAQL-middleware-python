@@ -35,6 +35,7 @@ import re
 
 TOKEN__pre_auth_reduction_factor = 15
 
+ERR__empty_username = "Username cannot be empty"
 ERR__cant_revoke_system_user = "Can't revoke system user"
 ERR__invalid_username = "Invalid signup username. Expected an email address"
 ERR__invalid_username_internal = "Invalid username. Expected something simple (letters, numbers, underscore and dash)"
@@ -284,6 +285,9 @@ class JAAQLModel(BaseJAAQLModel):
             return send_file(buffer, as_attachment=as_attachment, attachment_filename=res[KEY__filename])
 
     def verify_user(self, username: str, ip_address: str, profiler: Profiler = None):
+        if len(username) == 0:
+            raise HttpStatusException(ERR__empty_username)
+
         username = username.lower()
 
         # Hash by username to save time but security issue as a deleted user will share usernames. Potential reverse hash lookup. Minor
@@ -1719,7 +1723,7 @@ class JAAQLModel(BaseJAAQLModel):
                 KEY__is_node: row[KEY__database] == DB__wildcard,
                 KEY__node: crypt_utils.encrypt(obj_key, row[KEY__node]),
                 KEY__db_url: crypt_utils.encrypt(obj_key, JAAQLModel.build_db_addr(row))
-            }, JWT_PURPOSE__connection, expiry_ms=30 * 1000)
+            }, JWT_PURPOSE__connection)
         } for row in data]
 
         return ret

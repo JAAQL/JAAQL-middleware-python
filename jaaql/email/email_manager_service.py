@@ -302,33 +302,37 @@ class EmailManagerService:
         self.is_gunicorn = is_gunicorn
 
         self.reload_accounts()
+        self.reload_lock = threading.Lock()
 
         self.driven_chrome = DrivenChrome(connection, self.db_crypt_key, self.is_gunicorn)
 
     def reload_accounts(self):
-        accounts = execute_supplied_statement(self.connection, QUERY__load_email_accounts, as_objects=True,
-                                              decrypt_columns=[KEY__encrypted_password],
-                                              encryption_key=self.db_crypt_key)
-        email_queues = {}
+        with self.reload_lock:
+            accounts = execute_supplied_statement(self.connection, QUERY__load_email_accounts, as_objects=True,
+                                                  decrypt_columns=[KEY__encrypted_password],
+                                                  encryption_key=self.db_crypt_key)
+            email_queues = {}
 
-        for account in accounts:
-            if account[KEY__email_account_name] not in self.email_credentials and account[KEY__encrypted_password] is None:
-                raise Exception(ERR__password_not_found % account[KEY__email_account_name])
-            elif account[KEY__email_account_name] in self.email_credentials and account[KEY__encrypted_password] is None:
-                execute_supplied_statement(self.connection, QUERY__update_email_account_password,  # Stores the password
-                                           {KEY__encrypted_password: self.email_credentials[account[KEY__email_account_name]],
-                                            KEY__id: account[KEY__id]},
-                                           encrypt_parameters=[KEY__encrypted_password])
-            cur_queue = Queue()
-            if str(account[KEY__id]) not in self.email_queues:
-                email_queues[str(account[KEY__id])] = cur_queue
-                password = account[KEY__encrypted_password]
-                if password is None:
-                    password = self.email_credentials[account[KEY__email_account_name]]
-                method_args = [account, cur_queue, password]
-                threading.Thread(target=self.email_connection_thread, args=method_args, daemon=True).start()
+            for account in accounts:
+                if account[KEY__email_account_name] not in self.email_credentials and account[KEY__encrypted_password] is None:
+                    raise Exception(ERR__password_not_found % account[KEY__email_account_name])
+                elif account[KEY__email_account_name] in self.email_credentials and account[KEY__encrypted_password] is None:
+                    execute_supplied_statement(self.connection, QUERY__update_email_account_password,  # Stores the password
+                                               {KEY__encrypted_password: self.email_credentials[account[KEY__email_account_name]],
+                                                KEY__id: account[KEY__id]},
+                                               encrypt_parameters=[KEY__encrypted_password])
+                cur_queue = Queue()
+                if str(account[KEY__id]) not in self.email_queues:
+                    email_queues[str(account[KEY__id])] = cur_queue
+                    password = account[KEY__encrypted_password]
+                    if password is None:
+                        password = self.email_credentials[account[KEY__email_account_name]]
+                    method_args = [account, cur_queue, password]
+                    threading.Thread(target=self.email_connection_thread, args=method_args, daemon=True).start()
+                else:
+                    email_queues[str(account[KEY__id])] = self.email_queues[str(account[KEY__id])]
 
-        self.email_queues = email_queues
+            self.email_queues = email_queues
 
     def construct_message(self, account: dict, email: Email) -> (str, MIMEMultipart):
         send_body = email.body
