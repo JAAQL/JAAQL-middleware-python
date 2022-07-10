@@ -301,8 +301,8 @@ class EmailManagerService:
 
         self.is_gunicorn = is_gunicorn
 
-        self.reload_accounts()
         self.reload_lock = threading.Lock()
+        self.reload_accounts()
 
         self.driven_chrome = DrivenChrome(connection, self.db_crypt_key, self.is_gunicorn)
 
