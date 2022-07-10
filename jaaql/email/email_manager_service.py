@@ -87,7 +87,7 @@ class DrivenChrome:
         self.db_key = db_key
         self.template_dir_path = os.path.join(DIR__www, DIR__render_template)
 
-        self.a4_params = {'landscape': False, 'paperWidth': 8.27, 'paperHeight': 11.69}
+        self.a4_params = {'landscape': False, 'paperWidth': 8.27, 'paperHeight': 11.69, 'printBackground': True}
 
         threading.Thread(target=self.start_chrome, daemon=True).start()
         threading.Thread(target=self.purge_rendered_documents, daemon=True).start()

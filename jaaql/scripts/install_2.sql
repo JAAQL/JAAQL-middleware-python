@@ -1,6 +1,6 @@
 CREATE DOMAIN postgres_table_view_name AS varchar(64) CHECK (VALUE ~* '^[A-Za-z*0-9_\-]+$');
 CREATE DOMAIN email_address AS varchar(255) CHECK ((VALUE ~* '^[A-Za-z0-9._%-]+([+][A-Za-z0-9._%-]+){0,1}@[A-Za-z0-9.-]+[.][A-Za-z]+$' AND lower(VALUE) = VALUE) OR VALUE IN ('jaaql', 'superjaaql'));
-CREATE DOMAIN jaaql_user_id AS varchar(14) CHECK (left(value, 7) = 'jaaql__' and right(value, 7) ~* '^[0-9]{7}$');
+CREATE DOMAIN jaaql_user_id AS uuid;
 
 create table jaaql__email_account (
     id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
@@ -55,7 +55,7 @@ create table jaaql__application (
 CREATE SEQUENCE jaaql__user_seq AS bigint INCREMENT BY 1 START 1;
 
 create table jaaql__user (
-    id       jaaql_user_id primary key not null default concat('jaaql__', LPAD(nextval('jaaql__user_seq')::text, 7, '0')),
+    id       jaaql_user_id primary key not null default gen_random_uuid(),
     email    text not null,
     created timestamptz not null default current_timestamp,
     mobile   bigint,                 -- with null [allows for SMS-based 2FA login later] )
@@ -397,7 +397,7 @@ $$
 DECLARE
     actual_alias text;
 BEGIN
-    SELECT coalesce(alias, userid) into actual_alias FROM jaaql__user WHERE id = userid;
+    SELECT coalesce(alias, userid) into actual_alias FROM jaaql__user WHERE id = userid::jaaql_user_id;
     return actual_alias;
 END
 $$ language plpgsql;

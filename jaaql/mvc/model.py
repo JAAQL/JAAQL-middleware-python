@@ -1588,6 +1588,9 @@ class JAAQLModel(BaseJAAQLModel):
         if attach_as is None:
             attach_as = user_id
 
+        if public_application is not None:
+            attach_as = username
+
         self.add_node_authorization({
             KEY__node: NODE__host_node,
             KEY__role: attach_as,
@@ -1598,7 +1601,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         if not attached:
             inputs = {
-                KEY__username: user_id,
+                KEY__username: username if public_application is not None else user_id,
                 KEY__password: db_password
             }
             execute_supplied_statement(self.jaaql_lookup_connection, QUERY__user_create_role, inputs)
@@ -1716,7 +1719,7 @@ class JAAQLModel(BaseJAAQLModel):
                 KEY__is_node: row[KEY__database] == DB__wildcard,
                 KEY__node: crypt_utils.encrypt(obj_key, row[KEY__node]),
                 KEY__db_url: crypt_utils.encrypt(obj_key, JAAQLModel.build_db_addr(row))
-            }, JWT_PURPOSE__connection)
+            }, JWT_PURPOSE__connection, expiry_ms=30 * 1000)
         } for row in data]
 
         return ret

@@ -100,7 +100,7 @@ QUERY__reset_upd_used = "UPDATE jaaql__reset_password SET used_key_a = TRUE WHER
 QUERY__sign_up_upd_used = "UPDATE jaaql__sign_up SET used_key_a = TRUE WHERE key_a = :invite_key"
 QUERY__sign_up_close = "UPDATE jaaql__sign_up SET closed = current_timestamp WHERE key_a = :invite_key"
 QUERY__reset_close = "UPDATE jaaql__reset_password SET closed = current_timestamp WHERE key_a = :reset_key or key_b = :reset_key"
-QUERY__user_create_role = "SELECT jaaql__create_role(lower(:username), :password)"
+QUERY__user_create_role = "SELECT jaaql__create_role(lower(:username::text), :password)"
 QUERY__log_ins = "INSERT INTO jaaql__log (the_user, occurred, duration_ms, encrypted_exception, encrypted_input, ip, status, endpoint) VALUES (:user_id, :occurred, :duration_ms, :exception, :input, :ip, :status, :endpoint)"
 QUERY__user_log_sel = "SELECT occurred, encrypted_address as address, status, endpoint, duration_ms, encrypted_exception as exception FROM jaaql__my_logs"
 QUERY__user_log_count = "SELECT COUNT(*) FROM jaaql__my_logs"
