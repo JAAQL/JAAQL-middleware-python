@@ -1719,7 +1719,7 @@ class JAAQLModel(BaseJAAQLModel):
                 KEY__is_node: row[KEY__database] == DB__wildcard,
                 KEY__node: crypt_utils.encrypt(obj_key, row[KEY__node]),
                 KEY__db_url: crypt_utils.encrypt(obj_key, JAAQLModel.build_db_addr(row))
-            }, JWT_PURPOSE__connection)
+            }, JWT_PURPOSE__connection, expiry_ms=30 * 1000)
         } for row in data]
 
         return ret
