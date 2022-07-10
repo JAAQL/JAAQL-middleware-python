@@ -1258,7 +1258,7 @@ class JAAQLModel(BaseJAAQLModel):
                 raise HttpStatusException(ERR__recipient_not_allowed)
             recipient_names = allowed_recipients[inputs[KEY__recipient]]
 
-        self.email_manager.construct_and_send_email(self.url, app_url, template, user_id, recipient_names, recipients, params,
+        self.email_manager.construct_and_send_email(self.url, app_url, template, user_id, recipient_names, recipients, {}, params,
                                                     attachments=EmailAttachment.deserialize_list(inputs[KEY__attachments], template[KEY__id]),
                                                     attachment_access_token=self.refresh(oauth_token))
 
