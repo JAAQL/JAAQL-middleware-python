@@ -90,6 +90,23 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   echo "        proxy_set_header X-Real-IP \$remote_addr;" >> /etc/nginx/sites-available/jaaql
   echo "    }" >> /etc/nginx/sites-available/jaaql
   echo "}" >> /etc/nginx/sites-available/jaaql
+  echo "" >> /etc/nginx/sites-available/jaaql
+  echo "server {" >> /etc/nginx/sites-available/jaaql
+  echo "    server_name 127.0.0.1;" >> /etc/nginx/sites-available/jaaql
+  echo "    location /api {" >> /etc/nginx/sites-available/jaaql
+  echo "        limit_req zone=jaaqllimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
+  echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
+  echo "        include proxy_params;" >> /etc/nginx/sites-available/jaaql
+  echo "        proxy_pass http://unix:$INSTALL_PATH/jaaql.sock:/;" >> /etc/nginx/sites-available/jaaql
+  echo "        proxy_set_header X-Real-IP \$remote_addr;" >> /etc/nginx/sites-available/jaaql
+  echo "    }" >> /etc/nginx/sites-available/jaaql
+  echo "    root /JAAQL-sentinel-middleware/www;" >> /etc/nginx/sites-available/jaaql
+  echo "    index index.html;" >> /etc/nginx/sites-available/jaaql
+  echo "    location / {" >> /etc/nginx/sites-available/jaaql
+  echo "        limit_req zone=httplimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
+  echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
+  echo "    }" >> /etc/nginx/sites-available/jaaql
+  echo "}" >> /etc/nginx/sites-available/jaaql
 fi
 
 if [ "$IS_HTTPS" = "TRUE" ] ; then

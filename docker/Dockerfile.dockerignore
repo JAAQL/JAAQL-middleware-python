@@ -10,3 +10,4 @@ Dockerfile
 
 chromedriver.exe
 install_key
+install_scripts

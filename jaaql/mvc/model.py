@@ -642,12 +642,9 @@ class JAAQLModel(BaseJAAQLModel):
                     raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
                 profiler.perform_profile("Verify password hash")
 
-                print("THIS IS PRINTED ON STARTUP TO HELP ME TEST THINGS")
-
                 jwt_ip_id = crypt_utils.decrypt(jwt_key, decoded[JWT__ip])
                 if ip_id != jwt_ip_id and 'localhost' not in ip_address and '127.0.0.1' not in ip_address:
-                    pass
-                    # raise HttpStatusException(ERR__new_ip, HTTPStatus.UNAUTHORIZED)
+                    raise HttpStatusException(ERR__new_ip, HTTPStatus.UNAUTHORIZED)
                 profiler.perform_profile("Verify ip")
 
         params = {

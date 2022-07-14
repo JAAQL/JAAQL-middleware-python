@@ -222,4 +222,4 @@ HTTP_STATUS__too_early = 425  # Shiv for python 3.8
 
 USERNAME__jaaql = "jaaql"
 
-VERSION = "3.1.14"
+VERSION = "3.1.15"
