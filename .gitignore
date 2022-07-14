@@ -138,6 +138,7 @@ swagger
 vault
 www
 log
+install_key
 
 /apps
 wsgi_patch.py

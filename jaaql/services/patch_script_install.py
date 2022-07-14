@@ -4,6 +4,6 @@ monkey_patch()
 
 from jaaql.services.script_install import bootup
 import os
-from jaaql.constants import ENVIRON__vault_key
+from jaaql.constants import ENVIRON__vault_key, ENVIRON__local_install
 
-bootup(os.environ.get(ENVIRON__vault_key), True)
+bootup(os.environ.get(ENVIRON__vault_key), True, os.environ.get(ENVIRON__local_install) == "TRUE")

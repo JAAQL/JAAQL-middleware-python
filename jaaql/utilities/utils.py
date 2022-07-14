@@ -92,6 +92,16 @@ def get_base_url(config, is_gunicorn: bool):
         return "http://127.0.0.1:" + str(int(config[CONFIG_KEY__server][CONFIG_KEY_SERVER__port]))
 
 
+def await_jaaql_bootup(config, is_gunicorn: bool):
+    base_url = get_base_url(config, is_gunicorn)
+    while True:
+        try:
+            return requests.get(base_url + "/internal/is_installed").status_code
+        except:
+            pass
+        time.sleep(5)
+
+
 def await_jaaql_installation(config, is_gunicorn: bool):
     base_url = get_base_url(config, is_gunicorn)
     while True:

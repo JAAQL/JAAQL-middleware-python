@@ -9,6 +9,7 @@ from jaaql.db.db_utils import execute_supplied_statement, create_interface
 
 from jaaql.constants import *
 from jaaql.config_constants import *
+from os.path import dirname
 
 import uuid
 import traceback
@@ -233,6 +234,8 @@ class BaseJAAQLModel:
             self.email_manager = EmailManager()
         else:
             self.install_key = str(uuid.uuid4())
+            with open(os.path.join(dirname(dirname(dirname(__file__))), "install_key"), "w") as install_key_file:
+                install_key_file.write(self.install_key)
             print("INSTALL KEY: " + self.install_key)
 
         if not self.vault.has_obj(VAULT_KEY__jaaql_local_access_key):

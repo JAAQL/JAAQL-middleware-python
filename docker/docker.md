@@ -66,6 +66,7 @@ Additional lines can be used
 
     -e DO_AUDIT=FALSE \
     -e FORCE_MFA=FALSE \
+    -e LOG_TO_OUTPUT=TRUE \
     -e INVITE_ONLY=FALSE \
     -e OUTPUT_QUERY_EXCEPTIONS=TRUE \
     -e JAAQL_EMAIL_CREDENTIALS=base64encodedcredentials \
@@ -135,3 +136,7 @@ Please note the use of INSTALL_PATH in the Dockerfile. Setting this correctly is
 
 # Troubleshooting
 If you are seeing a 404 when trying to access http(s)://your_address/swagger/jaaql_internal_api.html, you have likely not replaced the server address in the run command
+
+# Local DEV
+
+    docker run -p 80:80 -e LOG_TO_OUTPUT=TRUE -e INVITE_ONLY=FALSE -e POSTGRES_PASSWORD=123456 -e JAAQL_LOCAL_INSTALL=TRUE -e JAAQL_VAULT_PASSWORD=pa55word jaaql/jaaql-middleware-python

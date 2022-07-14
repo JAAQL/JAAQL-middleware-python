@@ -2,5 +2,3 @@ FROM jaaql/jaaql-middleware-python
 
 ENV INSTALL_PATH /my-project
 COPY . $INSTALL_PATH
-
-RUN .$PYPY_PATH/bin/pypy -mpip install -r $INSTALL_PATH/requirements.txt

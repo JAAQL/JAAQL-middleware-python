@@ -41,7 +41,7 @@ class JAAQLController(BaseJAAQLController):
         def refresh_oauth_token(oauth_token: str):
             return self.model.refresh(oauth_token)
 
-        @self.cors_route('/internal/install', DOCUMENTATION__install)
+        @self.cors_route(ENDPOINT__install, DOCUMENTATION__install)
         def install(http_inputs: dict, ip_address: str, response: JAAQLResponse):
             return self.model.install(**http_inputs, ip_address=ip_address, response=response)
 

@@ -92,7 +92,7 @@ class BaseJAAQLController:
         super().__init__()
         self.app = Flask(__name__, instance_relative_config=True)
         self.app.config[FLASK__json_sort_keys] = False
-        self.app.config[FLASK__max_content_length] = 1024 * 100 * 2  # 2 MB
+        self.app.config[FLASK__max_content_length] = 1024 * 1024 * 2  # 2 MB
         self._init_error_handlers(self.app)
         self.model = model
         self.do_profiling = do_profiling

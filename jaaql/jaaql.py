@@ -75,7 +75,7 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
         threading.Thread(target=create_email_service_app, args=[options.get(OPT_KEY__vault_key), options.get(OPT_KEY__email_credentials)],
                          daemon=True).start()
     if not is_gunicorn:
-        threading.Thread(target=bootup, args=[options.get(OPT_KEY__vault_key)], daemon=True).start()
+        threading.Thread(target=bootup, args=[options.get(OPT_KEY__vault_key), False, OPT_KEY__local_install in options], daemon=True).start()
 
     if OPT_KEY__vault_key in options:
         print(WARNING__vault_key_stdin, file=sys.stderr)

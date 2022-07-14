@@ -164,6 +164,7 @@ VAULT_KEY__jaaql_lookup_connection = "jaaql_lookup_connection"
 VAULT_KEY__allow_jaaql_uninstall = "Allow jaaql uninstall"
 
 ENVIRON__vault_key = "JAAQL_VAULT_PASSWORD"
+ENVIRON__local_install = "JAAQL_LOCAL_INSTALL"
 ENVIRON__jaaql_profiling = "JAAQL_PROFILING"
 ENVIRON__email_credentials = "JAAQL_EMAIL_CREDENTIALS"
 ENVIRON__install_path = "INSTALL_PATH"
@@ -210,6 +211,7 @@ ENDPOINT__internal_accounts = "/internal/emails/accounts"
 ENDPOINT__is_alive = "/internal/is-alive"
 ENDPOINT__jaaql_emails = "/emails"
 ENDPOINT__report_sentinel_error = "/sentinel/reporting/error"
+ENDPOINT__install = "/internal/install"
 
 CONFIG__default = "Default config"
 CONFIG__default_desc = "Default config description"
@@ -220,4 +222,4 @@ HTTP_STATUS__too_early = 425  # Shiv for python 3.8
 
 USERNAME__jaaql = "jaaql"
 
-VERSION = "3.1.13"
+VERSION = "3.1.14"

@@ -32,6 +32,7 @@ OPT_KEY__vault_key = "vault-key"
 OPT_KEY__email_credentials = "email-credentials"
 OPT_KEY__help = "help"
 OPT_KEY__profiling = "profiling"
+OPT_KEY__local_install = "local_install"
 
 DEFAULT_OPTIONS: List[Option] = [
     Option(
@@ -61,6 +62,13 @@ DEFAULT_OPTIONS: List[Option] = [
         long=OPT_KEY__profiling,
         required=False,
         description="Will now output profiling information about the request",
+        is_flag=True
+    ),
+    Option(
+        short="i",
+        long=OPT_KEY__local_install,
+        required=False,
+        description="Will now install on startup",
         is_flag=True
     )
 ]
