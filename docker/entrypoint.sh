@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+Xvfb -ac :99 -screen 0 1920x1080x16 &
+export DISPLAY=:99
+
 service cron start
 
 if [ -z "${JEQL_VERSION}" ]; then
@@ -107,13 +110,6 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
   echo "    }" >> /etc/nginx/sites-available/jaaql
   echo "}" >> /etc/nginx/sites-available/jaaql
-fi
-
-if [ "$IS_HTTPS" = "TRUE" ] ; then
-  sed -i 's/^    server_name www\..*/    server_name www.'$SERVER_ADDRESS';/g' $SITE_FILE
-  sed -i '/^    server_name www\./!  s/^    server_name .*/    server_name '$SERVER_ADDRESS';/g' $SITE_FILE
-else
-  sed -i 's/^    server_name .*/    server_name '$SERVER_ADDRESS';/g' $SITE_FILE
 fi
 
 rm -rf /etc/nginx/sites-enabled/jaaql  # Not strictly necessary but helps stuck containers

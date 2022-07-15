@@ -159,6 +159,7 @@ class DrivenChrome:
 
     def start_chrome(self):
         options = Options()
+        options.add_argument("--window-size=1920,1080")
         options.headless = True
         service_log_path = None
 
