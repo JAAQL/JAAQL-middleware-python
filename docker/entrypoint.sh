@@ -19,7 +19,7 @@ fi
 if [ -z "${SERVER_ADDRESS}" ]; then
   SERVER_ADDRESS="127.0.0.1"
 fi
-if [ -z "${SERVER_ADDRESS}" ]; then
+if [ -z "${MFA_LABEL}" ]; then
   MFA_LABEL="JAAQL"
 fi
 
@@ -148,10 +148,10 @@ replace_config() {
     sed -i 's/{{DO_AUDIT}}/true/g' /JAAQL-middleware-python/jaaql/config/config.ini
   fi
 
-  if [ -z "$MFA_ISSUER" ] ; then
-    sed -i 's/{{MFA_ISSUER}}/'$MFA_ISSUER'/g' /JAAQL-middleware-python/jaaql/config/config.ini
-  else
+  if [ -z "${MFA_ISSUER}" ] ; then
     sed -i 's/{{MFA_ISSUER}}/None/g' /JAAQL-middleware-python/jaaql/config/config.ini
+  else
+    sed -i 's/{{MFA_ISSUER}}/'$MFA_ISSUER'/g' /JAAQL-middleware-python/jaaql/config/config.ini
   fi
 }
 
