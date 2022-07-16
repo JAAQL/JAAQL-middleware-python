@@ -39,10 +39,27 @@ create table jaaql__email_template (
 CREATE UNIQUE INDEX jaaql__email_template_unq
     ON jaaql__email_template (name) WHERE (deleted is null);
 
+create table jaaql__tenant (
+    name varchar(64) PRIMARY KEY not null,
+    parent varchar(64),
+    FOREIGN KEY (parent) REFERENCES jaaql__tenant
+);
+
+INSERT INTO jaaql__tenant (name) VALUES ('default');
+
 create table jaaql__application (
-    name varchar(64) not null primary key,
+    name varchar(64) PRIMARY KEY not null,
     description varchar(256) not null,
     url text not null,
+    created timestamptz not null default current_timestamp
+);
+
+create table jaaql__application_tenant (
+    application varchar(64),
+    tenant varchar(64) not null default 'default',
+    PRIMARY KEY (application, tenant),
+    FOREIGN KEY (tenant) REFERENCES jaaql__tenant,
+    FOREIGN KEY (application) REFERENCES jaaql__application,
     created timestamptz not null default current_timestamp,
     default_email_signup_template uuid,
     FOREIGN KEY (default_email_signup_template) REFERENCES jaaql__email_template,
@@ -50,9 +67,7 @@ create table jaaql__application (
     FOREIGN KEY (default_email_already_signed_up_template) REFERENCES jaaql__email_template,
     default_reset_password_template uuid,
     FOREIGN KEY (default_reset_password_template) REFERENCES jaaql__email_template
-);
-
-CREATE SEQUENCE jaaql__user_seq AS bigint INCREMENT BY 1 START 1;
+)
 
 create table jaaql__user (
     id       jaaql_user_id primary key not null default gen_random_uuid(),
@@ -134,9 +149,6 @@ create table jaaql__node (
 	deleted timestamptz
 );
 
-CREATE UNIQUE INDEX jaaql__node_unq
-    ON jaaql__node (address, port) WHERE (deleted is null);
-
 create table jaaql__database (
     node varchar(255) not null references jaaql__node on update cascade on delete cascade,
 	name postgres_table_view_name not null,
@@ -144,89 +156,8 @@ create table jaaql__database (
 	PRIMARY KEY (node, name)
 );
 
-INSERT INTO jaaql__application (name, description, url) VALUES ('console', 'The console application', '');
-INSERT INTO jaaql__application (name, description, url) VALUES ('manager', 'The administration panel for JAAQL', '');
-INSERT INTO jaaql__application (name, description, url) VALUES ('playground', 'Allows testing for new JAAQL/JEQL features', '');
-
-create table jaaql__application_dataset (
-    application varchar(64) not null,
-    name varchar(64) not null,
-    description varchar(255) not null,
-    PRIMARY KEY (application, name),
-    FOREIGN KEY (application) references jaaql__application on delete cascade on update cascade
-);
-INSERT INTO jaaql__application_dataset (application, name, description) VALUES ('console', 'node', 'The node which the console will run against');
-INSERT INTO jaaql__application_dataset (application, name, description) VALUES ('manager', 'node', 'A jaaql node which the app can manage');
-INSERT INTO jaaql__application_dataset (application, name, description) VALUES ('playground', 'node', 'A jaaql node which the app can manage');
-
-create table jaaql__application_configuration (
-    application varchar(64) not null,
-    name varchar(64) not null,
-    description varchar(256) not null,
-    PRIMARY KEY (application, name),
-    FOREIGN KEY (application) references jaaql__application on delete cascade on update cascade
-);
-INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('manager', 'host', 'The host jaaql node');
-INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('playground', 'host', 'The host jaaql node');
-
-create table jaaql__assigned_database (
-    application varchar(64) not null,
-    configuration varchar(64) not null,
-    database postgres_table_view_name not null,
-    node varchar(255) not null,
-    dataset varchar(64) not null,
-    PRIMARY KEY (application, dataset, configuration),
-    FOREIGN KEY (application, configuration) references jaaql__application_configuration(application, name)
-        on delete cascade on update cascade,
-    FOREIGN KEY (application, dataset) references jaaql__application_dataset(application, name) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (database, node) references jaaql__database(name, node) on delete cascade on update cascade,
-    FOREIGN KEY (node) references jaaql__node (name) on delete cascade on update cascade
-);
-
-create view jaaql__configuration_assigned_database as (
-    SELECT
-        db_conf.application as application,
-    	db_conf.name as configuration,
-    	db_dataset.name as dataset,
-        db_dataset.description as dataset_description,
-    	db_arg.database as database,
-        db_arg.node as node
-    FROM
-    	jaaql__application_configuration db_conf
-    INNER JOIN jaaql__application_dataset db_dataset ON db_conf.application = db_dataset.application
-    LEFT JOIN jaaql__assigned_database db_arg
-        ON db_conf.application = db_arg.application AND
-           db_conf.name = db_arg.configuration AND
-           db_arg.dataset = db_dataset.name
-    LEFT JOIN jaaql__database jd on db_arg.database = jd.name AND db_arg.node = jd.node AND jd.deleted is null
-);
-
--- Complete configurations. Where each dataset for the application has an assigned database
-create view jaaql__complete_configuration as (
-    SELECT
-        *
-    FROM
-         jaaql__configuration_assigned_database
-    WHERE (application, configuration, true) IN (
-        SELECT
-            application, configuration, bool_and(database is not null)
-        FROM
-             jaaql__configuration_assigned_database
-        GROUP BY
-            application, configuration
-    )
-);
-
-create table jaaql__authorization_configuration (
-    application varchar(64) not null references jaaql__application on delete cascade on update cascade,
-    configuration varchar(64) not null,
-    role        varchar(254) not null default '',
-    primary key (application, configuration, role),
-    foreign key (application, configuration) references jaaql__application_configuration on delete cascade on update cascade
-);
-
 create table jaaql__default_role (
-    the_role varchar(255) PRIMARY KEY not null
+    the_role postgres_table_view_name PRIMARY KEY not null
 );
 
 create table jaaql__credentials_node (
@@ -291,85 +222,6 @@ create view jaaql__my_ips as (
 );
 grant select on jaaql__my_ips to public;
 
-create view jaaql__my_configurations as (
-    SELECT
-        DISTINCT
-        ac.application,
-        ac.name as configuration,
-        ap.description as application_description,
-        ac.description as configuration_description
-    FROM
-         jaaql__application_configuration ac
-    INNER JOIN jaaql__authorization_configuration auth_conf ON ac.name = auth_conf.configuration AND ac.application = auth_conf.application AND (auth_conf.role = '' or pg_has_role(auth_conf.role, 'MEMBER'))
-    INNER JOIN jaaql__application ap on ap.name = ac.application);
-grant select on jaaql__my_configurations to public;
-
-create view jaaql__my_applications as (
-    SELECT
-        DISTINCT
-        ap.name,
-        ap.description,
-        ap.url
-    FROM jaaql__application ap
-    INNER JOIN jaaql__my_configurations mc ON mc.application = ap.name
-);
-grant select on jaaql__my_applications to public;
-
-create view jaaql__their_authorized_app_only_configurations as (
-    SELECT
-        comc.application,
-        comc.configuration,
-        auth_conf.role as conf_role
-    FROM jaaql__complete_configuration comc
-    INNER JOIN jaaql__authorization_configuration auth_conf on comc.application = auth_conf.application AND comc.configuration = auth_conf.configuration
-);
-
--- Not my. Called through jaaql connection. Need to keep username and password secret
-create view jaaql__their_authorized_configurations as (
-    SELECT
-        comc.application,
-        comc.configuration,
-        comc.dataset,
-        comc.dataset_description,
-        jcred.db_encrypted_username as username,
-        jcred.db_encrypted_password as password,
-        comc.database,
-        comc.node as node,
-        jcred.id as cred_id,
-        jn.port,
-        jn.address,
-        jcred.precedence,
-        jcred.role as node_role
-    FROM jaaql__complete_configuration comc
-        INNER JOIN jaaql__credentials_node jcred ON (jcred.node = comc.node) AND jcred.deleted is null
-        INNER JOIN jaaql__node jn on comc.node = jn.name AND jn.deleted is null
-);
-
-create view jaaql__their_single_authorized_wildcard_node as (
-    SELECT
-        jn.name as node,
-        jn.address,
-        jn.port,
-        cred.role,
-        cred.precedence,
-        cred.db_encrypted_username as username,
-        cred.db_encrypted_password as password
-    FROM
-        jaaql__credentials_node cred
-    INNER JOIN
-        jaaql__database jd on cred.node = jd.node
-    INNER JOIN
-        jaaql__node jn on cred.node = jn.name
-    WHERE jd.name = '*' AND jd.deleted is null AND cred.deleted is null AND jn.deleted is null
-);
-
--- DO NOT CHANGE FUNCTION BELOW WITHOUT CONSIDERING SECURITY!!!
--- We require this function as 'CREATE ROLE IF NOT EXISTS' is not a postgres thing
--- Despite the fact that we use parameters for the SELECT call to this in __attach_or_add_user
--- If the variables username and password are strings, they can contain SQL injectable strings
--- To prevent this we use 'quote_ident' and 'quote_literal'.
--- 'quote_ident' forces everything to be within "" (and will escape any double quotes within)
--- 'quote_literal' is similar but forces everything to be within '' (and will escape any single quotes within)
 create function jaaql__create_role(username text, password text) returns void as
 $$
 BEGIN
@@ -382,7 +234,6 @@ BEGIN
 END
 $$ language plpgsql;
 
---Same security concerns as above
 create function jaaql__delete_user(delete_email text) returns void as
 $$
 BEGIN
@@ -399,26 +250,6 @@ DECLARE
 BEGIN
     SELECT coalesce(alias, userid) into actual_alias FROM jaaql__user WHERE id = userid::jaaql_user_id;
     return actual_alias;
-END
-$$ language plpgsql;
-
-create function jaaql__create_node(node_name text, node_address text, node_port integer, node_description text) returns character varying as
-$$
-DECLARE
-    node_id character varying;
-BEGIN
-    INSERT INTO jaaql__node (name, description, port, address, interface_class) VALUES (coalesce(node_name, node_address || node_port), coalesce(node_description, 'The ' || node_name || ' node'), node_port, node_address, 'DBPGInterface') RETURNING name into node_id;
-    INSERT INTO jaaql__database (node, name) VALUES (node_id, '*');
-    INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('console', node_id, 'Console access to the ' || node_id || ' node');
-    INSERT INTO jaaql__assigned_database (application, configuration, node, database, dataset) VALUES ('console', node_id, node_id, '*', 'node');
-    return node_id;
-END
-$$ language plpgsql;
-
-create or replace function jaaql__delete_node(node_name text) returns void as
-$$
-BEGIN
-    UPDATE jaaql__node SET "name" = (left("name", 180) || '_deleted_') || current_timestamp::text, deleted = current_timestamp WHERE name = node_name;
 END
 $$ language plpgsql;
 

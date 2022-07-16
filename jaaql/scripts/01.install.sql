@@ -10,3 +10,10 @@ BEGIN
     return secure_pass;
 END
 $$ language plpgsql;
+
+create table jaaql__system (
+    name varchar(100) not null,
+    invite_only boolean not null,
+    superuser_username varchar(100) not null,
+    encrypted_superuser_password varchar(255) not null
+);
