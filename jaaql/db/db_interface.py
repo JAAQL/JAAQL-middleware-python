@@ -10,10 +10,6 @@ KEY_CONFIG__system = "SYSTEM"
 KEY_CONFIG__logging = "logging"
 
 
-RET__echo = "echo"
-RET__columns = "columns"
-RET__rows = "rows"
-
 DIVIDER__protocol = "://"
 DIVIDER__db = "/"
 DIVIDER__port = ":"
@@ -36,29 +32,13 @@ ERR__missing_database = "The database name was missing from the connection"
 class DBInterface(ABC):
 
     @abstractmethod
-    def __init__(self, config, address: str, username: str, dev_mode: bool = False):
+    def __init__(self, config: dict, pool, super_username: str, username: str):
         self.config = config
         self.logging = config.get(KEY_CONFIG__system, {KEY_CONFIG__logging: True}).get(KEY_CONFIG__logging, True)
-        self.dev_mode = dev_mode
+        self.output_query_exceptions = config["DEBUG"]["output_query_exceptions"].lower() == "true"
+        self.pool = pool
+        self.system = super_username
         self.username = username
-        self.address = address
-
-    @staticmethod
-    def fracture_uri(uri: str, allow_missing_database: bool = False) -> (str, int, str, str, str):
-        if DIVIDER__protocol in uri:
-            uri = uri.split(DIVIDER__protocol)[1]
-
-        db_split = uri.split(DIVIDER__address)[-1].split(DIVIDER__db)
-        address = db_split[0]
-        db_name = db_split[1] if len(db_split) > 1 else None
-
-        if not allow_missing_database and db_name is None:
-            raise HttpStatusException(ERR__missing_database)
-
-        username, password = DIVIDER__address.join(uri.split(DIVIDER__address)[:-1]).split(DIVIDER__password)
-        address, port = address.split(DIVIDER__port)
-
-        return address, port, db_name, username, password
 
     @abstractmethod
     def get_conn(self):
@@ -206,3 +186,22 @@ class DBInterface(ABC):
     @abstractmethod
     def close(self):
         pass
+
+    @staticmethod
+    def fracture_uri(uri: str, allow_missing_database: bool = False) -> (str, int, str, str, str):
+        if DIVIDER__protocol in uri:
+            uri = uri.split(DIVIDER__protocol)[1]
+
+        db_split = uri.split(DIVIDER__address)[-1].split(DIVIDER__db)
+        address = db_split[0]
+        db_name = db_split[1] if len(db_split) > 1 else None
+
+        if not allow_missing_database and db_name is None:
+            raise HttpStatusException(ERR__missing_database)
+
+        username, password = DIVIDER__address.join(uri.split(DIVIDER__address)[:-1]).split(DIVIDER__password)
+        address, port = address.split(DIVIDER__port)
+        if port is not None:
+            port = int(port)
+
+        return address, port, db_name, username, password

@@ -166,11 +166,12 @@ class BaseJAAQLModel:
 
         return ret
 
-    def set_jaaql_lookup_connection(self):
-        if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):
-            jaaql_uri = self.vault.get_obj(VAULT_KEY__jaaql_lookup_connection)
-            address, port, db, username, password = DBInterface.fracture_uri(jaaql_uri)
-            self.jaaql_lookup_connection = create_interface(self.config, address, port, db, username, password, is_jaaql_user=True)
+    def get_jaaql_default_salt(self):
+        return self.vault.get_obj(VAULT_KEY__default_salt)
+
+    def set_jaaql_default_salt(self):
+        if self.vault.has_obj(VAULT_KEY__default_salt):
+            return self.vault.insert_obj(VAULT_KEY__default_salt, str(uuid.uuid4()))
 
     def __init__(self, config, vault_key: str, migration_db_interface=None, migration_project_name: str = None,
                  migration_folder: str = None, is_container: bool = False, url: str = None):
@@ -179,6 +180,7 @@ class BaseJAAQLModel:
         self.migration_project_name = migration_project_name
         self.migration_folder = migration_folder
         self.is_container = is_container
+        self.dbif = None
 
         self.url = url
         self.has_installed = False
@@ -188,7 +190,7 @@ class BaseJAAQLModel:
         self.invite_only = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__invite_only]
 
         self.vault = Vault(vault_key, DIR__vault)
-        self.jaaql_lookup_connection = None
+        self.root_connection = None
         self.email_manager = None
 
         self.token_expiry_ms = int(config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__token_expiry_ms])
@@ -208,6 +210,8 @@ class BaseJAAQLModel:
         if not self.vault.has_obj(VAULT_KEY__jwt_obj_crypt_key):
             _, jwt_obj_crypt_key = crypt_utils.key_stretcher(str(uuid.uuid4()))
             self.vault.insert_obj(VAULT_KEY__jwt_obj_crypt_key, jwt_obj_crypt_key.decode(crypt_utils.ENCODING__ascii))
+
+        self.set_jaaql_default_salt()
 
         if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):
             if self.vault.has_obj(VAULT_KEY__allow_jaaql_uninstall):
@@ -229,7 +233,7 @@ class BaseJAAQLModel:
                            update_db_interface=self.migration_db_interface)
 
             if self.is_container:
-                self.jaaql_lookup_connection.close(force=True)  # Each individual class will have one
+                self.jaaql_lookup_connection.close()  # Each individual class will have one
 
             self.email_manager = EmailManager()
         else:

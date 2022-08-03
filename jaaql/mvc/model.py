@@ -114,7 +114,7 @@ ATTR__data_lookup_json = "data_lookup_json"
 ATTR__activated = "activated"
 ATTR__closed = "closed"
 ATTR__code_attempts = "code_attempts"
-KEY__totp_iv = "totp_iv"
+ATTR__secure_password = "secure_password"
 KEY__user_id = "user_id"
 KEY__occurred = "occurred"
 KEY__duration_ms = "duration_ms"
@@ -142,9 +142,6 @@ DELETION_PURPOSE__user_self = "user_self"
 DESCRIPTION__jaaql_db = "The core jaaql database, used to store user information, logs and application/auth configs"
 DATABASE__jaaql_internal_name = "jaaql db"
 
-URI__otp_auth = "otpauth://totp/%s?secret=%s"
-URI__otp_issuer_clause = "&issuer=%s"
-
 JWT__username = "username"
 JWT__fully_authenticated = "fully_authenticated"
 JWT__super_user = "super_user"
@@ -153,12 +150,6 @@ JWT__created = "created"
 JWT__ip = "ip"
 
 PG__default_connection_string = "postgresql://postgres:%s@localhost:5432/jaaql"
-
-DIR__scripts = "scripts"
-DIR__manager = "manager"
-DIR__playground = "playground"
-DIR__console = "console"
-DB__empty = ""
 
 DB__wildcard = "*"
 
@@ -461,6 +452,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         self.vault.purge_object(VAULT_KEY__allow_jaaql_uninstall)
         self.vault.purge_object(VAULT_KEY__jaaql_lookup_connection)
+        self.get_db_crypt_key()
 
         print("Rebooting to allow JAAQL config to be shared among workers")
         print("Executing with platform: " + platform.python_implementation())
@@ -1771,9 +1763,6 @@ class JAAQLModel(BaseJAAQLModel):
             to_ret = InterpretJAAQL(connection).transform(inputs, force_transactional=force_transactional)
         except Exception as ex:
             caught_ex = ex
-
-        if not was_connection_none:
-            threading.Thread(target=connection.close).start()
 
         if caught_ex is not None:
             raise caught_ex

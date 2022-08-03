@@ -164,7 +164,7 @@ def key_stretcher(key: str, salt: bytes = None, length: int = FERNET__key_length
     return salt, hashed
 
 
-def hash_password(data: str, salt: bytes = None, profiler=None):
+def hash_password(data: str, salt: bytes = None, profiler=None) -> str:
     if salt is not None:
         salt, data_hash = key_stretcher(data, salt, profiler=profiler)
         return data_hash.decode(ENCODING__ascii)
@@ -175,6 +175,7 @@ def hash_password(data: str, salt: bytes = None, profiler=None):
     res = hasher.hash(data)
     if profiler:
         profiler.perform_profile("Perform Hash")
+
     return res
 
 

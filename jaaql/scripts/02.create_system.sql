@@ -1,6 +1,32 @@
 CREATE DOMAIN postgres_table_view_name AS varchar(64) CHECK (VALUE ~* '^[A-Za-z*0-9_\-]+$');
+CREATE DOMAIN postgres_role_name AS varchar(64) CHECK (VALUE ~* '^[A-Za-z*0-9_\-]+$');
 CREATE DOMAIN email_address AS varchar(255) CHECK ((VALUE ~* '^[A-Za-z0-9._%-]+([+][A-Za-z0-9._%-]+){0,1}@[A-Za-z0-9.-]+[.][A-Za-z]+$' AND lower(VALUE) = VALUE) OR VALUE IN ('jaaql', 'superjaaql'));
 CREATE DOMAIN jaaql_user_id AS uuid;
+
+create or replace function jaaql__setup_role(username uuid) returns text as
+$$
+BEGIN
+    execute 'CREATE ROLE ' || username::text;
+END
+$$ language plpgsql;
+
+create table jaaql__system_singleton (
+    id integer not null primary key default 0,
+    force_mfa boolean default false,
+    allow_system_password_reset boolean default false,
+    system_public_key text,
+    encrypted_system_private_key text,
+    encrypted_system_symmetric_key text,
+    check ((not allow_system_password_reset) = (system_public_key is null)),
+    check ((not encrypted_system_private_key) = (encrypted_system_private_key is null)),
+    constraint force_singleton check (id = 0)
+);
+
+insert into jaaql__system_singleton values (default);
+
+create or replace rule singleton_ignore_delete
+  AS on delete to jaaql__system_singleton
+     do instead nothing;
 
 create table jaaql__email_account (
     id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
@@ -31,6 +57,8 @@ create table jaaql__email_template (
     CHECK ((data_validation_table is null and data_validation_view is null) or data_validation_table is not null),
     recipient_validation_view postgres_table_view_name,
     allow_signup boolean default false not null,
+    allow_self_signup boolean,
+    check ((not allow_signup) = (allow_self_signup is null)),
     allow_confirm_signup_attempt boolean default false not null,
     allow_reset_password boolean default false not null,
     check (allow_signup::int + allow_confirm_signup_attempt::int + allow_reset_password::int < 2),
@@ -40,23 +68,24 @@ CREATE UNIQUE INDEX jaaql__email_template_unq
     ON jaaql__email_template (name) WHERE (deleted is null);
 
 create table jaaql__tenant (
-    name varchar(64) PRIMARY KEY not null,
-    parent varchar(64),
+    name postgres_role_name PRIMARY KEY not null,
+    parent postgres_role_name,
+    salt varchar(36) not null default gen_random_uuid()::text,
     FOREIGN KEY (parent) REFERENCES jaaql__tenant
 );
 
 INSERT INTO jaaql__tenant (name) VALUES ('default');
 
 create table jaaql__application (
-    name varchar(64) PRIMARY KEY not null,
+    name postgres_role_name PRIMARY KEY not null,
     description varchar(256) not null,
-    url text not null,
     created timestamptz not null default current_timestamp
 );
 
 create table jaaql__application_tenant (
-    application varchar(64),
-    tenant varchar(64) not null default 'default',
+    url text not null,
+    application postgres_role_name not null,
+    tenant postgres_role_name not null default 'default',
     PRIMARY KEY (application, tenant),
     FOREIGN KEY (tenant) REFERENCES jaaql__tenant,
     FOREIGN KEY (application) REFERENCES jaaql__application,
@@ -67,26 +96,103 @@ create table jaaql__application_tenant (
     FOREIGN KEY (default_email_already_signed_up_template) REFERENCES jaaql__email_template,
     default_reset_password_template uuid,
     FOREIGN KEY (default_reset_password_template) REFERENCES jaaql__email_template
-)
+);
 
 create table jaaql__user (
-    id       jaaql_user_id primary key not null default gen_random_uuid(),
-    email    text not null,
-    created timestamptz not null default current_timestamp,
-    mobile   bigint,                 -- with null [allows for SMS-based 2FA login later] )
-    deleted timestamptz,
-    enc_totp_iv varchar(254),
-    last_totp varchar(6),
-    alias varchar(32),
-    is_public boolean default false not null,
-    public_credentials text,
-    application varchar(64),
+    id                  jaaql_user_id primary key not null default gen_random_uuid(),
+    tenant              varchar(64) not null default 'default',
+    encrypted_email     varchar(255),
+    created             timestamptz not null default current_timestamp,
+    mobile              varchar(25),                 -- with null [allows for SMS-based 2FA login later] )
+    deleted             timestamptz,
+    enc_totp_iv         varchar(254),
+    last_totp           varchar(6),
+    alias               postgres_role_name,
+    is_public           boolean default false not null,
+    public_credentials  text,
+    application         postgres_role_name,
     check (not is_public = (public_credentials is null)),
     check (not is_public = (application is null)),
     FOREIGN KEY (application) REFERENCES jaaql__application ON DELETE CASCADE ON UPDATE CASCADE
 );
-CREATE UNIQUE INDEX jaaql__user_unq_email ON jaaql__user (email) WHERE (deleted is null);
+CREATE UNIQUE INDEX jaaql__user_unq_email ON jaaql__user (encrypted_email) WHERE (deleted is null);
 CREATE UNIQUE INDEX jaaql__user_public_application ON jaaql__user (application) WHERE (deleted is null);
+CREATE UNIQUE INDEX jaaql__user_alias ON jaaql__user (alias) WHERE (deleted is null);
+
+--Choose latest
+create table jaaql__user_public_key (
+    the_user jaaql_user_id not null,
+    FOREIGN KEY (the_user) REFERENCES jaaql__user,
+    enc_public_key text not null,
+    PRIMARY KEY (enc_public_key),
+    created timestamptz not null default current_timestamp -- Choose latest
+);
+
+--Change password:
+--Fetch my shared secrets, update my shared secrets. Single transaction. Change password and here are new shared secrets
+
+create table jaaql__shared_secret (
+    name varchar(64) not null,
+    owner jaaql_user_id not null,
+    owner_ciphertext text not null,
+    FOREIGN KEY (owner) REFERENCES jaaql__user,
+    PRIMARY KEY (name, owner)
+);
+
+-- N.B. for team discussion: ip addresses are "vulnerable"
+-- Also discuss ability to encrypt surrogate for lookup
+-- When decrypting list, go through list, find ids. Request list of my decryption keys matching the name of the secret. Try, for those failing, request again. Keep and store this internal list for efficiency. Likely store it in session storage
+-- Give auth to several people/roles (app defined) on signup (likely request)
+-- If ciphertext is null, owner sees request, approves request and encrypts the key with the users public key
+-- Encrypted identifier is encrypted with the owners private key
+-- Proof of identity is secret + ":" + owner + ":" + shareholder signed by owners private key. Encrypted as well with the jaaql secret key so users with db access can't just insert stuff. Would need both DB and JAAQL access
+-- Separate certificate authority
+create table jaaql__shared_secret_individual_shareholder (
+    secret varchar(20) not null,
+    owner jaaql_user_id not null,
+    requested timestamptz not null default current_timestamp,
+    granted timestamptz,
+    proof_of_identity text not null,
+    shareholder jaaql_user_id not null,
+    encrypted_identifier text not null,
+    FOREIGN KEY (secret, owner) REFERENCES jaaql__shared_secret,
+    FOREIGN KEY (owner) REFERENCES jaaql__user,
+    FOREIGN KEY (shareholder) REFERENCES jaaql__user,
+    check (owner != shareholder),
+    PRIMARY KEY (secret, owner, shareholder),
+    shareholder_ciphertext text,
+    CHECK (granted == shareholder_ciphertext)
+);
+
+-- TODO might need a public key here
+create table jaaql__shared_secret_role (
+    name postgres_role_name
+);
+
+-- Insertion made into this table with encrypted_role_key encrypted with users id
+-- Check constraint is fired when encrypted_role_key is set to true
+create table jaaql__shared_secret_role_member (
+    role postgres_role_name not null,
+    FOREIGN KEY (role) REFERENCES jaaql__shared_secret_role,
+    member jaaql_user_id not null,
+    PRIMARY KEY (role, member),
+    encrypted_role_key text,
+    check (pg_has_role(member, role, 'MEMBER') or encrypted_role_key is null)
+);
+
+-- INSERTION into this table done via a jaaql method
+-- From a role I am a member of to a user in a role I am a parent of
+create table jaaql__shared_secret_role_shareholder (
+    secret varchar(20) not null,
+    owner jaaql_user_id not null,
+    shareholder postgres_role_name not null,
+    FOREIGN KEY (secret, owner) REFERENCES jaaql__shared_secret,
+    FOREIGN KEY (owner) REFERENCES jaaql__user,
+    FOREIGN KEY (shareholder) REFERENCES jaaql__shared_secret_role,
+    PRIMARY KEY (secret, owner, shareholder),
+    complete boolean not null default false,
+    shareholder_ciphertext text
+);
 
 create table jaaql__user_ip (
     id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
@@ -106,7 +212,8 @@ create table jaaql__user_password (
     FOREIGN KEY (the_user) REFERENCES jaaql__user
 );
 
-create view jaaql__user_latest_password as (
+-- TODO
+create view jaaql__user_latest_public_key as (
     SELECT
         us.id,
         us.email,
@@ -140,37 +247,41 @@ create view jaaql__user_latest_credentials as (
         jaaql__user_ip juip ON juip.the_user = julp.id
 );
 
-create table jaaql__node (
-    name varchar(255) primary key not null,
-    description varchar(255) not null,
-    port integer not null,
-	address varchar(255) not null,
-	interface_class varchar(20) not null,
-	deleted timestamptz
-);
-
-create table jaaql__database (
-    node varchar(255) not null references jaaql__node on update cascade on delete cascade,
-	name postgres_table_view_name not null,
-	deleted timestamptz,
-	PRIMARY KEY (node, name)
-);
-
 create table jaaql__default_role (
-    the_role postgres_table_view_name PRIMARY KEY not null
+    application postgres_role_name not null,
+    tenant postgres_role_name not null default 'default',
+    role postgres_role_name not null,
+    PRIMARY KEY (application, tenant, role),
+    FOREIGN KEY (tenant) REFERENCES jaaql__tenant,
+    FOREIGN KEY (application) REFERENCES jaaql__application,
+    FOREIGN KEY (application, tenant) REFERENCES jaaql__application_tenant(application, tenant)
 );
 
-create table jaaql__credentials_node (
-    id uuid PRIMARY KEY not null default gen_random_uuid(),
-    node varchar(255) not null references jaaql__node,
-    role varchar(254),
-    deleted timestamptz,
-    db_encrypted_username varchar(254) not null,
-	db_encrypted_password varchar(254) not null,
-	precedence int not null default 0
-);
-CREATE UNIQUE INDEX jaaql__credentials_node_unq
-    ON jaaql__credentials_node (node, role) WHERE (deleted is null);
+create or replace function jaaql__apply_role(username postgres_role_name, role postgres_role_name) returns text as
+$$
+BEGIN
+    --Is only member of role 'pg_database_owner' if member of the current database. not owner of any database
+    if pg_has_role(current_user, role, 'MEMBER') or pg_has_role(current_user, 'pg_database_owner', 'MEMBER') then
+        EXECUTE 'GRANT ' || quote_ident(role) || ' TO ' || quote_ident(username);
+    end if;
+END
+$$ language plpgsql;
+
+create or replace function jaaql__apply_default_roles(user_id uuid, username postgres_role_name, the_application postgres_role_name) returns text as
+$$
+DECLARE
+    f record;
+BEGIN
+    for f in
+        SELECT role
+            FROM jaaql__default_role dr
+            INNER JOIN jaaql__user us ON dr.tenant = us.tenant AND dr.application = the_application
+        WHERE us.id = user_id
+    loop
+        SELECT jaaql__apply_role(username, f.role);
+    end loop;
+END
+$$ language plpgsql;
 
 create table jaaql__log (
     id uuid primary key not null default gen_random_uuid(),
@@ -184,14 +295,6 @@ create table jaaql__log (
     endpoint varchar(64) not null,
     FOREIGN KEY (the_user) REFERENCES jaaql__user,
     FOREIGN KEY (ip) REFERENCES jaaql__user_ip
-);
-
-create table jaaql__log_db_auth (
-    log uuid not null,
-    credentials uuid not null,
-    PRIMARY KEY (log, credentials),
-    FOREIGN KEY (log) REFERENCES jaaql__log,
-    FOREIGN KEY (credentials) REFERENCES jaaql__credentials_node
 );
 
 create view jaaql__my_logs as (
@@ -231,15 +334,6 @@ BEGIN
       WHERE  rolname = username) THEN
       EXECUTE 'CREATE ROLE ' || quote_ident(username) || ' WITH LOGIN ENCRYPTED PASSWORD ' || quote_literal(password);
     END IF;
-END
-$$ language plpgsql;
-
-create function jaaql__delete_user(delete_email text) returns void as
-$$
-BEGIN
-    EXECUTE 'DROP ROLE ' || quote_ident(delete_email);
-    UPDATE jaaql__user SET deleted = current_timestamp WHERE email = delete_email;
-    UPDATE jaaql__credentials_node SET deleted = current_timestamp WHERE role = delete_email;
 END
 $$ language plpgsql;
 

@@ -3,6 +3,7 @@ from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
 from jaaql.constants import ENCODING__utf
 from typing import Union
 import jaaql.utilities.crypt_utils as crypt_utils
+from jaaql.constants import RET__rows, RET__row, RET__columns
 from jaaql.db.db_pg_interface import DBPGInterface
 
 ERR__encryption_key_required = "Encryption key required. Check internal function calls"
@@ -21,18 +22,19 @@ INTERFACE__postgres_key = "postgres"
 INTERFACE__postgres_class = "DBPGInterface"
 
 
-def jaaql__encrypt(dec_input: str, encryption_key: bytes, salt: bytes = None) -> str:
+def try_encode(salt: Union[str, bytes]) -> bytes:
+    if isinstance(salt, str):
+        salt = salt.encode(ENCODING__utf)
+    return salt
+
+
+def jaaql__encrypt(dec_input: str, encryption_key: bytes, salt: Union[bytes, str] = None) -> str:
+    salt = try_encode(salt)
     return crypt_utils.encrypt_raw(encryption_key, dec_input, salt)
 
 
 def jaaql__decrypt(enc_input: str, encryption_key: bytes) -> str:
     return crypt_utils.decrypt__raw(encryption_key, enc_input)
-
-
-def try_encode(salt: Union[str, bytes]) -> bytes:
-    if isinstance(salt, str):
-        salt = salt.encode(ENCODING__utf)
-    return salt
 
 
 def create_interface(config, address: str, port: int, database: str, username: str, password: str,
@@ -102,15 +104,15 @@ def execute_supplied_statement(db_interface, query: str, parameters: dict = None
 
     data = InterpretJAAQL(db_interface).transform(statement)
 
-    missing = [param for param in decrypt_columns if param not in data["columns"]]
+    missing = [param for param in decrypt_columns if param not in data[RET__columns]]
     if len(missing) != 0:
         raise HttpStatusException(ERR__missing_decrypt_column % missing)
 
     if len(decrypt_columns) != 0:
-        data["rows"] = [
+        data[RET__rows] = [
             [jaaql__decrypt(
                 val, encryption_key) if col in decrypt_columns and val is not None else val for val, col in
-             zip(row, data["columns"])] for row in data["rows"]]
+             zip(row, data[RET__columns])] for row in data[RET__rows]]
 
     if as_objects:
         data = db_interface.objectify(data)
@@ -124,10 +126,10 @@ def force_singleton(data, as_objects: bool = False, singleton_code: int = None, 
         if len(data) != 1:
             was_no_singleton = True
     else:
-        if len(data["rows"]) != 1:
+        if len(data[RET__rows]) != 1:
             was_no_singleton = True
-        if len(data["rows"]) != 0:
-            data["rows"] = data["rows"][0]
+        if len(data[RET__rows]) != 0:
+            data[RET__row] = data[RET__rows][0]
 
     if was_no_singleton:
         err = ERR__expected_single_row % len(data)
@@ -138,7 +140,7 @@ def force_singleton(data, as_objects: bool = False, singleton_code: int = None, 
     return data[0] if as_objects else data
 
 
-def execute_supplied_statement_singleton(db_interface, query, parameters: dict = None,
+def execute_supplied_statement_singleton(db_interface, query: str, parameters: dict = None,
                                          as_objects: bool = False, encrypt_parameters: list = None,
                                          decrypt_columns: list = None, encryption_key: bytes = None,
                                          encryption_salts: dict = None, singleton_code: int = None,
