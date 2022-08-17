@@ -45,6 +45,9 @@ class DBPGInterface(DBInterface):
 
             self.username = username
 
+            if db_name is None:
+                db_name = ""
+
             if self.is_host_pool:
                 if db_name.lower() not in DBPGInterface.HOST_POOL:
                     DBPGInterface.HOST_POOL[db_name.lower()] = ConnectionPool(conn_str, min_size=PGCONN__min_conns,
