@@ -21,7 +21,7 @@ ERR__command_not_allowed = "Command not allowed. Please use one of " + str(ALLOW
 
 class DBPGInterface(DBInterface):
 
-    HOST_POOL = None
+    HOST_POOL = {}
     HOST_USER = None
 
     def __init__(self, config, host: str, port: int, db_name: str, username: str, password: str, is_jaaql_user: bool,
@@ -46,11 +46,11 @@ class DBPGInterface(DBInterface):
             self.username = username
 
             if self.is_host_pool:
-                if DBPGInterface.HOST_POOL is None:
-                    DBPGInterface.HOST_POOL = ConnectionPool(conn_str, min_size=PGCONN__min_conns, max_size=PGCONN__max_conns_jaaql_user,
-                                                             max_lifetime=60 * 30)
+                if db_name.lower() not in DBPGInterface.HOST_POOL:
+                    DBPGInterface.HOST_POOL[db_name.lower()] = ConnectionPool(conn_str, min_size=PGCONN__min_conns,
+                                                                              max_size=PGCONN__max_conns_jaaql_user, max_lifetime=60 * 30)
                     DBPGInterface.HOST_USER = self.username
-                self.pg_pool = DBPGInterface.HOST_POOL
+                self.pg_pool = DBPGInterface.HOST_POOL[db_name.lower()]
             else:
                 self.pg_pool = ConnectionPool(conn_str, min_size=1, max_size=5)
         except OperationalError as ex:
