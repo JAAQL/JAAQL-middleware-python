@@ -8,6 +8,7 @@ from jaaql.mvc.base_model import BaseJAAQLModel, CONFIG_KEY__security, CONFIG_KE
 from jaaql.exceptions.http_status_exception import HttpStatusException, HTTPStatus, ERR__connection_expired, \
     HTTP_STATUS_CONNECTION_EXPIRED, ERR__already_installed, ERR__passwords_do_not_match, ERR__cannot_override_db, \
     ERR__already_signed_up
+from jaaql.db.db_pg_interface import DBPGInterface
 
 from typing import Union
 from base64 import urlsafe_b64decode as b64d
@@ -452,12 +453,12 @@ class JAAQLModel(BaseJAAQLModel):
         address, port, db, _, _ = DBInterface.fracture_uri(jaaql_uri)
         super_user_connection = create_interface(self.config, address, port, DB__postgres, USERNAME__postgres, db_super_user_password)
 
-        self.jaaql_lookup_connection.close()
-
         execute_supplied_statement(super_user_connection, QUERY__uninstall_jaaql_0)
         execute_supplied_statement(super_user_connection, QUERY__uninstall_jaaql_1)
         execute_supplied_statement(super_user_connection, QUERY__uninstall_jaaql_2)
         execute_supplied_statement(super_user_connection, QUERY__uninstall_jaaql_3)
+
+        DBPGInterface.close_all()
 
         self.vault.purge_object(VAULT_KEY__allow_jaaql_uninstall)
         self.vault.purge_object(VAULT_KEY__jaaql_lookup_connection)
@@ -501,9 +502,13 @@ class JAAQLModel(BaseJAAQLModel):
                 KEY__description: None,
                 KEY__port: port,
                 KEY__address: address,
+                KEY__node_super_user_username: username,
+                KEY__node_super_user_password: db_password
             }, self.jaaql_lookup_connection)
             self.vault.insert_obj(VAULT_KEY__jaaql_lookup_connection, db_connection_string)
-            self.add_database({KEY__node: NODE__host_node, KEY__database_name: DB__jaaql}, self.jaaql_lookup_connection)
+            self.add_database({KEY__node: NODE__host_node, KEY__database_name: DB__jaaql,
+                               KEY__pooling_super_user_username: USERNAME__jaaql, KEY__pooling_super_user_password: jaaql_password},
+                               self.jaaql_lookup_connection)
 
             user_id = self.create_user(self.jaaql_lookup_connection, USERNAME__jaaql, jaaql_password)
             mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__jaaql, password, user_id, ip_address, use_mfa=use_mfa, response=response)
@@ -533,8 +538,8 @@ class JAAQLModel(BaseJAAQLModel):
                 super_user_id = self.create_user(self.jaaql_lookup_connection, USERNAME__superjaaql,
                                                  superjaaql_db_password, attach_as=USERNAME__postgres,
                                                  precedence=PRECEDENCE__super_user)
-                super_mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__superjaaql, superjaaql_password,
-                                              super_user_id, ip_address, use_mfa=use_mfa)
+                super_mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__superjaaql, superjaaql_password, super_user_id, ip_address,
+                                              use_mfa=use_mfa)
                 super_otp_uri = super_mfa[KEY__otp_uri]
                 super_otp_qr = super_mfa[KEY__otp_qr]
                 self.add_configuration_authorization({
@@ -570,6 +575,9 @@ class JAAQLModel(BaseJAAQLModel):
 
             print("Rebooting to allow JAAQL config to be shared among workers")
             print("Executing with platform: " + platform.python_implementation())
+
+            self.jaaql_lookup_connection.close()
+
             threading.Thread(target=self.exit_jaaql).start()
 
             return {
@@ -699,7 +707,8 @@ class JAAQLModel(BaseJAAQLModel):
             default_database = default_database.split("/")[1] if "/" in default_database else default_database
 
             try:
-                self.add_database({KEY__create: True, KEY__node: default_node, KEY__database_name: default_database}, jaaql_connection, user_id)
+                self.add_database({KEY__create: True, KEY__node: default_node, KEY__database_name: default_database,
+                                   KEY__node_super_user_username: }, jaaql_connection, user_id)
             except:
                 pass  # Sometimes the database may already exist
 
@@ -781,7 +790,8 @@ class JAAQLModel(BaseJAAQLModel):
         execute_supplied_statement(jaaql_connection, QUERY__default_roles_del, parameters)
 
     def add_node(self, inputs: dict, jaaql_connection: DBInterface):
-        execute_supplied_statement(jaaql_connection, QUERY__node_create, inputs)
+        execute_supplied_statement(jaaql_connection, QUERY__node_create, inputs, encryption_key=self.get_db_crypt_key(),
+                                   encrypt_parameters=[KEY__node_super_user_username, KEY__node_super_user_password])
 
     def get_nodes(self, inputs: dict, jaaql_connection: DBInterface):
         paging_dict, parameters = self.setup_paging_parameters(inputs)
@@ -789,8 +799,7 @@ class JAAQLModel(BaseJAAQLModel):
         paging_query, where_query, where_parameters = self.construct_formatted_paging_queries(paging_dict, parameters)
         full_query = QUERY__node_sel + paging_query
 
-        return self.execute_paging_query(jaaql_connection, full_query, QUERY__node_count, parameters, where_query,
-                                         where_parameters)
+        return self.execute_paging_query(jaaql_connection, full_query, QUERY__node_count, parameters, where_query, where_parameters)
 
     def delete_node(self, inputs: dict):
         return {KEY__deletion_key: self.request_deletion_key(DELETION_PURPOSE__node, inputs)}
@@ -803,9 +812,16 @@ class JAAQLModel(BaseJAAQLModel):
         inputs_create = inputs.copy()
         if KEY__create in inputs:
             inputs.pop(KEY__create)
-        execute_supplied_statement(jaaql_connection, QUERY__database_ins, inputs)
 
-        if KEY__create in inputs_create and inputs_create[KEY__create]:
+        execute_supplied_statement(jaaql_connection, QUERY__database_ins, inputs,
+                                   encrypt_parameters=[KEY__pooling_super_user_username, KEY__pooling_super_user_password],
+                                   encryption_key=self.get_db_crypt_key())
+
+        # TODO if create and node has credentials,
+        # TODO if user doesn't exist, create user
+        # TODO if database doesn't exist and create,
+
+        if KEY__create in inputs_create and inputs_create[KEY__create]:  # Do we select here
             create_inputs = {KEY__node: inputs_create[KEY__node], KEY__user_id: user_id}
             res = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
                                                        QUERY__node_single_credential_sel, create_inputs,
@@ -814,6 +830,7 @@ class JAAQLModel(BaseJAAQLModel):
             interface = create_interface(self.config, res[KEY__address], res[KEY__port], DB__empty,
                                          res[KEY__username], res[KEY__password])
             execute_supplied_statement(interface, QUERY__create_database % inputs[KEY__database_name])
+        # create_interface(self.config, address, port, DB__postgres, USERNAME__postgres, db_super_user_password)
 
     def update_application(self, inputs: dict, jaaql_connection: DBInterface):
         inputs[KEY__application_new_url] = self.replace_default_app_url(inputs[KEY__application_new_url])

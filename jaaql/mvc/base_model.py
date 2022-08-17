@@ -229,7 +229,7 @@ class BaseJAAQLModel:
                            update_db_interface=self.migration_db_interface)
 
             if self.is_container:
-                self.jaaql_lookup_connection.close(force=True)  # Each individual class will have one
+                DBPGInterface.close_all()  # Each individual class will have one
 
             self.email_manager = EmailManager()
         else:
@@ -248,6 +248,12 @@ class BaseJAAQLModel:
 
     def get_repeatable_salt(self):
         return self.vault.get_obj(VAULT_KEY__db_repeatable_salt).encode(crypt_utils.ENCODING__ascii)
+
+    def map_from_dict(self, inp: dict, the_keys: list):
+        ret = {}
+        for key in the_keys:
+            ret[key] = inp[key]
+        return ret
 
     def setup_paging_parameters(self, inputs: dict, has_deleted: bool = True):
         inputs_no_del = inputs.copy()

@@ -17,12 +17,41 @@ create table jaaql__email_account (
 CREATE UNIQUE INDEX jaaql__email_account_unq
     ON jaaql__email_account (name) WHERE (deleted is null);
 
+create table jaaql__node (
+    name varchar(255) primary key not null,
+    description varchar(255) not null,
+    port integer not null,
+    address varchar(255) not null,
+    interface_class varchar(20) not null,
+    deleted timestamptz,
+    --Used to create new databases
+    super_user_username varchar(254),
+    super_user_password varchar(254),
+    check ((super_user_username is null) = (super_user_password is null))
+);
+
+CREATE UNIQUE INDEX jaaql__node_unq
+    ON jaaql__node (address, port) WHERE (deleted is null);
+
+create table jaaql__database (
+    node varchar(255) not null references jaaql__node on update cascade on delete cascade,
+    name postgres_table_view_name not null,
+    pooling_user_username varchar(254) not null,
+    pooling_user_password varchar(254) not null,
+    deleted timestamptz,
+    PRIMARY KEY (node, name)
+);
+
+create table jaaql__tenant (
+    name varchar(64) not null,
+    created timestamptz default current_timestamp not null,
+    PRIMARY KEY (name)
+);
+
 create table jaaql__email_template (
     id   uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
     name varchar(60) NOT NULL,
     subject varchar(255),
-    account uuid NOT NULL,
-    FOREIGN KEY (account) REFERENCES jaaql__email_account,
     description text,
     app_relative_path postgres_table_view_name,  -- Not a mistake for this domain type
     check ((subject is null) = (app_relative_path is null)),
@@ -34,15 +63,30 @@ create table jaaql__email_template (
     allow_confirm_signup_attempt boolean default false not null,
     allow_reset_password boolean default false not null,
     check (allow_signup::int + allow_confirm_signup_attempt::int + allow_reset_password::int < 2),
-    deleted timestamptz default null
+    deleted timestamptz default null,
+    node varchar(255) not null,
+    database postgres_table_view_name not null,  -- This is not a mistake. Type is meant to mismatch
+    FOREIGN KEY (node, database) REFERENCES jaaql__database,
+    FOREIGN KEY (node) REFERENCES jaaql__node
 );
 CREATE UNIQUE INDEX jaaql__email_template_unq
     ON jaaql__email_template (name) WHERE (deleted is null);
 
+create table jaaql__email_template_tenant_account (
+    template uuid NOT NULL,
+    FOREIGN KEY (template) REFERENCES jaaql__email_template,
+    account uuid NOT NULL,
+    FOREIGN KEY (account) REFERENCES jaaql__email_account,
+    tenant varchar(64) NOT NULL,
+    FOREIGN KEY (tenant) REFERENCES jaaql__tenant,
+    PRIMARY KEY (template, tenant)
+);
+
+INSERT INTO jaaql__tenant (name) VALUES ('default');
+
 create table jaaql__application (
-    name varchar(64) not null primary key,
+    name postgres_table_view_name not null primary key,
     description varchar(256) not null,
-    url text not null,
     created timestamptz not null default current_timestamp,
     default_email_signup_template uuid,
     FOREIGN KEY (default_email_signup_template) REFERENCES jaaql__email_template,
@@ -52,7 +96,29 @@ create table jaaql__application (
     FOREIGN KEY (default_reset_password_template) REFERENCES jaaql__email_template
 );
 
-CREATE SEQUENCE jaaql__user_seq AS bigint INCREMENT BY 1 START 1;
+create table jaaql__application_tenant (
+    application postgres_table_view_name not null references jaaql__application on delete cascade,
+    tenant varchar(64) not null default 'default' references jaaql__tenant on delete cascade,
+    PRIMARY KEY (application, tenant)
+);
+
+create table jaaql__application_configuration (
+    application postgres_table_view_name not null,
+    name varchar(64) not null,
+    description varchar(256) not null,
+    PRIMARY KEY (application, name),
+    FOREIGN KEY (application) references jaaql__application on delete cascade on update cascade
+);
+
+create table jaaql__application_configuration_tenant (
+    application postgres_table_view_name not null,
+    configuration varchar(64) not null,
+    tenant varchar(64) not null,
+    PRIMARY KEY (application, configuration, tenant),
+    url text not null,
+    FOREIGN KEY (application, configuration) REFERENCES jaaql__application_configuration (application, name) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (tenant) REFERENCES jaaql__tenant ON DELETE CASCADE ON UPDATE CASCADE
+);
 
 create table jaaql__user (
     id       jaaql_user_id primary key not null default gen_random_uuid(),
@@ -63,12 +129,16 @@ create table jaaql__user (
     enc_totp_iv varchar(254),
     last_totp varchar(6),
     alias varchar(32),
-    is_public boolean default false not null,
     public_credentials text,
-    application varchar(64),
-    check (not is_public = (public_credentials is null)),
-    check (not is_public = (application is null)),
-    FOREIGN KEY (application) REFERENCES jaaql__application ON DELETE CASCADE ON UPDATE CASCADE
+    application postgres_table_view_name,
+    configuration varchar(64),
+    tenant varchar(64) not null,
+    check (((public_credentials is null) = (application is null)) or public_credentials is null),
+    check ((public_credentials is null) = (configuration is null)),
+    FOREIGN KEY (application) REFERENCES jaaql__application,
+    FOREIGN KEY (tenant) REFERENCES jaaql__tenant,
+    FOREIGN KEY (application, configuration) REFERENCES jaaql__application_configuration (application, name),
+    FOREIGN KEY (application, configuration, tenant) REFERENCES jaaql__application_configuration_tenant (application, configuration, tenant)
 );
 CREATE UNIQUE INDEX jaaql__user_unq_email ON jaaql__user (email) WHERE (deleted is null);
 CREATE UNIQUE INDEX jaaql__user_public_application ON jaaql__user (application) WHERE (deleted is null);
@@ -99,7 +169,7 @@ create view jaaql__user_latest_password as (
         password_created,
         us.enc_totp_iv,
         us.last_totp,
-        us.is_public
+        us.public_credentials is not null as is_public
     FROM
         (SELECT
             the_user,
@@ -125,52 +195,33 @@ create view jaaql__user_latest_credentials as (
         jaaql__user_ip juip ON juip.the_user = julp.id
 );
 
-create table jaaql__node (
-    name varchar(255) primary key not null,
-    description varchar(255) not null,
-    port integer not null,
-	address varchar(255) not null,
-	interface_class varchar(20) not null,
-	deleted timestamptz
-);
+INSERT INTO jaaql__application (name, description) VALUES ('console', 'The console application');
+INSERT INTO jaaql__application (name, description) VALUES ('manager', 'The administration panel for JAAQL');
+INSERT INTO jaaql__application (name, description) VALUES ('playground', 'Allows testing for new JAAQL/JEQL features');
 
-CREATE UNIQUE INDEX jaaql__node_unq
-    ON jaaql__node (address, port) WHERE (deleted is null);
-
-create table jaaql__database (
-    node varchar(255) not null references jaaql__node on update cascade on delete cascade,
-	name postgres_table_view_name not null,
-	deleted timestamptz,
-	PRIMARY KEY (node, name)
-);
-
-INSERT INTO jaaql__application (name, description, url) VALUES ('console', 'The console application', '');
-INSERT INTO jaaql__application (name, description, url) VALUES ('manager', 'The administration panel for JAAQL', '');
-INSERT INTO jaaql__application (name, description, url) VALUES ('playground', 'Allows testing for new JAAQL/JEQL features', '');
+INSERT INTO jaaql__application_tenant (url, application, tenant) VALUES ('', 'console', 'default');
+INSERT INTO jaaql__application_tenant (url, application, tenant) VALUES ('', 'manager', 'default');
+INSERT INTO jaaql__application_tenant (url, application, tenant) VALUES ('', 'playground', 'default');
 
 create table jaaql__application_dataset (
-    application varchar(64) not null,
+    application postgres_table_view_name not null,
     name varchar(64) not null,
     description varchar(255) not null,
+    is_user_dataset boolean,
+    check (is_user_dataset is null or is_user_dataset),
     PRIMARY KEY (application, name),
     FOREIGN KEY (application) references jaaql__application on delete cascade on update cascade
 );
+CREATE UNIQUE INDEX jaaql__application_dataset_unq ON jaaql__application_dataset (application, is_user_dataset);
 INSERT INTO jaaql__application_dataset (application, name, description) VALUES ('console', 'node', 'The node which the console will run against');
 INSERT INTO jaaql__application_dataset (application, name, description) VALUES ('manager', 'node', 'A jaaql node which the app can manage');
 INSERT INTO jaaql__application_dataset (application, name, description) VALUES ('playground', 'node', 'A jaaql node which the app can manage');
 
-create table jaaql__application_configuration (
-    application varchar(64) not null,
-    name varchar(64) not null,
-    description varchar(256) not null,
-    PRIMARY KEY (application, name),
-    FOREIGN KEY (application) references jaaql__application on delete cascade on update cascade
-);
 INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('manager', 'host', 'The host jaaql node');
 INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('playground', 'host', 'The host jaaql node');
 
 create table jaaql__assigned_database (
-    application varchar(64) not null,
+    application postgres_table_view_name not null,
     configuration varchar(64) not null,
     database postgres_table_view_name not null,
     node varchar(255) not null,
@@ -218,7 +269,7 @@ create view jaaql__complete_configuration as (
 );
 
 create table jaaql__authorization_configuration (
-    application varchar(64) not null references jaaql__application on delete cascade on update cascade,
+    application postgres_table_view_name not null references jaaql__application on delete cascade on update cascade,
     configuration varchar(64) not null,
     role        varchar(254) not null default '',
     primary key (application, configuration, role),
@@ -226,7 +277,10 @@ create table jaaql__authorization_configuration (
 );
 
 create table jaaql__default_role (
-    the_role varchar(255) PRIMARY KEY not null
+    application postgres_table_view_name not null,
+    FOREIGN KEY (application) REFERENCES jaaql__application,
+    the_role varchar(255) not null,
+    PRIMARY KEY (application, the_role)
 );
 
 create table jaaql__credentials_node (
@@ -235,11 +289,8 @@ create table jaaql__credentials_node (
     role varchar(254),
     deleted timestamptz,
     db_encrypted_username varchar(254) not null,
-	db_encrypted_password varchar(254) not null,
 	precedence int not null default 0
 );
-CREATE UNIQUE INDEX jaaql__credentials_node_unq
-    ON jaaql__credentials_node (node, role) WHERE (deleted is null);
 
 create table jaaql__log (
     id uuid primary key not null default gen_random_uuid(),
@@ -272,8 +323,8 @@ create view jaaql__my_logs as (
         log.duration_ms,
         log.encrypted_exception
     FROM
-         jaaql__log log
-    INNER JOIN jaaql__user us ON us.id = log.the_user AND us.deleted is null AND us.email = current_user
+        jaaql__log log
+    INNER JOIN jaaql__user us ON us.id = log.the_user AND us.deleted is null AND us.id = current_user or us.alias = current_user
     INNER JOIN jaaql__user_ip ip ON log.ip = ip.id
     ORDER BY occurred DESC
 );
@@ -285,8 +336,8 @@ create view jaaql__my_ips as (
         first_use,
         most_recent_use
     FROM
-         jaaql__user_ip ip
-    INNER JOIN jaaql__user us ON us.id = ip.the_user AND us.deleted is null AND us.email = current_user
+        jaaql__user_ip ip
+    INNER JOIN jaaql__user us ON us.id = ip.the_user AND us.deleted is null AND us.id = current_user or us.alias = current_user
     ORDER BY first_use DESC
 );
 grant select on jaaql__my_ips to public;
@@ -301,7 +352,9 @@ create view jaaql__my_configurations as (
     FROM
          jaaql__application_configuration ac
     INNER JOIN jaaql__authorization_configuration auth_conf ON ac.name = auth_conf.configuration AND ac.application = auth_conf.application AND (auth_conf.role = '' or pg_has_role(auth_conf.role, 'MEMBER'))
-    INNER JOIN jaaql__application ap on ap.name = ac.application);
+    INNER JOIN jaaql__application ap on ap.name = ac.application
+    INNER JOIN jaaql__user ju ON ju.id = current_user or ju.alias = current_user
+    INNER JOIN jaaql__application_tenant jat ON jat.tenant = ju.tenant AND ac.application = jat.application);
 grant select on jaaql__my_configurations to public;
 
 create view jaaql__my_applications as (
@@ -309,9 +362,11 @@ create view jaaql__my_applications as (
         DISTINCT
         ap.name,
         ap.description,
-        ap.url
+        at.url
     FROM jaaql__application ap
     INNER JOIN jaaql__my_configurations mc ON mc.application = ap.name
+    INNER JOIN jaaql__user ju on ju.id = current_user or ju.alias = current_user
+    INNER JOIN jaaql__application_tenant at ON at.application = ap.name AND at.tenant = ju.tenant
 );
 grant select on jaaql__my_applications to public;
 
@@ -332,7 +387,6 @@ create view jaaql__their_authorized_configurations as (
         comc.dataset,
         comc.dataset_description,
         jcred.db_encrypted_username as username,
-        jcred.db_encrypted_password as password,
         comc.database,
         comc.node as node,
         jcred.id as cred_id,
@@ -352,8 +406,7 @@ create view jaaql__their_single_authorized_wildcard_node as (
         jn.port,
         cred.role,
         cred.precedence,
-        cred.db_encrypted_username as username,
-        cred.db_encrypted_password as password
+        cred.db_encrypted_username as username
     FROM
         jaaql__credentials_node cred
     INNER JOIN
@@ -435,9 +488,12 @@ create view jaaql__email_templates as (
         jet.allow_reset_password,
         jet.data_validation_table,
         jet.data_validation_view,
-        jet.recipient_validation_view
+        jet.recipient_validation_view,
+        jetta.tenant
     FROM jaaql__email_template jet
-        INNER JOIN jaaql__email_account jea ON jea.id = jet.account
+        INNER JOIN jaaql__email_template_tenant_account jetta on jet.id = jetta.template
+        INNER JOIN jaaql__email_account jea ON jea.id = jetta.account
+
 );
 
 create table jaaql__email_history (
@@ -512,7 +568,7 @@ create or replace view jaaql__my_email_history as (
     FROM jaaql__email_history jeh
     INNER JOIN jaaql__email_template jet on jeh.template = jet.id
     INNER JOIN jaaql__user ju on jeh.sender = ju.id
-    WHERE ju.email = current_user
+    WHERE ju.id = current_user or ju.alias = current_user
 );
 grant select on jaaql__my_email_history to public;
 

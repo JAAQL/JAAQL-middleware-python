@@ -5,7 +5,7 @@ from jaaql.documentation.documentation_shared import RES__totp_mfa_nullable, ARG
     ARG_RES__deletion_key, set_nullable, ARG_RES__application_body, ARG_RES__email, rename_arg,\
     ARG_RES__reference_dataset, ARG_RES__dataset_description, combine_response, ARG_RES__username,\
     ARG_RES__application, ARG_RES__email_template, ARG_RES__parameters, ARG_RES__already_signed_up_email_template, \
-    ARG_RES__occurred, EXAMPLE__email_template_name, EXAMPLE__occurred, ARG_RES__reset_password_email_template
+    ARG_RES__occurred, EXAMPLE__email_template_name, EXAMPLE__occurred, ARG_RES__reset_password_email_template, ARG_RES__tenant
 
 TITLE = "JAAQL API"
 DESCRIPTION = "Collection of methods in the JAAQL API"
@@ -48,9 +48,11 @@ DOCUMENTATION__sign_up_request_invite = SwaggerDocumentation(
         body=[
             ARG_RES__email,
             ARG_RES__parameters,
+            rename_arg(ARG_RES__parameters, KEY__signup_user_singleton_attributes, "Attributes that are attached to the user"),
             ARG_RES__email_template,
             ARG_RES__already_signed_up_email_template,
-            set_nullable(ARG_RES__application, "Does email template have a path")
+            ARG_RES__application,
+            ARG_RES__tenant
         ],
         response=[
             SwaggerResponse(
@@ -378,7 +380,8 @@ DOCUMENTATION__reset_password = SwaggerDocumentation(
         body=[
             ARG_RES__email,
             ARG_RES__reset_password_email_template,
-            set_nullable(ARG_RES__application, "Does email template have a path"),
+            ARG_RES__application,
+            ARG_RES__tenant,
             ARG_RES__parameters
         ],
         response=[

@@ -179,6 +179,39 @@ ARG_RES__node_label = SwaggerArgumentResponse(
     required=True
 )
 
+ARG_RES__authorization_node_credentials = [
+    SwaggerArgumentResponse(
+        name=KEY__username,
+        description="The username for the node",
+        arg_type=str,
+        example=["postgres", "user"],
+        required=True
+    ),
+    SwaggerArgumentResponse(
+        name=KEY__password,
+        description="The password for the node",
+        arg_type=str,
+        example=["123456", "pa55word"],
+        required=True
+    ),
+]
+
+CONDITION__super_user_credentials = "Used to create databases"
+ARG_RES__super_user_username = set_nullable(
+    rename_arg(ARG_RES__authorization_node_credentials[0], KEY__pooling_super_user_username, "Pooling super user username"),
+    CONDITION__super_user_credentials)
+ARG_RES__authorization_node_super_user_credentials = [
+    ARG_RES__super_user_username,
+    set_nullable(rename_arg(ARG_RES__authorization_node_credentials[1], KEY__pooling_super_user_password, "Pooling super user password"),
+                 CONDITION__super_user_credentials)
+]
+
+ARG_RES__super_user_pooling_username = rename_arg(ARG_RES__authorization_node_credentials[0], KEY__pooling_super_user_username,
+                                                  "Pooling super user username")
+
+ARG_RES__super_user_pooling_password = rename_arg(ARG_RES__authorization_node_credentials[1], KEY__pooling_super_user_password,
+                                                  "Pooling super user password")
+
 ARG_RES__node_base = [
     SwaggerArgumentResponse(
         name=KEY__port,
@@ -193,7 +226,8 @@ ARG_RES__node_base = [
         arg_type=str,
         example=[EXAMPLE__address, "184.219.247.60"],
         required=True
-    )
+    ),
+    ARG_RES__super_user_pooling_username
 ]
 
 ARG_RES__deleted = SwaggerArgumentResponse(
@@ -229,7 +263,8 @@ DOCUMENTATION__nodes = SwaggerDocumentation(
                          condition="Imputed from the node name if not required",
                          example=["The PROD library node", "The office QA node"],
                          required=False,
-                     )
+                     ),
+                     ARG_RES__super_user_pooling_password
                  ],
             method=REST__POST
         ),
@@ -306,7 +341,7 @@ DOCUMENTATION__databases = SwaggerDocumentation(
         SwaggerMethod(
             name="Add Database",
             description="Add a new database",
-            arguments=ARG_RES__database_base + [ARG_RES__database_create],
+            arguments=ARG_RES__database_base + [ARG_RES__database_create, ARG_RES__authorization_node_pooling_super_user_credentials],
             method=REST__POST
         ),
         SwaggerMethod(
@@ -320,7 +355,7 @@ DOCUMENTATION__databases = SwaggerDocumentation(
                 description="List of databases",
                 response=gen_filtered_records(
                     KEY__database,
-                    [ARG_RES__when_deleted] + ARG_RES__database_base
+                    [ARG_RES__when_deleted, ARG_RES__super_user_pooling_username] + ARG_RES__database_base
                 )
             )
         ),
@@ -357,18 +392,7 @@ DOCUMENTATION__applications = SwaggerDocumentation(
             description="Add a new application",
             method=REST__POST,
             body=ARG_RES__application_body + [
-                ARG_RES__public_username,
-                SwaggerArgumentResponse(
-                    name=KEY__default_database,
-                    description="A default database if provided. Will create default configurations giving access to this and set the public user as "
-                                "a default role and set the precedence of the public user to -1 so there are no precedence clashes. Please use the "
-                                "format 'node/dbname' for input for example 'host/jaaql'. If no node is provided, the node is assumed as 'host'. "
-                                "The database will be created if the host exists and the database does not exist. ",
-                    arg_type=str,
-                    example=["host/jaaql"],
-                    required=False,
-                    condition="Is a default database supplied"
-                )
+                ARG_RES__public_username
             ]
         ),
         SwaggerMethod(
@@ -699,23 +723,6 @@ DOCUMENTATION__authorization_configuration_confirm_deletion = SwaggerDocumentati
     )
 )
 
-ARG_RES__authorization_node_credentials = [
-    SwaggerArgumentResponse(
-        name=KEY__username,
-        description="The username for the node",
-        arg_type=str,
-        example=["postgres", "user"],
-        required=True
-    ),
-    SwaggerArgumentResponse(
-        name=KEY__password,
-        description="The password for the node",
-        arg_type=str,
-        example=["123456", "pa55word"],
-        required=True
-    ),
-]
-
 ARG_RES__authorization_node_key = [
     ARG_RES__reference_node,
     ARG_RES__role
@@ -738,19 +745,19 @@ DOCUMENTATION__authorization_node = SwaggerDocumentation(
             description="Add a node and it's credentials for use with a specific role",
             method=REST__POST,
             body=ARG_RES__authorization_node_key + [ARG_RES__authorization_node_precedence] +
-                 ARG_RES__authorization_node_credentials,
+                 ARG_RES__authorization_node_credentials + [ARG_RES__is_pooling_super_user],
         ),
         SwaggerMethod(
             name="Fetch node credentialed roles",
             description="Fetch a list of roles which have credentials for a node",
             method=REST__GET,
-            arguments=gen_arg_res_sort_pageable(KEY__node, KEY__role, EXAMPLE__node_label, EXAMPLE__role) + [
-                ARG_RES__deleted],
+            arguments=gen_arg_res_sort_pageable(KEY__node, KEY__role, EXAMPLE__node_label, EXAMPLE__role) + [ARG_RES__deleted],
             response=SwaggerResponse(
                 description="A list of node authorizations and associated roles",
                 response=gen_filtered_records(
                     "node authorization",
-                    ARG_RES__authorization_node_key + [ARG_RES__authorization_node_precedence] + [ARG_RES__when_deleted]
+                    ARG_RES__authorization_node_key + [ARG_RES__authorization_node_precedence] + [ARG_RES__when_deleted,
+                                                                                                  ARG_RES__is_pooling_super_user]
                 )
             )
         ),
@@ -1057,8 +1064,8 @@ ARG_RES__email_template_body = [
     SwaggerArgumentResponse(
         name=KEY__data_validation_view,
         description="A view which is used to select the data from after insertion into the data validation table. Cannot be present if the data "
-        "validation table is null. If null and data validation table is present, data will be selected from the data validation table. Data is "
-        "selected using the primary key of the data validation table from which one and only one row must be returned from the view",
+                    "validation table is null. If null and data validation table is present, data will be selected from the data validation table. Data is "
+                    "selected using the primary key of the data validation table from which one and only one row must be returned from the view",
         arg_type=str,
         example=["my_data_validation_view"],
         required=False,
@@ -1073,7 +1080,9 @@ ARG_RES__email_template_body = [
         example=["my_recipient_validation_view"],
         required=False,
         condition="Are emails sent to other users"
-    )
+    ),
+    ARG_RES__reference_node,
+    ARG_RES__reference_database
 ]
 
 DOCUMENTATION__email_templates = SwaggerDocumentation(
@@ -1097,7 +1106,7 @@ DOCUMENTATION__email_templates = SwaggerDocumentation(
             name="Register email template",
             description="Registers an email template",
             method=REST__POST,
-            body=ARG_RES__email_template_body
+            body=ARG_RES__email_template_body,
         ),
         SwaggerMethod(
             name="Unregister email template",

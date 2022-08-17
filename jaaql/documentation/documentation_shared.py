@@ -23,6 +23,15 @@ ARG_RES__database_name = SwaggerArgumentResponse(
     required=True
 )
 
+ARG_RES__tenant = SwaggerArgumentResponse(
+    name=KEY__tenant,
+    description="The tenant of the user/application",
+    example=["SQMI"],
+    arg_type=str,
+    required=False,
+    condition="To use the default tenant or not"
+)
+
 ARG_RES__deletion_key = SwaggerArgumentResponse(
     name=KEY__deletion_key,
     description="Single use deletion key",
@@ -362,12 +371,36 @@ ARG_RES__application_default_reset_password_template = SwaggerArgumentResponse(
     condition="If a forgot password template is being used"
 )
 
+ARG_RES__application_default_database = SwaggerArgumentResponse(
+    name=KEY__default_database,
+    description="A default database if provided. Will create default configurations giving access to this and set the public user as "
+                "a default role and set the precedence of the public user to -1 so there are no precedence clashes. Please use the "
+                "format 'node/dbname' for input for example 'host/jaaql'. If no node is provided, the node is assumed as 'host'. "
+                "The database will be created if the host exists and the database does not exist. A user table is also created with the format "
+                "jaaql__app_name_user with a single attribute, the id. The user table is not created here if the user info default database is set",
+    arg_type=str,
+    example=["host/jaaql"],
+    required=False,
+    condition="Is a default database supplied"
+)
+
+ARG_RES__application_default_database_user_info = SwaggerArgumentResponse(
+    name=KEY__default_database_user_info,
+    description="In order to be supplied, default database must also be supplied. Allows the user info table to be set at a node level so multiple"
+    " applications can share it. A table is created in here with the name jaaql__user with a single attribute, the id",
+    arg_type=str,
+    example=["host/shared"],
+    required=False,
+    condition="Is supplied"
+)
 
 ARG_RES__application_body = [ARG_RES__application_name, ARG_RES__application_description, ARG_RES__application_uri,
                              ARG_RES__application_default_email_signup_template, ARG_RES__application_default_email_already_signed_up_template,
-                             ARG_RES__application_default_reset_password_template]
+                             ARG_RES__application_default_reset_password_template, ARG_RES__application_default_database,
+                             ARG_RES__application_default_database_user_info]
 
 CONDITION__pre_auth = "Is during 1st stage authentication"
+CONDITION__pre_auth_tenant = "Is during 1st stage authentication and is the non default tenant being used"
 
 ARG_RES__username = SwaggerArgumentResponse(
     name=KEY__username,
@@ -388,6 +421,8 @@ DOCUMENTATION__oauth_token = SwaggerDocumentation(
         method=REST__POST,
         body=[
             set_nullable(ARG_RES__username, CONDITION__pre_auth),
+            set_nullable(ARG_RES__jaaql_password, CONDITION__pre_auth),
+            set_nullable(ARG_RES__tenant, CONDITION__pre_auth_tenant),
             set_nullable(ARG_RES__jaaql_password, CONDITION__pre_auth),
             ARG_RES__mfa_key,
             ARG_RES__expecting_mfa_key

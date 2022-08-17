@@ -36,7 +36,7 @@ def try_encode(salt: Union[str, bytes]) -> bytes:
 
 
 def create_interface(config, address: str, port: int, database: str, username: str, password: str,
-                     is_jaaql_user: bool = False, dev_mode: bool = False):
+                     is_jaaql_user: bool = False, dev_mode: bool = False, pooled: bool = True):
     interface = config[KEY_CONFIG__db][KEY_CONFIG__interface]
     supported = {
         INTERFACE__postgres_key: INTERFACE__postgres_class
@@ -47,7 +47,7 @@ def create_interface(config, address: str, port: int, database: str, username: s
 
     # interface_class = getattr(db, supported[interface])  To implement later for accessing non postgres databases
     interface_class = DBPGInterface
-    instance = interface_class(config, address, port, database, username, password, is_jaaql_user, dev_mode)
+    instance = interface_class(config, address, port, database, username, password, is_jaaql_user, dev_mode, pooled)
 
     return instance
 
