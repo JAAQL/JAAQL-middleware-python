@@ -68,7 +68,7 @@ create table jaaql__user (
     application varchar(64),
     check (not is_public = (public_credentials is null)),
     check (not is_public = (application is null)),
-    FOREIGN KEY (application) REFERENCES jaaql__application ON DELETE CASCADE ON UPDATE CASCADE
+    FOREIGN KEY (application) REFERENCES jaaql__application ON DELETE SET NULL ON UPDATE CASCADE
 );
 CREATE UNIQUE INDEX jaaql__user_unq_email ON jaaql__user (email) WHERE (deleted is null);
 CREATE UNIQUE INDEX jaaql__user_public_application ON jaaql__user (application) WHERE (deleted is null);
@@ -383,12 +383,18 @@ END
 $$ language plpgsql;
 
 --Same security concerns as above
-create function jaaql__delete_user(delete_email text) returns void as
+create function jaaql__delete_application(the_application text) returns void as
 $$
+DECLARE
+    fetched_username text;
 BEGIN
-    EXECUTE 'DROP ROLE ' || quote_ident(delete_email);
-    UPDATE jaaql__user SET deleted = current_timestamp WHERE email = delete_email;
-    UPDATE jaaql__credentials_node SET deleted = current_timestamp WHERE role = delete_email;
+    SELECT split_part(public_credentials, ':', 1) as username into fetched_username FROM jaaql__user WHERE application = the_application;
+    EXECUTE 'DROP ROLE ' || quote_ident(fetched_username);
+    DELETE FROM jaaql__authorization_configuration WHERE role = fetched_username;
+    UPDATE jaaql__user SET deleted = current_timestamp, application = null, public_credentials = null, is_public = false WHERE application = the_application;
+    UPDATE jaaql__credentials_node SET deleted = current_timestamp WHERE role = fetched_username;
+    DELETE FROM jaaql__application WHERE name = the_application;
+    DELETE FROM jaaql__default_role WHERE the_role = fetched_username;
 END
 $$ language plpgsql;
 

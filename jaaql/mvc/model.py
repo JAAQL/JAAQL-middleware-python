@@ -611,6 +611,16 @@ class JAAQLModel(BaseJAAQLModel):
 
         # TODO do databases. Link the used database auth with the log
 
+    def get_host_connection_for_db(self, user_id, database: str = DB__jaaql):
+        params = {
+            KEY__user_id: user_id,
+            KEY__node: NODE__host_node
+        }
+        auth = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__role_connection_sel, params,
+                                                    as_objects=True, decrypt_columns=[KEY__username, KEY__password],
+                                                    encryption_key=self.get_db_crypt_key())
+        return create_interface(self.config, auth[KEY__address], auth[KEY__port], database, auth[KEY__username], auth[KEY__password])
+
     def verify_jwt(self, jwt_token: str, ip_address: str, was_refresh: bool, profiler: Profiler, bypass: str = None) -> [DBInterface, str, str]:
         username = None
 
@@ -647,20 +657,8 @@ class JAAQLModel(BaseJAAQLModel):
                     raise HttpStatusException(ERR__new_ip, HTTPStatus.UNAUTHORIZED)
                 profiler.perform_profile("Verify ip")
 
-        params = {
-            KEY__user_id: user[KEY__id],
-            KEY__node: NODE__host_node
-        }
-        auth = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__role_connection_sel, params,
-                                                    as_objects=True, decrypt_columns=[KEY__username, KEY__password],
-                                                    encryption_key=self.get_db_crypt_key())
-        profiler.perform_profile("Select auth")
-
-        iv = user[KEY__totp_iv]
-        interface = create_interface(self.config, auth[KEY__address], auth[KEY__port], DB__jaaql, auth[KEY__username], auth[KEY__password]
-                                     ), user[KEY__id], ip_id, iv, user[ATTR__password_hash], last_totp, username, user[KEY__is_public]
-        profiler.perform_profile("Interface creation")
-        return interface
+        return self.get_host_connection_for_db(user[KEY__id]), user[KEY__id], ip_id, iv, user[ATTR__password_hash], last_totp, username, \
+                 user[KEY__is_public]
 
     def add_application(self, inputs: dict, jaaql_connection: DBInterface, ip_address: str, user_id: str, response: JAAQLResponse):
         public_username = inputs.pop(KEY__public_username)
@@ -1728,7 +1726,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         return ret
 
-    def obtain_connection(self, inputs: dict, jaaql_connection: DBInterface):
+    def obtain_connection(self, inputs: dict, jaaql_connection: DBInterface, user_id: str):
         was_connection_none = inputs.get(KEY__connection, None) is None
         connection = inputs.get(KEY__connection, None)
 
@@ -1736,7 +1734,10 @@ class JAAQLModel(BaseJAAQLModel):
         obj_key = self.vault.get_obj(VAULT_KEY__jwt_obj_crypt_key)
 
         if connection is None:
-            connection = jaaql_connection
+            if inputs.get(KEY__database) is not None and user_id is not None:
+                connection = self.get_host_connection_for_db(user_id, inputs[KEY__database])
+            else:
+                connection = jaaql_connection
         else:
             jwt_decoded = crypt_utils.jwt_decode(jwt_key, connection, JWT_PURPOSE__connection)
             if not jwt_decoded:
@@ -1759,10 +1760,11 @@ class JAAQLModel(BaseJAAQLModel):
         inputs[KEY_query] = QUERY__my_roles
         return self.submit(inputs, jaaql_connection)[RET__rows]
 
-    def submit(self, inputs: dict, jaaql_connection: DBInterface, force_transactional: bool = False):
-        connection, was_connection_none = self.obtain_connection(inputs, jaaql_connection)
+    def submit(self, inputs: dict, jaaql_connection: DBInterface, force_transactional: bool = False, user_id: str = None):
+        connection, was_connection_none = self.obtain_connection(inputs, jaaql_connection, user_id)
 
         if KEY__database in inputs:
+            was_connection_none = False
             inputs.pop(KEY__database)
 
         caught_ex = None

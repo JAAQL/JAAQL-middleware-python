@@ -316,12 +316,12 @@ class JAAQLController(BaseJAAQLController):
             return self.model.config_assigned_database_roles(http_inputs, jaaql_connection)
 
         @self.cors_route('/submit', DOCUMENTATION__submit)
-        def submit(http_inputs: dict, jaaql_connection: DBInterface):
-            return self.model.submit(http_inputs, jaaql_connection)
+        def submit(http_inputs: dict, jaaql_connection: DBInterface, user_id: str):
+            return self.model.submit(http_inputs, jaaql_connection, user_id=user_id)
 
         @self.cors_route('/submit-file', DOCUMENTATION__submit_file)
-        def submit_file(http_inputs: dict, jaaql_connection: DBInterface):
-            return self.model.submit(http_inputs, jaaql_connection, True)
+        def submit_file(http_inputs: dict, jaaql_connection: DBInterface, user_id: str):
+            return self.model.submit(http_inputs, jaaql_connection, True, user_id)
 
         @self.cors_route('/emails/allowed_recipients', DOCUMENTATION__email_allowed_recipients)
         def emails_allowed_recipients(inputs: dict, username: str):

@@ -16,7 +16,7 @@ QUERY__fetch_my_applications = "SELECT * FROM jaaql__my_applications"
 QUERY__application_set_url = "UPDATE jaaql__application SET url = :url WHERE name = :name"
 QUERY__application_ins = "INSERT INTO jaaql__application (name, description, url, default_email_signup_template, default_email_already_signed_up_template, default_reset_password_template) VALUES (:name, :description, :url, :default_email_signup_template, :default_email_already_signed_up_template, :default_reset_password_template)"
 QUERY__application_setup_host = "INSERT INTO jaaql__assigned_database (application, configuration, database, node, dataset) VALUES (:application, 'host', '%s', '%s', 'node')" % (DB__jaaql, NODE__host_node)
-QUERY__application_del = "DELETE FROM jaaql__application WHERE name = :name"
+QUERY__application_del = "SELECT jaaql__delete_application(:name)"
 QUERY__application_sel = "SELECT ja.name, ja.description, ja.url, ja.created, jet.name as default_email_signup_template, jet2.name as default_email_already_signed_up_template, jet3.name as default_reset_password_template FROM jaaql__application ja LEFT JOIN jaaql__email_template jet ON jet.id = ja.default_email_signup_template AND jet.deleted is NULL LEFT JOIN jaaql__email_template jet2 ON jet2.id = ja.default_email_already_signed_up_template AND jet2.deleted is NULL LEFT JOIN jaaql__email_template jet3 ON jet3.id = ja.default_reset_password_template AND jet3.deleted is NULL"
 QUERY__application_count = "SELECT COUNT(*) FROM jaaql__application"
 QUERY__application_upd = "UPDATE jaaql__application SET name = coalesce(:new_name, name), description = coalesce(:new_description, description), url = coalesce(:new_url, url) WHERE name = :name"
