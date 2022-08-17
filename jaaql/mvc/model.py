@@ -657,8 +657,8 @@ class JAAQLModel(BaseJAAQLModel):
                     raise HttpStatusException(ERR__new_ip, HTTPStatus.UNAUTHORIZED)
                 profiler.perform_profile("Verify ip")
 
-        return self.get_host_connection_for_db(user[KEY__id]), user[KEY__id], ip_id, iv, user[ATTR__password_hash], last_totp, username, \
-                 user[KEY__is_public]
+        hc = self.get_host_connection_for_db(user[KEY__id])
+        return hc, user[KEY__id], ip_id, user[KEY__totp_iv], user[ATTR__password_hash], last_totp, username, user[KEY__is_public]
 
     def add_application(self, inputs: dict, jaaql_connection: DBInterface, ip_address: str, user_id: str, response: JAAQLResponse):
         public_username = inputs.pop(KEY__public_username)
