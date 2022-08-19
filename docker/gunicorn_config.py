@@ -1,4 +1,4 @@
-workers = 5
+workers = 1
 worker_class = "gevent"
 worker_connections = 100
 enable_stdio_inheritance = True

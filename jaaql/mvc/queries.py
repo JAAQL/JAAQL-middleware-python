@@ -107,6 +107,7 @@ QUERY__user_log_count = "SELECT COUNT(*) FROM jaaql__my_logs"
 QUERY__my_configs = "SELECT * FROM jaaql__my_configurations WHERE application = :application or :application is null"
 QUERY__my_configs_where = "SELECT * FROM jaaql__my_configurations WHERE application = :application AND configuration = :configuration"
 QUERY__create_database = "create database \"%s\""
+QUERY__drop_db_connections = "SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE pg_stat_activity.datname = :database AND pid <> pg_backend_pid();"
 QUERY__drop_database = "drop database \"%s\""
 QUERY__node_single_credential_sel = """
 SELECT

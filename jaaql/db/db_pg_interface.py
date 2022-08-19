@@ -22,10 +22,9 @@ ERR__command_not_allowed = "Command not allowed. Please use one of " + str(ALLOW
 class DBPGInterface(DBInterface):
 
     HOST_POOL = {}
-    HOST_USER = None
+    HOST_USER = {}
 
-    def __init__(self, config, host: str, port: int, db_name: str, username: str, password: str, is_jaaql_user: bool,
-                 dev_mode: bool):
+    def __init__(self, config, host: str, port: int, db_name: str, username: str, password: str, is_jaaql_user: bool, dev_mode: bool):
         super().__init__(config, host, username, dev_mode)
 
         self.output_query_exceptions = config["DEBUG"]["output_query_exceptions"].lower() == "true"
@@ -48,11 +47,13 @@ class DBPGInterface(DBInterface):
             if db_name is None:
                 db_name = ""
 
+            self.db_name = db_name
+
             if self.is_host_pool:
                 if db_name.lower() not in DBPGInterface.HOST_POOL:
                     DBPGInterface.HOST_POOL[db_name.lower()] = ConnectionPool(conn_str, min_size=PGCONN__min_conns,
                                                                               max_size=PGCONN__max_conns_jaaql_user, max_lifetime=60 * 30)
-                    DBPGInterface.HOST_USER = self.username
+                    DBPGInterface.HOST_USER[db_name.lower()] = self.username
                 self.pg_pool = DBPGInterface.HOST_POOL[db_name.lower()]
             else:
                 self.pg_pool = ConnectionPool(conn_str, min_size=1, max_size=5)
@@ -65,7 +66,7 @@ class DBPGInterface(DBInterface):
     def get_conn(self):
         try:
             conn = self.pg_pool.getconn()
-            if DBPGInterface.HOST_USER != self.username and self.is_host_pool:
+            if DBPGInterface.HOST_USER[self.db_name.lower()] != self.username and self.is_host_pool:
                 with conn.cursor() as cursor:
                     cursor.execute("SET SESSION AUTHORIZATION '" + self.username + "';")
                     self.commit(conn)
@@ -78,11 +79,17 @@ class DBPGInterface(DBInterface):
         return conn
 
     def put_conn(self, conn):
-        if self.is_host_pool and DBPGInterface.HOST_USER != self.username:
+        if self.is_host_pool and DBPGInterface.HOST_USER[self.db_name.lower()] != self.username:
             with conn.cursor() as cursor:
                 cursor.execute("RESET SESSION AUTHORIZATION;")
                 self.commit(conn)
         return self.pg_pool.putconn(conn)
+
+    @staticmethod
+    def close_with_name(name):
+        if name.lower() in DBPGInterface.HOST_POOL:
+            DBPGInterface.HOST_POOL.pop(name.lower()).close()
+            DBPGInterface.HOST_USER.pop(name.lower())
 
     def close(self, force: bool = False):
         if not self.is_host_pool or force:
@@ -90,8 +97,8 @@ class DBPGInterface(DBInterface):
             print("Closing host pool")
 
             if self.is_host_pool:
-                DBPGInterface.HOST_POOL = None
-                DBPGInterface.HOST_USER = None
+                DBPGInterface.HOST_POOL = {}
+                DBPGInterface.HOST_USER = {}
                 print("Wiping host pool")
 
     def execute_query(self, conn, query, parameters=None):
@@ -99,7 +106,7 @@ class DBPGInterface(DBInterface):
             try:
                 with conn.cursor() as cursor:
                     do_prepare = False
-                    if DBPGInterface.HOST_USER != self.username and self.username != USERNAME__jaaql:
+                    if DBPGInterface.HOST_USER[self.db_name.lower()] != self.username and self.username != USERNAME__jaaql:
                         do_prepare = True
                         if not any([query.upper().startswith(ok_command) for ok_command in ALLOWABLE_COMMANDS]):
                             raise HttpStatusException(ERR__command_not_allowed)
@@ -113,7 +120,7 @@ class DBPGInterface(DBInterface):
                     else:
                         return [desc[0] for desc in cursor.description], cursor.fetchall()
             except OperationalError as ex:
-                if ex.sqlstate.startswith("08"):
+                if ex.sqlstate is not None and ex.sqlstate.startswith("08"):
                     traceback.print_exc()
                     self.pg_pool.putconn(conn)
                     self.pg_pool.check()

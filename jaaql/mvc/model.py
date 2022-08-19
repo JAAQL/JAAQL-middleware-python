@@ -2,6 +2,7 @@ import random
 import platform
 
 from jaaql.db.db_interface import DBInterface, RET__rows
+from jaaql.db.db_pg_interface import DBPGInterface
 from jaaql.email.email_manager_service import EmailAttachment
 from jaaql.mvc.base_model import BaseJAAQLModel, CONFIG_KEY__security, CONFIG_KEY_SECURITY__mfa_label, \
     CONFIG_KEY_SECURITY__mfa_issuer, VAULT_KEY__jwt_obj_crypt_key, VAULT_KEY__jwt_crypt_key, DIR__apps, SEPARATOR__dir
@@ -740,6 +741,9 @@ class JAAQLModel(BaseJAAQLModel):
                                                        decrypt_columns=[KEY__username, KEY__password])
             interface = create_interface(self.config, res[KEY__address], res[KEY__port], DB__empty,
                                          res[KEY__username], res[KEY__password])
+            if parameters_drop[KEY__node] == NODE__host_node:
+                DBPGInterface.close_with_name(parameters_drop[KEY__database_name])
+                execute_supplied_statement(interface, QUERY__drop_db_connections, {KEY__database: parameters_drop[KEY__database_name]})
             execute_supplied_statement(interface, QUERY__drop_database % parameters_drop[KEY__database_name])
 
     def get_applications(self, inputs: dict, jaaql_connection: DBInterface):
@@ -1760,7 +1764,7 @@ class JAAQLModel(BaseJAAQLModel):
         inputs[KEY_query] = QUERY__my_roles
         return self.submit(inputs, jaaql_connection)[RET__rows]
 
-    def submit(self, inputs: dict, jaaql_connection: DBInterface, force_transactional: bool = False, user_id: str = None):
+    def handle_submission(self, inputs: dict, jaaql_connection: DBInterface, force_transactional: bool = False, user_id: str = None):
         connection, was_connection_none = self.obtain_connection(inputs, jaaql_connection, user_id)
 
         if KEY__database in inputs:
@@ -1781,3 +1785,8 @@ class JAAQLModel(BaseJAAQLModel):
             raise caught_ex
 
         return to_ret
+
+    def submit(self, inputs: dict, jaaql_connection: DBInterface, force_transactional: bool = False, user_id: str = None):
+        if isinstance(inputs, dict):
+            inputs = [inputs]
+        return [self.handle_submission(cur, jaaql_connection, force_transactional, user_id) for cur in inputs]
