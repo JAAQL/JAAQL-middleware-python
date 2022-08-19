@@ -13,7 +13,6 @@ import os
 from queue import Queue
 from jaaql.utilities.utils import time_delta_ms, Profiler
 from flask import Response, Flask, request, jsonify, current_app
-from jaaql.documentation.documentation_shared import ENDPOINT__refresh
 from jaaql.constants import *
 from jaaql.mvc.model import JAAQLModel
 from jaaql.mvc.response import JAAQLResponse
@@ -25,18 +24,16 @@ from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMet
 from jaaql.exceptions.http_status_exception import *
 
 ARG__http_inputs = "http_inputs"
-ARG__is_public = "is_public"
-ARG__sql_inputs = "sql_inputs"
-ARG__totp_iv = "totp_iv"
 ARG__user_id = "user_id"
-ARG__jaaql_connection = "jaaql_connection"
 ARG__ip_address = "ip_address"
 ARG__response = "response"
-ARG__oauth_token = "oauth_token"
-ARG__password_hash = "password_hash"
-ARG__last_totp = "last_totp"
 ARG__username = "username"
 ARG__profiler = "profiler"
+ARG__tenant = "tenant"
+ARG__auth_token = "auth_token"
+ARG__connection = "connection"
+ARG__is_public = "is_public"
+ARG__verification_hook = "verification_hook"
 
 CONTENT__encoding = "charset=utf-8"
 CONTENT__json = "application/json"
@@ -60,11 +57,11 @@ ERR__unexpected_response_code = "Response with code '%d' was not expected"
 ERR__unexpected_response_field = "Unexpected response field '%s'"
 ERR__method_required_security = "Method requires connection input yet marked as not secure in documentation"
 ERR__method_required_token = "Method requires oauth token input yet marked as not secure in documentation"
-ERR__method_required_totp = "Method requires totp iv input yet marked as not secure in documentation"
+ERR__method_required_connection = "Method requires connection input yet marked as not secure in documentation"
 ERR__method_required_is_public = "Method requires is_public input yet marked as not secure in documentation"
 ERR__method_required_user_id = "Method requires user id input yet marked as not secure in documentation"
-ERR__method_required_password_hash = "Method requires password hash input yet marked as not secure in documentation"
-ERR__missing_user_id = "Expected user id in response from method as method is without security"
+ERR__method_required_tenant = "Method requires tenant input yet marked as not secure in documentation"
+ERR__method_required_username = "Method requires username yet marked as not secure in documentation"
 ERR__sentinel_failed = "Sentinel failed. Reponse code '%d' and content '%s'"
 
 FLASK__json_sort_keys = "JSON_SORT_KEYS"
@@ -322,10 +319,13 @@ class BaseJAAQLController:
             if len(request.data.decode(request.charset)) != 0:
                 raise HttpStatusException(ERR__unexpected_request_body, HTTPStatus.BAD_REQUEST)
 
-        combined_data = {**request.form, **request.args, **data}
+        if isinstance(data, list):
+            combined_data = data
+        else:
+            combined_data = {**request.form, **request.args, **data}
 
-        if len(combined_data) != len(request.form) + len(request.args) + len(data):
-            raise HttpStatusException(ERR__duplicated_field, HTTPStatus.BAD_REQUEST)
+            if len(combined_data) != len(request.form) + len(request.args) + len(data):
+                raise HttpStatusException(ERR__duplicated_field, HTTPStatus.BAD_REQUEST)
 
         if not was_allow_all:
             BaseJAAQLController.validate_data(method, combined_data, is_prod, fill_missing)
@@ -398,36 +398,37 @@ class BaseJAAQLController:
         def wrap_func(view_func):
             @wraps(view_func)
             def routed_function(view_func_local):
+                start_time = datetime.now()
                 request_id = uuid.uuid4()
                 self.perform_profile(request_id, route=route, method=request.method)
-                start_time = datetime.now()
                 resp = None
                 resp_type = current_app.config["JSONIFY_MIMETYPE"]
                 jaaql_resp = JAAQLResponse()
                 jaaql_resp.response_type = resp_type
 
                 if not BaseJAAQLController.is_options():
-                    method = BaseJAAQLController.get_method(swagger_documentation)
+                    the_method = BaseJAAQLController.get_method(swagger_documentation)
                     self.perform_profile(request_id, "Fetch method")
 
-                    jaaql_connection = None
                     user_id = None
                     ip_id = None
-                    totp_iv = None
+                    tenant = None
                     username = None
-                    password_hash = None
-                    l_totp = None
                     is_public = None
+                    verification_hook = None
+                    if method.parallel_verification:
+                        verification_hook = Queue()
 
                     ip_addr = request.headers.get(HEADER__real_ip, request.remote_addr).split(",")[0]
 
                     if swagger_documentation.security:
-                        profiler = Profiler(request_id, self.do_profiling)
-                        jaaql_connection, user_id, ip_id, totp_iv, password_hash, l_totp, username, is_public = \
-                            self.model.verify_jwt(request.headers.get(HEADER__security), ip_addr,
-                                                  route == ENDPOINT__refresh, profiler,
-                                                  request.headers.get(HEADER__security_bypass))
-                        self.perform_profile(request_id, "Verify JWT")
+                        if verification_hook:
+                            user_id, tenant, username, ip_id, is_public = self.model.verify_auth_token_threaded(request.headers.get(HEADER__security),
+                                                                                                                ip_addr, verification_hook)
+                            self.perform_profile(request_id, "Verify JWT Threaded")
+                        else:
+                            user_id, tenant, username, ip_id, is_public = self.model.verify_auth_token(request.headers.get(HEADER__security), ip_addr)
+                            self.perform_profile(request_id, "Verify JWT")
 
                     supply_dict = {}
 
@@ -436,60 +437,47 @@ class BaseJAAQLController:
                     method_input = None
                     try:
                         if ARG__http_inputs in inspect.getfullargspec(view_func_local).args:
-                            supply_dict[ARG__http_inputs] = BaseJAAQLController.get_input_as_dictionary(method, self.is_prod)
+                            supply_dict[ARG__http_inputs] = BaseJAAQLController.get_input_as_dictionary(the_method, self.is_prod)
                             method_input = self.log_safe_dump(supply_dict[ARG__http_inputs])
-
-                        if ARG__is_public in inspect.getfullargspec(view_func_local).args:
-                            if not swagger_documentation.security:
-                                raise Exception(ERR__method_required_is_public)
-                            supply_dict[ARG__is_public] = is_public
-
-                        if ARG__sql_inputs in inspect.getfullargspec(view_func_local).args:
-                            supply_dict[ARG__sql_inputs] = BaseJAAQLController.get_input_as_dictionary(
-                                method, self.is_prod, fill_missing=False)
-                            method_input = self.log_safe_dump(supply_dict[ARG__sql_inputs])
-
-                        if ARG__totp_iv in inspect.getfullargspec(view_func_local).args:
-                            if not swagger_documentation.security:
-                                raise Exception(ERR__method_required_totp)
-                            supply_dict[ARG__totp_iv] = totp_iv
 
                         if ARG__user_id in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:
                                 raise Exception(ERR__method_required_user_id)
                             supply_dict[ARG__user_id] = user_id
 
-                        if ARG__password_hash in inspect.getfullargspec(view_func_local).args:
-                            if not swagger_documentation.security:
-                                raise Exception(ERR__method_required_password_hash)
-                            supply_dict[ARG__password_hash] = password_hash
+                        if method.parallel_verification:
+                            supply_dict[ARG__verification_hook] = verification_hook
 
-                        if ARG__last_totp in inspect.getfullargspec(view_func_local).args:
+                        if ARG__tenant in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:
-                                raise Exception(ERR__method_required_password_hash)
-                            supply_dict[ARG__last_totp] = l_totp
+                                raise Exception(ERR__method_required_tenant)
+                            supply_dict[ARG__tenant] = tenant
 
                         if ARG__username in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:
-                                raise Exception(ERR__method_required_password_hash)
+                                raise Exception(ERR__method_required_username)
                             supply_dict[ARG__username] = username
 
                         if ARG__ip_address in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__ip_address] = ip_addr
 
-                        has_jaaql_connection = ARG__jaaql_connection in inspect.getfullargspec(view_func_local).args
-                        if ARG__jaaql_connection in inspect.getfullargspec(view_func_local).args:
-                            supply_dict[ARG__jaaql_connection] = jaaql_connection
-                        if has_jaaql_connection and jaaql_connection is None:
-                            raise Exception(ERR__method_required_security)
-
                         if ARG__response in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__response] = jaaql_resp
 
-                        if ARG__oauth_token in inspect.getfullargspec(view_func_local).args:
+                        if ARG__auth_token in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:
                                 raise Exception(ERR__method_required_token)
-                            supply_dict[ARG__oauth_token] = request.headers.get(HEADER__security)
+                            supply_dict[ARG__auth_token] = request.headers.get(HEADER__security)
+
+                        if ARG__connection in inspect.getfullargspec(view_func_local).args:
+                            if not swagger_documentation.security:
+                                raise Exception(ERR__method_required_connection)
+                            supply_dict[ARG__connection] = self.model.create_interface_for_db(user_id, DB__jaaql)
+
+                        if ARG__is_public in inspect.getfullargspec(view_func_local).args:
+                            if not swagger_documentation.security:
+                                raise Exception(ERR__method_required_is_public)
+                            supply_dict[ARG__is_public] = is_public
 
                         self.perform_profile(request_id, "Fetch args")
                         if ARG__profiler in inspect.getfullargspec(view_func_local).args:
@@ -504,10 +492,10 @@ class BaseJAAQLController:
                             ip_id = jaaql_resp.ip_id
 
                         status = jaaql_resp.response_code
-                        method_response = BaseJAAQLController.get_response(method, status)
+                        method_response = BaseJAAQLController.get_response(the_method, status)
                         do_allow_all = False
-                        if len(method.responses) != 0:
-                            if method.responses[0] == RES__allow_all:
+                        if len(the_method.responses) != 0:
+                            if the_method.responses[0] == RES__allow_all:
                                 do_allow_all = True
                         if not do_allow_all:
                             resp = BaseJAAQLController.validate_output(method_response, resp)
@@ -525,8 +513,8 @@ class BaseJAAQLController:
                             ex_msg = ex.message
 
                         do_allow_all = False
-                        if len(method.responses) != 0:
-                            if method.responses[0] == RES__allow_all:
+                        if len(the_method.responses) != 0:
+                            if the_method.responses[0] == RES__allow_all:
                                 do_allow_all = True
 
                         if not do_allow_all and ret_status != HTTPStatus.UNAUTHORIZED and ret_status != \
@@ -535,7 +523,7 @@ class BaseJAAQLController:
                                 ret_status != CustomHTTPStatus.DATABASE_NO_EXIST and \
                                 ret_status != HTTPStatus.INTERNAL_SERVER_ERROR:
                             try:
-                                self.get_response(method, ret_status)
+                                self.get_response(the_method, ret_status)
                             except Exception as sub_ex:
                                 # The expected response code was not allowed
                                 traceback.print_exc()
@@ -544,9 +532,6 @@ class BaseJAAQLController:
                                 ex = sub_ex
 
                         throw_ex = ex
-
-                    if jaaql_connection is not None:
-                        threading.Thread(target=jaaql_connection.close).start()
 
                     duration = round((datetime.now() - start_time).total_seconds() * 1000)
                     if user_id is not None:

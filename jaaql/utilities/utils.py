@@ -130,4 +130,4 @@ def await_ems_startup():
 def get_jaaql_connection(config, vault):
     jaaql_uri = vault.get_obj(VAULT_KEY__jaaql_lookup_connection)
     address, port, db, username, password = DBInterface.fracture_uri(jaaql_uri)
-    return create_interface(config, address, port, db, username, password, is_jaaql_user=True)
+    return create_interface(config, address, port, db, username, password)

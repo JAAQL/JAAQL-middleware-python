@@ -6,7 +6,8 @@ import pkgutil
 from jaaql.openapi.swagger_documentation import produce_all_documentation
 from jaaql.email.email_manager_service import create_flask_app as create_email_service_app
 from jaaql.services.script_install import bootup
-from jaaql.utilities.options import *
+from typing import List
+from jaaql.utilities.options import parse_options, OPT_KEY__vault_key, OPT_KEY__email_credentials, OPT_KEY__local_install, Option, OPT_KEY__profiling
 import sys
 import threading
 import os
@@ -51,7 +52,7 @@ def dir_non_builtins(folder):
 
 
 def create_app(is_gunicorn: bool = False, override_config_path: str = None, migration_db_interface=None,
-               migration_project_name: str = None, migration_folder: str = None, supplied_documentation = None,
+               migration_project_name: str = None, migration_folder: str = None, supplied_documentation=None,
                controllers: [JAAQLControllerInterface] = None, models: [JAAQLModelInterface] = None, additional_options: List[Option] = None,
                start_email_service: bool = False, **options):
     if controllers is None:
@@ -96,12 +97,10 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
 
     force_mfa = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__force_mfa] in ("true", "True", True, "TRUE")
     do_audit = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__do_audit] in ("true", "True", True, "TRUE")
-    invite_only = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__invite_only] in ("true", "True", True, "TRUE")
 
     # The following code sets it "properly" in case it is accessed incorrectly from elsewhere
     config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__force_mfa] = force_mfa
     config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__do_audit] = do_audit
-    config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__invite_only] = invite_only
 
     if not do_audit:
         print(WARNING__audit_off, file=sys.stderr)

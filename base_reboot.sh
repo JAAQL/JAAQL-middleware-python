@@ -18,11 +18,11 @@ if [ -f "/JAAQL-middleware-python/redeploy" ] ; then
     echo "Moved config"
     rm -rf /JAAQL-middleware-python/redeploy
     echo "Removed deployment code"
-    cd / && $PYPY_PATH/bin/pip uninstall --verbose jaaql-middleware-python -y
+    cd / && $PIP_PATH uninstall --verbose jaaql-middleware-python -y
     cd /JAAQL-middleware-python
     rm -rf dist
-    $PYPY_PATH/bin/python setup.py sdist bdist_wheel
-    VERSION=$(grep '^VERSION = ' /JAAQL-middleware-python/jaaql/constants.py | cut -d'=' -f2 | cut -d'"' -f2) && $PYPY_PATH/bin/pip install --force-reinstall --no-deps /JAAQL-middleware-python/dist/jaaql_middleware_python-"$VERSION"-py3-none-any.whl
+    $PY_PATH setup.py sdist bdist_wheel
+    VERSION=$(grep '^VERSION = ' /JAAQL-middleware-python/jaaql/constants.py | cut -d'=' -f2 | cut -d'"' -f2) && $PIP_PATH install --force-reinstall --no-deps /JAAQL-middleware-python/dist/jaaql_middleware_python-"$VERSION"-py3-none-any.whl
     echo "Removed deployment code"
 fi
 echo "Exiting base reboot script"

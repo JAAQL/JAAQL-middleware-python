@@ -1,12 +1,15 @@
 from jaaql.exceptions.http_status_exception import *
 from datetime import datetime
 import re
+from jaaql.utilities.crypt_utils import encrypt_raw, decrypt_raw
 import uuid
+import queue
 from jaaql.db.db_interface import DBInterface, ECHO__none
 
 ERR_malformed_statement = "Malformed query, expecting string or dictionary"
 ERR_unknown_assert = "Unknown assert type '%s'. Please use one of %s"
 ERR_malformed_parameters = "Malformed parameters! Please send as dictionary"
+ERR_malformed_decrypt = "Malformed decryption request! Please send as a list of columns"
 ERR_missing_parameter = "Missing parameter! Expected to find '%s'"
 ERR_missing_query = "Missing query key from input dictionary"
 ERR_unused_parameter = "Unused parameter! Supplied with '%s' but was never used"
@@ -16,8 +19,10 @@ ERR_mistyped_parameter = "Type '%s', for parameter '%s' unexpected. Please provi
 ERR_malformed_operation_type = "Operation malformed. Expecting either a list, string or dictionary input"
 ERR_assert_expecting = "Assert expecting %s row(s) but received %d row(s)!"
 ERR_malformed_join = "Joins only allowed as list or string input at the moment!"
+ERR__missing_decrypt_column = "Decrypted column '%s' not found in the result set"
 
 KEY_parameters = "parameters"
+KEY_decrypt = "decrypt"
 KEY_select = "select"
 KEY_where = "where"
 KEY_echo = "echo"
@@ -52,6 +57,8 @@ ASSERT_one_plus_message = "more than 1"
 ASSERT_allowed = [ASSERT_zero, ASSERT_one, ASSERT_one_plus]
 
 REGEX_query_argument = r':([a-zA-Z0-9_\-])+(?=[^\']*(?:\'[^\']*\'[^\']*)*$)'  # Match all :blah not in quotes
+REGEX_enc_query_argument = r'#([a-zA-Z0-9_\-])+(?=[^\']*(?:\'[^\']*\'[^\']*)*$)'  # Match all #blah not in quotes
+REGEX_enc_literals = r'#\'(([^\']*)(\'\')*)+\''
 
 PYFORMAT_str = "s"
 
@@ -75,13 +82,16 @@ SEPARATOR_none = ""
 SEPARATOR_space = " "
 SEPARATOR_spaces_per_tab = 4
 
+MARKER_DEFAULT = "default"
+MARKERS = [MARKER_DEFAULT]
+
 
 class InterpretJAAQL:
 
     def __init__(self, db_interface: DBInterface):
         self.db_interface = db_interface
 
-    def transform(self, operation, conn=None, force_transactional: bool = False):
+    def transform(self, operation, conn=None, skip_commit: bool = False, wait_hook: queue.Queue = None, encryption_key: bytes = None):
         if (not isinstance(operation, list)) and (not isinstance(operation, dict)) and (not isinstance(operation, str)):
             raise HttpStatusException(ERR_malformed_operation_type, HTTPStatus.BAD_REQUEST)
 
@@ -105,6 +115,7 @@ class InterpretJAAQL:
             if is_str_operation:
                 query_list = [operation]
                 parameters_list = [{}]
+                decrypt_list = [{}]
                 echo_list = [ECHO__none]
                 assert_list = [ASSERT_none]
             else:
@@ -114,30 +125,40 @@ class InterpretJAAQL:
                     ret_as_arr = True
                 query_list = []
                 parameters_list = []
+                decrypt_list = []
                 echo_list = []
                 assert_list = []
                 for op in operation:
-                    query, parameters, echo, ret_assert = self.render_cur_operation(op)
+                    query, parameters, decrypt_columns, echo, ret_assert = self.render_cur_operation(op)
                     query_list.append(query)
                     parameters_list.append(parameters)
+                    decrypt_list.append(decrypt_columns)
                     echo_list.append(echo)
                     assert_list.append(ret_assert)
 
             past_parameters = {}
 
-            if len(operation) != 1 and force_transactional:
-                raise HttpStatusException("Can only use force_transactional for singular queries")
-
-            conn.autocommit = len(operation) == 1 and not force_transactional
-
-            for query, parameters, echo, cur_assert in zip(query_list, parameters_list, echo_list, assert_list):
+            for query, parameters, decrypt, echo, cur_assert in zip(query_list, parameters_list, decrypt_list, echo_list, assert_list):
                 last_echo = echo
                 last_query = query
 
                 last_query, found_parameter_dictionary = self.pre_prepare_statement(query,
                                                                                     {**parameters, **past_parameters},
-                                                                                    parameters)
-                res = self.db_interface.execute_query_fetching_results(conn, last_query, found_parameter_dictionary, echo)
+                                                                                    parameters, skip_unused=encryption_key is not None)
+                enc_parameter_dictionary = {}
+
+                decrypt_parameters = {key: val for key, val in {**parameters, **past_parameters}.items() if key not in found_parameter_dictionary}
+
+                if len(decrypt_parameters) != 0:
+                    last_query, enc_parameter_dictionary = self.pre_prepare_statement(last_query,
+                                                                                      decrypt_parameters,
+                                                                                      parameters, match_regex=REGEX_enc_query_argument,
+                                                                                      encryption_key=encryption_key)
+
+                last_query = self.encrypt_literals(last_query, encryption_key)
+
+                res = self.db_interface.execute_query_fetching_results(conn, last_query, {**found_parameter_dictionary, **enc_parameter_dictionary},
+                                                                       echo, wait_hook=wait_hook)
 
                 if len(res['rows']) == 1:
                     for column, row in zip(res['columns'], res['rows'][0]):
@@ -158,11 +179,21 @@ class InterpretJAAQL:
                     elif cur_assert == ASSERT_one_plus and len(res) < ASSERT_one_plus_minimum_allowed:
                         raise HttpStatusException(ERR_assert_expecting % (str(ASSERT_one_plus_message), len(res)),
                                                   HTTPStatus.BAD_REQUEST)
+
+                if decrypt is not None:
+                    missing = [param for param in decrypt if param not in res["columns"]]
+                    if len(missing) != 0:
+                        raise HttpStatusException(ERR__missing_decrypt_column % missing)
+
+                    if len(decrypt) != 0:
+                        res["rows"] = [
+                            [decrypt_raw(encryption_key, val) if col in decrypt and val is not None else val for val, col in
+                             zip(row, res["columns"])] for row in res["rows"]]
         except Exception as ex:
             err = ex
 
         if was_conn_none:
-            self.db_interface.put_conn_handle_error(conn, err, last_query if last_echo else STATEMENT_empty)
+            self.db_interface.put_conn_handle_error(conn, err, last_query if last_echo else STATEMENT_empty, skip_rollback_commit=skip_commit)
         else:
             self.db_interface.handle_error(conn, err, last_query if last_echo else STATEMENT_empty)
 
@@ -173,14 +204,20 @@ class InterpretJAAQL:
             echo = ECHO__none
             assert_ = ASSERT_none
             parameters = {}
+            decrypt_columns = {}
 
             if KEY_query not in operation:
-                raise HttpStatusException(ERR_missing_query % KEY_query, HTTPStatus.BAD_REQUEST)
+                raise HttpStatusException(ERR_missing_query, HTTPStatus.BAD_REQUEST)
 
             if KEY_parameters in operation:
                 if not isinstance(operation[KEY_parameters], dict):
                     raise HttpStatusException(ERR_malformed_parameters, HTTPStatus.BAD_REQUEST)
                 parameters = operation[KEY_parameters]
+
+            if KEY_decrypt in operation:
+                if not isinstance(operation[KEY_decrypt], list):
+                    raise HttpStatusException(ERR_malformed_parameters, HTTPStatus.BAD_REQUEST)
+                decrypt_columns = operation[KEY_decrypt]
 
             if KEY_assert in operation:
                 assert_ = operation[KEY_assert]
@@ -192,7 +229,7 @@ class InterpretJAAQL:
                 echo = operation[KEY_echo]
 
             query = self.render_dict_operation(operation[KEY_query])
-            return query, parameters, echo, assert_
+            return query, parameters, decrypt_columns, echo, assert_
         elif isinstance(operation, str):
             return operation, {}, ECHO__none, ASSERT_none
         else:
@@ -314,22 +351,33 @@ class InterpretJAAQL:
         else:
             return [element]
 
-    def pre_prepare_statement(self, query, parameters, cur_parameters):
-        """
-        Replaces unquoted instances of :blah in query with correctly ordered pyformat equivalent
-        :param query:
-        :param parameters:
-        :return:
-        """
+    def encrypt_literals(self, query, encryption_key: bytes = None, match_regex: str = REGEX_enc_literals):
+        new_query = ""
+        last_start_match = 0
+        last_end_match = 0
+
+        for match in re.finditer(match_regex, query):
+            start_pos = match.regs[0][0]
+            end_pos = match.regs[0][1]
+            match_str = query[start_pos + 2:end_pos - 1]
+            new_query += query[last_start_match:start_pos] + "'" + encrypt_raw(encryption_key, match_str) + "'"
+            last_start_match = start_pos
+            last_end_match = end_pos
+
+        return new_query + query[last_end_match:]
+
+    def pre_prepare_statement(self, query, parameters, cur_parameters, match_regex: str = REGEX_query_argument, encryption_key: bytes = None,
+                              skip_unused: bool = False):
         prepared = ""
         last_index = 0
         found_parameters = []
         found_parameter_dictionary = {}
 
-        for match in re.finditer(REGEX_query_argument, query):
+        for match in re.finditer(match_regex, query):
+            is_skipped_default = False
             start_pos = match.regs[0][0]
             if start_pos != 0:
-                if query[start_pos - 1] == ':':
+                if query[start_pos - 1] == REGEX_query_argument[0]:
                     continue
             end_pos = match.regs[0][1]
             match_str = query[start_pos + 1:end_pos]
@@ -338,21 +386,31 @@ class InterpretJAAQL:
             last_index = end_pos
 
             if match_str not in found_parameters:
-                if match_str not in parameters:
+                if match_str not in parameters and match_str not in MARKERS:
                     raise HttpStatusException(ERR_missing_parameter % match_str, HTTPStatus.BAD_REQUEST)
-                found_parameters.append(match_str)
-                found_parameter_dictionary[match_str] = parameters[match_str]
+                elif match_str not in parameters and match_str in MARKERS:
+                    is_skipped_default = True
+                else:
+                    found_parameters.append(match_str)
+                    param = parameters[match_str]
+                    if encryption_key is not None:
+                        param = encrypt_raw(encryption_key, param)
+                    found_parameter_dictionary[match_str] = param
 
             if parameters[match_str] is None:
                 prepared += STATEMENT_null
             else:
                 type = self.get_format_type(match_str, parameters[match_str])
-                prepared += STATEMENT_argument_begin + STATEMENT_paren_open + match_str + STATEMENT_paren_close + type
+                if is_skipped_default:
+                    prepared += MARKER_DEFAULT
+                else:
+                    prepared += STATEMENT_argument_begin + STATEMENT_paren_open + match_str + STATEMENT_paren_close + type
 
         prepared += query[last_index:]
 
-        for match_str, _ in parameters.items():
-            if match_str not in found_parameters and match_str in cur_parameters:
-                raise HttpStatusException(ERR_unused_parameter % match_str, HTTPStatus.BAD_REQUEST)
+        if not skip_unused:
+            for match_str, _ in parameters.items():
+                if match_str not in found_parameters and match_str in cur_parameters:
+                    raise HttpStatusException(ERR_unused_parameter % match_str, HTTPStatus.BAD_REQUEST)
 
         return prepared, found_parameter_dictionary

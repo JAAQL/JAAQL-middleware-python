@@ -1,7 +1,6 @@
 CONFIG_KEY__security = "SECURITY"
 CONFIG_KEY_SECURITY__mfa_label = "mfa_label"
 CONFIG_KEY_SECURITY__force_mfa = "force_mfa"
-CONFIG_KEY_SECURITY__invite_only = "invite_only"
 CONFIG_KEY_SECURITY__do_audit = "do_audit"
 CONFIG_KEY__swagger = "SWAGGER"
 CONFIG_KEY_SWAGGER__url = "url"

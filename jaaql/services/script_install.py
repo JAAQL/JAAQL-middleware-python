@@ -1,5 +1,5 @@
 from jaaql.utilities.utils import load_config, await_ems_startup, get_base_url, await_jaaql_bootup
-from jaaql.constants import HEADER__security_bypass, VAULT_KEY__jaaql_local_access_key, ENDPOINT__install
+from jaaql.constants import HEADER__security_bypass, VAULT_KEY__jaaql_local_access_key, ENDPOINT__install, ENVIRON__install_path
 from jaaql.utilities.vault import Vault, DIR__vault
 import os
 from os.path import join, exists, dirname
@@ -41,22 +41,21 @@ def bootup(vault_key, is_gunicorn: bool = False, install_on_bootup: bool = False
         with open(install_key_file, "r") as install_key_file:
             install_key = install_key_file.read().strip()
         json_data = {
-            "password": "pa55word",
-            "use_mfa": False,
+            "superjaaql_password": "pa55word",
             "install_key": install_key,
-            "superjaaql_password": "passw0rd",
+            "default_tenant_password": "passw0rd",
             "allow_uninstall": False
         }
         if not is_gunicorn:
-            json_data["db_connection_string"] = "postgresql://postgres:123456@localhost:5432/jaaql"
+            json_data["db_connection_string"] = "postgresql://postgres:123456@localhost:5434/"
         requests.post(base_url + ENDPOINT__install, json=json_data)
 
     await_ems_startup()
     vault = Vault(vault_key, DIR__vault)
 
     bypass_header = {HEADER__security_bypass: vault.get_obj(VAULT_KEY__jaaql_local_access_key)}
-    if "INSTALL_PATH" in os.environ:
-        did_script_install_marker = join(os.environ["INSTALL_PATH"], "vault", "did_script_install")
+    if ENVIRON__install_path in os.environ:
+        did_script_install_marker = join(os.environ[ENVIRON__install_path], "vault", "did_script_install")
     else:
         did_script_install_marker = join("vault", "did_script_install")
     try:

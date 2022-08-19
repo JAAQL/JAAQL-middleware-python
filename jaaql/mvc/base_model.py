@@ -6,7 +6,7 @@ import jaaql.utilities.crypt_utils as crypt_utils
 from jaaql.migrations.migrations import run_migrations
 from jaaql.email.email_manager import EmailManager
 from jaaql.db.db_utils import execute_supplied_statement, create_interface
-
+import hashlib
 from jaaql.constants import *
 from jaaql.config_constants import *
 from os.path import dirname
@@ -121,6 +121,22 @@ class BaseJAAQLModel:
             time.sleep(1)
             os._exit(0)
 
+    def group(self, data: [dict], key_field_name: str):
+        outer_dict = {}
+
+        for itm in data:
+            list_itm = [vals for _, vals in itm.items() if isinstance(vals, list)]
+            val_itm = [key for key, val in itm.items() if key != key_field_name]
+            if len(list_itm) == 0:
+                if len(val_itm) == 1:
+                    outer_dict[itm[key_field_name]] = itm[val_itm[0]]
+                else:
+                    outer_dict[itm[key_field_name]] = {key: itm[key] for key in val_itm}
+            else:
+                outer_dict[itm[key_field_name]] = self.group(list_itm[0], key_field_name)
+
+        return outer_dict
+
     def pivot(self, data: [dict], pivot_info: [JAAQLPivotInfo]):
         if len(data) == 0:
             return data
@@ -170,7 +186,7 @@ class BaseJAAQLModel:
         if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):
             jaaql_uri = self.vault.get_obj(VAULT_KEY__jaaql_lookup_connection)
             address, port, db, username, password = DBInterface.fracture_uri(jaaql_uri)
-            self.jaaql_lookup_connection = create_interface(self.config, address, port, db, username, password, is_jaaql_user=True)
+            self.jaaql_lookup_connection = create_interface(self.config, address, port, db, username, password=password)
 
     def __init__(self, config, vault_key: str, migration_db_interface=None, migration_project_name: str = None,
                  migration_folder: str = None, is_container: bool = False, url: str = None):
@@ -185,7 +201,6 @@ class BaseJAAQLModel:
 
         self.force_mfa = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__force_mfa]
         self.do_audit = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__do_audit]
-        self.invite_only = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__invite_only]
 
         self.vault = Vault(vault_key, DIR__vault)
         self.jaaql_lookup_connection = None
@@ -229,9 +244,9 @@ class BaseJAAQLModel:
                            update_db_interface=self.migration_db_interface)
 
             if self.is_container:
-                self.jaaql_lookup_connection.close(force=True)  # Each individual class will have one
+                self.jaaql_lookup_connection.close()  # Each individual class will have one
 
-            self.email_manager = EmailManager()
+            self.email_manager = EmailManager(self.is_container)
         else:
             self.install_key = str(uuid.uuid4())
             with open(os.path.join(dirname(dirname(dirname(__file__))), "install_key"), "w") as install_key_file:
@@ -246,8 +261,12 @@ class BaseJAAQLModel:
     def get_db_crypt_key(self):
         return self.vault.get_obj(VAULT_KEY__db_crypt_key).encode(crypt_utils.ENCODING__ascii)
 
-    def get_repeatable_salt(self):
-        return self.vault.get_obj(VAULT_KEY__db_repeatable_salt).encode(crypt_utils.ENCODING__ascii)
+    def get_repeatable_salt(self, addition: str = None):
+        repeatable = self.vault.get_obj(VAULT_KEY__db_repeatable_salt)
+        if addition is not None:
+            return hashlib.md5((repeatable + addition).encode(crypt_utils.ENCODING__ascii)).digest()
+        else:
+            return repeatable.encode(crypt_utils.ENCODING__ascii)
 
     def setup_paging_parameters(self, inputs: dict, has_deleted: bool = True):
         inputs_no_del = inputs.copy()

@@ -1,0 +1,4 @@
+FROM postgres:14.5
+
+ENV POSTGRES_PASSWORD 123456
+COPY ./docker/jaaql.sql /docker-entrypoint-initdb.d/01-jaaql.sql

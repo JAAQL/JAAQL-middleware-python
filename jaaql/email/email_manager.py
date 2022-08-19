@@ -1,3 +1,4 @@
+import os
 import re
 import threading
 
@@ -8,6 +9,7 @@ from os.path import join
 from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.constants import *
 from urllib.parse import quote
+from jaaql.utilities.utils_no_project_imports import check_allowable_file_path
 import time
 
 REGEX__email_parameter = r'({{)([a-zA-Z0-9_\-]+)(}})'
@@ -19,6 +21,9 @@ ERR__unexpected_parameter_in_template = "Unexpected parameter in template '%s'"
 
 
 class EmailManager:
+
+    def __init__(self, is_container: bool):
+        self.is_container = is_container
 
     def send_email(self, email: Email):
         requests.post("http://127.0.0.1:" + str(PORT__ems) + ENDPOINT__send_email, json=email.repr_json())
@@ -34,10 +39,10 @@ class EmailManager:
     def uri_encode_replace(val):
         return quote(str(val))
 
-    def construct_and_send_email(self, base_url: str, app_url: str, template: dict, sender: str, to_email: str, to_name: str,
+    def construct_and_send_email(self, artifact_base_uri: str, template: dict, sender: str, tenant: str, to_email: str, to_name: str,
                                  parameters: dict = None, optional_parameters: dict = None, attachments: TYPE__email_attachments = None,
                                  attachment_access_token: str = None):
-        loaded_template = self.load_template(base_url, app_url, template[KEY__app_relative_path])
+        loaded_template = self.load_template(artifact_base_uri, template[KEY__app_relative_path])
         if loaded_template is None:
             return
 
@@ -46,20 +51,37 @@ class EmailManager:
         subject, loaded_template = self.perform_replacements(subject, loaded_template, REPLACE__uri_encoded_str, EmailManager.uri_encode_replace,
                                                              REGEX__email_uri_encoded_parameter, parameters, optional_parameters)
 
-        self.send_email(Email(str(sender), str(template[KEY__id]), str(template[KEY__account]), to_email, to_name, subject=subject,
-                              body=loaded_template, is_html=True, attachments=attachments, attachment_access_token=attachment_access_token))
+        if attachments is not None:
+            attachment_list = attachments
+            if not isinstance(attachment_list, list):
+                attachment_list = [attachment_list]
+            for attachment in attachment_list:
+                attachment.format_attachment_url(artifact_base_uri, self.is_container)
 
-    def load_template(self, base_url: str, app_url: str, app_relative_path: str):
+        self.send_email(Email(str(sender), tenant, template[KEY__application], str(template[KEY__email_template_name]), str(template[KEY__account]),
+                              to_email, to_name, subject=subject, body=loaded_template, is_html=True, attachments=attachments,
+                              attachment_access_token=attachment_access_token, override_send_name=template[KEY__override_send_name]))
+
+    def load_template(self, artifact_base_uri: str, app_relative_path: str):
         if app_relative_path is None:
             return None
 
+        if check_allowable_file_path(app_relative_path):
+            raise Exception("Database has been tampered with! Cannot send email")
         if not app_relative_path.endswith(".html"):
             app_relative_path = app_relative_path + ".html"
-        if app_url is None or app_url.startswith(base_url) or (
-                not app_url.startswith("https://") and not app_url.startswith("http://")):
-            return open(join("www", "templates", app_relative_path), "r").read()
+        if not artifact_base_uri.startswith("https://") and not artifact_base_uri.startswith("http://"):
+            if self.is_container:
+                if check_allowable_file_path(artifact_base_uri):
+                    print(artifact_base_uri)
+                    raise Exception("Illegal artifact base url")
+            if artifact_base_uri.startswith("file:///"):
+                return open(join(artifact_base_uri.split("file:///")[1].replace("%20", " "), app_relative_path), "r").read()
+            else:
+                return open(join(os.environ[ENVIRON__install_path], "www", artifact_base_uri, app_relative_path), "r").read()
         else:
-            return requests.get("/".join(app_url.split("/")[:-1]) + "/templates/" + app_relative_path).text
+            splitter = "" if artifact_base_uri.endswith("/") else "/"
+            return requests.get(artifact_base_uri + splitter + app_relative_path).text
 
     def perform_replacements(self, subject: str, html_template: str, replace_str: str, replace_func: Callable, replace_regex: str, args: dict = None,
                              optional_args: dict = None):

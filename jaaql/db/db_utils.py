@@ -1,16 +1,17 @@
 from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
-from jaaql.constants import ENCODING__utf
+from jaaql.constants import ENCODING__utf, KEY__tenant_name, KEY__enc_symmetric_key
+from jaaql.mvc.queries import QUERY__load_tenant_symmetric_keys
 from typing import Union
 import jaaql.utilities.crypt_utils as crypt_utils
 from jaaql.db.db_pg_interface import DBPGInterface
+from jaaql.db.db_interface import DBInterface
 
 ERR__encryption_key_required = "Encryption key required. Check internal function calls"
 ERR__duplicated_encrypt_parameter = "Duplicated value in encrypt_parameters list"
 ERR__duplicated_decrypt_column = "Duplicated value in decrypt_columns list"
 ERR__missing_encrypt_parameter = "Encrypted parameter is not found '%s'"
 ERR__duplicated_encryption_salt = "Duplicated value in encryption_salts list"
-ERR__missing_decrypt_column = "Decrypted column '%s' not found in the result set"
 ERR__expected_single_row = "Expected single row response but received '%d' rows"
 ERR__unsupported_interface = "Unsupported interface '%s'. We only support %s"
 
@@ -26,7 +27,7 @@ def jaaql__encrypt(dec_input: str, encryption_key: bytes, salt: bytes = None) ->
 
 
 def jaaql__decrypt(enc_input: str, encryption_key: bytes) -> str:
-    return crypt_utils.decrypt__raw(encryption_key, enc_input)
+    return crypt_utils.decrypt_raw(encryption_key, enc_input)
 
 
 def try_encode(salt: Union[str, bytes]) -> bytes:
@@ -35,8 +36,7 @@ def try_encode(salt: Union[str, bytes]) -> bytes:
     return salt
 
 
-def create_interface(config, address: str, port: int, database: str, username: str, password: str,
-                     is_jaaql_user: bool = False, dev_mode: bool = False):
+def create_interface(config, address: str, port: int, database: str, username: str, password: str = None, role: str = None, sub_role: str = None):
     interface = config[KEY_CONFIG__db][KEY_CONFIG__interface]
     supported = {
         INTERFACE__postgres_key: INTERFACE__postgres_class
@@ -47,7 +47,7 @@ def create_interface(config, address: str, port: int, database: str, username: s
 
     # interface_class = getattr(db, supported[interface])  To implement later for accessing non postgres databases
     interface_class = DBPGInterface
-    instance = interface_class(config, address, port, database, username, password, is_jaaql_user, dev_mode)
+    instance = interface_class(config, address, port, database, username, role=role, password=password, sub_role=sub_role)
 
     return instance
 
@@ -55,7 +55,7 @@ def create_interface(config, address: str, port: int, database: str, username: s
 def execute_supplied_statement(db_interface, query: str, parameters: dict = None,
                                as_objects: bool = False, encrypt_parameters: list = None,
                                decrypt_columns: list = None, encryption_key: bytes = None,
-                               encryption_salts: dict = None):
+                               encryption_salts: dict = None, skip_commit: bool = False):
     if parameters is None:
         parameters = {}
 
@@ -97,20 +97,11 @@ def execute_supplied_statement(db_interface, query: str, parameters: dict = None
 
     statement = {
         "query": query,
-        "parameters": parameters
+        "parameters": parameters,
+        "decrypt": decrypt_columns
     }
 
-    data = InterpretJAAQL(db_interface).transform(statement)
-
-    missing = [param for param in decrypt_columns if param not in data["columns"]]
-    if len(missing) != 0:
-        raise HttpStatusException(ERR__missing_decrypt_column % missing)
-
-    if len(decrypt_columns) != 0:
-        data["rows"] = [
-            [jaaql__decrypt(
-                val, encryption_key) if col in decrypt_columns and val is not None else val for val, col in
-             zip(row, data["columns"])] for row in data["rows"]]
+    data = InterpretJAAQL(db_interface).transform(statement, skip_commit=skip_commit, encryption_key=encryption_key)
 
     if as_objects:
         data = db_interface.objectify(data)
@@ -142,9 +133,9 @@ def execute_supplied_statement_singleton(db_interface, query, parameters: dict =
                                          as_objects: bool = False, encrypt_parameters: list = None,
                                          decrypt_columns: list = None, encryption_key: bytes = None,
                                          encryption_salts: dict = None, singleton_code: int = None,
-                                         singleton_message: str = None):
+                                         singleton_message: str = None, skip_commit: bool = False):
     data = execute_supplied_statement(db_interface, query, parameters, as_objects, encrypt_parameters,
-                                      decrypt_columns, encryption_key, encryption_salts)
+                                      decrypt_columns, encryption_key, encryption_salts, skip_commit=skip_commit)
 
     return force_singleton(data, as_objects, singleton_code, singleton_message)
 
@@ -173,3 +164,9 @@ def execute_supplied_statements(db_interface, queries: Union[str, list],
         data = [db_interface.objectify(obj) for obj in data]
 
     return data
+
+
+def load_tenant_symmetric_keys(connection: DBInterface, crypt_key: bytes):
+    keys = execute_supplied_statement(connection, QUERY__load_tenant_symmetric_keys, as_objects=True,
+                                      encryption_key=crypt_key, decrypt_columns=[KEY__enc_symmetric_key])
+    return {row[KEY__tenant_name]: row[KEY__enc_symmetric_key].encode() for row in keys}

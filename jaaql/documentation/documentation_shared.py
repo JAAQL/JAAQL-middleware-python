@@ -1,7 +1,5 @@
-from http import HTTPStatus
-
-from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, SwaggerArgumentResponse,\
-    SwaggerResponse, SwaggerList, SwaggerFlatResponse, REST__POST, ARG_RESP__allow_all
+from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, SwaggerArgumentResponse, SwaggerResponse, SwaggerList,\
+    SwaggerFlatResponse, REST__POST
 from jaaql.constants import *
 from typing import Union, List
 
@@ -9,18 +7,15 @@ import copy
 
 OUTPUT = False
 
-UUID__invite = "137adf50-76a3-4314-b933-b94e6686489e"
-
 ENDPOINT__refresh = "/oauth/refresh"
-EXAMPLE__email = "aaron@jaaql.com"
 
-EXAMPLE__db = "meeting"
-ARG_RES__database_name = SwaggerArgumentResponse(
-    name=KEY__database_name,
-    description="The name of the database on the database server",
+ARG_RES__tenant = SwaggerArgumentResponse(
+    name=KEY__tenant,
+    description="The name of the tenant",
     arg_type=str,
-    example=[EXAMPLE__db],
-    required=True
+    lower=True,
+    strip=True,
+    example="default"
 )
 
 ARG_RES__deletion_key = SwaggerArgumentResponse(
@@ -55,7 +50,7 @@ ARG_RES__filtered_records = [
 ]
 
 
-def rename_arg(arg_res: SwaggerArgumentResponse, new_name: str = None, new_description: str = None, new_examples = None):
+def rename_arg(arg_res: SwaggerArgumentResponse, new_name: str = None, new_description: str = None, new_examples=None):
     return SwaggerArgumentResponse(
         arg_res.name if new_name is None else new_name,
         arg_res.description if new_description is None else new_description,
@@ -66,10 +61,10 @@ def rename_arg(arg_res: SwaggerArgumentResponse, new_name: str = None, new_descr
     )
 
 
-def set_required(arg_res: SwaggerArgumentResponse, new_name: str = None):
+def set_required(arg_res: SwaggerArgumentResponse, new_name: str = None, new_description: str = None):
     return SwaggerArgumentResponse(
         arg_res.name if new_name is None else new_name,
-        arg_res.description,
+        arg_res.description if new_description is None else new_description,
         arg_res.arg_type,
         arg_res.example,
         True
@@ -168,51 +163,6 @@ def gen_arg_res_sort_pageable(col_one: str, col_two: str = None, example_one: st
     return [sort_arg, search_arg] + ARG_RES__part_sort_pageable
 
 
-ARG_RES__jaaql_password = SwaggerArgumentResponse(
-    name=KEY__password,
-    description="JAAQL login password",
-    arg_type=str,
-    example=["pa55word", "p@ssword"],
-    required=True
-)
-
-ARG_RES__email = SwaggerArgumentResponse(
-    name=KEY__email,
-    description="The email of the user",
-    arg_type=str,
-    example=["aaron@jaaql.com", "graham@jaaql.com"],
-    required=True,
-    lower=True
-)
-
-ARG_RES__totp_mfa = [
-    SwaggerArgumentResponse(
-        name=KEY__otp_uri,
-        description="OTP URI",
-        arg_type=str,
-        example=["otpauth://totp/%test?secret=supersecret&issuer=JAAQL",
-                 "otpauth://totp/%mylabel?secret=pa55word&issuer=MyIssuer"],
-        required=True
-    ),
-    SwaggerArgumentResponse(
-        name=KEY__otp_qr,
-        description="OTP QR code, as a inlined base64 encoded png image",
-        arg_type=str,
-        example=["data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKsAAADV...",
-                 "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA..."],
-        required=True
-    )
-]
-RES__totp_mfa = SwaggerResponse(
-    description="Contains information to setup authenticator app",
-    response=ARG_RES__totp_mfa
-)
-RES__totp_mfa_nullable = SwaggerResponse(
-    description="Contains information to setup authenticator app",
-    response=set_nullable(ARG_RES__totp_mfa, ["Is mfa forced on"] * len(ARG_RES__totp_mfa))
-)
-
-
 def combine_response(res: SwaggerResponse, args: Union[SwaggerArgumentResponse, List[SwaggerArgumentResponse]]):
     res = copy.deepcopy(res)
     if not isinstance(args, list):
@@ -222,158 +172,29 @@ def combine_response(res: SwaggerResponse, args: Union[SwaggerArgumentResponse, 
     return res
 
 
-DESCRIPTION__oauth = "A temporary JWT token that can be used to authenticate with the server"
-ARG_RES__oauth_token = SwaggerArgumentResponse(
-    name=KEY__oauth_token,
-    description=DESCRIPTION__oauth,
-    arg_type=str,
-    example=EXAMPLE__jwt
-)
-
-RES__oauth_token = SwaggerFlatResponse(
-    description=DESCRIPTION__oauth,
-    body=EXAMPLE__jwt
-)
-
-DESC__expecting_mfa_key = "A temporary JWT token that can be submitted to the server along with an MFA key for full "\
-                          "access"
-
-RES__expecting_mfa_key = SwaggerFlatResponse(
-    description=DESC__expecting_mfa_key,
-    body=EXAMPLE__jwt,
-    code=HTTPStatus.ACCEPTED
-)
-
-EXAMPLE__occurred = "2021-08-07 19:05:07.763189+01:00"
-ARG_RES__occurred = SwaggerArgumentResponse(
-    name="occurred",
-    description="When this event occurred",
-    arg_type=str,
-    example=[EXAMPLE__occurred, "2021-08-07 18:04:41.156935+01:00"],
-    required=True
-)
-
-ARG_RES__expecting_mfa_key = SwaggerArgumentResponse(
-    name=KEY__pre_auth_key,
-    description=DESC__expecting_mfa_key,
-    arg_type=str,
-    example=[EXAMPLE__jwt],
-    required=False,
-    condition="Is during the first round of authentication"
-)
-
-ARG_RES__mfa_key = SwaggerArgumentResponse(
-    name=KEY__mfa_key,
-    description="6-digit Multi Factor Authentication key, generated by google authenticator or similar",
-    arg_type=str,
-    example=["571208", "222104"],
-    required=False,
-    condition="MFA is turned on"
-)
-
-ARG_RES__parameters = SwaggerArgumentResponse(
-    name=KEY__parameters,
-    description="Nonspecific data which is supplied as an object either for email or signup. Is validated",
-    arg_type=ARG_RESP__allow_all,
-    required=False,
-    condition="Is signup data provided"
-)
-
-EXAMPLE__email_template_name = "signup"
-ARG_RES__email_template_name = SwaggerArgumentResponse(
-    name=KEY__email_template_name,
-    description="Internal template name",
-    arg_type=str,
-    example=[EXAMPLE__email_template_name]
-)
-ARG_RES__email_template = rename_arg(ARG_RES__email_template_name, KEY__email_template)
-ARG_RES__reset_password_email_template = rename_arg(ARG_RES__email_template_name, KEY__email_template,
-                                                    "The email template for resetting the password")
-ARG_RES__already_signed_up_email_template = rename_arg(ARG_RES__email_template_name, KEY__already_signed_up_email_template,
-                                                       "The email template sent if the user already exists")
-
-EXAMPLE__application_name = "Library Browser"
-EXAMPLE__application_url = "https://jaaql.com/demos/library-application"
-
-ARG_RES__application_name = SwaggerArgumentResponse(
-    name=KEY__application_name,
-    description="Application name",
-    arg_type=str,
-    example=[EXAMPLE__application_name, "Meeting Room Scheduling Assistant"],
-    required=True
-)
-ARG_RES__application = rename_arg(ARG_RES__application_name, KEY__application)
-ARG_RES__application_description = SwaggerArgumentResponse(
-    name=KEY__description,
-    description="Application description",
-    arg_type=str,
-    example=["Browses books in the library", "Helps book meetings"],
-    required=True
-)
-ARG_RES__application_uri = SwaggerArgumentResponse(
-    name=KEY__application_url,
-    description="Application url. Please use '{{DEFAULT}}/myappurl' if you want to host it in the same place as jaaql. "
-    "For example '{{DEFAULT}}/console' would be the URL for the console",
-    arg_type=str,
-    example=[EXAMPLE__application_url, "https://jaaql.com/demos/meeting-application"],
-    required=True
-)
-EXAMPLE__application_dataset = "library"
-ARG_RES__dataset_name = SwaggerArgumentResponse(
-    name=KEY__dataset_name,
-    description="The name of the dataset",
-    arg_type=str,
-    example=[EXAMPLE__application_dataset, "meeting"],
-    required=True
-)
-ARG_RES__dataset_description = SwaggerArgumentResponse(
-    name="description",
-    description="The dataset description",
-    arg_type=str,
-    example=["The library book dataset", "The meeting room spaces dataset"],
-    required=True
-)
-ARG_RES__reference_dataset = rename_arg(ARG_RES__dataset_name, KEY__dataset)
-
-ARG_RES__application_default_email_signup_template = SwaggerArgumentResponse(
-    name=KEY__default_email_signup_template,
-    description="The default signup template, if one is being used",
-    arg_type=str,
-    example=["jaaql_signup"],
-    required=False,
-    condition="If a signup template is being used"
-)
-
-ARG_RES__application_default_email_already_signed_up_template = SwaggerArgumentResponse(
-    name=KEY__default_email_already_signed_up_template,
-    description="The default already signed up template, if one is being used",
-    arg_type=str,
-    example=["jaaql_already_signed_up"],
-    required=False,
-    condition="If a already signed up template is being used"
-)
-
-ARG_RES__application_default_reset_password_template = SwaggerArgumentResponse(
-    name=KEY__default_reset_password_template,
-    description="The default reset password template, if one is being used",
-    arg_type=str,
-    example=["jaaql_reset_password"],
-    required=False,
-    condition="If a forgot password template is being used"
-)
-
-
-ARG_RES__application_body = [ARG_RES__application_name, ARG_RES__application_description, ARG_RES__application_uri,
-                             ARG_RES__application_default_email_signup_template, ARG_RES__application_default_email_already_signed_up_template,
-                             ARG_RES__application_default_reset_password_template]
-
-CONDITION__pre_auth = "Is during 1st stage authentication"
-
 ARG_RES__username = SwaggerArgumentResponse(
     name=KEY__username,
     description="JAAQL login username",
     arg_type=str,
+    lower=True,
+    strip=True,
     example=["jaaql", "aaron@jaaql.com"]
+)
+
+EXAMPLE__password = ["pa55word", "p@ssword"]
+
+ARG_RES__password = SwaggerArgumentResponse(
+    name=KEY__password,
+    description="JAAQL login password",
+    arg_type=str,
+    strip=True,
+    example=EXAMPLE__password,
+    required=True
+)
+
+RES__oauth_token = SwaggerFlatResponse(
+    description="A temporary JWT token that can be used to authenticate with the server",
+    body=EXAMPLE__jwt
 )
 
 DOCUMENTATION__oauth_token = SwaggerDocumentation(
@@ -387,15 +208,11 @@ DOCUMENTATION__oauth_token = SwaggerDocumentation(
                     "an MFA key and you will returned the aforementioned 200 response",
         method=REST__POST,
         body=[
-            set_nullable(ARG_RES__username, CONDITION__pre_auth),
-            set_nullable(ARG_RES__jaaql_password, CONDITION__pre_auth),
-            ARG_RES__mfa_key,
-            ARG_RES__expecting_mfa_key
+            ARG_RES__tenant,
+            ARG_RES__username,
+            ARG_RES__password
         ],
-        response=[
-            RES__oauth_token,
-            RES__expecting_mfa_key
-        ]
+        response=RES__oauth_token
     )
 )
 
