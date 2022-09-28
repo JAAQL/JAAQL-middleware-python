@@ -1,8 +1,11 @@
+import traceback
 from abc import ABC, abstractmethod
 from datetime import datetime
 import logging
+from jaaql.utilities.utils_no_project_imports import time_delta_ms
 from jaaql.exceptions.http_status_exception import *
 from typing import Optional
+import queue
 
 ERR__unknown_echo = "Unknown echo type '%s'. Please use either %s"
 
@@ -36,10 +39,10 @@ ERR__missing_database = "The database name was missing from the connection"
 class DBInterface(ABC):
 
     @abstractmethod
-    def __init__(self, config, address: str, username: str, dev_mode: bool = False):
+    def __init__(self, config, address: str, username: str):
         self.config = config
+        self.output_exceptions = self.config["DEBUG"]["output_query_exceptions"].lower() == "true"
         self.logging = config.get(KEY_CONFIG__system, {KEY_CONFIG__logging: True}).get(KEY_CONFIG__logging, True)
-        self.dev_mode = dev_mode
         self.username = username
         self.address = address
 
@@ -101,8 +104,9 @@ class DBInterface(ABC):
         self.__attempt_commit_rollback(conn, err)
         self.__err_to_exception(err, echo)
 
-    def put_conn_handle_error(self, conn, err, echo=ECHO__none):
-        self.__attempt_commit_rollback(conn, err)
+    def put_conn_handle_error(self, conn, err, echo=ECHO__none, skip_rollback_commit: bool = False):
+        if not skip_rollback_commit:
+            self.__attempt_commit_rollback(conn, err)
 
         try:
             self.put_conn(conn)
@@ -119,7 +123,7 @@ class DBInterface(ABC):
     def rollback(self, conn):
         pass
 
-    def execute_query_fetching_results(self, conn, query, parameters=None, echo=ECHO__none, as_objects=False):
+    def execute_query_fetching_results(self, conn, query, parameters=None, echo=ECHO__none, as_objects=False, wait_hook: queue.Queue = None):
         if echo not in ECHO__allowed:
             allowed_echoes = ", ".join([str(allowed_echo) for allowed_echo in ECHO__allowed])
             raise HttpStatusException(ERR__unknown_echo % (str(echo), allowed_echoes), HTTPStatus.BAD_REQUEST)
@@ -138,7 +142,7 @@ class DBInterface(ABC):
                     else:
                         new_parameters[key] = value
 
-            columns, rows = self.execute_query(conn, query, new_parameters)
+            columns, rows = self.execute_query(conn, query, new_parameters, wait_hook)
 
             ret = {
                 RET__columns: columns,
@@ -183,6 +187,8 @@ class DBInterface(ABC):
                             ret = resp
 
         except Exception as ex:
+            if self.output_exceptions:
+                traceback.print_exc()
             err = ex
 
         if commit:
@@ -192,7 +198,7 @@ class DBInterface(ABC):
             return ret, err
 
     @abstractmethod
-    def execute_query(self, conn, query, parameters: Optional[dict] = None):
+    def execute_query(self, conn, query, parameters: Optional[dict] = None, wait_hook: queue.Queue = None):
         pass
 
     @abstractmethod

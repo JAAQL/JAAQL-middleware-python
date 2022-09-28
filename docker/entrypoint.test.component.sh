@@ -1,7 +1,7 @@
 cd $INSTALL_PATH
 export PYTHONUNBUFFERED=TRUE
 export PYTHONPATH=.
-$PYPY_PATH/bin/pypy $INSTALL_PATH/component.py &
+$PY_PATH $INSTALL_PATH/component.py &
 cd /
 ./entrypoint.sh
 

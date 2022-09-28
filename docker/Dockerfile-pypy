@@ -4,6 +4,7 @@ LABEL maintainer="jaaql.io"
 EXPOSE 80
 EXPOSE 443
 
+RUN apt update
 RUN apt-get update && apt-get install -y build-essential
 RUN apt install -y libpq-dev
 RUN apt-get install -y git
@@ -42,22 +43,17 @@ RUN apt-get -y install libzbar0
 RUN apt-get install dos2unix
 RUN apt -y install bzip2
 RUN apt -y install wget
-RUN wget https://www.python.org/ftp/python/3.8.14/Python-3.8.14.tar.xz
-RUN tar xf Python-3.8.14.tar.xz
-RUN apt install build-essential zlib1g-dev \
-    libncurses5-dev libgdbm-dev libnss3-dev \
-    libssl-dev libreadline-dev libffi-dev curl -y
-WORKDIR /Python-3.8.14
-RUN ./configure --enable-optimizations --prefix=/usr/local --with-ensurepip=install
-RUN make install
-ENV PY_PATH /usr/local/bin/python3
-ENV PIP_PATH /usr/local/bin/pip3
-ENV GUNICORN_PATH /usr/local/bin/gunicorn
-ENV CERTBOT_PATH /usr/local/bin/certbot
-WORKDIR /
+RUN wget https://downloads.python.org/pypy/pypy3.8-v7.3.9-linux64.tar.bz2
+RUN tar xf pypy3.8-v7.3.9-linux64.tar.bz2
+RUN apt install pypy-dev -y
+ENV PY_PATH /pypy3.8-v7.3.9-linux64/bin/pypy
+ENV PIP_PATH /pypy3.8-v7.3.9-linux64/bin/pip
+ENV GUNICORN_PATH /pypy3.8-v7.3.9-linux64/bin/gunicorn
+ENV CERTBOT_PATH /pypy3.8-v7.3.9-linux64/bin/certbot
 RUN $PY_PATH -m ensurepip --default-pip
 RUN $PY_PATH -mpip install -U pip wheel
 RUN $PY_PATH -mpip install certbot-nginx==1.2.0
+RUN sed -i 's/psycopg\[binary\]/psycopg\[c\]/g' /JAAQL-middleware-python/requirements.txt
 RUN $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt
 
 RUN mv $INSTALL_PATH/docker/jaaql.sql /docker-entrypoint-initdb.d/01-jaaql.sql

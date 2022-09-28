@@ -1,10 +1,9 @@
-import * as JEQL from "../../../../../JEQL/JEQL.js"
-
 let APPLICATION_NAME = "console";
 
 let COMMAND_START = "/";
 let COMMAND_CLEAR = "clear";
 let COMMAND_CLEARHIS = "clearhis";
+let COMMAND_TOGGLEREAD = "toggleread";
 let COMMAND_LOGOUT = "logout";
 let COMMAND_SWITCH = "switch";
 let COMMAND_FILE = "file";
@@ -50,7 +49,7 @@ function renderConsoleLine(newLine, db_name) {
     window.lineInput.addEventListener("keyup", function(event) {
         if (event.which === 38 || event.which === 40) { return; }
         window.wasConsole = false;
-        let history = getHistory(window.JEQL_CONFIG);
+        let history = getHistory(window.JEQL__REQUEST_HELPER);
         let historyList = history[HISTORY_LIST];
         if (window.curHistoryLine === historyList.length - 1 && history[HISTORY_HAS_TEMP]) {
             let isEmpty = window.lineInput.value.length === 0;
@@ -61,7 +60,7 @@ function renderConsoleLine(newLine, db_name) {
             } else {
                 window.curHistoryLine -= 1;
             }
-            updateHistory(window.JEQL_CONFIG, history);
+            updateHistory(window.JEQL__REQUEST_HELPER, history);
         }
     });
 }
@@ -80,7 +79,7 @@ function processUpDownKey(history, historyList) {
         if (window.lineInput.value.length !== 0 && !window.wasConsole && !history[HISTORY_HAS_TEMP]) {
             historyList.push(window.lineInput.value);
             history[HISTORY_HAS_TEMP] = true;
-            updateHistory(window.JEQL_CONFIG, history);
+            updateHistory(window.JEQL__REQUEST_HELPER, history);
         }
         window.lineInput.value = historyList[window.curHistoryLine];
         window.lineInput.setSelectionRange(window.lineInput.value.length, window.lineInput.value.length);
@@ -92,7 +91,7 @@ function keyDownBody(e) {
     if (JEQL.modalExists()) { return; }
     window.lineInput.focus();
     if (window.curHistoryLine !== null) {
-        let history = getHistory(window.JEQL_CONFIG);
+        let history = getHistory(window.JEQL__REQUEST_HELPER);
         let historyList = history[HISTORY_LIST];
         if (e.which === 38 && (window.curHistoryLine > 0 || historyList.length === 1 ||
             window.lineInput.value === "")) {
@@ -112,20 +111,20 @@ function keyDownBody(e) {
 }
 
 function renderResponse(data, isErr = false) {
-    addConsoleLine(window.JEQL_CONFIG);
+    addConsoleLine(window.JEQL__REQUEST_HELPER);
     window.lineInput.value = JSON.stringify(data);
     window.lineInput.style.height = "auto";
     window.lineInput.style.height = (window.lineInput.scrollHeight) + "px";
     if (isErr) {
         window.lineInput.style.color = "red";
     }
-    addConsoleLine(window.JEQL_CONFIG);
+    addConsoleLine(window.JEQL__REQUEST_HELPER);
 }
 
 function getDefaultResponseHandler() {
     let responseHandlers = {};
-    responseHandlers[JEQL.HTTP_STATUS_DEFAULT] = function(data) { renderResponse(data, true); };
-    responseHandlers[JEQL.HTTP_STATUS_OK] = renderResponse;
+    responseHandlers[JEQL_REQUESTS.HTTP_STATUS_DEFAULT] = function(data) { renderResponse(data, true); };
+    responseHandlers[JEQL_REQUESTS.HTTP_STATUS_OK] = renderResponse;
     return responseHandlers;
 }
 
@@ -134,29 +133,32 @@ function readAndSubmitFile(config, file) {
     config.createSpinner();
     reader.onload = readerEvent => {
         config.destroySpinner();
-        let content = readerEvent.target.result;
-        let formedQuery = JEQL.formQuery(config, content, null, null, window.curDatabase);
-        JEQL.submitFile(
-            config,
-            formedQuery,
+
+        let query = {};
+        query[JEQL.KEY_QUERY] = readerEvent.target.result;
+        if (window.curDatabase !== DEFAULT_DB) {
+            query[JEQL.KEY_DATABASE] = window.curDatabase;
+        }
+        JEQL.submit(
+            query,
             getDefaultResponseHandler()
         );
     };
     reader.readAsText(file);
 }
 
-function handleFileInput(config, filePath = null) {
+function handleFileInput(requestHelper, filePath = null) {
     if (filePath === null) {
         let fileInput = document.getElementById(ID_CONSOLE_SQL_FILE);
         fileInput.value = "";
         fileInput.onchange = f => {
             let file = f.target.files[0];
             fileInput.onchange = function() {};
-            readAndSubmitFile(config, file);
+            readAndSubmitFile(requestHelper, file);
         };
         fileInput.click();
     } else {
-        readAndSubmitFile(config, filePath);
+        readAndSubmitFile(requestHelper, filePath);
     }
 }
 
@@ -164,7 +166,7 @@ function onSendConsole() {
     let consoleInput = window.lineInput.value.trimEnd();
     if (window.lineInput.value === "") { return; }
 
-    let history = getHistory(window.JEQL_CONFIG);
+    let history = getHistory(window.JEQL__REQUEST_HELPER);
     if (history[HISTORY_HAS_TEMP]) {
         history[HISTORY_LIST].pop();
     }
@@ -177,51 +179,63 @@ function onSendConsole() {
     } else {
         history[HISTORY_IDX] = history[HISTORY_LIST].length - 1;
     }
-    updateHistory(window.JEQL_CONFIG, history);
+    updateHistory(window.JEQL__REQUEST_HELPER, history);
 
     if (consoleInput.startsWith(COMMAND_START)) {
         if (consoleInput === COMMAND_START + COMMAND_HELP) {
-            addConsoleLine(window.JEQL_CONFIG);
+            addConsoleLine(window.JEQL__REQUEST_HELPER);
             window.lineInput.parentElement.innerHTML = document.getElementById("welcomeText").innerHTML;
             window.lineInput.remove();
-            addConsoleLine(window.JEQL_CONFIG);
+            addConsoleLine(window.JEQL__REQUEST_HELPER);
         } else if (consoleInput === COMMAND_START + COMMAND_LOGOUT) {
-            window.JEQL_CONFIG.logout();
+            window.JEQL__REQUEST_HELPER.logout();
         } else if (consoleInput.split(" ")[0] === COMMAND_START + COMMAND_SWITCH) {
-            updateCurDb(window.JEQL_CONFIG, consoleInput.split(COMMAND_START + COMMAND_SWITCH + " ")[1].trim());
-            addConsoleLine(window.JEQL_CONFIG);
+            updateCurDb(window.JEQL__REQUEST_HELPER, consoleInput.split(COMMAND_START + COMMAND_SWITCH + " ")[1].trim());
+            addConsoleLine(window.JEQL__REQUEST_HELPER);
         } else if (consoleInput === COMMAND_START + COMMAND_CLEAR) {
             let allLines = Array.from(document.getElementsByClassName(CLS_LINE_TEXT_PARENT));
             allLines.forEach(line => {
                 line.remove();
             });
-            addConsoleLine(window.JEQL_CONFIG);
+            addConsoleLine(window.JEQL__REQUEST_HELPER);
             window.lineInput.value = COMMAND_START + COMMAND_CLEAR;
-            addConsoleLine(window.JEQL_CONFIG);
+            addConsoleLine(window.JEQL__REQUEST_HELPER);
         } else if (consoleInput === COMMAND_START + COMMAND_CLEARHIS) {
-            addConsoleLine(window.JEQL_CONFIG);
+            addConsoleLine(window.JEQL__REQUEST_HELPER);
             window.lineInput.value = "History cleared";
-            window.JEQL_CONFIG.getStorage().removeItem(STORAGE_CONSOLE_HISTORY);
+            window.JEQL__REQUEST_HELPER.getStorage().removeItem(STORAGE_CONSOLE_HISTORY);
             window.wasConsole = null;
-            getHistory(window.JEQL_CONFIG);
-            addConsoleLine(window.JEQL_CONFIG);
+            getHistory(window.JEQL__REQUEST_HELPER);
+            addConsoleLine(window.JEQL__REQUEST_HELPER);
+        } else if (consoleInput === COMMAND_START + COMMAND_TOGGLEREAD) {
+            addConsoleLine(window.JEQL__REQUEST_HELPER);
+            window.lineInput.value = "Read only is " + (window.READ_ONLY ? "off" : "on");
+            addConsoleLine(window.JEQL__REQUEST_HELPER);
+            window.READ_ONLY = !window.READ_ONLY;
         } else if (consoleInput.split(" ")[0] === COMMAND_START + COMMAND_FILE) {
             if (consoleInput.trim().split(" ").length === 1) {
-                handleFileInput(window.JEQL_CONFIG);
+                handleFileInput(window.JEQL__REQUEST_HELPER);
             } else {
                 let fileName = consoleInput.trim().split(" ").shift();
-                handleFileInput(window.JEQL_CONFIG, fileName.join(" "));
+                handleFileInput(window.JEQL__REQUEST_HELPER, fileName.join(" "));
             }
         } else {
-            addConsoleLine(window.JEQL_CONFIG);
+            addConsoleLine(window.JEQL__REQUEST_HELPER);
             window.lineInput.value = "Unknown console command: '" + consoleInput.substr(1) + "'";
             window.lineInput.style.color = "red";
-            addConsoleLine(window.JEQL_CONFIG);
+            addConsoleLine(window.JEQL__REQUEST_HELPER);
         }
     } else {
+        let query = {};
+        query[JEQL.KEY_QUERY] = window.lineInput.value;
+        if (window.curDatabase !== DEFAULT_DB) {
+            query[JEQL.KEY_DATABASE] = window.curDatabase;
+        }
+        if (window.READ_ONLY) {
+            query[JEQL.KEY_READ_ONLY] = true;
+        }
         JEQL.submit(
-            window.JEQL_CONFIG,
-            JEQL.formQuery(window.JEQL_CONFIG, window.lineInput.value, null, null, window.curDatabase),
+            query,
             getDefaultResponseHandler()
         );
     }
@@ -236,42 +250,42 @@ function keyPressBody(e) {
     }
 }
 
-function updateHistory(config, history) {
-    config.getStorage().setItem(STORAGE_CONSOLE_HISTORY, JSON.stringify(history));
+function updateHistory(requestHelper, history) {
+    requestHelper.getStorage().setItem(STORAGE_CONSOLE_HISTORY, JSON.stringify(history));
 }
 
-function getHistory(config) {
-    let history = config.getStorage().getItem(STORAGE_CONSOLE_HISTORY);
+function getHistory(requestHelper) {
+    let history = requestHelper.getStorage().getItem(STORAGE_CONSOLE_HISTORY);
     if (!history) {
         history = {};
         history[HISTORY_IDX] = null;
         history[HISTORY_LIST] = [];
         history[HISTORY_HAS_TEMP] = false;
-        updateHistory(config, history);
+        updateHistory(requestHelper, history);
     } else {
         history = JSON.parse(history);
     }
     return history;
 }
 
-function updateCurDb(config, db) {
-    config.getStorage().setItem(STORAGE_CUR_DB, db);
+function updateCurDb(requestHelper, db) {
+    requestHelper.getStorage().setItem(STORAGE_CUR_DB, db);
     window.curDatabase = db;
 }
 
-function loadCurDb(config) {
-    let curDb = config.getStorage().getItem(STORAGE_CUR_DB);
+function loadCurDb(requestHelper) {
+    let curDb = requestHelper.getStorage().getItem(STORAGE_CUR_DB);
     if (!curDb) {
         curDb = DEFAULT_DB;
-        updateCurDb(config, curDb);
+        updateCurDb(requestHelper, curDb);
     }
     return curDb;
 }
 
-function init(config) {
-    loadCurDb(config);
+function init(requestHelper) {
+    loadCurDb(requestHelper);
 
-    if (config.rememberMe) {
+    if (requestHelper.rememberMe) {
         window.sessionStorage.removeItem(STORAGE_CONSOLE_HISTORY);
     } else {
         window.localStorage.removeItem(STORAGE_CONSOLE_HISTORY);
@@ -279,9 +293,11 @@ function init(config) {
 
     document.addEventListener("keydown", keyDownBody, false);
     document.addEventListener("keypress", keyPressBody, false);
-    addConsoleLine(config);
+
+    addConsoleLine(requestHelper);
 }
 
 window.onload = function() {
-    JEQL.init(APPLICATION_NAME, init);
+    window.READ_ONLY = false;
+    JEQL.initNoTenant(APPLICATION_NAME, init);
 };

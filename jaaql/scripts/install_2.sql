@@ -1,526 +1,8 @@
-CREATE DOMAIN postgres_table_view_name AS varchar(64) CHECK (VALUE ~* '^[A-Za-z*0-9_\-]+$');
-CREATE DOMAIN email_address AS varchar(255) CHECK ((VALUE ~* '^[A-Za-z0-9._%-]+([+][A-Za-z0-9._%-]+){0,1}@[A-Za-z0-9.-]+[.][A-Za-z]+$' AND lower(VALUE) = VALUE) OR VALUE IN ('jaaql', 'superjaaql'));
-CREATE DOMAIN jaaql_user_id AS uuid;
+CREATE ROLE jaaql__registered;
+CREATE DOMAIN safe_path AS varchar(255) CHECK (VALUE ~* '^[a-z0-9_\-\/]+$');
 
-create table jaaql__email_account (
-    id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
-    name varchar(255) not null,
-    send_name varchar(255) not null,
-    protocol varchar(4) not null,
-    check (protocol in ('smtp', 'imap')),
-    host varchar(255) not null,
-    port integer not null,
-    username varchar(255) not null,
-    encrypted_password text not null,
-    deleted timestamptz default null
-);
-CREATE UNIQUE INDEX jaaql__email_account_unq
-    ON jaaql__email_account (name) WHERE (deleted is null);
-
-create table jaaql__email_template (
-    id   uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
-    name varchar(60) NOT NULL,
-    subject varchar(255),
-    account uuid NOT NULL,
-    FOREIGN KEY (account) REFERENCES jaaql__email_account,
-    description text,
-    app_relative_path postgres_table_view_name,  -- Not a mistake for this domain type
-    check ((subject is null) = (app_relative_path is null)),
-    data_validation_table postgres_table_view_name,
-    data_validation_view postgres_table_view_name,
-    CHECK ((data_validation_table is null and data_validation_view is null) or data_validation_table is not null),
-    recipient_validation_view postgres_table_view_name,
-    allow_signup boolean default false not null,
-    allow_confirm_signup_attempt boolean default false not null,
-    allow_reset_password boolean default false not null,
-    check (allow_signup::int + allow_confirm_signup_attempt::int + allow_reset_password::int < 2),
-    deleted timestamptz default null
-);
-CREATE UNIQUE INDEX jaaql__email_template_unq
-    ON jaaql__email_template (name) WHERE (deleted is null);
-
-create table jaaql__application (
-    name varchar(64) not null primary key,
-    description varchar(256) not null,
-    url text not null,
-    created timestamptz not null default current_timestamp,
-    default_email_signup_template uuid,
-    FOREIGN KEY (default_email_signup_template) REFERENCES jaaql__email_template,
-    default_email_already_signed_up_template uuid,
-    FOREIGN KEY (default_email_already_signed_up_template) REFERENCES jaaql__email_template,
-    default_reset_password_template uuid,
-    FOREIGN KEY (default_reset_password_template) REFERENCES jaaql__email_template
-);
-
-CREATE SEQUENCE jaaql__user_seq AS bigint INCREMENT BY 1 START 1;
-
-create table jaaql__user (
-    id       jaaql_user_id primary key not null default gen_random_uuid(),
-    email    text not null,
-    created timestamptz not null default current_timestamp,
-    mobile   bigint,                 -- with null [allows for SMS-based 2FA login later] )
-    deleted timestamptz,
-    enc_totp_iv varchar(254),
-    last_totp varchar(6),
-    alias varchar(32),
-    is_public boolean default false not null,
-    public_credentials text,
-    application varchar(64),
-    check (not is_public = (public_credentials is null)),
-    check (not is_public = (application is null)),
-    FOREIGN KEY (application) REFERENCES jaaql__application ON DELETE SET NULL ON UPDATE CASCADE
-);
-CREATE UNIQUE INDEX jaaql__user_unq_email ON jaaql__user (email) WHERE (deleted is null);
-CREATE UNIQUE INDEX jaaql__user_public_application ON jaaql__user (application) WHERE (deleted is null);
-
-create table jaaql__user_ip (
-    id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
-    the_user jaaql_user_id not null,
-    encrypted_address varchar(255),
-    first_use timestamptz not null default current_timestamp,
-    most_recent_use timestamptz not null default current_timestamp,
-    FOREIGN KEY (the_user) REFERENCES jaaql__user,
-    constraint jaaql__user_ip_unq unique (the_user, encrypted_address)
-);
-
-create table jaaql__user_password (
-    the_user jaaql_user_id not null,
-    created timestamptz not null default current_timestamp,
-    password_hash varchar(254) not null,
-    PRIMARY KEY (the_user, password_hash),
-    FOREIGN KEY (the_user) REFERENCES jaaql__user
-);
-
-create view jaaql__user_latest_password as (
-    SELECT
-        us.id,
-        us.email,
-        password_hash,
-        password_created,
-        us.enc_totp_iv,
-        us.last_totp,
-        us.is_public
-    FROM
-        (SELECT
-            the_user,
-            password_hash,
-            created as password_created,
-            row_number() over (PARTITION BY the_user) as change_count
-        FROM jaaql__user_password
-        ORDER BY created desc) as sub
-    INNER JOIN
-        jaaql__user us ON us.id = the_user
-    WHERE
-        sub.change_count <= 1 AND us.deleted is null
-);
-
-create view jaaql__user_latest_credentials as (
-    SELECT
-        julp.*,
-        juip.id as ip_id,
-        juip.encrypted_address
-    FROM
-        jaaql__user_latest_password julp
-    INNER JOIN
-        jaaql__user_ip juip ON juip.the_user = julp.id
-);
-
-create table jaaql__node (
-    name varchar(255) primary key not null,
-    description varchar(255) not null,
-    port integer not null,
-	address varchar(255) not null,
-	interface_class varchar(20) not null,
-	deleted timestamptz
-);
-
-CREATE UNIQUE INDEX jaaql__node_unq
-    ON jaaql__node (address, port) WHERE (deleted is null);
-
-create table jaaql__database (
-    node varchar(255) not null references jaaql__node on update cascade on delete cascade,
-	name postgres_table_view_name not null,
-	deleted timestamptz,
-	PRIMARY KEY (node, name)
-);
-
-INSERT INTO jaaql__application (name, description, url) VALUES ('console', 'The console application', '');
-INSERT INTO jaaql__application (name, description, url) VALUES ('manager', 'The administration panel for JAAQL', '');
-INSERT INTO jaaql__application (name, description, url) VALUES ('playground', 'Allows testing for new JAAQL/JEQL features', '');
-
-create table jaaql__application_dataset (
-    application varchar(64) not null,
-    name varchar(64) not null,
-    description varchar(255) not null,
-    PRIMARY KEY (application, name),
-    FOREIGN KEY (application) references jaaql__application on delete cascade on update cascade
-);
-INSERT INTO jaaql__application_dataset (application, name, description) VALUES ('console', 'node', 'The node which the console will run against');
-INSERT INTO jaaql__application_dataset (application, name, description) VALUES ('manager', 'node', 'A jaaql node which the app can manage');
-INSERT INTO jaaql__application_dataset (application, name, description) VALUES ('playground', 'node', 'A jaaql node which the app can manage');
-
-create table jaaql__application_configuration (
-    application varchar(64) not null,
-    name varchar(64) not null,
-    description varchar(256) not null,
-    PRIMARY KEY (application, name),
-    FOREIGN KEY (application) references jaaql__application on delete cascade on update cascade
-);
-INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('manager', 'host', 'The host jaaql node');
-INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('playground', 'host', 'The host jaaql node');
-
-create table jaaql__assigned_database (
-    application varchar(64) not null,
-    configuration varchar(64) not null,
-    database postgres_table_view_name not null,
-    node varchar(255) not null,
-    dataset varchar(64) not null,
-    PRIMARY KEY (application, dataset, configuration),
-    FOREIGN KEY (application, configuration) references jaaql__application_configuration(application, name)
-        on delete cascade on update cascade,
-    FOREIGN KEY (application, dataset) references jaaql__application_dataset(application, name) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (database, node) references jaaql__database(name, node) on delete cascade on update cascade,
-    FOREIGN KEY (node) references jaaql__node (name) on delete cascade on update cascade
-);
-
-create view jaaql__configuration_assigned_database as (
-    SELECT
-        db_conf.application as application,
-    	db_conf.name as configuration,
-    	db_dataset.name as dataset,
-        db_dataset.description as dataset_description,
-    	db_arg.database as database,
-        db_arg.node as node
-    FROM
-    	jaaql__application_configuration db_conf
-    INNER JOIN jaaql__application_dataset db_dataset ON db_conf.application = db_dataset.application
-    LEFT JOIN jaaql__assigned_database db_arg
-        ON db_conf.application = db_arg.application AND
-           db_conf.name = db_arg.configuration AND
-           db_arg.dataset = db_dataset.name
-    LEFT JOIN jaaql__database jd on db_arg.database = jd.name AND db_arg.node = jd.node AND jd.deleted is null
-);
-
--- Complete configurations. Where each dataset for the application has an assigned database
-create view jaaql__complete_configuration as (
-    SELECT
-        *
-    FROM
-         jaaql__configuration_assigned_database
-    WHERE (application, configuration, true) IN (
-        SELECT
-            application, configuration, bool_and(database is not null)
-        FROM
-             jaaql__configuration_assigned_database
-        GROUP BY
-            application, configuration
-    )
-);
-
-create table jaaql__authorization_configuration (
-    application varchar(64) not null references jaaql__application on delete cascade on update cascade,
-    configuration varchar(64) not null,
-    role        varchar(254) not null default '',
-    primary key (application, configuration, role),
-    foreign key (application, configuration) references jaaql__application_configuration on delete cascade on update cascade
-);
-
-create table jaaql__default_role (
-    the_role varchar(255) PRIMARY KEY not null
-);
-
-create table jaaql__credentials_node (
-    id uuid PRIMARY KEY not null default gen_random_uuid(),
-    node varchar(255) not null references jaaql__node,
-    role varchar(254),
-    deleted timestamptz,
-    db_encrypted_username varchar(254) not null,
-	db_encrypted_password varchar(254) not null,
-	precedence int not null default 0
-);
-CREATE UNIQUE INDEX jaaql__credentials_node_unq
-    ON jaaql__credentials_node (node, role) WHERE (deleted is null);
-
-create table jaaql__log (
-    id uuid primary key not null default gen_random_uuid(),
-    the_user jaaql_user_id,
-    occurred timestamptz not null default current_timestamp,
-    duration_ms integer not null,
-    encrypted_exception text,
-    encrypted_input text,
-    ip uuid not null,
-    status int not null,
-    endpoint varchar(64) not null,
-    FOREIGN KEY (the_user) REFERENCES jaaql__user,
-    FOREIGN KEY (ip) REFERENCES jaaql__user_ip
-);
-
-create table jaaql__log_db_auth (
-    log uuid not null,
-    credentials uuid not null,
-    PRIMARY KEY (log, credentials),
-    FOREIGN KEY (log) REFERENCES jaaql__log,
-    FOREIGN KEY (credentials) REFERENCES jaaql__credentials_node
-);
-
-create view jaaql__my_logs as (
-    SELECT
-        log.occurred,
-        ip.encrypted_address,
-        log.status,
-        log.endpoint,
-        log.duration_ms,
-        log.encrypted_exception
-    FROM
-         jaaql__log log
-    INNER JOIN jaaql__user us ON us.id = log.the_user AND us.deleted is null AND us.email = current_user
-    INNER JOIN jaaql__user_ip ip ON log.ip = ip.id
-    ORDER BY occurred DESC
-);
-grant select on jaaql__my_logs to public;
-
-create view jaaql__my_ips as (
-    SELECT
-        encrypted_address,
-        first_use,
-        most_recent_use
-    FROM
-         jaaql__user_ip ip
-    INNER JOIN jaaql__user us ON us.id = ip.the_user AND us.deleted is null AND us.email = current_user
-    ORDER BY first_use DESC
-);
-grant select on jaaql__my_ips to public;
-
-create view jaaql__my_configurations as (
-    SELECT
-        DISTINCT
-        ac.application,
-        ac.name as configuration,
-        ap.description as application_description,
-        ac.description as configuration_description
-    FROM
-         jaaql__application_configuration ac
-    INNER JOIN jaaql__authorization_configuration auth_conf ON ac.name = auth_conf.configuration AND ac.application = auth_conf.application AND (auth_conf.role = '' or pg_has_role(auth_conf.role, 'MEMBER'))
-    INNER JOIN jaaql__application ap on ap.name = ac.application);
-grant select on jaaql__my_configurations to public;
-
-create view jaaql__my_applications as (
-    SELECT
-        DISTINCT
-        ap.name,
-        ap.description,
-        ap.url
-    FROM jaaql__application ap
-    INNER JOIN jaaql__my_configurations mc ON mc.application = ap.name
-);
-grant select on jaaql__my_applications to public;
-
-create view jaaql__their_authorized_app_only_configurations as (
-    SELECT
-        comc.application,
-        comc.configuration,
-        auth_conf.role as conf_role
-    FROM jaaql__complete_configuration comc
-    INNER JOIN jaaql__authorization_configuration auth_conf on comc.application = auth_conf.application AND comc.configuration = auth_conf.configuration
-);
-
--- Not my. Called through jaaql connection. Need to keep username and password secret
-create view jaaql__their_authorized_configurations as (
-    SELECT
-        comc.application,
-        comc.configuration,
-        comc.dataset,
-        comc.dataset_description,
-        jcred.db_encrypted_username as username,
-        jcred.db_encrypted_password as password,
-        comc.database,
-        comc.node as node,
-        jcred.id as cred_id,
-        jn.port,
-        jn.address,
-        jcred.precedence,
-        jcred.role as node_role
-    FROM jaaql__complete_configuration comc
-        INNER JOIN jaaql__credentials_node jcred ON (jcred.node = comc.node) AND jcred.deleted is null
-        INNER JOIN jaaql__node jn on comc.node = jn.name AND jn.deleted is null
-);
-
-create view jaaql__their_single_authorized_wildcard_node as (
-    SELECT
-        jn.name as node,
-        jn.address,
-        jn.port,
-        cred.role,
-        cred.precedence,
-        cred.db_encrypted_username as username,
-        cred.db_encrypted_password as password
-    FROM
-        jaaql__credentials_node cred
-    INNER JOIN
-        jaaql__database jd on cred.node = jd.node
-    INNER JOIN
-        jaaql__node jn on cred.node = jn.name
-    WHERE jd.name = '*' AND jd.deleted is null AND cred.deleted is null AND jn.deleted is null
-);
-
--- DO NOT CHANGE FUNCTION BELOW WITHOUT CONSIDERING SECURITY!!!
--- We require this function as 'CREATE ROLE IF NOT EXISTS' is not a postgres thing
--- Despite the fact that we use parameters for the SELECT call to this in __attach_or_add_user
--- If the variables username and password are strings, they can contain SQL injectable strings
--- To prevent this we use 'quote_ident' and 'quote_literal'.
--- 'quote_ident' forces everything to be within "" (and will escape any double quotes within)
--- 'quote_literal' is similar but forces everything to be within '' (and will escape any single quotes within)
-create function jaaql__create_role(username text, password text) returns void as
-$$
-BEGIN
-    IF NOT EXISTS (
-      SELECT
-      FROM   pg_catalog.pg_roles
-      WHERE  rolname = username) THEN
-      EXECUTE 'CREATE ROLE ' || quote_ident(username) || ' WITH LOGIN ENCRYPTED PASSWORD ' || quote_literal(password);
-    END IF;
-END
-$$ language plpgsql;
-
---Same security concerns as above
-create function jaaql__delete_application(the_application text) returns void as
-$$
-DECLARE
-    fetched_username text;
-BEGIN
-    SELECT split_part(public_credentials, ':', 1) as username into fetched_username FROM jaaql__user WHERE application = the_application;
-    EXECUTE 'DROP ROLE ' || quote_ident(fetched_username);
-    DELETE FROM jaaql__authorization_configuration WHERE role = fetched_username;
-    UPDATE jaaql__user SET deleted = current_timestamp, application = null, public_credentials = null, is_public = false WHERE application = the_application;
-    UPDATE jaaql__credentials_node SET deleted = current_timestamp WHERE role = fetched_username;
-    DELETE FROM jaaql__application WHERE name = the_application;
-    DELETE FROM jaaql__default_role WHERE the_role = fetched_username;
-END
-$$ language plpgsql;
-
-create function jaaql__fetch_alias_from_id(userid text) returns text as
-$$
-DECLARE
-    actual_alias text;
-BEGIN
-    SELECT coalesce(alias, userid) into actual_alias FROM jaaql__user WHERE id = userid::jaaql_user_id;
-    return actual_alias;
-END
-$$ language plpgsql;
-
-create function jaaql__create_node(node_name text, node_address text, node_port integer, node_description text) returns character varying as
-$$
-DECLARE
-    node_id character varying;
-BEGIN
-    INSERT INTO jaaql__node (name, description, port, address, interface_class) VALUES (coalesce(node_name, node_address || node_port), coalesce(node_description, 'The ' || node_name || ' node'), node_port, node_address, 'DBPGInterface') RETURNING name into node_id;
-    INSERT INTO jaaql__database (node, name) VALUES (node_id, '*');
-    INSERT INTO jaaql__application_configuration (application, name, description) VALUES ('console', node_id, 'Console access to the ' || node_id || ' node');
-    INSERT INTO jaaql__assigned_database (application, configuration, node, database, dataset) VALUES ('console', node_id, node_id, '*', 'node');
-    return node_id;
-END
-$$ language plpgsql;
-
-create or replace function jaaql__delete_node(node_name text) returns void as
-$$
-BEGIN
-    UPDATE jaaql__node SET "name" = (left("name", 180) || '_deleted_') || current_timestamp::text, deleted = current_timestamp WHERE name = node_name;
-END
-$$ language plpgsql;
-
-create view jaaql__email_templates as (
-    SELECT
-        jet.deleted,
-        jet.name,
-        jea.name as account,
-        jet.description,
-        jet.app_relative_path,
-        jet.subject,
-        jet.allow_signup,
-        jet.allow_confirm_signup_attempt,
-        jet.allow_reset_password,
-        jet.data_validation_table,
-        jet.data_validation_view,
-        jet.recipient_validation_view
-    FROM jaaql__email_template jet
-        INNER JOIN jaaql__email_account jea ON jea.id = jet.account
-);
-
-create table jaaql__email_history (
-    id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
-    template uuid not null,
-    FOREIGN KEY (template) REFERENCES jaaql__email_template,
-    sender jaaql_user_id not null,
-    FOREIGN KEY (sender) REFERENCES jaaql__user,
-    sent timestamptz not null default current_timestamp,
-    encrypted_subject text,
-    encrypted_recipients text not null,
-    encrypted_recipients_keys text not null,
-    encrypted_body text,
-    encrypted_attachments text
-);
-
-create table jaaql__fake_reset_password (
-    key_b uuid PRIMARY KEY not null default gen_random_uuid(),
-    email text NOT NULL,
-    created timestamptz default current_timestamp not null,
-    code_attempts int default 0 not null,
-    expiry_ms integer not null default 1000 * 60 * 60 * 2, -- 2 hours
-    code_expiry_ms integer not null default 1000 * 60 * 15 -- 15 minutes
-);
-
-create table jaaql__reset_password (
-    key_a uuid PRIMARY KEY not null default gen_random_uuid(),
-    key_b uuid not null default gen_random_uuid(),
-    reset_code varchar(8) not null,
-    code_attempts int default 0 not null,
-    activated boolean not null default false,
-    used_key_a boolean not null default false,
-    the_user jaaql_user_id not null,
-    FOREIGN KEY (the_user) REFERENCES jaaql__user,
-    closed timestamptz,
-    created timestamptz default current_timestamp not null,
-    expiry_ms integer not null default 1000 * 60 * 60 * 2, -- 2 hours. Important this is the same as above fake table
-    code_expiry_ms integer not null default 1000 * 60 * 15, -- 15 minutes. Important this is the same as above fake table
-    email_template uuid,
-    data_lookup_json text,
-    FOREIGN KEY (email_template) REFERENCES jaaql__email_template
-);
-
-create table jaaql__sign_up (
-    key_a uuid PRIMARY KEY not null default gen_random_uuid(),
-    key_b uuid not null default gen_random_uuid(),
-    invite_code varchar(5) not null,
-    code_attempts int default 0 not null,
-    activated boolean not null default false,
-    used_key_a boolean not null default false,
-    the_user jaaql_user_id not null,
-    FOREIGN KEY (the_user) REFERENCES jaaql__user,
-    closed timestamptz,
-    created timestamptz default current_timestamp not null,
-    expiry_ms integer not null default 1000 * 60 * 60 * 24 * 14, -- 2 weeks
-    code_expiry_ms integer not null default 1000 * 60 * 15, -- 15 minutes
-    email_template uuid,
-    FOREIGN KEY (email_template) REFERENCES jaaql__email_template,
-    data_lookup_json text,
-    check ((data_lookup_json is null and email_template is null) or email_template is not null)
-);
-
-CREATE UNIQUE INDEX jaaql__sign_up_unq_key_b ON jaaql__sign_up (key_b);
-
-create or replace view jaaql__my_email_history as (
-    SELECT
-        jeh.id,
-        jet.name as template,
-        sent,
-        encrypted_subject as subject,
-        encrypted_recipients_keys as recipient
-    FROM jaaql__email_history jeh
-    INNER JOIN jaaql__email_template jet on jeh.template = jet.id
-    INNER JOIN jaaql__user ju on jeh.sender = ju.id
-    WHERE ju.email = current_user
-);
-grant select on jaaql__my_email_history to public;
+-- Install script
+-- (1) Create tables
 
 create view table_primary_cols as (
     SELECT c.column_name, tc.table_name
@@ -541,31 +23,803 @@ create view table_cols_marked_primary as (
     WHERE col.table_schema = 'public'
 );
 
-create table jaaql__renderable_document (
-    name      varchar(40) PRIMARY KEY NOT null,
+create table singleton (
+    singleton int primary key not null,
+    override_tenant postgres_addressable_name,
+    check (singleton = 0)
+);
+INSERT INTO singleton (singleton, override_tenant) VALUES (0, null);
+
+create or replace function get_tenant() returns postgres_addressable_name as
+$$
+DECLARE
+    the_tenant postgres_addressable_name;
+BEGIN
+    SELECT tenant into the_tenant FROM account WHERE user_id = session_user;
+    IF the_tenant is null then
+        SELECT override_tenant into the_tenant FROM singleton;
+    end if;
+    return the_tenant;
+END;
+$$ language plpgsql SECURITY DEFINER;
+grant execute on function get_tenant() to public;
+
+-- tenant...
+create table tenant (
+    deleted timestamptz,
+    name postgres_addressable_name not null,
+    enc_symmetric_key varchar(255) not null,
+    primary key (name) );
+-- tenant_database...
+create table tenant_database (
+    tenant postgres_addressable_name not null,
+    name character varying(63) not null,
+    primary key (tenant, name) );
+create table tenant_role (
+    role postgres_addressable_name not null,
+    tenant postgres_addressable_name not null,
+    PRIMARY KEY (role, tenant),
+    FOREIGN KEY (tenant) REFERENCES tenant
+);
+create table application (
+    tenant character varying(63) not null,
+    description varchar(256) not null,
+    name character varying(63) not null,
+    primary key (tenant, name) );
+
+-- application_schema...
+create table application_schema (
+    tenant character varying(63) not null,
+    application character varying(63) not null,
+    name character varying(63) not null,
+    is_default boolean not null default false,
+    primary key (tenant, application, name) );
+CREATE UNIQUE INDEX application_schema_one_default ON application_schema (tenant, application, is_default) WHERE is_default;
+
+-- application_database...
+create table application_database (
+    tenant character varying(63) not null,
+    application character varying(63) not null,
+    configuration character varying(63) not null,
+    schema character varying(63) not null,
+    database character varying(63) not null,
+    primary key (tenant, application, configuration, schema, database) );
+
+create table email_account (
+    tenant postgres_addressable_name not null,
+    name varchar(60) not null,
+    PRIMARY KEY (tenant, name),
+    send_name varchar(255) not null,
+    protocol varchar(4) not null,
+    check (protocol in ('smtp')),
+    host varchar(255) not null,
+    port integer not null,
+    username varchar(255) not null,
+    encrypted_password text not null
+);
+
+create table email_template (
+    name varchar(60) NOT NULL,
+    application character varying(63) not null,
+    tenant postgres_addressable_name not null,
+    PRIMARY KEY (tenant, name, application),
+    FOREIGN KEY (tenant) REFERENCES tenant,
+    FOREIGN KEY (tenant, application) REFERENCES application(tenant, name) ON UPDATE CASCADE ON DELETE CASCADE,
+    subject varchar(255),
+    description text,
+    app_relative_path safe_path,  -- Not a mistake for this domain type. Means app_relative_path cannot be ../../secret. Also secured at application level code in case db is tampered with
+    check ((subject is null) = (app_relative_path is null)),
+    schema character varying(63),
+    FOREIGN KEY (tenant, schema, application) REFERENCES application_schema(tenant, name, application),
+    data_validation_table postgres_addressable_name,
+    data_validation_view postgres_addressable_name,
+    CHECK ((data_validation_table is null and data_validation_view is null) or data_validation_table is not null),
+    recipient_validation_view postgres_addressable_name,
+    check ((recipient_validation_view is null and data_validation_table is null) or schema is not null),
+    allow_signup boolean default false not null,
+    allow_confirm_signup_attempt boolean default false not null,
+    allow_reset_password boolean default false not null,
+    check (allow_signup::int + allow_confirm_signup_attempt::int + allow_reset_password::int < 2),
+    default_email_signup boolean,
+    check (default_email_signup is not false),
+    default_email_already_signed_up boolean,
+    check (default_email_already_signed_up is not false),
+    default_reset_password boolean,
+    check (default_reset_password is not false)
+);
+CREATE UNIQUE INDEX template_unq_signup ON email_template (tenant, name, application, default_email_signup);
+CREATE UNIQUE INDEX template_unq_already_signed_up ON email_template (tenant, name, application, default_email_already_signed_up);
+CREATE UNIQUE INDEX template_unq_reset_password ON email_template (tenant, name, application, default_reset_password);
+
+-- application_configuration...
+create table application_configuration (
+    tenant character varying(63) not null,
+    application character varying(63) not null,
+    url varchar(254) not null,
+    artifact_base_uri varchar(254) not null,  --Used to load templates and renderable documents
+    name character varying(63) not null,
+    primary key (tenant, application, name)
+);
+
+create table email_template_configuration (
+    tenant postgres_addressable_name not null,
+    application character varying(63) not null,
+    configuration character varying(63) not null,
+    template varchar(60) not null,
+    account varchar(60) NOT NULL,
+    override_send_name varchar(255),
+    primary key (tenant, application, configuration, template),
+    FOREIGN KEY (tenant, account) REFERENCES email_account(tenant, name) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (tenant, application, template) REFERENCES email_template(tenant, application, name) ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (tenant, application) REFERENCES application(tenant, name) ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (tenant, application, configuration) REFERENCES application_configuration(tenant, application, name) ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+-- account...
+create table account (
+    tenant character varying(63) not null,
+    user_id jaaql_account_id not null default gen_random_uuid(),
+    username character varying(255) not null,
+    deleted boolean default false,
+    application varchar(63),
+    password uuid,
+    configuration varchar(63),
+    FOREIGN KEY (application, tenant) REFERENCES application(name, tenant) ON DELETE CASCADE,
+    FOREIGN KEY (application, tenant, configuration) REFERENCES application_configuration(application, tenant, name) ON DELETE CASCADE,
+    public_password text,
+    CHECK ((application is null) = (public_password is null)),
+    CHECK((application is null) = (configuration is null)),
+    primary key (user_id));  -- Technically unique (tenant, username) but we are encrypting the username in such a way that it's unique for tenant
+CREATE UNIQUE INDEX account_unq_email ON account (username);
+-- account_password...
+create table account_password (
+    id uuid primary key not null default gen_random_uuid(),
+    account jaaql_account_id not null,
+    password_hash character varying(512) not null,
+    created timestamp not null default current_timestamp,
+    unique(account, password_hash)
+);
+
+alter table account add constraint account_current_password__account
+    foreign key (password)
+        references account_password (id);
+
+create view tenant_application_schemas as (
+    SELECT
+        app.tenant,
+        app.name,
+        ac.name as configuration_name,
+        ac.url as configuration_url,
+        asch.name as schema_name,
+        ad.database as schema_database,
+        asch.is_default as schema_is_default
+    FROM
+        application app
+    INNER JOIN application_configuration ac ON app.name = ac.application AND app.tenant = ac.tenant
+    INNER JOIN application_schema asch ON app.name = asch.application AND app.tenant = asch.tenant
+    LEFT JOIN application_database ad ON asch.application = ad.application AND asch.name = ad.schema AND asch.tenant = ad.tenant AND ac.name = ad.configuration
+    ORDER BY app.tenant, app.name, configuration, schema
+);
+
+create view my_email_template_defaults as (
+    SELECT
+        app.name as application,
+        etds.name as default_email_signup_template,
+        etdas.name as default_email_already_signed_up_template,
+        etdr.name as default_reset_password_template
+    FROM
+        application app
+    LEFT JOIN email_template etds on app.tenant = etds.tenant and app.name = etds.application AND etds.default_email_signup
+    LEFT JOIN email_template etdas on app.tenant = etdas.tenant and app.name = etdas.application AND etdas.default_email_already_signed_up
+    LEFT JOIN email_template etdr on app.tenant = etdr.tenant and app.name = etdr.application AND etdr.default_reset_password
+    WHERE app.tenant = get_tenant()
+    ORDER BY app.name
+);
+GRANT SELECT ON my_email_template_defaults TO PUBLIC;
+
+create function add_email_account(_name varchar(60), _send_name varchar(255), _host varchar(255), _port integer, _username varchar(255), _encrypted_password text) returns void as
+$$
+BEGIN
+    INSERT INTO email_account (tenant, name, send_name, protocol, host, port, username, encrypted_password) VALUES (get_tenant(), _name, _send_name, 'smtp', _host, _port, _username, _encrypted_password);
+END
+$$ language plpgsql SECURITY DEFINER;
+
+create function drop_email_account(_name varchar(60), _tenant postgres_addressable_name) returns void as
+$$
+BEGIN
+    DELETE FROM email_account WHERE tenant = _tenant AND name = _name;
+END
+$$ language plpgsql SECURITY DEFINER;
+
+create function register_email_template(_name varchar(60), _application character varying(63), _subject varchar(255),
+                                        _description text, _app_relative_path safe_path = null, _schema character varying(63) = null,
+                                        _data_validation_table postgres_addressable_name = null, _data_validation_view postgres_addressable_name = null, _recipient_validation_view postgres_addressable_name = null,
+                                        _allow_signup boolean = false, _allow_confirm_signup_attempt boolean = false, _allow_reset_password boolean = false,
+                                        _default_email_signup boolean = null, _default_email_already_signed_up boolean = null, _default_reset_password boolean = null) returns void as
+$$
+BEGIN
+    if _default_email_signup is false then
+        _default_email_signup = null;
+    end if;
+    if _default_email_already_signed_up is false then
+        _default_email_already_signed_up = null;
+    end if;
+    if _default_reset_password is false then
+        _default_reset_password = null;
+    end if;
+    INSERT INTO email_template(name, tenant, application,
+                               subject, description, app_relative_path,
+                               schema, data_validation_table, data_validation_view,
+                               recipient_validation_view, allow_signup, allow_confirm_signup_attempt,
+                               allow_reset_password, default_email_signup, default_email_already_signed_up,
+                               default_reset_password) VALUES (
+                                                                                           _name, get_tenant(), _application,
+                                                                                           _subject, _description, _app_relative_path,
+                                                                                           _schema, _data_validation_table, _data_validation_view,
+                                                                                           _recipient_validation_view, _allow_signup, _allow_confirm_signup_attempt,
+                                                                                           _allow_reset_password, _default_email_signup, _default_email_already_signed_up,
+                                                                                           _default_reset_password);
+END
+$$ language plpgsql SECURITY DEFINER;
+
+create function deregister_email_template(_name varchar(60)) returns void as
+$$
+BEGIN
+    DELETE FROM email_template WHERE name = _name and tenant = get_tenant();
+END
+$$ language plpgsql SECURITY DEFINER;
+
+create function associate_email_template_with_application_configuration(_template varchar(60), _application character varying(63), _configuration varchar(63),
+                                                                        _account varchar(60), _override_send_name varchar(255) = null) returns void as
+$$
+BEGIN
+    INSERT INTO email_template_configuration(tenant, application, configuration,
+                                             template, account, override_send_name) VALUES (get_tenant(), _application, _configuration,
+                                                                                            _template, _account, _override_send_name);
+END
+$$ language plpgsql SECURITY DEFINER;
+
+create function disassociate_email_template_with_application_configuration(_template varchar(60), _application character varying(63), _configuration varchar(63)) returns void as
+$$
+BEGIN
+    DELETE FROM email_template_configuration WHERE tenant = get_tenant() AND application = _application AND template = _template AND configuration = _configuration;
+END
+$$ language plpgsql SECURITY DEFINER;
+
+-- tenant_database...
+alter table tenant_database add constraint tenant_database__tenant
+    foreign key (tenant)
+        references tenant (name);
+-- account...
+alter table account add constraint account__tenant
+    foreign key (tenant)
+        references tenant (name);
+-- account_password...
+alter table account_password add constraint account_password__account
+    foreign key (account)
+        references account (user_id) ON DELETE CASCADE;
+-- application...
+alter table application add constraint application__tenant
+    foreign key (tenant)
+        references tenant (name) ON DELETE CASCADE ON UPDATE CASCADE;
+-- application_schema...
+alter table application_schema add constraint application_schema__application
+    foreign key (tenant, application)
+        references application (tenant, name) ON DELETE CASCADE ON UPDATE CASCADE;
+-- application_configuration...
+alter table application_configuration add constraint application_configuration__application
+    foreign key (tenant, application)
+        references application (tenant, name) ON DELETE CASCADE ON UPDATE CASCADE;
+-- application_database...
+alter table application_database add constraint application_database__configuration
+    foreign key (tenant, application, configuration)
+        references application_configuration (tenant, application, name) ON DELETE CASCADE ON UPDATE CASCADE;
+alter table application_database add constraint application_database__schema
+    foreign key (tenant, application, schema)
+        references application_schema (tenant, application, name) ON DELETE CASCADE ON UPDATE CASCADE;
+alter table application_database add constraint application_database__tenant_database
+    foreign key (tenant, database)
+        references tenant_database (tenant, name) ON DELETE CASCADE ON UPDATE CASCADE;
+
+create function account_id_from_username(enc_username text) returns jaaql_account_id as
+$$
+DECLARE
+    account_id jaaql_account_id;
+BEGIN
+    SELECT user_id INTO account_id FROM account WHERE tenant = get_tenant() AND username = enc_username;
+    return account_id;
+END
+$$ language plpgsql SECURITY DEFINER;
+
+create function attach_account(the_tenant text, account_id jaaql_account_id, enc_username text) returns void as
+$$
+BEGIN
+    INSERT INTO account (tenant, username, user_id) VALUES (the_tenant, enc_username, account_id);
+END
+$$ language plpgsql;
+
+create function create_account_specifying_tenant(the_tenant postgres_addressable_name, enc_username text, _application character varying(63) = null,
+                                                 _configuration character varying(63) = null, _password text = null) returns jaaql_account_id as
+$$
+DECLARE
+    account_id jaaql_account_id;
+BEGIN
+    INSERT INTO account (tenant, username, application, configuration, public_password) VALUES (the_tenant, enc_username, _application, _configuration, _password) RETURNING user_id INTO account_id;
+    EXECUTE 'CREATE ROLE ' || quote_ident(account_id);
+    if _application is null then
+        EXECUTE 'GRANT ' || the_tenant || '__user TO ' || quote_ident(account_id);
+    end if;
+    EXECUTE 'GRANT ' || the_tenant || '__public TO ' || quote_ident(account_id);
+    return account_id;
+END
+$$ language plpgsql;
+
+create function create_tenant_account(enc_username text, _application character varying(63) = null,
+                                      _configuration character varying(63) = null, _password text = null) returns jaaql_account_id as
+$$
+DECLARE
+    account_id jaaql_account_id;
+BEGIN
+    SELECT create_account_specifying_tenant(get_tenant(), enc_username, _application, _configuration, _password) INTO account_id;
+    return account_id;
+END
+$$ language plpgsql SECURITY DEFINER;
+
+create function close_tenant_account(enc_username text) returns void as
+$$
+BEGIN
+    UPDATE account SET deleted = current_timestamp WHERE user_id = account_id_from_username(enc_username) AND tenant = get_tenant();
+END
+$$ language plpgsql SECURITY DEFINER;
+
+create function close_my_account() returns void as
+$$
+BEGIN
+    UPDATE account SET deleted = current_timestamp WHERE user_id = session_user AND tenant = get_tenant();
+END
+$$ language plpgsql SECURITY DEFINER;
+GRANT execute on function close_my_account() to jaaql__registered;
+
+create function drop_tenant_role(the_role postgres_addressable_name) returns void as
+$$
+DECLARE
+    the_tenant text;
+BEGIN
+    SELECT get_tenant() into the_tenant;
+    EXECUTE 'DROP ROLE ' || the_tenant || '__' || the_role;
+    DELETE FROM tenant_role WHERE role = the_role AND tenant = the_tenant;
+END;
+$$ language plpgsql SECURITY DEFINER;
+
+create function create_tenant_role(the_role postgres_addressable_name) returns void as
+$$
+DECLARE
+    the_tenant text;
+BEGIN
+    SELECT get_tenant() into the_tenant;
+    INSERT INTO tenant_role (role, tenant) VALUES (the_role, the_tenant);
+    EXECUTE 'CREATE ROLE ' || the_tenant || '__' || the_role;
+    EXECUTE 'GRANT ' || the_tenant || '__' || the_role || ' TO ' || the_tenant || '__' || 'admin WITH ADMIN OPTION';
+END
+$$ language plpgsql SECURITY DEFINER;
+
+create function create_tenant_application(app_name postgres_addressable_name, app_description text) returns void as
+$$
+BEGIN
+    INSERT INTO application (tenant, description, name) VALUES (get_tenant(), app_description, app_name);
+END
+$$ language plpgsql SECURITY DEFINER;
+
+create function drop_tenant_application(app_name postgres_addressable_name) returns void as
+$$
+BEGIN
+    DELETE FROM application WHERE tenant = get_tenant() and name = app_name;
+END
+$$ language plpgsql SECURITY DEFINER;
+
+create function add_to_application_schema(app_name postgres_addressable_name, entry postgres_addressable_name, _is_default boolean = false) returns void as
+$$
+BEGIN
+    INSERT INTO application_schema (tenant, application, name, is_default) VALUES (get_tenant(), app_name, entry, _is_default);
+END;
+$$ language plpgsql SECURITY DEFINER;
+
+create function drop_from_application_schema(app_name postgres_addressable_name, entry postgres_addressable_name) returns void as
+$$
+BEGIN
+    DELETE FROM application_schema WHERE application = app_name AND name = entry AND tenant = get_tenant();
+END;
+$$ language plpgsql SECURITY DEFINER;
+
+create function associate_database_to_application_configuration(app_name postgres_addressable_name, config_name postgres_addressable_name, entry postgres_addressable_name, the_database postgres_addressable_name) returns void as
+$$
+BEGIN
+    INSERT INTO application_database (tenant, application, configuration, schema, database) VALUES (get_tenant(), app_name, config_name, entry, the_database);
+END;
+$$ language plpgsql SECURITY DEFINER;
+
+create function dissociate_database_from_application_configuration(app_name postgres_addressable_name, config_name postgres_addressable_name, entry postgres_addressable_name, the_database postgres_addressable_name) returns void as
+$$
+BEGIN
+    DELETE FROM application_database WHERE application = app_name AND database = the_database AND configuration = config_name AND schema = entry AND tenant = get_tenant();
+END;
+$$ language plpgsql SECURITY DEFINER;
+
+create function create_application_configuration(app_name postgres_addressable_name, config_name postgres_addressable_name, _url text, _artifact_base_uri text) returns void as
+$$
+BEGIN
+    INSERT INTO application_configuration (tenant, application, url, name, artifact_base_uri) VALUES (get_tenant(), app_name, _url, config_name, _artifact_base_uri);
+END;
+$$ language plpgsql SECURITY DEFINER;
+
+create function drop_application_configuration(app_name postgres_addressable_name, config_name postgres_addressable_name) returns void as
+$$
+BEGIN
+    DELETE FROM application_configuration WHERE application = app_name AND name = config_name AND tenant = get_tenant();
+END;
+$$ language plpgsql SECURITY DEFINER;
+
+create function revoke_tenant_role_from_role(the_role postgres_addressable_name, from_role postgres_addressable_name) returns void as
+$$
+DECLARE
+    the_tenant text;
+BEGIN
+    SELECT get_tenant() INTO the_tenant;
+    EXECUTE 'REVOKE ' || the_tenant || '__' || the_role || ' FROM ' || the_tenant || '__' || from_role;
+END
+$$ language plpgsql;
+GRANT execute on function revoke_tenant_role_from_role(postgres_addressable_name, postgres_addressable_name) to jaaql__registered;
+
+create function grant_tenant_role_to_role(the_role postgres_addressable_name, to_role postgres_addressable_name, with_admin boolean) returns void as
+$$
+DECLARE
+    additional text;
+    the_tenant text;
+BEGIN
+    SELECT get_tenant() INTO the_tenant;
+    IF with_admin THEN
+        additional = ' WITH ADMIN OPTION';
+    END IF;
+
+    EXECUTE 'GRANT ' || the_tenant || '__' || the_role || ' TO ' || the_tenant || '__' || to_role || additional;
+END
+$$ language plpgsql;
+GRANT execute on function grant_tenant_role_to_role(postgres_addressable_name, postgres_addressable_name, boolean) to jaaql__registered;
+
+create function revoke_tenant_role_from_account(the_role postgres_addressable_name, enc_username text) returns void as
+$$
+DECLARE
+    the_tenant text;
+BEGIN
+    SELECT get_tenant() INTO the_tenant;
+
+    EXECUTE 'REVOKE ' || the_tenant || '__' || the_role || ' FROM ' || account_id_from_username(enc_username)::text;
+END
+$$ language plpgsql;
+GRANT execute on function revoke_tenant_role_from_account(postgres_addressable_name, text) to jaaql__registered;
+
+create function grant_tenant_role_to_account(the_role postgres_addressable_name, enc_username text, with_admin boolean) returns void as
+$$
+DECLARE
+    additional text;
+    the_tenant text;
+BEGIN
+    SELECT get_tenant() INTO the_tenant;
+    IF with_admin THEN
+        additional = ' WITH ADMIN OPTION';
+    END IF;
+
+    EXECUTE 'GRANT ' || the_tenant || '__' || the_role || ' TO ' || account_id_from_username(enc_username)::text || additional;
+END
+$$ language plpgsql;
+GRANT execute on function grant_tenant_role_to_account(postgres_addressable_name, text, boolean) to jaaql__registered;
+
+create table renderable_document (
+    tenant    postgres_addressable_name not null,
+    name      varchar(40) NOT null,
+    application character varying(63) not null,
+    PRIMARY KEY (name, application, tenant),
+    FOREIGN KEY (tenant, application) REFERENCES application(tenant, name) ON UPDATE CASCADE ON DELETE CASCADE,
     url       text not null,
     render_as varchar(10) default 'pdf' not null,
     check (render_as in ('pdf'))
 );
 
-create table jaaql__rendered_document (
+create function register_renderable_document(_application character varying(63), _name varchar(40), _url text, _render_as varchar(10)) returns void as
+$$
+BEGIN
+    INSERT INTO renderable_document(application, name, tenant, url, render_as) VALUES (_application, _name, get_tenant(), _url, _render_as);
+END
+$$ language plpgsql SECURITY DEFINER;
+
+create function deregister_renderable_document(_name varchar(60)) returns void as
+$$
+BEGIN
+    DELETE FROM renderable_document WHERE name = _name and tenant = get_tenant();
+END
+$$ language plpgsql SECURITY DEFINER;
+
+create table renderable_document_template (
+    attachment varchar(40) not null,
+    tenant postgres_addressable_name not null,
+    template   varchar(60) not null,
+    application character varying(63) not null,
+    PRIMARY KEY (attachment, template, tenant, application),
+    FOREIGN KEY (template, tenant, application) references email_template(name, tenant, application) ON DELETE CASCADE,
+    FOREIGN KEY (attachment, tenant, application) references renderable_document(name, tenant, application) ON DELETE CASCADE
+);
+
+create function associate_renderable_document_with_template(_application character varying(63), _attachment varchar(40), _template varchar(60)) returns void as
+$$
+BEGIN
+    INSERT INTO renderable_document_template(attachment, tenant, template, application) VALUES (_attachment, get_tenant(), _template, _application);
+END
+$$ language plpgsql SECURITY DEFINER;
+
+create function disassociate_renderable_document_from_template(_name varchar(60)) returns void as
+$$
+BEGIN
+    DELETE FROM renderable_document WHERE name = _name and tenant = get_tenant();
+END
+$$ language plpgsql SECURITY DEFINER;
+
+create view check_drop_database as (SELECT true);
+create view check_drop_email_account as (SELECT true);
+
+create function create_tenant(the_tenant postgres_addressable_name, _enc_symmetric_key varchar(255), super_role jaaql_account_id = null) returns jaaql_account_id as
+$$
+BEGIN
+    INSERT INTO tenant (name, enc_symmetric_key) VALUES (the_tenant, _enc_symmetric_key);
+
+    if super_role is null then
+        SELECT gen_random_uuid() INTO super_role;
+        EXECUTE 'CREATE ROLE ' || quote_ident(super_role);
+    end if;
+
+    INSERT INTO tenant_role (role, tenant) VALUES ('user', the_tenant);
+    INSERT INTO tenant_role (role, tenant) VALUES ('admin', the_tenant);
+    INSERT INTO tenant_role (role, tenant) VALUES ('super', the_tenant);
+
+    EXECUTE 'CREATE ROLE ' || the_tenant || '__public';
+    EXECUTE 'CREATE ROLE ' || the_tenant || '__user';
+    EXECUTE 'CREATE ROLE ' || the_tenant || '__admin';
+    EXECUTE 'CREATE ROLE ' || the_tenant || '__super';
+    EXECUTE 'GRANT ' || the_tenant || '__super' || ' to "' || super_role::text || '" with admin option';
+    EXECUTE 'GRANT ' || the_tenant || '__admin' || ' to ' || the_tenant || '__super' || ' with admin option';
+    EXECUTE 'GRANT ' || the_tenant || '__user' || ' to ' || the_tenant || '__admin' || ' with admin option';
+    EXECUTE 'GRANT ' || the_tenant || '__public' || ' to ' || the_tenant || '__user';
+    EXECUTE 'GRANT jaaql__registered' || ' to ' || the_tenant || '__user';
+    EXECUTE 'GRANT ' || the_tenant || '__public' || ' to ' || the_tenant || '__admin' || ' with admin option';
+
+    EXECUTE 'GRANT CONNECT ON DATABASE "jaaql__jaaql" TO "' || the_tenant || '__public"';
+    EXECUTE 'GRANT select on check_drop_database to ' || the_tenant || '__admin' || ' with grant option';
+    EXECUTE 'GRANT select on check_drop_email_account to ' || the_tenant || '__admin' || ' with grant option';
+
+    EXECUTE 'GRANT execute on function account_id_from_username(text) to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function associate_email_template_with_application_configuration to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function disassociate_email_template_with_application_configuration to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function register_renderable_document to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function deregister_renderable_document to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function associate_renderable_document_with_template to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function disassociate_renderable_document_from_template to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function create_tenant_account to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function close_tenant_account(text) to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function create_tenant_database(postgres_addressable_name, boolean) to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function create_tenant_role(postgres_addressable_name) to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function drop_tenant_role(postgres_addressable_name) to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function create_tenant_application(postgres_addressable_name, text) to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function drop_tenant_application(postgres_addressable_name) to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function create_application_configuration to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function drop_application_configuration(postgres_addressable_name, postgres_addressable_name) to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function add_to_application_schema(app_name postgres_addressable_name, entry postgres_addressable_name, _is_default boolean) to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function drop_from_application_schema(postgres_addressable_name, postgres_addressable_name) to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function associate_database_to_application_configuration(postgres_addressable_name, postgres_addressable_name, postgres_addressable_name, postgres_addressable_name) to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function dissociate_database_from_application_configuration(postgres_addressable_name, postgres_addressable_name, postgres_addressable_name, postgres_addressable_name) to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function add_email_account to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function register_email_template to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function deregister_email_template to ' || the_tenant || '__admin with grant option';
+
+    return super_role;
+END
+$$ language plpgsql;
+
+create function setup(jaaql_enc_symmetric_key varchar(256), default_enc_symmetric_key varchar(256)) returns jaaql_account_id as
+$$
+DECLARE
+    account_id jaaql_account_id;
+BEGIN
+    PERFORM create_tenant('jaaql', jaaql_enc_symmetric_key);
+    GRANT jaaql__super to postgres with admin option;
+    SELECT create_tenant('default', default_enc_symmetric_key) INTO account_id;
+
+    UPDATE singleton SET override_tenant = 'jaaql';
+    PERFORM create_tenant_database('jaaql', true);
+    PERFORM create_tenant_database('play_db');
+    PERFORM create_tenant_application('console', 'The console application');
+
+    PERFORM create_tenant_application('manager', 'The administration panel for JAAQL');
+    PERFORM add_to_application_schema('manager', 'default');
+    PERFORM create_application_configuration('manager', 'main', '', '');
+    PERFORM associate_database_to_application_configuration('manager', 'main', 'default', 'jaaql');
+
+    PERFORM create_tenant_application('playground', 'Allows testing for new JAAQL/JEQL features');
+    PERFORM add_to_application_schema('playground', 'default');
+    PERFORM create_application_configuration('playground', 'main', '', '');
+    PERFORM associate_database_to_application_configuration('playground', 'main', 'default', 'play_db');
+
+    return account_id;
+END
+$$ language plpgsql;
+
+create table account_ip (
+    id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
+    account jaaql_account_id not null,
+    encrypted_address varchar(255),
+    first_login timestamptz not null default current_timestamp,
+    most_recent_login timestamptz not null default current_timestamp,
+    FOREIGN KEY (account) REFERENCES account ON DELETE CASCADE,
+    constraint user_ip_unq unique (encrypted_address)  -- Technically unique (user, address) but we are encrypting the ip in such a way that it's unique for the user
+);
+
+create table log (
+    id uuid primary key not null default gen_random_uuid(),
+    the_user jaaql_account_id,
+    occurred timestamptz not null default current_timestamp,
+    duration_ms integer not null,
+    encrypted_exception text,
+    encrypted_input text,
+    login_ip uuid not null,
+    status int not null,
+    endpoint varchar(64) not null,
+    FOREIGN KEY (the_user) REFERENCES account ON DELETE CASCADE,
+    FOREIGN KEY (login_ip) REFERENCES account_ip
+);
+
+create view my_logs as (
+    SELECT
+        log.occurred,
+        ip.encrypted_address,
+        log.status,
+        log.endpoint,
+        log.duration_ms,
+        log.encrypted_exception
+    FROM
+         log
+    INNER JOIN account us ON us.user_id = log.the_user AND us.deleted is null AND us.user_id = session_user
+    INNER JOIN account_ip ip ON log.login_ip = ip.id
+    ORDER BY occurred DESC
+);
+grant select on my_logs to jaaql__registered;
+
+create view my_ips as (
+    SELECT
+        encrypted_address,
+        first_login,
+        most_recent_login
+    FROM
+         account_ip ip
+    INNER JOIN account us ON us.user_id = ip.account AND us.deleted is null AND us.user_id = session_user
+    ORDER BY first_login DESC
+);
+grant select on my_ips to jaaql__registered;
+
+create view fetch_recent_passwords as (
+    SELECT
+        a.user_id,
+        a.application,
+        ap.id as password_id,
+        a.username,
+        password_hash
+    FROM
+         account a
+    INNER JOIN
+        account_password ap on ap.id = a.password
+);
+
+create view fetch_recent_passwords_with_ips as (
+    SELECT
+        user_id,
+        application,
+        password_id,
+        username,
+        password_hash,
+        juip.encrypted_address
+    FROM
+         fetch_recent_passwords frp
+    INNER JOIN
+        account_ip juip ON juip.account = user_id
+);
+
+create table sign_up (
+    key_a uuid PRIMARY KEY not null default gen_random_uuid(),
+    key_b uuid not null default gen_random_uuid(),
+    invite_code varchar(5) not null,
+    code_attempts int default 0 not null,
+    activated boolean not null default false,
+    used_key_a boolean not null default false,
+    account jaaql_account_id not null,
+    FOREIGN KEY (account) REFERENCES account ON DELETE CASCADE,
+    tenant postgres_addressable_name not null,
+    closed timestamptz,
+    created timestamptz default current_timestamp not null,
+    expiry_ms integer not null default 1000 * 60 * 60 * 24 * 14, -- 2 weeks
+    code_expiry_ms integer not null default 1000 * 60 * 15, -- 15 minutes
+    email_template varchar(60),
+    configuration varchar(63),
+    application character varying(63),
+    check ((application is null) = (configuration is null)),
+    FOREIGN KEY (email_template, tenant, application) REFERENCES email_template (name, tenant, application) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (email_template, tenant, application, configuration) REFERENCES email_template_configuration (template, tenant, application, configuration) ON DELETE CASCADE ON UPDATE CASCADE,
+    data_lookup_json text,
+    check ((data_lookup_json is null and email_template is null) or email_template is not null)
+);
+CREATE UNIQUE INDEX sign_up_unq_key_b ON sign_up (key_b);
+
+create table reset_password (
+    key_a uuid PRIMARY KEY not null default gen_random_uuid(),
+    key_b uuid not null default gen_random_uuid(),
+    reset_code varchar(8) not null,
+    code_attempts int default 0 not null,
+    activated boolean not null default false,
+    used_key_a boolean not null default false,
+    the_user jaaql_account_id not null,
+    FOREIGN KEY (the_user) REFERENCES account ON DELETE CASCADE,
+    closed timestamptz,
+    created timestamptz default current_timestamp not null,
+    expiry_ms integer not null default 1000 * 60 * 60 * 2, -- 2 hours. Important this is the same as above fake table
+    code_expiry_ms integer not null default 1000 * 60 * 15, -- 15 minutes. Important this is the same as above fake table
+    email_template varchar(60),  -- Deliberately null as we can have a reset password managed by the admin
+    application character varying(63),
+    configuration varchar(63),
+    check ((application is null) = (configuration is null)),
+    tenant postgres_addressable_name not null,
+    data_lookup_json text,
+    FOREIGN KEY (email_template, tenant, application) REFERENCES email_template(name, tenant, application) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (email_template, tenant, application, configuration) REFERENCES email_template_configuration (template, tenant, application, configuration) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+create table fake_reset_password (
+    key_b uuid PRIMARY KEY not null default gen_random_uuid(),
+    email text NOT NULL,
+    tenant postgres_addressable_name,
+    created timestamptz default current_timestamp not null,
+    code_attempts int default 0 not null,
+    expiry_ms integer not null default 1000 * 60 * 60 * 2, -- 2 hours
+    code_expiry_ms integer not null default 1000 * 60 * 15 -- 15 minutes
+);
+
+create table email_history (
+    id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
+    template varchar(60) not null,
+    tenant postgres_addressable_name not null,
+    application character varying(63) not null,
+    override_send_name varchar(255),
+    FOREIGN KEY (template, tenant, application) REFERENCES email_template(name, tenant, application) ON DELETE SET NULL,
+    sender jaaql_account_id not null,
+    FOREIGN KEY (sender) REFERENCES account ON DELETE CASCADE,
+    sent timestamptz not null default current_timestamp,
+    encrypted_subject text,
+    encrypted_recipients text not null,
+    encrypted_recipients_keys text not null,
+    encrypted_body text,
+    encrypted_attachments text
+);
+
+create table rendered_document (
     document_id uuid PRIMARY KEY not null default gen_random_uuid(),
     document varchar(40) NOT NULL,
+    tenant postgres_addressable_name not null,
+    application character varying(63) not null,
+    configuration character varying(63) not null,
+    FOREIGN KEY (application, tenant) REFERENCES application(name, tenant) ON DELETE CASCADE,
+    FOREIGN KEY (application, configuration, tenant) REFERENCES application_configuration (application, name, tenant),
     created timestamptz not null default current_timestamp,
     encrypted_parameters text,
     encrypted_access_token text,
     create_file boolean not null,
-    FOREIGN KEY (document) REFERENCES jaaql__renderable_document,
+    FOREIGN KEY (document, tenant, application) REFERENCES renderable_document(name, tenant, application) ON DELETE CASCADE,
     completed timestamptz,
     content bytea,
     filename varchar(100),
     check ((completed is null) or (filename is not null))
-);
-
-create table jaaql__renderable_document_template (
-    attachment varchar(40),
-    template   uuid not null,
-    PRIMARY KEY (attachment, template),
-    FOREIGN KEY (template) references jaaql__email_template,
-    FOREIGN KEY (attachment) references jaaql__renderable_document
 );

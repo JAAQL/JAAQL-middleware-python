@@ -31,7 +31,7 @@ Please run the following commands to clone the repository and navigate to it
     git clone https://github.com/JAAQL/JAAQL-middleware-python.git
     cd JAAQL-middleware-python
     sudo docker build -t jaaql/jaaql-middleware-python -f docker/Dockerfile .
-    
+
 ## Setup mount directories
 Make the directories you will use as bind mounts within the root JAAQL-middleware-python directory. These offer accessible volumes which persist after your container shuts down. The database is dealt with as a separate anonymous docker volume
     
@@ -64,10 +64,10 @@ For those wishing that this container boots when your system boots (on startup),
 
 Additional lines can be used
 
+    -e GUNICORN_WORKERS=5 \
     -e DO_AUDIT=FALSE \
     -e FORCE_MFA=FALSE \
     -e LOG_TO_OUTPUT=TRUE \
-    -e INVITE_ONLY=FALSE \
     -e OUTPUT_QUERY_EXCEPTIONS=TRUE \
     -e JAAQL_EMAIL_CREDENTIALS=base64encodedcredentials \
     -e JEQL_VERSION=2.1.2 \
@@ -139,4 +139,6 @@ If you are seeing a 404 when trying to access http(s)://your_address/swagger/jaa
 
 # Local DEV
 
-    docker run -p 80:80 -e LOG_TO_OUTPUT=TRUE -e INVITE_ONLY=FALSE -e POSTGRES_PASSWORD=123456 -e JAAQL_LOCAL_INSTALL=TRUE -e JAAQL_VAULT_PASSWORD=pa55word jaaql/jaaql-middleware-python
+    docker run -p 80:80 -e LOG_TO_OUTPUT=TRUE -e POSTGRES_PASSWORD=123456 -e JAAQL_LOCAL_INSTALL=TRUE -e JAAQL_VAULT_PASSWORD=pa55word jaaql/jaaql-middleware-python
+
+It is also recommended to use the jaaql_docker.bat for rapid local dev rebuild and testing

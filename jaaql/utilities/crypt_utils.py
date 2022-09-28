@@ -42,7 +42,7 @@ def fetch_epoch_ms():
 def jwt_encode(secret_key: bytes, data: dict, purpose: str, expiry_ms: int = JWT__hour_expiry) -> str:
     data[JWT__exp] = (fetch_epoch_ms() + expiry_ms) if expiry_ms != 0 else MAX_LONG
     data[JWT__purpose] = purpose
-    return jwt.encode(data, secret_key, algorithm=JWT__algo).decode(ENCODING__ascii)
+    return jwt.encode(data, secret_key, algorithm=JWT__algo)
 
 
 def jwt_decode(secret_key: bytes, data: str, purpose: str, allow_expired: bool = False) -> Union[dict, bool]:
@@ -100,7 +100,7 @@ def encrypt_raw(secret_key: bytes, data: any, iv: bytes = None) -> str:
     return b64e(iv).decode(ENCODING__ascii) + "." + b64e(ct).decode(ENCODING__ascii)
 
 
-def decrypt__raw(secret_key: bytes, data: str) -> str:
+def decrypt_raw(secret_key: bytes, data: str) -> str:
     unpadder = padding.PKCS7(PKCS7__length).unpadder()
     iv = b64d(data.split(".")[0])
     data = b64d(data.split(".")[1])
