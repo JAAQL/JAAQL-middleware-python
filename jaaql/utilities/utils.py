@@ -131,3 +131,8 @@ def get_jaaql_connection(config, vault):
     jaaql_uri = vault.get_obj(VAULT_KEY__jaaql_lookup_connection)
     address, port, db, username, password = DBInterface.fracture_uri(jaaql_uri)
     return create_interface(config, address, port, db, username, password)
+
+def get_db_connection_as_jaaql(config, vault, db: str):
+    jaaql_uri = vault.get_obj(VAULT_KEY__jaaql_lookup_connection)
+    address, port, _, username, password = DBInterface.fracture_uri(jaaql_uri)
+    return create_interface(config, address, port, db, username, password)

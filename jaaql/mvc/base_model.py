@@ -5,11 +5,14 @@ from jaaql.db.db_interface import DBInterface
 import jaaql.utilities.crypt_utils as crypt_utils
 from jaaql.migrations.migrations import run_migrations
 from jaaql.email.email_manager import EmailManager
-from jaaql.db.db_utils import execute_supplied_statement, create_interface
+from jaaql.db.db_utils import execute_supplied_statement, create_interface, load_tenant_symmetric_keys
 import hashlib
 from jaaql.constants import *
+from jaaql.utilities.options import OPT_KEY__canned_queries
 from jaaql.config_constants import *
 from os.path import dirname
+from jaaql.services.cached_canned_query_service import CachedCannedQueryService
+import threading
 
 import uuid
 import traceback
@@ -187,14 +190,17 @@ class BaseJAAQLModel:
             jaaql_uri = self.vault.get_obj(VAULT_KEY__jaaql_lookup_connection)
             address, port, db, username, password = DBInterface.fracture_uri(jaaql_uri)
             self.jaaql_lookup_connection = create_interface(self.config, address, port, db, username, password=password)
+            if self.options.get(OPT_KEY__canned_queries) or os.environ.get(ENVIRON__canned_queries) == "TRUE":
+                self.cached_canned_query_service = CachedCannedQueryService(self.is_container, self.jaaql_lookup_connection)
 
-    def __init__(self, config, vault_key: str, migration_db_interface=None, migration_project_name: str = None,
+    def __init__(self, config, vault_key: str, options: dict, migration_project_name: str = None,
                  migration_folder: str = None, is_container: bool = False, url: str = None):
         self.config = config
-        self.migration_db_interface = migration_db_interface
         self.migration_project_name = migration_project_name
         self.migration_folder = migration_folder
         self.is_container = is_container
+
+        self.cached_canned_query_service = None
 
         self.url = url
         self.has_installed = False
@@ -205,6 +211,8 @@ class BaseJAAQLModel:
         self.vault = Vault(vault_key, DIR__vault)
         self.jaaql_lookup_connection = None
         self.email_manager = None
+
+        self.options = options
 
         self.token_expiry_ms = int(config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__token_expiry_ms])
         self.refresh_expiry_ms = int(config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__token_refresh_expiry_ms])
@@ -234,14 +242,18 @@ class BaseJAAQLModel:
             self.has_installed = True
 
         self.set_jaaql_lookup_connection()
+
+        self.tenant_reload_lock = threading.Lock()
+        self.tenant_symmetric_keys = None
+        self.load_keys()
+
         if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):
-            run_migrations(self.jaaql_lookup_connection)
+            run_migrations(self.jaaql_lookup_connection, self.is_container, options=options, fetch_tenant_key_func=self.fetch_tenant_symmetric_key)
 
-            if self.migration_db_interface is None:
-                self.migration_db_interface = self.jaaql_lookup_connection
-
-            run_migrations(self.jaaql_lookup_connection, migration_project_name, migration_folder=migration_folder,
-                           update_db_interface=self.migration_db_interface)
+            if migration_project_name is not None:
+                run_migrations(self.jaaql_lookup_connection, self.is_container, migration_project_name, migration_folder=migration_folder,
+                               config=self.config, super_credentials=self.vault.get_obj(VAULT_KEY__super_db_credentials), options=options,
+                               fetch_tenant_key_func=self.fetch_tenant_symmetric_key)
 
             if self.is_container:
                 self.jaaql_lookup_connection.close()  # Each individual class will have one
@@ -257,6 +269,20 @@ class BaseJAAQLModel:
             self.vault.insert_obj(VAULT_KEY__jaaql_local_access_key, str(uuid.uuid4()))
 
         self.local_access_key = self.vault.get_obj(VAULT_KEY__jaaql_local_access_key)
+
+    def load_keys(self):
+        if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):
+            self.tenant_symmetric_keys = load_tenant_symmetric_keys(self.jaaql_lookup_connection, self.get_db_crypt_key())
+
+    def fetch_tenant_symmetric_key(self, tenant: str):
+        if tenant in self.tenant_symmetric_keys:
+            return self.tenant_symmetric_keys[tenant]
+
+        with self.tenant_reload_lock:
+            if tenant not in self.tenant_symmetric_keys:
+                self.load_keys()
+
+        return self.tenant_symmetric_keys[tenant]
 
     def get_db_crypt_key(self):
         return self.vault.get_obj(VAULT_KEY__db_crypt_key).encode(crypt_utils.ENCODING__ascii)

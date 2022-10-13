@@ -18,6 +18,8 @@ from jaaql.mvc.model import JAAQLModel
 from jaaql.mvc.controller_interface import JAAQLControllerInterface
 from jaaql.mvc.model_interface import JAAQLModelInterface
 from jaaql.config_constants import *
+import inspect
+from os.path import join, dirname, basename
 
 
 DEFAULT__mfa_label = "test"
@@ -40,7 +42,10 @@ class SensitiveHandler(StreamHandler):
 
 
 def dir_non_builtins(folder):
-    pkgpath = os.path.dirname(folder.__file__)
+    if isinstance(folder, str):
+        pkgpath = folder
+    else:
+        pkgpath = os.path.dirname(folder.__file__)
     pre_dirs = [(loader, name) for loader, name, _ in pkgutil.walk_packages([pkgpath])]
     dirs = []
     for sub_dir in pre_dirs:
@@ -51,10 +56,10 @@ def dir_non_builtins(folder):
     return [doc for doc in dirs if doc.__name__ != "builtins"]
 
 
-def create_app(is_gunicorn: bool = False, override_config_path: str = None, migration_db_interface=None,
-               migration_project_name: str = None, migration_folder: str = None, supplied_documentation=None,
-               controllers: [JAAQLControllerInterface] = None, models: [JAAQLModelInterface] = None, additional_options: List[Option] = None,
-               start_email_service: bool = False, **options):
+def create_app(override_config_path: str = None, controllers: [JAAQLControllerInterface] = None, models: [JAAQLModelInterface] = None,
+               additional_options: List[Option] = None, supplied_documentation = None, **kwargs):
+    is_gunicorn = os.environ.get("JAAQL_DEPLOYED") == "true"
+
     if controllers is None:
         controllers = []
     if models is None:
@@ -69,13 +74,14 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
     if not isinstance(supplied_documentation, list):
         supplied_documentation = [supplied_documentation]
 
-    if len(options) == 0 and not is_gunicorn:
+    if not is_gunicorn:
         options = parse_options(sys.argv, False, additional_options=additional_options)
+    else:
+        options = {}
 
-    if not is_gunicorn and start_email_service:
+    if not is_gunicorn:
         threading.Thread(target=create_email_service_app, args=[options.get(OPT_KEY__vault_key), options.get(OPT_KEY__email_credentials)],
                          daemon=True).start()
-    if not is_gunicorn:
         threading.Thread(target=bootup, args=[options.get(OPT_KEY__vault_key), False, OPT_KEY__local_install in options], daemon=True).start()
 
     if OPT_KEY__vault_key in options:
@@ -107,8 +113,13 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
 
     url = config[CONFIG_KEY__swagger][CONFIG_KEY_SWAGGER__url]
 
-    model = JAAQLModel(config, vault_key, migration_db_interface, migration_project_name, migration_folder,
-                       is_container=is_gunicorn, url=url)
+    migration_folder = join(dirname(inspect.stack()[1].filename), "migrations")
+    migration_project_name = basename(dirname(inspect.stack()[1].filename))
+    if not os.path.exists(migration_folder):
+        migration_folder = None
+        migration_project_name = None
+
+    model = JAAQLModel(config, vault_key, options, migration_project_name, migration_folder, is_container=is_gunicorn, url=url)
     controller = JAAQLController(model, is_gunicorn, get_base_url(config, is_gunicorn),
                                  OPT_KEY__profiling in options or os.environ.get(ENVIRON__jaaql_profiling))
     controller.create_app()
@@ -134,4 +145,4 @@ def create_app(is_gunicorn: bool = False, override_config_path: str = None, migr
     if is_gunicorn:
         return controller.app
     else:
-        return int(config[CONFIG_KEY__server][CONFIG_KEY_SERVER__port]), controller.app
+        controller.app.run(port=int(config[CONFIG_KEY__server][CONFIG_KEY_SERVER__port]), host="0.0.0.0", threaded=True)

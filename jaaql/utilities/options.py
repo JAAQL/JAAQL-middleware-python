@@ -33,6 +33,7 @@ OPT_KEY__email_credentials = "email-credentials"
 OPT_KEY__help = "help"
 OPT_KEY__profiling = "profiling"
 OPT_KEY__local_install = "local_install"
+OPT_KEY__canned_queries = "canned_queries"
 
 DEFAULT_OPTIONS: List[Option] = [
     Option(
@@ -69,6 +70,13 @@ DEFAULT_OPTIONS: List[Option] = [
         long=OPT_KEY__local_install,
         required=False,
         description="Will now install on startup",
+        is_flag=True
+    ),
+    Option(
+        short="c",
+        long=OPT_KEY__canned_queries,
+        required=False,
+        description="Will allow only pre-selected queries for users without DBA access",
         is_flag=True
     )
 ]

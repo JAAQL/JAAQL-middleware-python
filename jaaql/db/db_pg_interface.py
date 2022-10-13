@@ -1,3 +1,5 @@
+import uuid
+
 from psycopg import OperationalError
 from psycopg_pool import ConnectionPool
 import queue
@@ -9,16 +11,19 @@ from jaaql.constants import ERR__invalid_token
 from jaaql.db.db_interface import DBInterface, ECHO__none, CHAR__newline
 from jaaql.exceptions.http_status_exception import *
 from jaaql.exceptions.custom_http_status import CustomHTTPStatus
+from jaaql.constants import KEY__database
 
 ERR__connect_db = "Could not create connection to database!"
 
 PGCONN__min_conns = 5
 PGCONN__max_conns = 10
 
-ALLOWABLE_COMMANDS = ["SELECT ", "INSERT ", "UPDATE ", "DELETE "]
+TIMEOUT = 2.5
 
-ERR__command_not_allowed = "Command not allowed. Please use one of " + str(ALLOWABLE_COMMANDS)
 ERR__invalid_role = "Role not allowed, invalid format!"
+ERR__must_use_canned_query = "Must use canned query as you are not a tenant admin!"
+
+QUERY__dba_query = "SELECT pg_has_role(datdba::regrole, 'MEMBER') FROM pg_database WHERE datname = %(database)s;"
 
 
 class DBPGInterface(DBInterface):
@@ -33,8 +38,17 @@ class DBPGInterface(DBInterface):
                 conn, do_reset = the_queue.get()
                 if do_reset:
                     with conn.cursor() as cursor:
-                        cursor.execute("RESET ROLE; RESET SESSION AUTHORIZATION;")
-                        conn.commit()
+                        cursor.execute("RESET ROLE;")
+                        did_close = False
+                        if hasattr(conn, "jaaql_reset_key"):
+                            try:
+                                cursor.execute("SELECT jaaql__reset_session_authorization('" + str(conn.jaaql_reset_key) + "');")
+                            except:
+                                did_close = True
+                                conn.close()
+                        if not did_close:
+                            cursor.execute("RESET ALL;")
+                            conn.commit()
                 DBPGInterface.HOST_POOLS[username][db_name].putconn(conn)
             except Exception:
                 pass  # Ignore, pool has likely been wiped
@@ -59,6 +73,7 @@ class DBPGInterface(DBInterface):
         user_pool = DBPGInterface.HOST_POOLS[self.username]
 
         self.conn_str = None
+        the_pool = None
 
         if password is not None:
             try:
@@ -73,25 +88,31 @@ class DBPGInterface(DBInterface):
                 self.conn_str = conn_str
 
                 if self.db_name not in user_pool:
-                    user_pool[self.db_name] = ConnectionPool(conn_str, min_size=PGCONN__min_conns, max_size=PGCONN__max_conns, max_lifetime=60 * 30)
+                    the_pool = ConnectionPool(conn_str, min_size=PGCONN__min_conns, max_size=PGCONN__max_conns, max_lifetime=60 * 30)
+                    the_pool.getconn(timeout=TIMEOUT)
+                    user_pool[self.db_name] = the_pool
                     the_queue = queue.Queue()
                     DBPGInterface.HOST_POOLS_QUEUES[self.username][self.db_name] = the_queue
                     threading.Thread(target=DBPGInterface.put_conn_threaded, args=[self.username, self.db_name, the_queue], daemon=True).start()
             except OperationalError as ex:
-                if "does not exist" in str(ex).split("\"")[-1]:
-                    raise HttpStatusException(str(ex), CustomHTTPStatus.DATABASE_NO_EXIST)
+                if the_pool is not None:
+                    the_pool.close()
+                if "does not exist" in str(ex).split("\"")[-1] or "couldn't get a connection after" in str(ex):
+                    raise HttpStatusException("Database \"" + "__".join(self.db_name.split("__")[1:]) + "\" does not exist",
+                                              CustomHTTPStatus.DATABASE_NO_EXIST)
                 else:
                     raise HttpStatusException(str(ex))
 
         self.pg_pool = user_pool[self.db_name]
 
     def _get_conn(self, allow_operational: bool = True):
-        conn = self.pg_pool.getconn()
+        conn = self.pg_pool.getconn(timeout=TIMEOUT)
+        conn.jaaql_reset_key = str(uuid.uuid4())
         if self.role is not None or self.sub_role is not None:
             try:
                 with conn.cursor() as cursor:
                     if self.role is not None:
-                        cursor.execute("SET SESSION AUTHORIZATION \"" + self.role + "\";")
+                        cursor.execute("SELECT jaaql__set_session_authorization('" + self.role + "', '" + conn.jaaql_reset_key + "');")
                     if self.sub_role is not None:
                         cursor.execute("SET ROLE \"" + self.sub_role + "\"")
             except InvalidParameterValue:
@@ -102,6 +123,13 @@ class DBPGInterface(DBInterface):
                     DBPGInterface.HOST_POOLS[self.username][self.db_name] = ConnectionPool(self.conn_str, min_size=PGCONN__min_conns,
                                                                                            max_size=PGCONN__max_conns, max_lifetime=60 * 30)
                     self.pg_pool = DBPGInterface.HOST_POOLS[self.username][self.db_name]
+                    try:
+                        self.pg_pool.getconn(timeout=TIMEOUT)
+                    except OperationalError:
+                        self.close()
+                        raise HttpStatusException("Database \"" + "__".join(self.db_name.split("__")[1:]) + "\" does not exist",
+                                                  CustomHTTPStatus.DATABASE_NO_EXIST)
+
                     conn = self._get_conn(False)
                 else:
                     raise ex
@@ -127,19 +155,19 @@ class DBPGInterface(DBInterface):
         DBPGInterface.HOST_POOLS_QUEUES[self.username].pop(self.db_name)
         self.pg_pool.close()
 
+    def check_dba(self, conn, wait_hook: queue.Queue = None):
+        columns, rows = self.execute_query(conn, QUERY__dba_query, parameters={KEY__database: self.db_name}, wait_hook=wait_hook)
+        if not rows[0]:
+            raise HttpStatusException(ERR__must_use_canned_query)
+
     def execute_query(self, conn, query, parameters=None, wait_hook: queue.Queue = None):
         x = 0
         err = None
-        while x < 5:
+        while x < PGCONN__max_conns:
             x += 1
             try:
                 with conn.cursor() as cursor:
                     do_prepare = False
-
-                    # if self.role is not None:
-                    #     do_prepare = True
-                    #     if not any([query.upper().startswith(ok_command) for ok_command in ALLOWABLE_COMMANDS]):
-                    #         raise HttpStatusException(ERR__command_not_allowed)
 
                     if wait_hook:
                         res, err, code = wait_hook.get()
@@ -157,14 +185,12 @@ class DBPGInterface(DBInterface):
                     else:
                         return [desc[0] for desc in cursor.description], cursor.fetchall()
             except OperationalError as ex:
-                if ex.sqlstate is not None and ex.sqlstate.startswith("08"):
+                if ex.sqlstate is None or ex.sqlstate.startswith("08"):
                     self.pg_pool.putconn(conn)
                     self.pg_pool.check()
                     conn = self.get_conn()
                     err = ex
                 else:
-                    if self.output_query_exceptions:
-                        traceback.print_exc()
                     raise ex
             except Exception as ex:
                 if self.output_query_exceptions:

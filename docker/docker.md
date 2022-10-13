@@ -64,6 +64,7 @@ For those wishing that this container boots when your system boots (on startup),
 
 Additional lines can be used
 
+    -e CANNED_QUERIES=TRUE \
     -e GUNICORN_WORKERS=5 \
     -e DO_AUDIT=FALSE \
     -e FORCE_MFA=FALSE \
