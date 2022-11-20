@@ -532,11 +532,33 @@ DOCUMENTATION__drop_databases = SwaggerDocumentation(
         name="Drop database",
         description="Drops the database associated with a tenant",
         method=REST__DELETE,
-        arguments=SwaggerArgumentResponse(
-            name=KEY__name,
-            description="The name of the database",
-            arg_type=str,
-            example=["invoicing_live"]
-        )
+        arguments=[
+            SwaggerArgumentResponse(
+                name=KEY__name,
+                description="The name of the database",
+                arg_type=str,
+                example=["invoicing_live"]
+            ),
+            SwaggerArgumentResponse(
+                name="delete_record",
+                description="Whether or not to delete the JAAQL record of this database or just the physical db. Defaults to false",
+                arg_type=bool,
+                required=False,
+                condition="Defaults to false"
+            )
+        ]
+    )
+)
+
+DOCUMENTATION__refresh_app_config = SwaggerDocumentation(
+    tags="Application",
+    methods=SwaggerMethod(
+        name="Refresh Config",
+        description="Refreshes the application configuration. You must be a tenant admin to perform this",
+        method=REST__POST,
+        arguments=[
+            ARG_RES__application,
+            ARG_RES__configuration
+        ]
     )
 )

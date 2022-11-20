@@ -5,6 +5,10 @@ from jaaql.utilities.crypt_utils import encrypt_raw, decrypt_raw
 import uuid
 import queue
 from jaaql.db.db_interface import DBInterface, ECHO__none
+from jaaql.constants import KEY__position, KEY__file, KEY__application, KEY__configuration, KEY__error, KEY__error_row_number, KEY__error_query, \
+    KEY__error_set, KEY__error_index
+from typing import Union
+
 
 ERR_malformed_statement = "Malformed query, expecting string or dictionary"
 ERR_unknown_assert = "Unknown assert type '%s'. Please use one of %s"
@@ -20,6 +24,8 @@ ERR_malformed_operation_type = "Operation malformed. Expecting either a list, st
 ERR_assert_expecting = "Assert expecting %s row(s) but received %d row(s)!"
 ERR_malformed_join = "Joins only allowed as list or string input at the moment!"
 ERR__missing_decrypt_column = "Decrypted column '%s' not found in the result set"
+ERR_missing_store = "Missing parameter for store operation '%s'"
+ERR_store_parameter_malformatted = "Parameter '%s' for store operation should be a list"
 
 KEY_parameters = "parameters"
 KEY_decrypt = "decrypt"
@@ -37,6 +43,10 @@ KEY_join_inner = "inner join"
 KEY_join_right = "right join"
 KEY_join_full = "full join"
 KEY_join_lateral = "lateral join"
+KEY_store = "store"
+KEY__state = "_state"
+KEY_state = "state"
+KEY__row_number = "_rowNumber"
 
 STATEMENT_as = "as"
 STATEMENT_argument_begin = "%"
@@ -56,8 +66,8 @@ ASSERT_one_plus_minimum_allowed = 2
 ASSERT_one_plus_message = "more than 1"
 ASSERT_allowed = [ASSERT_zero, ASSERT_one, ASSERT_one_plus]
 
-REGEX_query_argument = r':([a-zA-Z0-9_\-])+(?=[^\']*(?:\'[^\']*\'[^\']*)*$)'  # Match all :blah not in quotes
-REGEX_enc_query_argument = r'#([a-zA-Z0-9_\-])+(?=[^\']*(?:\'[^\']*\'[^\']*)*$)'  # Match all #blah not in quotes
+REGEX_query_argument = r':([a-zA-Z0-9_.\-])+(?=[^\']*(?:\'[^\']*\'[^\']*)*$)'  # Match all :blah not in quotes
+REGEX_enc_query_argument = r'#([a-zA-Z0-9_.\-])+(?=[^\']*(?:\'[^\']*\'[^\']*)*$)'  # Match all #blah not in quotes
 REGEX_enc_literals = r'#\'(([^\']*)(\'\')*)+\''
 
 PYFORMAT_str = "s"
@@ -91,8 +101,9 @@ class InterpretJAAQL:
     def __init__(self, db_interface: DBInterface):
         self.db_interface = db_interface
 
-    def transform(self, operation, conn=None, skip_commit: bool = False, wait_hook: queue.Queue = None, encryption_key: bytes = None):
-        if (not isinstance(operation, list)) and (not isinstance(operation, dict)) and (not isinstance(operation, str)):
+    def transform(self, operation: Union[dict, str], conn=None, skip_commit: bool = False, wait_hook: queue.Queue = None,
+                  encryption_key: bytes = None, autocommit: bool = False, canned_query_service=None, tenant: str = None):
+        if (not isinstance(operation, dict)) and (not isinstance(operation, str)):
             raise HttpStatusException(ERR_malformed_operation_type, HTTPStatus.BAD_REQUEST)
 
         was_conn_none = False
@@ -100,102 +111,188 @@ class InterpretJAAQL:
             conn = self.db_interface.get_conn()
             was_conn_none = True
 
-        is_str_operation = isinstance(operation, str)
         is_dict_operation = isinstance(operation, dict)
-
+        query = {"query": {KEY_query: operation, KEY_assert: None, KEY_decrypt: None, KEY_parameters: {}}}
+        is_dict_query = False
+        parameters = {}
+        past_parameters = {}
+        check_required = True
+        ret = {}
         err = None
-        ret = []
 
-        last_query = None
+        if autocommit:
+            conn.autocommit = autocommit
 
-        last_echo = ECHO__none
+        if is_dict_operation:
+            query = operation.get(KEY_query)
+            if query is None:
+                canned_query = canned_query_service.get_canned_query(tenant, operation[KEY__application], operation[KEY__configuration],
+                                                                     operation[KEY__file], operation[KEY__position])
+                query = {"query": {KEY_query: canned_query, KEY_assert: operation.get(KEY_assert), KEY_decrypt: operation.get(KEY_decrypt),
+                                   KEY_parameters: {}}}
+                check_required = False
+            else:
+                is_dict_query = isinstance(query, dict)
+                if not is_dict_query:
+                    query = {"query": {"query": query, KEY_assert: operation.get(KEY_assert), KEY_decrypt: operation.get(KEY_decrypt),
+                                       KEY_parameters: {}}}
+                else:
+                    all_replaced = True
+                    for key, val in query.items():
+                        if isinstance(val, str):
+                            all_replaced = False
+                            query[key] = {KEY_query: val, KEY_assert: None, KEY_decrypt: None, KEY_parameters: {}}
+                        else:
+                            if KEY_store in val:
+                                for sub_key, sub_val in val.items():
+                                    if sub_key in [KEY_parameters, KEY_decrypt, KEY_store]:
+                                        continue
+                                    if isinstance(sub_val, str):
+                                        all_replaced = False
+                                    else:
+                                        canned_query = canned_query_service.get_canned_query(tenant, operation[KEY__application],
+                                                                                             operation[KEY__configuration],
+                                                                                             sub_val[KEY__file], sub_val[KEY__position])
+                                        val[sub_key] = canned_query
+                                if KEY_parameters not in val:
+                                    val[KEY_parameters] = {}
+                                if KEY_decrypt not in val:
+                                    val[KEY_decrypt] = None
+                            else:
+                                fetched_query = None
+                                if isinstance(val[KEY_query], str):
+                                    all_replaced = False
+                                    fetched_query = val[KEY_query]
+                                else:
+                                    fetched_query = canned_query_service.get_canned_query(tenant, operation[KEY__application],
+                                                                                          operation[KEY__configuration],
+                                                                                          val[KEY_query][KEY__file], val[KEY_query][KEY__position])
+                                query[key] = {KEY_query: fetched_query, KEY_assert: val.get(KEY_assert), KEY_decrypt: val.get(KEY_decrypt),
+                                              KEY_parameters: val.get(KEY_parameters, {})}
+                    check_required = not all_replaced
+
+            parameters = operation.get(KEY_parameters, {})
+
+        unused_orig_parameters = set(parameters.keys())
+
+        was_store = None
+        exc_query_key = None
+        exc_row_idx = None
+        exc_parameters = None
+        exc_query = None
+        exc_row_number = None
+        exc_state = None
 
         try:
-            ret_as_arr = False
-            if is_str_operation:
-                query_list = [operation]
-                parameters_list = [{}]
-                decrypt_list = [{}]
-                echo_list = [ECHO__none]
-                assert_list = [ASSERT_none]
-            else:
-                if is_dict_operation:
-                    operation = [operation]
+            for query_key, query_obj in query.items():
+                exc_query_key = query_key
+                replacement_parameters = {**past_parameters, **parameters, **query_obj[KEY_parameters]}
+
+                to_exec = []
+                states = []
+                was_store = is_dict_query and KEY_store in query_obj
+                if was_store:
+                    if query_obj[KEY_store] not in replacement_parameters:
+                        raise HttpStatusException(ERR_missing_store % query_obj[KEY_store])
+                    if not isinstance(replacement_parameters[query_obj[KEY_store]], list):
+                        raise HttpStatusException(ERR_store_parameter_malformatted % query_obj[KEY_store])
+                    unused_orig_parameters -= {query_obj[KEY_store]}
+                    to_exec = [query_obj[obj[KEY__state]] for obj in replacement_parameters[query_obj[KEY_store]]]
+                    states = [obj[KEY__state] for obj in replacement_parameters[query_obj[KEY_store]]]
+                    iterate_params = replacement_parameters.pop(query_obj[KEY_store])
+                    replacement_parameters = [{**replacement_parameters, **{query_obj[KEY_store] + "." + key: val for key, val in cur.items()}}
+                                              for cur in iterate_params]
                 else:
-                    ret_as_arr = True
-                query_list = []
-                parameters_list = []
-                decrypt_list = []
-                echo_list = []
-                assert_list = []
-                for op in operation:
-                    query, parameters, decrypt_columns, echo, ret_assert = self.render_cur_operation(op)
-                    query_list.append(query)
-                    parameters_list.append(parameters)
-                    decrypt_list.append(decrypt_columns)
-                    echo_list.append(echo)
-                    assert_list.append(ret_assert)
+                    to_exec = [query_obj[KEY_query]]
+                    replacement_parameters = [replacement_parameters]
+                    states = [None] * len(to_exec)
 
-            past_parameters = {}
+                if was_store:
+                    ret[query_key] = []
 
-            for query, parameters, decrypt, echo, cur_assert in zip(query_list, parameters_list, decrypt_list, echo_list, assert_list):
-                last_echo = echo
-                last_query = query
+                for cur_query, cur_parameters, cur_row_idx, cur_state in zip(to_exec, replacement_parameters, range(len(to_exec)), states):
+                    exc_query = cur_query
+                    exc_state = cur_state
+                    exc_row_idx = cur_row_idx
+                    exc_parameters = cur_parameters
+                    exc_row_number = cur_parameters.get(KEY__row_number)
+                    last_query, found_parameter_dictionary = self.pre_prepare_statement(cur_query, cur_parameters)
 
-                last_query, found_parameter_dictionary = self.pre_prepare_statement(query,
-                                                                                    {**parameters, **past_parameters},
-                                                                                    parameters, skip_unused=encryption_key is not None)
-                enc_parameter_dictionary = {}
+                    enc_parameter_dictionary = {}
 
-                decrypt_parameters = {key: val for key, val in {**parameters, **past_parameters}.items() if key not in found_parameter_dictionary}
+                    encrypt_parameters = {key: val for key, val in cur_parameters.items() if key not in found_parameter_dictionary}
 
-                if len(decrypt_parameters) != 0:
-                    last_query, enc_parameter_dictionary = self.pre_prepare_statement(last_query,
-                                                                                      decrypt_parameters,
-                                                                                      parameters, match_regex=REGEX_enc_query_argument,
-                                                                                      encryption_key=encryption_key)
+                    if len(encrypt_parameters) != 0:
+                        last_query, enc_parameter_dictionary = self.pre_prepare_statement(last_query, encrypt_parameters,
+                                                                                          match_regex=REGEX_enc_query_argument,
+                                                                                          encryption_key=encryption_key)
 
-                last_query = self.encrypt_literals(last_query, encryption_key)
+                    last_query = self.encrypt_literals(last_query, encryption_key)
+                    found_params = {**found_parameter_dictionary, **enc_parameter_dictionary}
+                    unused_orig_parameters -= set(found_params.keys())
 
-                res = self.db_interface.execute_query_fetching_results(conn, last_query, {**found_parameter_dictionary, **enc_parameter_dictionary},
-                                                                       echo, wait_hook=wait_hook)
+                    res = self.db_interface.execute_query_fetching_results(conn, last_query, found_params, wait_hook=wait_hook,
+                                                                           requires_dba_check=check_required and canned_query_service is not None)
+                    wait_hook = None  # We've already checked authentication, we don't need to do it again
+                    check_required = False  # We've done the first check, if we have reached here without an exception, user does not need a DBA check
 
-                if len(res['rows']) == 1:
-                    for column, row in zip(res['columns'], res['rows'][0]):
-                        past_parameters[column] = row
+                    if len(res['rows']) == 1 and not was_store:
+                        for column, row in zip(res['columns'], res['rows'][0]):
+                            past_parameters[query_key + "." + column] = row
 
-                if ret_as_arr:
-                    ret.append(res)
-                else:
-                    ret = res
+                    if is_dict_query:
+                        if was_store:
+                            ret[query_key].append(res)
+                        else:
+                            ret[query_key] = res
+                    else:
+                        ret = res
 
-                if cur_assert != ASSERT_none:
-                    if cur_assert == ASSERT_zero and len(res) != ASSERT_zero:
-                        raise HttpStatusException(ERR_assert_expecting % (str(ASSERT_zero), len(res)),
-                                                  HTTPStatus.BAD_REQUEST)
-                    elif cur_assert == ASSERT_one and len(res) != ASSERT_one:
-                        raise HttpStatusException(ERR_assert_expecting % (str(ASSERT_one), len(res)),
-                                                  HTTPStatus.BAD_REQUEST)
-                    elif cur_assert == ASSERT_one_plus and len(res) < ASSERT_one_plus_minimum_allowed:
-                        raise HttpStatusException(ERR_assert_expecting % (str(ASSERT_one_plus_message), len(res)),
-                                                  HTTPStatus.BAD_REQUEST)
+                    cur_assert = query_obj.get(KEY_assert)
+                    if cur_assert != ASSERT_none:
+                        if cur_assert == ASSERT_zero and len(res["rows"]) != ASSERT_zero:
+                            raise HttpStatusException(ERR_assert_expecting % (str(ASSERT_zero), len(res["rows"])), HTTPStatus.BAD_REQUEST)
+                        elif cur_assert == ASSERT_one and len(res["rows"]) != ASSERT_one:
+                            raise HttpStatusException(ERR_assert_expecting % (str(ASSERT_one), len(res["rows"])), HTTPStatus.BAD_REQUEST)
+                        elif cur_assert == ASSERT_one_plus and len(res["rows"]) < ASSERT_one_plus_minimum_allowed:
+                            raise HttpStatusException(ERR_assert_expecting % (str(ASSERT_one_plus_message), len(res["rows"])), HTTPStatus.BAD_REQUEST)
 
-                if decrypt is not None:
-                    missing = [param for param in decrypt if param not in res["columns"]]
-                    if len(missing) != 0:
-                        raise HttpStatusException(ERR__missing_decrypt_column % missing)
+                    if query_obj[KEY_decrypt] is not None:
+                        missing = [param for param in query_obj[KEY_decrypt] if param not in res["columns"]]
+                        if len(missing) != 0:
+                            raise HttpStatusException(ERR__missing_decrypt_column % missing)
 
-                    if len(decrypt) != 0:
-                        res["rows"] = [
-                            [decrypt_raw(encryption_key, val) if col in decrypt and val is not None else val for val, col in
-                             zip(row, res["columns"])] for row in res["rows"]]
+                        if len(query_obj[KEY_decrypt]) != 0:
+                            res["rows"] = [
+                                [decrypt_raw(encryption_key, val) if col in query_obj[KEY_decrypt] and val is not None else val for val, col in
+                                 zip(row, res["columns"])] for row in res["rows"]]
+
+            if len(unused_orig_parameters):
+                raise HttpStatusException(ERR_unused_parameter % list(unused_orig_parameters)[0], HTTPStatus.BAD_REQUEST)
         except Exception as ex:
+            if is_dict_query:
+                new_ex = HttpStatusException(str(ex))
+                if isinstance(ex, HttpStatusException):
+                    new_ex.response_code = new_ex.response_code
+                ex = new_ex
+
+                ex.message = {
+                    KEY__error: ex.message,
+                    KEY__error_set: exc_query_key,
+                    KEY__error_query: exc_query,
+                    KEY_parameters: exc_parameters
+                }
+                if was_store:
+                    ex.message[KEY__error_row_number] = exc_row_number
+                    ex.message[KEY__error_index] = exc_row_idx
+                    ex.message[KEY_state] = exc_state
+
             err = ex
 
         if was_conn_none:
-            self.db_interface.put_conn_handle_error(conn, err, last_query if last_echo else STATEMENT_empty, skip_rollback_commit=skip_commit)
+            self.db_interface.put_conn_handle_error(conn, err, STATEMENT_empty, skip_rollback_commit=skip_commit)
         else:
-            self.db_interface.handle_error(conn, err, last_query if last_echo else STATEMENT_empty)
+            self.db_interface.handle_error(conn, err, STATEMENT_empty)
 
         return ret
 
@@ -366,8 +463,7 @@ class InterpretJAAQL:
 
         return new_query + query[last_end_match:]
 
-    def pre_prepare_statement(self, query, parameters, cur_parameters, match_regex: str = REGEX_query_argument, encryption_key: bytes = None,
-                              skip_unused: bool = False):
+    def pre_prepare_statement(self, query, parameters, match_regex: str = REGEX_query_argument, encryption_key: bytes = None):
         prepared = ""
         last_index = 0
         found_parameters = []
@@ -407,10 +503,5 @@ class InterpretJAAQL:
                     prepared += STATEMENT_argument_begin + STATEMENT_paren_open + match_str + STATEMENT_paren_close + type
 
         prepared += query[last_index:]
-
-        if not skip_unused:
-            for match_str, _ in parameters.items():
-                if match_str not in found_parameters and match_str in cur_parameters:
-                    raise HttpStatusException(ERR_unused_parameter % match_str, HTTPStatus.BAD_REQUEST)
 
         return prepared, found_parameter_dictionary

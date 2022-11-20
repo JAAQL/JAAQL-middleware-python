@@ -55,7 +55,8 @@ def create_interface(config, address: str, port: int, database: str, username: s
 def execute_supplied_statement(db_interface, query: str, parameters: dict = None,
                                as_objects: bool = False, encrypt_parameters: list = None,
                                decrypt_columns: list = None, encryption_key: bytes = None,
-                               encryption_salts: dict = None, skip_commit: bool = False):
+                               encryption_salts: dict = None, skip_commit: bool = False,
+                               autocommit: bool = False):
     if parameters is None:
         parameters = {}
 
@@ -101,7 +102,7 @@ def execute_supplied_statement(db_interface, query: str, parameters: dict = None
         "decrypt": decrypt_columns
     }
 
-    data = InterpretJAAQL(db_interface).transform(statement, skip_commit=skip_commit, encryption_key=encryption_key)
+    data = InterpretJAAQL(db_interface).transform(statement, skip_commit=skip_commit, encryption_key=encryption_key, autocommit=autocommit)
 
     if as_objects:
         data = db_interface.objectify(data)

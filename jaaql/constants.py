@@ -151,6 +151,14 @@ KEY__email_account_send_name = "send_name"
 KEY__encrypted_address = "encrypted_address"
 KEY__password_id = "password_id"
 KEY__created = "created"
+KEY__source_file = "source_file"
+KEY__position = "position"
+KEY__file = "file"
+KEY__error = "error"
+KEY__error_row_number = "row_number"
+KEY__error_index = "index"
+KEY__error_query = "query"
+KEY__error_set = "set"
 
 ATTR__deleted = "deleted"
 
@@ -186,6 +194,7 @@ DIR__www = "www"
 DIR__render_template = "rendered_documents"
 
 FILE__config = "config.ini"
+FILE__canned_queries = "canned_queries.jsql"
 
 ENCODING__utf = "UTF-8"
 ENCODING__ascii = "ascii"
@@ -204,6 +213,7 @@ ENVIRON__jaaql_profiling = "JAAQL_PROFILING"
 ENVIRON__email_credentials = "JAAQL_EMAIL_CREDENTIALS"
 ENVIRON__install_path = "INSTALL_PATH"
 ENVIRON__sentinel_url = "SENTINEL_URL"
+ENVIRON__canned_queries = "CANNED_QUERIES"
 
 EMAIL_PARAM__signup_key = "JAAQL_INVITE_KEY"
 EMAIL_PARAM__invite_code = "JAAQL_INVITE_SHORT_CODE"
@@ -265,5 +275,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.0.0"
+VERSION = "4.1.0"
 

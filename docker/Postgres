@@ -1,0 +1,15 @@
+FROM postgres:15.0
+
+ENV POSTGRES_PASSWORD 123456
+COPY ./docker/jaaql.sql /docker-entrypoint-initdb.d/01-jaaql.sql
+
+COPY ./pgextension /pgextension
+RUN /bin/mkdir -p '/usr/share/postgresql/15/extension'
+RUN /bin/mkdir -p '/usr/lib/postgresql/15/lib'
+RUN /usr/bin/install -c -m 644 /pgextension/jaaql.control '/usr/share/postgresql/15/extension/'
+RUN /usr/bin/install -c -m 644 /pgextension/jaaql--1.0.0.sql  '/usr/share/postgresql/15/extension/'
+RUN /usr/bin/install -c -m 755 /pgextension/bin/jaaql.so '/usr/lib/postgresql/15/lib/'
+RUN /bin/mkdir -p '/usr/lib/postgresql/15/lib/bitcode/jaaql'
+RUN /bin/mkdir -p '/usr/lib/postgresql/15/lib/bitcode'/jaaql/
+RUN /usr/bin/install -c -m 644 /pgextension/bin/jaaql.bc '/usr/lib/postgresql/15/lib/bitcode'/jaaql/./
+RUN mv /pgextension/bin/jaaql.index.bc '/usr/lib/postgresql/15/lib/bitcode'

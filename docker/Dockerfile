@@ -1,4 +1,4 @@
-FROM postgres:14.5
+FROM postgres:15.0
 LABEL maintainer="jaaql.io"
 
 EXPOSE 80
@@ -42,12 +42,12 @@ RUN apt-get -y install libzbar0
 RUN apt-get install dos2unix
 RUN apt -y install bzip2
 RUN apt -y install wget
-RUN wget https://www.python.org/ftp/python/3.8.14/Python-3.8.14.tar.xz
-RUN tar xf Python-3.8.14.tar.xz
+RUN wget https://www.python.org/ftp/python/3.11.0/Python-3.11.0.tar.xz
+RUN tar xf Python-3.11.0.tar.xz
 RUN apt install build-essential zlib1g-dev \
     libncurses5-dev libgdbm-dev libnss3-dev \
     libssl-dev libreadline-dev libffi-dev curl -y
-WORKDIR /Python-3.8.14
+WORKDIR /Python-3.11.0
 RUN ./configure --enable-optimizations --prefix=/usr/local --with-ensurepip=install
 RUN make install
 ENV PY_PATH /usr/local/bin/python3
@@ -92,5 +92,16 @@ RUN apt-get install -y xvfb
 RUN DEBIAN_FRONTEND=noninteractive apt-get -y install xorg xvfb gtk2-engines-pixbuf
 RUN apt-get -y install dbus-x11 xfonts-base xfonts-100dpi xfonts-75dpi xfonts-cyrillic xfonts-scalable
 RUN apt-get -y install imagemagick x11-apps
+
+COPY ./pgextension /pgextension
+RUN /bin/mkdir -p '/usr/share/postgresql/15/extension'
+RUN /bin/mkdir -p '/usr/lib/postgresql/15/lib'
+RUN /usr/bin/install -c -m 644 /pgextension/jaaql.control '/usr/share/postgresql/15/extension/'
+RUN /usr/bin/install -c -m 644 /pgextension/jaaql--1.0.0.sql  '/usr/share/postgresql/15/extension/'
+RUN /usr/bin/install -c -m 755 /pgextension/bin/jaaql.so '/usr/lib/postgresql/15/lib/'
+RUN /bin/mkdir -p '/usr/lib/postgresql/15/lib/bitcode/jaaql'
+RUN /bin/mkdir -p '/usr/lib/postgresql/15/lib/bitcode'/jaaql/
+RUN /usr/bin/install -c -m 644 /pgextension/bin/jaaql.bc '/usr/lib/postgresql/15/lib/bitcode'/jaaql/./
+RUN mv /pgextension/bin/jaaql.index.bc '/usr/lib/postgresql/15/lib/bitcode'
 
 ENTRYPOINT ["sh", "entrypoint.sh"]

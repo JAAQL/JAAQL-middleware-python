@@ -31,6 +31,10 @@ class JAAQLController(BaseJAAQLController):
         def refresh_oauth_token(auth_token: str, ip_address: str):
             return self.model.refresh_auth_token(auth_token, ip_address)
 
+        @self.cors_route('/refresh-app-config', DOCUMENTATION__refresh_app_config)
+        def refresh_app_config(connection: DBInterface, tenant: str, inputs: dict):
+            self.model.refresh_cached_canned_query_service(connection, tenant, **inputs)
+
         @self.cors_route(ENDPOINT__install, DOCUMENTATION__install)
         def install(http_inputs: dict):
             return self.model.install(**http_inputs)

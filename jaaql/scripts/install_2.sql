@@ -564,6 +564,7 @@ END
 $$ language plpgsql SECURITY DEFINER;
 
 create view check_drop_database as (SELECT true);
+create view check_refresh_application_config as (SELECT true);
 create view check_drop_email_account as (SELECT true);
 
 create function create_tenant(the_tenant postgres_addressable_name, _enc_symmetric_key varchar(255), super_role jaaql_account_id = null) returns jaaql_account_id as
@@ -582,7 +583,9 @@ BEGIN
 
     EXECUTE 'CREATE ROLE ' || the_tenant || '__public';
     EXECUTE 'CREATE ROLE ' || the_tenant || '__user';
-    EXECUTE 'CREATE ROLE ' || the_tenant || '__admin';
+    if the_tenant <> 'jaaql' then
+        EXECUTE 'CREATE ROLE ' || the_tenant || '__admin';
+    end if;
     EXECUTE 'CREATE ROLE ' || the_tenant || '__super';
     EXECUTE 'GRANT ' || the_tenant || '__super' || ' to "' || super_role::text || '" with admin option';
     EXECUTE 'GRANT ' || the_tenant || '__admin' || ' to ' || the_tenant || '__super' || ' with admin option';
@@ -593,6 +596,7 @@ BEGIN
 
     EXECUTE 'GRANT CONNECT ON DATABASE "jaaql__jaaql" TO "' || the_tenant || '__public"';
     EXECUTE 'GRANT select on check_drop_database to ' || the_tenant || '__admin' || ' with grant option';
+    EXECUTE 'GRANT select on check_refresh_application_config to ' || the_tenant || '__admin' || ' with grant option';
     EXECUTE 'GRANT select on check_drop_email_account to ' || the_tenant || '__admin' || ' with grant option';
 
     EXECUTE 'GRANT execute on function account_id_from_username(text) to ' || the_tenant || '__admin with grant option';
@@ -604,7 +608,7 @@ BEGIN
     EXECUTE 'GRANT execute on function disassociate_renderable_document_from_template to ' || the_tenant || '__admin with grant option';
     EXECUTE 'GRANT execute on function create_tenant_account to ' || the_tenant || '__admin with grant option';
     EXECUTE 'GRANT execute on function close_tenant_account(text) to ' || the_tenant || '__admin with grant option';
-    EXECUTE 'GRANT execute on function create_tenant_database(postgres_addressable_name, boolean) to ' || the_tenant || '__admin with grant option';
+    EXECUTE 'GRANT execute on function create_tenant_database(postgres_addressable_name, boolean, boolean) to ' || the_tenant || '__admin with grant option';
     EXECUTE 'GRANT execute on function create_tenant_role(postgres_addressable_name) to ' || the_tenant || '__admin with grant option';
     EXECUTE 'GRANT execute on function drop_tenant_role(postgres_addressable_name) to ' || the_tenant || '__admin with grant option';
     EXECUTE 'GRANT execute on function create_tenant_application(postgres_addressable_name, text) to ' || the_tenant || '__admin with grant option';
@@ -630,6 +634,7 @@ DECLARE
 BEGIN
     PERFORM create_tenant('jaaql', jaaql_enc_symmetric_key);
     GRANT jaaql__super to postgres with admin option;
+    GRANT jaaql__super to jaaql with admin option;
     SELECT create_tenant('default', default_enc_symmetric_key) INTO account_id;
 
     UPDATE singleton SET override_tenant = 'jaaql';

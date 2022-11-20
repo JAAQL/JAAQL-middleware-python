@@ -34,6 +34,8 @@ ARG__auth_token = "auth_token"
 ARG__connection = "connection"
 ARG__is_public = "is_public"
 ARG__verification_hook = "verification_hook"
+ARG_START__connection = "connection__"
+ARG_START__jaaql_connection = "jaaql_" + ARG_START__connection
 
 CONTENT__encoding = "charset=utf-8"
 CONTENT__json = "application/json"
@@ -60,6 +62,7 @@ ERR__method_required_token = "Method requires oauth token input yet marked as no
 ERR__method_required_connection = "Method requires connection input yet marked as not secure in documentation"
 ERR__method_required_is_public = "Method requires is_public input yet marked as not secure in documentation"
 ERR__method_required_user_id = "Method requires user id input yet marked as not secure in documentation"
+ERR__method_required_user_connection = "Method requires user connection input yet marked as not secure in documentation"
 ERR__method_required_tenant = "Method requires tenant input yet marked as not secure in documentation"
 ERR__method_required_username = "Method requires username yet marked as not secure in documentation"
 ERR__sentinel_failed = "Sentinel failed. Reponse code '%d' and content '%s'"
@@ -93,6 +96,7 @@ class BaseJAAQLController:
         self._init_error_handlers(self.app)
         self.model = model
         self.do_profiling = do_profiling
+        self.documentation_memory = {}
         self.profiling_request_ids = {}
         self.app.model = model
         self.is_prod = is_prod
@@ -154,6 +158,8 @@ class BaseJAAQLController:
                     raise HttpStatusException(ERR__argument_wrong_type % (arg.name, str(type(data[arg.name])),
                                                                           str(type(dict))), HTTPStatus.BAD_REQUEST)
             elif arg.name in data and not isinstance(data[arg.name], arg.arg_type):
+                if data[arg.name] is None and not arg.required:
+                    continue
                 was_err = True
                 if arg.arg_type == int:
                     try:
@@ -448,6 +454,19 @@ class BaseJAAQLController:
                         if method.parallel_verification:
                             supply_dict[ARG__verification_hook] = verification_hook
 
+                        # Do not close created interfaces as they are re-used
+                        for arg in inspect.getfullargspec(view_func_local).args:
+                            if arg.startswith(ARG_START__connection):
+                                if not swagger_documentation.security:
+                                    raise Exception(ERR__method_required_user_connection)
+                                connect_db = arg.split(ARG_START__connection)[1]
+                                supply_dict[arg] = self.model.create_interface_for_db(user_id, tenant + "__" + connect_db, sub_role=user_id)
+
+                        for arg in inspect.getfullargspec(view_func_local).args:
+                            if arg.startswith(ARG_START__jaaql_connection):
+                                connect_db = arg.split(ARG_START__jaaql_connection)[1]
+                                supply_dict[arg] = self.model.create_interface_for_db(user_id, "jaaql__" + connect_db, sub_role=ROLE__jaaql)
+
                         if ARG__tenant in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:
                                 raise Exception(ERR__method_required_tenant)
@@ -551,6 +570,10 @@ class BaseJAAQLController:
 
                 self._cors(resp)
                 self.perform_profile(request_id, "Jsonify")
+
+                if not BaseJAAQLController.is_options():
+                    print("Total time taken: " + str(time_delta_ms(start_time, datetime.now())) + "ms")
+
                 return resp
 
             self.app.add_url_rule(route, view_func=lambda: routed_function(view_func), methods=methods,
@@ -593,7 +616,12 @@ class BaseJAAQLController:
         def handle_pipeline_exception(error: HttpStatusException):
             if not isinstance(error.response_code, int) or isinstance(error.response_code, CustomHTTPStatus):
                 error.response_code = error.response_code.value
-            return BaseJAAQLController._cors(Response(error.message, error.response_code))
+            if not isinstance(error.message, str):
+                res = jsonify(error.message)
+            else:
+                res = Response(error.message)
+            res.status = error.response_code
+            return BaseJAAQLController._cors(res)
 
     @staticmethod
     def is_post():

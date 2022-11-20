@@ -1,4 +1,6 @@
 QUERY__setup_system = "SELECT setup(:jaaql_enc_symmetric_key, :default_enc_symmetric_key);"
+QUERY__load_application_configuration = "SELECT * FROM application_configuration WHERE name = :configuration AND application = :application AND tenant = :tenant"
+QUERY__load_application_configurations = "SELECT * FROM application_configuration"
 QUERY__fetch_singleton_as_permissions_check = "SELECT * FROM singleton"
 QUERY__fetch_recent_passwords_with_ips = "SELECT * FROM fetch_recent_passwords_with_ips WHERE username = :enc_username AND encrypted_address = :encrypted_address;"
 QUERY__fetch_recent_passwords = "SELECT * FROM fetch_recent_passwords WHERE username = :enc_username;"

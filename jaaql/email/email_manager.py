@@ -9,7 +9,7 @@ from os.path import join
 from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.constants import *
 from urllib.parse import quote
-from jaaql.utilities.utils_no_project_imports import check_allowable_file_path
+from jaaql.utilities.utils_no_project_imports import load_artifact
 import time
 
 REGEX__email_parameter = r'({{)([a-zA-Z0-9_\-]+)(}})'
@@ -42,7 +42,7 @@ class EmailManager:
     def construct_and_send_email(self, artifact_base_uri: str, template: dict, sender: str, tenant: str, to_email: str, to_name: str,
                                  parameters: dict = None, optional_parameters: dict = None, attachments: TYPE__email_attachments = None,
                                  attachment_access_token: str = None):
-        loaded_template = self.load_template(artifact_base_uri, template[KEY__app_relative_path])
+        loaded_template = load_artifact(self.is_container, artifact_base_uri, template[KEY__app_relative_path])
         if loaded_template is None:
             return
 
@@ -61,27 +61,6 @@ class EmailManager:
         self.send_email(Email(str(sender), tenant, template[KEY__application], str(template[KEY__email_template_name]), str(template[KEY__account]),
                               to_email, to_name, subject=subject, body=loaded_template, is_html=True, attachments=attachments,
                               attachment_access_token=attachment_access_token, override_send_name=template[KEY__override_send_name]))
-
-    def load_template(self, artifact_base_uri: str, app_relative_path: str):
-        if app_relative_path is None:
-            return None
-
-        if check_allowable_file_path(app_relative_path):
-            raise Exception("Database has been tampered with! Cannot send email")
-        if not app_relative_path.endswith(".html"):
-            app_relative_path = app_relative_path + ".html"
-        if not artifact_base_uri.startswith("https://") and not artifact_base_uri.startswith("http://"):
-            if self.is_container:
-                if check_allowable_file_path(artifact_base_uri):
-                    print(artifact_base_uri)
-                    raise Exception("Illegal artifact base url")
-            if artifact_base_uri.startswith("file:///"):
-                return open(join(artifact_base_uri.split("file:///")[1].replace("%20", " "), app_relative_path), "r").read()
-            else:
-                return open(join(os.environ[ENVIRON__install_path], "www", artifact_base_uri, app_relative_path), "r").read()
-        else:
-            splitter = "" if artifact_base_uri.endswith("/") else "/"
-            return requests.get(artifact_base_uri + splitter + app_relative_path).text
 
     def perform_replacements(self, subject: str, html_template: str, replace_str: str, replace_func: Callable, replace_regex: str, args: dict = None,
                              optional_args: dict = None):

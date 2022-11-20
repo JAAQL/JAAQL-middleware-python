@@ -1,4 +1,5 @@
 create extension dblink;
+create extension jaaql;
 
 DO
 $do$
@@ -12,6 +13,7 @@ BEGIN
                             ENCODING = ''UTF8''
                             TABLESPACE = pg_default
                             CONNECTION LIMIT = -1;');
+      PERFORM dblink_exec('dbname=jaaql__jaaql', 'ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;');
    END IF;
 END
 $do$;

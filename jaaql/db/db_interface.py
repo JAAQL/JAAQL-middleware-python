@@ -123,7 +123,8 @@ class DBInterface(ABC):
     def rollback(self, conn):
         pass
 
-    def execute_query_fetching_results(self, conn, query, parameters=None, echo=ECHO__none, as_objects=False, wait_hook: queue.Queue = None):
+    def execute_query_fetching_results(self, conn, query, parameters=None, echo=ECHO__none, as_objects=False, wait_hook: queue.Queue = None,
+                                       requires_dba_check: bool = False):
         if echo not in ECHO__allowed:
             allowed_echoes = ", ".join([str(allowed_echo) for allowed_echo in ECHO__allowed])
             raise HttpStatusException(ERR__unknown_echo % (str(echo), allowed_echoes), HTTPStatus.BAD_REQUEST)
@@ -141,6 +142,11 @@ class DBInterface(ABC):
                         new_parameters[key] = str(value)
                     else:
                         new_parameters[key] = value
+
+            if requires_dba_check:
+                self.check_dba(conn, wait_hook=wait_hook)
+                if wait_hook:
+                    wait_hook = None
 
             columns, rows = self.execute_query(conn, query, new_parameters, wait_hook)
 
@@ -160,7 +166,7 @@ class DBInterface(ABC):
     def objectify(self, data):
         return [dict(zip(data['columns'], row)) for row in data['rows']]
 
-    def execute_script_file(self, conn, file_loc, as_individual=False, commit=True):
+    def execute_script_file(self, conn, file_loc: str = None, as_content: str = None, as_individual=False, commit=True):
         ret = None
         err = None
 
@@ -168,23 +174,26 @@ class DBInterface(ABC):
             ret = []
 
         try:
-            with open(file_loc, FILE__read) as file:
-                queries = file.read()
+            if as_content:
+                queries = as_content
+            else:
+                with open(file_loc, FILE__read) as file:
+                    queries = file.read()
 
-                if as_individual:
-                    queries = queries.split(FILE__query_separator)
-                else:
-                    queries = [queries]
+            if as_individual:
+                queries = queries.split(FILE__query_separator)
+            else:
+                queries = [queries]
 
-                for query in queries:
-                    if len(query.strip()) != 0:
-                        query = query.strip()
-                        resp = self.execute_query_fetching_results(conn, query, {}, ECHO__execute)
+            for query in queries:
+                if len(query.strip()) != 0:
+                    query = query.strip()
+                    resp = self.execute_query_fetching_results(conn, query, {}, ECHO__execute)
 
-                        if as_individual:
-                            ret.append(resp)
-                        else:
-                            ret = resp
+                    if as_individual:
+                        ret.append(resp)
+                    else:
+                        ret = resp
 
         except Exception as ex:
             if self.output_exceptions:
@@ -196,6 +205,10 @@ class DBInterface(ABC):
             return ret
         else:
             return ret, err
+
+    @abstractmethod
+    def check_dba(self, conn, wait_hook: queue.Queue = None):
+        pass
 
     @abstractmethod
     def execute_query(self, conn, query, parameters: Optional[dict] = None, wait_hook: queue.Queue = None):

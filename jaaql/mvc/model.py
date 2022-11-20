@@ -8,8 +8,7 @@ from jaaql.db.db_interface import DBInterface, RET__rows
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
 from jaaql.mvc.queries import *
 from jaaql.utilities.utils import get_jaaql_root
-from jaaql.db.db_utils import execute_supplied_statement, execute_supplied_statement_singleton, create_interface, jaaql__encrypt,\
-    load_tenant_symmetric_keys
+from jaaql.db.db_utils import execute_supplied_statement, execute_supplied_statement_singleton, create_interface, jaaql__encrypt
 from jaaql.utilities import crypt_utils
 from io import BytesIO
 from flask import send_file
@@ -97,24 +96,6 @@ class JAAQLModel(BaseJAAQLModel):
         super().__init__(*args, **kwargs)
         JAAQLModel.LOG_QUEUE = Queue()
         threading.Thread(target=self.log_thread, args=[JAAQLModel.LOG_QUEUE])
-        self.tenant_reload_lock = threading.Lock()
-        self.tenant_symmetric_keys = None
-        if not self.is_container:
-            self.load_keys()
-
-    def load_keys(self):
-        if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):
-            self.tenant_symmetric_keys = load_tenant_symmetric_keys(self.jaaql_lookup_connection, self.get_db_crypt_key())
-
-    def fetch_tenant_symmetric_key(self, tenant: str):
-        if tenant in self.tenant_symmetric_keys:
-            return self.tenant_symmetric_keys[tenant]
-
-        with self.tenant_reload_lock:
-            if tenant not in self.tenant_symmetric_keys:
-                self.load_keys()
-
-        return self.tenant_symmetric_keys[tenant]
 
     def check_is_internal_admin(self, connection: DBInterface):
         execute_supplied_statement(connection, QUERY__fetch_singleton_as_permissions_check)
@@ -143,9 +124,19 @@ class JAAQLModel(BaseJAAQLModel):
         execute_supplied_statement(self.jaaql_lookup_connection, QUERY__drop_email_account, {KEY__name: name, KEY__tenant: tenant})
         self.email_manager.reload_service()
 
-    def drop_database(self, tenant: str, connection: DBInterface, name: str):
+    def drop_database(self, tenant: str, connection: DBInterface, name: str, delete_record: bool):
         self.check_admin(connection, "drop_database")
-        execute_supplied_statement(self.jaaql_lookup_connection, QUERY__drop_database, {KEY__name: name, KEY__tenant: tenant})
+        if delete_record is None:
+            delete_record = True
+        if delete_record:
+            execute_supplied_statement(self.jaaql_lookup_connection, QUERY__drop_database, {KEY__name: name, KEY__tenant: tenant})
+        super_interface = self.create_interface_for_db(None, DB__postgres)
+        try:
+            # We can accept raw input into SQL as it has gone to the SQL function above and therefore been sanitised
+            execute_supplied_statement(super_interface, "DROP DATABASE \"" + tenant + "__" + name + "\" WITH (FORCE)", autocommit=True)
+        except:
+            pass
+        super_interface.close()
 
     def redeploy(self, connection: DBInterface):
         self.check_is_internal_admin(connection)
@@ -197,10 +188,11 @@ class JAAQLModel(BaseJAAQLModel):
         self.add_account_password(password, user_id)
         return self.get_auth_token(tenant=tenant, password=password, ip_address=ip_address, username=username)
 
-    def fetch_user_from_username(self, username: str, tenant: str):
+    def fetch_user_from_username(self, username: str, tenant: str, singleton_message: str = None, singleton_code: int = None):
         return execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_user_from_username, {KEY__username: username},
                                                     encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__username],
-                                                    encryption_salts={KEY__username: self.get_repeatable_salt(tenant)}, as_objects=True)[KEY__user_id]
+                                                    encryption_salts={KEY__username: self.get_repeatable_salt(tenant)}, as_objects=True,
+                                                    singleton_code=singleton_code, singleton_message=singleton_message)[KEY__user_id]
 
     def fetch_user_record_from_username(self, username: str, tenant: str):
         return execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_user_record_from_username, {KEY__username: username},
@@ -836,6 +828,11 @@ class JAAQLModel(BaseJAAQLModel):
 
         return decoded[KEY__user_id], decoded[KEY__tenant], decoded[KEY__username], decoded[KEY__ip_id], decoded[KEY__is_public]
 
+    def refresh_cached_canned_query_service(self, connection: DBInterface, tenant: str, application: str, configuration: str):
+        self.check_admin(connection, "refresh_application_config")
+
+        self.cached_canned_query_service.refresh_configuration(self.is_container, self.jaaql_lookup_connection, tenant, application, configuration)
+
     def refresh_auth_token(self, auth_token: str, ip_address: str):
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), auth_token, JWT_PURPOSE__oauth, allow_expired=True)
         if not decoded:
@@ -847,37 +844,49 @@ class JAAQLModel(BaseJAAQLModel):
         return self.get_auth_token(decoded[KEY__username], decoded[KEY__tenant], ip_address)
 
     def get_auth_token(self, username: str, tenant: str, ip_address: str, password: str = None, response: JAAQLResponse = None):
-        user_id = self.fetch_user_from_username(username, tenant)
-        salt_tenant_user = self.get_repeatable_salt(tenant + user_id)
+        incorrect_credentials = False
+        user_id = None
+        res = None
+        encrypted_ip = None
 
-        encrypted_ip = jaaql__encrypt(ip_address, self.get_db_crypt_key(), salt_tenant_user)
+        try:
+            user_id = self.fetch_user_from_username(username, tenant, singleton_code=HTTPStatus.UNAUTHORIZED)
+        except HttpStatusException as exc:
+            if exc.response_code == HTTPStatus.UNAUTHORIZED:
+                incorrect_credentials = True
+            else:
+                raise exc
 
-        the_kwargs = {
-            "encryption_salts": {KEY__enc_username: self.get_repeatable_salt(tenant)},
-            "decrypt_columns": [KEY__password_hash, KEY__username],
-            "encrypt_parameters": [KEY__enc_username],
-            "encryption_key": self.get_db_crypt_key(),
-            "as_objects": True
-        }
+        if not incorrect_credentials:
+            salt_tenant_user = self.get_repeatable_salt(tenant + user_id)
 
-        res = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_recent_passwords_with_ips, {
-            KEY__enc_username: username,
-            KEY__encrypted_address: encrypted_ip,
-        }, **the_kwargs)
+            encrypted_ip = jaaql__encrypt(ip_address, self.get_db_crypt_key(), salt_tenant_user)
 
-        if len(res) == 0 and password is not None:
-            res = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_recent_passwords, {
-                KEY__enc_username: username
+            the_kwargs = {
+                "encryption_salts": {KEY__enc_username: self.get_repeatable_salt(tenant)},
+                "decrypt_columns": [KEY__password_hash, KEY__username],
+                "encrypt_parameters": [KEY__enc_username],
+                "encryption_key": self.get_db_crypt_key(),
+                "as_objects": True
+            }
+
+            res = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_recent_passwords_with_ips, {
+                KEY__enc_username: username,
+                KEY__encrypted_address: encrypted_ip,
             }, **the_kwargs)
 
-        incorrect_credentials = False
-        if len(res) == 1:
-            res = res[0]
-            if password is not None and not crypt_utils.verify_password_hash(res[KEY__password_hash], password,
-                                                                             salt=self.get_repeatable_salt(res[KEY__user_id])):
+            if len(res) == 0 and password is not None:
+                res = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_recent_passwords, {
+                    KEY__enc_username: username
+                }, **the_kwargs)
+
+            if len(res) == 1:
+                res = res[0]
+                if password is not None and not crypt_utils.verify_password_hash(res[KEY__password_hash], password,
+                                                                                 salt=self.get_repeatable_salt(res[KEY__user_id])):
+                    incorrect_credentials = True
+            else:
                 incorrect_credentials = True
-        else:
-            incorrect_credentials = True
 
         if incorrect_credentials:
             raise HttpStatusException(ERR__incorrect_credentials, HTTPStatus.UNAUTHORIZED)
@@ -918,58 +927,42 @@ class JAAQLModel(BaseJAAQLModel):
         return create_interface(self.config, address, port, database, username, password=password, role=user_id, sub_role=sub_role)
 
     def submit(self, inputs: dict, user_id: str, tenant: str, verification_hook: Queue):
-        was_dict = False
-        if isinstance(inputs, dict):
-            was_dict = True
-            inputs = [inputs]
+        if not isinstance(inputs, dict):
+            raise HttpStatusException("Expected object or string input")
 
-        tenant_application_configs = None
-        required_dbs = {}
-        for cur in inputs:
-            if KEY__application in cur:
-                if tenant_application_configs is None:
-                    tenant_application_configs = self.fetch_pivoted_application_schemas(tenant)
+        if KEY__application in inputs:
+            tenant_application_configs = self.fetch_pivoted_application_schemas(tenant)
+            app = tenant_application_configs[inputs[KEY__application]]
+            config = app[inputs[KEY__configuration]]
 
-                app = tenant_application_configs[cur[KEY__application]]
-                cur.pop(KEY__application)
-                config = app[cur[KEY__configuration]]
-                cur.pop(KEY__configuration)
-
-                if KEY__schema in cur:
-                    found_db = config[cur[KEY__schema]][KEY__database]
-                    cur.pop(KEY__schema)
-                else:
-                    if len(config) == 1:
-                        found_db = config[list(config.keys())[0]][KEY__database]
-                    else:
-                        found_db = [val[KEY__database] for _, val in config.items() if val[KEY__is_default]]
-                        if len(found_db) == 1:
-                            found_db = found_db[0]
-
-                if not found_db:
-                    raise HttpStatusException(ERR__schema_invalid)
-
-                cur[KEY__database] = found_db
-
-            if KEY__database not in cur:
-                cur[KEY__database] = DB__jaaql
+            found_db = None
+            if KEY__schema in inputs:
+                found_db = config[inputs[KEY__schema]][KEY__database]
+                inputs.pop(KEY__schema)
             else:
-                cur[KEY__database] = tenant + "__" + cur[KEY__database]
+                if len(config) == 1:
+                    found_db = config[list(config.keys())[0]][KEY__database]
+                else:
+                    found_dbs = [val[KEY__database] for _, val in config.items() if val[KEY__is_default]]
+                    if len(found_dbs) == 1:
+                        found_db = found_dbs[0]
 
-            if cur[KEY__database] not in required_dbs:
-                # Technical debt. If we switch roles here for the first query, it'll be shared amongst others. Not a security risk as the other must
-                # have access to the role to switch to it
-                sub_role = cur.pop(KEY__role) if KEY__role in cur else None
-                if sub_role is not None:
-                    sub_role = tenant + "__" + sub_role
-                required_dbs[cur[KEY__database]] = self.create_interface_for_db(user_id, cur[KEY__database], sub_role)
-        res = []
-        for cur, idx in zip(inputs, range(len(inputs))):
-            pass_hook = verification_hook if idx == 0 else None
-            ret = InterpretJAAQL(required_dbs[cur.pop(KEY__database)]).transform(inputs, skip_commit=cur.get(KEY__read_only), wait_hook=pass_hook,
-                                                                                 encryption_key=self.fetch_tenant_symmetric_key(tenant))[0]
-            res.append(ret)
-        if was_dict:
-            return res[0]
+            if not found_db:
+                raise HttpStatusException(ERR__schema_invalid)
+
+            inputs[KEY__database] = found_db
+
+        if KEY__database not in inputs:
+            inputs[KEY__database] = DB__jaaql
         else:
-            return res
+            inputs[KEY__database] = tenant + "__" + inputs[KEY__database]
+
+        sub_role = inputs.pop(KEY__role) if KEY__role in inputs else None
+        if sub_role is not None:
+            sub_role = tenant + "__" + sub_role
+        required_db = self.create_interface_for_db(user_id, inputs[KEY__database], sub_role)
+
+        return InterpretJAAQL(required_db).transform(inputs, skip_commit=inputs.get(KEY__read_only), wait_hook=verification_hook,
+                                                     encryption_key=self.fetch_tenant_symmetric_key(tenant),
+                                                     canned_query_service=self.cached_canned_query_service,
+                                                     tenant=tenant)
