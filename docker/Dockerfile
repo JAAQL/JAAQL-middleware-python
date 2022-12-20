@@ -42,8 +42,8 @@ RUN apt-get -y install libzbar0
 RUN apt-get install dos2unix
 RUN apt -y install bzip2
 RUN apt -y install wget
-RUN wget https://www.python.org/ftp/python/3.11.0/Python-3.11.0.tar.xz
-RUN tar xf Python-3.11.0.tar.xz
+RUN wget https://www.python.org/ftp/python/3.11.1/Python-3.11.1.tar.xz
+RUN tar xf Python-3.11.1.tar.xz
 RUN apt install build-essential zlib1g-dev \
     libncurses5-dev libgdbm-dev libnss3-dev \
     libssl-dev libreadline-dev libffi-dev curl -y
