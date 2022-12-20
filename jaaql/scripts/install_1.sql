@@ -26,7 +26,7 @@ BEGIN
     end if;
 
     if not skip_db then
-        PERFORM dblink_exec('dbname=' || current_database(), 'CREATE DATABASE ' || the_tenant  || '__' || db_name || ' with ENCODING = ''UTF8'' TABLESPACE = pg_default CONNECTION LIMIT = -1;');
+        PERFORM dblink_exec('dbname=' || current_database(), 'CREATE DATABASE "' || the_tenant  || '__' || db_name || '" with ENCODING = ''UTF8'' TABLESPACE = pg_default CONNECTION LIMIT = -1;');
         PERFORM dblink_exec('dbname=' || the_tenant  || '__' || db_name, 'create view jaaql__table_primary_cols as (SELECT c.column_name, tc.table_name
         FROM information_schema.table_constraints tc
             JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name)
