@@ -7,7 +7,7 @@ import shutil
 import yaml as yaml_utils
 import json
 from jaaql.utilities.utils import get_jaaql_root
-from jaaql.constants import VERSION
+from jaaql.constants import VERSION, TYPE__binary, TYPE__octet_stream
 
 ERR__empty_example_list = "Empty examples list for argument '%s'"
 ERR__null_example = "No examples found for argument '%s'"
@@ -41,6 +41,7 @@ PATH__empty = ""
 VERSION__open_api = "3.0.3"
 
 CONTENT_TYPE__json = "application/json"  # This isn't a python constant so it is defined here
+CONTENT_TYPE__multipart = "application/multipart"
 
 TYPE__string = "string"
 
@@ -197,7 +198,7 @@ class SwaggerArgumentResponse:
         if arg_type_sub_list:
             arg_type_sub_list = all([isinstance(x, SwaggerArgumentResponse) for x in arg_type])
 
-        if not arg_type_sub_list and not isinstance_union(arg_type, TYPE__swagger_list_like) and not self.is_arg_all():
+        if not arg_type_sub_list and not isinstance_union(arg_type, TYPE__swagger_list_like) and not self.is_arg_all() and arg_type != TYPE__binary:
             self._validate_example(name, arg_type, self.example)
 
     @staticmethod
@@ -232,8 +233,7 @@ TYPE__swagger_list_like = Union[SwaggerSimpleList, SwaggerList]
 ARG_RESP__allow_all = SwaggerArgumentResponse(DOCUMENTATION__allow_all, DOCUMENTATION__allow_all, str)
 BODY__file = "JAAQL_IS_FILE"
 
-TYPE__argument_response = Optional[Union[List[SwaggerArgumentResponse], SwaggerArgumentResponse, SwaggerList,
-                                         SwaggerSimpleList]]
+TYPE__argument_response = Optional[Union[List[SwaggerArgumentResponse], SwaggerArgumentResponse, SwaggerList, SwaggerSimpleList]]
 TYPE__flat_argument_response = Optional[Union[List[SwaggerArgumentResponse], SwaggerArgumentResponse]]
 TYPE__listed_argument_response = Union[List[SwaggerArgumentResponse], SwaggerList, SwaggerSimpleList]
 
@@ -271,8 +271,18 @@ class SwaggerFlatResponse:
         self.body = body
         self.resp_type = resp_type
 
-        if not isinstance(body, resp_type):
+        if resp_type != TYPE__octet_stream and not isinstance(body, resp_type):
             raise SwaggerException(ERR__response_type % (code, str(resp_type)))
+
+
+class SwaggerMultipartRequest:
+
+    def __init__(self, arguments: TYPE__flat_argument_response):
+        self.arguments = arguments
+
+        validate_argument_responses(arguments)
+
+        self.arguments = arguments if isinstance_union(arguments, TYPE__swagger_list_like) else force_list(arguments)
 
 
 MOCK__description = ""
@@ -303,7 +313,7 @@ TYPE__responses = Optional[Union[TYPE__response, List[TYPE__response]]]
 class SwaggerMethod:
 
     def __init__(self, name: str, description: str, method: str, arguments: TYPE__flat_argument_response = None,
-                 body: TYPE__argument_response = None, response: TYPE__responses = None,
+                 body: Union[TYPE__argument_response, SwaggerMultipartRequest] = None, response: TYPE__responses = None,
                  exceptions: TYPE__exceptions = None, parallel_verification: bool = False):
         self._validate_exceptions(exceptions)
         self._validate_responses(response)
@@ -318,7 +328,7 @@ class SwaggerMethod:
         self.responses = response if isinstance_union(response, TYPE__swagger_list_like) else force_list(response)
         self.arguments = force_list(arguments)
         self._validate_arguments(arguments)
-        self.body = force_list(body)
+        self.body = body if isinstance(body, SwaggerMultipartRequest) else force_list(body)
         self.exceptions = force_list(exceptions)
 
         found_500 = any([_http_status_to_integer(ex.code) == RESP__default_err_code for ex in self.exceptions])
@@ -420,6 +430,10 @@ def _to_openapi_type(python_type: type) -> str:
         return OPEN_API__array
     elif isinstance(python_type, SwaggerArgumentResponse):
         return OPEN_API__object
+    elif python_type == TYPE__octet_stream:
+        return TYPE__binary
+    elif python_type == TYPE__binary:
+        return TYPE__string
     else:
         return OPEN_API__typemap[python_type]  # Lint issue PYC
 
@@ -436,6 +450,8 @@ def _generate_examples(yaml: str, depth: int, response: TYPE__listed_argument_re
     for response_property in response:
         if isinstance(response_property, SwaggerList):
             yaml = _generate_examples(yaml, depth + 1, response_property, is_prod)
+        elif isinstance(response_property, SwaggerMultipartRequest):
+            pass  # TODO
         else:
             is_complex = isinstance(response_property.arg_type, List)
 
@@ -465,10 +481,12 @@ def _generate_properties(yaml: str, depth: int, response: TYPE__listed_argument_
         yaml = _build_yaml(yaml, depth, OPEN_API__items)
         yaml = _build_yaml(yaml, depth + 1, OPEN_API__type, _to_openapi_type(response.arg_type))
         return yaml
+    elif isinstance(response, SwaggerMultipartRequest):
+        return yaml
 
     required_props = [YAML__double_quote + response_property.name + YAML__double_quote
                       for response_property in response
-                      if not isinstance(response_property, SwaggerList) and response_property.required]
+                      if not isinstance(response_property, SwaggerList) and not isinstance(response_property, SwaggerMultipartRequest) and response_property.required]
     required = YAML__array_separator.join(required_props)
 
     if len(response) == 0 or not isinstance(response[0], SwaggerList):
@@ -481,6 +499,8 @@ def _generate_properties(yaml: str, depth: int, response: TYPE__listed_argument_
             yaml = _generate_properties(yaml, depth, response_property, is_prod)
         else:
             if isinstance(response_property, SwaggerArgumentResponse) and response_property.local_only and is_prod:
+                continue
+            if isinstance(response_property, SwaggerMultipartRequest):
                 continue
             yaml = _build_yaml(yaml, depth + 1, response_property.name)
             yaml = _build_yaml(yaml, depth + 2, OPEN_API__description, response_property.description)
@@ -542,11 +562,14 @@ def _produce_path(doc: SwaggerDocumentation, yaml: str, is_prod: bool) -> str:
                 yaml = _build_yaml(yaml, 3, OPEN_API__parameters)
             for arg in method.arguments:
                 yaml = _build_parameter(yaml, 4, doc, arg, is_prod)
-        if isinstance(method.body, SwaggerList) or len(method.body) != 0:
+        if isinstance(method.body, SwaggerList) or isinstance(method.body, SwaggerMultipartRequest) or len(method.body) != 0:
             yaml = _build_yaml(yaml, 3, OPEN_API__request_body)
             yaml = _build_yaml(yaml, 4, OPEN_API__required, str(True))
             yaml = _build_yaml(yaml, 4, OPEN_API__content)
-            yaml = _build_yaml(yaml, 5, CONTENT_TYPE__json)
+            if isinstance(method.body, SwaggerMultipartRequest):
+                yaml = _build_yaml(yaml, 5, CONTENT_TYPE__multipart)
+            else:
+                yaml = _build_yaml(yaml, 5, CONTENT_TYPE__json)
             yaml = _build_yaml(yaml, 7, OPEN_API__schema)
             use_body = method.body
             use_depth = 8
@@ -558,6 +581,8 @@ def _produce_path(doc: SwaggerDocumentation, yaml: str, is_prod: bool) -> str:
                 yaml = _build_yaml(yaml, 9, OPEN_API__type, OPEN_API__object)
                 use_body = method.body.responses
                 use_depth = 9
+            elif isinstance(method.body, SwaggerMultipartRequest):
+                pass
             else:
                 yaml = _build_yaml(yaml, 8, OPEN_API__type, OPEN_API__object)
                 yaml = _build_yaml(yaml, 8, OPEN_API__example)
@@ -573,7 +598,10 @@ def _produce_path(doc: SwaggerDocumentation, yaml: str, is_prod: bool) -> str:
             yaml = _build_yaml(yaml, 4, YAML__quote + str(_http_status_to_integer(response.code)) + YAML__quote)
             yaml = _build_yaml(yaml, 5, OPEN_API__description, response.description)
             yaml = _build_yaml(yaml, 5, OPEN_API__content)
-            yaml = _build_yaml(yaml, 6, CONTENT_TYPE__json)
+            if isinstance(response, SwaggerFlatResponse) and isinstance(response.resp_type, str) and "/" in response.resp_type:
+                yaml = _build_yaml(yaml, 6, response.resp_type)
+            else:
+                yaml = _build_yaml(yaml, 6, CONTENT_TYPE__json)
             yaml = _build_yaml(yaml, 7, OPEN_API__schema)
             if isinstance(response, SwaggerFlatResponse):
                 yaml = _build_yaml(yaml, 8, OPEN_API__type, _to_openapi_type(response.resp_type))

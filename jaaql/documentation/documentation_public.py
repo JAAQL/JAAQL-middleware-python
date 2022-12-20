@@ -490,6 +490,14 @@ DOCUMENTATION__document = SwaggerDocumentation(
     ]
 )
 
+ARG_RES__as_attachment = SwaggerArgumentResponse(
+    name=KEY__as_attachment,
+    description="Whether in the browser the 'Content-Disposition' header should be set as attachment",
+    arg_type=bool,
+    required=False,
+    condition="Defaults to false"
+)
+
 DOCUMENTATION__rendered_document = SwaggerDocumentation(
     tags="Documents",
     security=False,
@@ -497,13 +505,7 @@ DOCUMENTATION__rendered_document = SwaggerDocumentation(
         name="Stream rendered document",
         description="Streams a rendered document as a downlaod",
         method=REST__GET,
-        arguments=[ARG_RES__document_id, SwaggerArgumentResponse(
-            name=KEY__as_attachment,
-            description="Whether in the browser the 'Content-Disposition' header should be set as attachment",
-            arg_type=bool,
-            required=False,
-            condition="Defaults to false"
-        )],
+        arguments=[ARG_RES__document_id, ARG_RES__as_attachment],
         response=SwaggerFlatResponse(
             description="The raw file data. Cannot be re-downloaded after this",
             body=BODY__file
@@ -548,6 +550,49 @@ DOCUMENTATION__drop_databases = SwaggerDocumentation(
             )
         ]
     )
+)
+
+ARG_RES__file_id = SwaggerArgumentResponse(
+    name=KEY__file_id,
+    description="The id of a file",
+    arg_type=str,
+    example=["d4619cda-97e5-4e74-b323-b567d0ce4ee2"]
+)
+
+DOCUMENTATION__file = SwaggerDocumentation(
+    tags="File",
+    methods=[
+        SwaggerMethod(
+            name="Add file",
+            description="Uploads a file to be managed by JAAQL. Only the current user will have access to it",
+            method=REST__POST,
+            body=SwaggerMultipartRequest(
+                arguments=SwaggerArgumentResponse(
+                    name=KEY__file,
+                    description="The binary file",
+                    arg_type=TYPE__binary,
+                    example="\%PNG..."
+                )
+            ),
+            response=SwaggerResponse(
+                description="Confirmation and id of the file upload",
+                response=ARG_RES__file_id
+            )
+        ),
+        SwaggerMethod(
+            name="Fetch file",
+            description="Fetches a file managed by JAAQL that you have been granted access to",
+            method=REST__GET,
+            arguments=[
+                ARG_RES__file_id,
+                ARG_RES__as_attachment
+            ],
+            response=SwaggerFlatResponse(
+                description="The raw file data.",
+                body=BODY__file
+            )
+        )
+    ]
 )
 
 DOCUMENTATION__refresh_app_config = SwaggerDocumentation(

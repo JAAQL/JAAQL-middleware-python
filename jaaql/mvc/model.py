@@ -138,6 +138,35 @@ class JAAQLModel(BaseJAAQLModel):
             pass
         super_interface.close()
 
+    def get_user_file_path(self, file_name: str):
+        return os.path.join("/files/", file_name)
+
+    def fetch_file(self, connection: DBInterface, inputs: dict):
+        name = execute_supplied_statement_singleton(connection, "SELECT * FROM my_files WHERE file = :id AND can_read = true",
+                                                    {KEY__file_id: inputs[KEY__file_id]},
+                                                    singleton_message="The file either does not exist or you do not have access to it",
+                                                    as_objects=True)[KEY__file]
+
+        as_attachment = False
+        if inputs[KEY__as_attachment]:
+            as_attachment = True
+
+        buffer = BytesIO()
+        buffer.write(open(self.get_user_file_path(name), "r").read())
+        buffer.seek(0)
+
+        return send_file(buffer, as_attachment=as_attachment, download_name=name)
+
+    def upload_file(self, user_id: str, inputs: dict):
+        file_name = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
+                                                         "INSERT INTO file (owner) VALUES (:owner) RETURNING id",
+                                                         {KEY__owner: user_id},
+                                                         as_objects=True)[KEY__file_id]
+
+        open(self.get_user_file_path(file_name), "w").write(inputs[KEY__file])
+
+        return {KEY__file_id: file_name}
+
     def redeploy(self, connection: DBInterface):
         self.check_is_internal_admin(connection)
 

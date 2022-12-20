@@ -567,6 +567,74 @@ create view check_drop_database as (SELECT true);
 create view check_refresh_application_config as (SELECT true);
 create view check_drop_email_account as (SELECT true);
 
+create table file (
+    id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
+    owner postgres_addressable_name not null
+);
+
+create table file_permission (
+    file uuid not null,
+    role postgres_addressable_name not null,
+    PRIMARY KEY (file, role),
+    FOREIGN KEY (file) REFERENCES file ON UPDATE CASCADE ON DELETE CASCADE,
+    can_read boolean not null default false,
+    can_write boolean not null default false,
+    can_grant boolean not null default false
+);
+
+create view my_files as (
+    SELECT
+        file,
+        MAX(can_read OR pg_has_role(session_user, f.owner, 'MEMBER')),
+        MAX(can_write OR pg_has_role(session_user, f.owner, 'MEMBER')),
+        MAX(can_grant OR pg_has_role(session_user, f.owner, 'MEMBER'))
+    FROM
+        file_permission fp
+    INNER JOIN
+        file f ON fp.file = f.id
+    WHERE pg_has_role(session_user, fp.role, 'MEMBER')
+    GROUP BY file
+);
+
+create function grant_file_permission(_file uuid, _role postgres_addressable_name, _read boolean = false, _write boolean = false, _grant boolean = false) returns void as
+$$
+DECLARE
+    found_file uuid;
+BEGIN
+    SELECT
+        file INTO found_file
+    WHERE
+        can_grant = true AND file = _file;
+
+    if found_file is null then
+        SELECT id INTO found_file FROM file WHERE pg_has_role(session_user, owner, 'MEMBER') AND id = _file;
+    end if;
+
+    INSERT INTO file_permission(file, role, can_read, can_write, can_grant) VALUES (found_file, _role, _read, _write, _grant)
+        ON CONFLICT ON CONSTRAINT file_permission_pkey DO UPDATE SET can_read = EXCLUDED.can_read, can_write = EXCLUDED.can_write, can_grant = EXCLUDED.can_grant;
+END
+$$ language plpgsql SECURITY DEFINER;
+GRANT execute on function grant_file_permission(uuid, postgres_addressable_name, boolean, boolean, boolean) to public;
+
+create function revoke_file_permission(_file uuid, _role postgres_addressable_name) returns void as
+$$
+DECLARE
+    found_file uuid;
+BEGIN
+    SELECT
+        file INTO found_file
+    WHERE
+        can_grant = true AND file = _file;
+
+    if found_file is null then
+        SELECT id INTO found_file FROM file WHERE pg_has_role(session_user, owner, 'MEMBER') AND id = _file;
+    end if;
+
+    DELETE FROM file_permission WHERE file = found_file AND role = _role;
+END
+$$ language plpgsql SECURITY DEFINER;
+GRANT execute on function revoke_file_permission(uuid, postgres_addressable_name) to public;
+
 create function create_tenant(the_tenant postgres_addressable_name, _enc_symmetric_key varchar(255), super_role jaaql_account_id = null) returns jaaql_account_id as
 $$
 BEGIN

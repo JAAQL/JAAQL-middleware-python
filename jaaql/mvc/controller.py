@@ -63,6 +63,13 @@ class JAAQLController(BaseJAAQLController):
         def accounts(connection: DBInterface, tenant: str, http_inputs: dict):
             self.model.create_tenant_account(connection, tenant, http_inputs)
 
+        @self.cors_route('/files', DOCUMENTATION__file)
+        def files(connection: DBInterface, user_id: str, http_inputs: dict):
+            if self.is_get():
+                return self.model.fetch_file(connection, **http_inputs)
+            else:
+                return self.model.upload_file(user_id, http_inputs)
+
         @self.cors_route('/account/password', DOCUMENTATION__password)
         def password(user_id: str, username: str, tenant: str, ip_address: str, http_inputs: dict):
             return self.model.add_my_account_password(user_id, username, tenant, ip_address, **http_inputs)
