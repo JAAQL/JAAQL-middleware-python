@@ -1,4 +1,4 @@
-FROM jaaql/jaaql-middleware-python
+FROM jaaql/jaaql-middleware-python:4.1.5
 LABEL maintainer="jaaql.io"
 
 EXPOSE 80

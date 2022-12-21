@@ -47,7 +47,7 @@ RUN tar xf Python-3.11.1.tar.xz
 RUN apt install build-essential zlib1g-dev \
     libncurses5-dev libgdbm-dev libnss3-dev \
     libssl-dev libreadline-dev libffi-dev curl -y
-WORKDIR /Python-3.11.0
+WORKDIR /Python-3.11.1
 RUN ./configure --enable-optimizations --prefix=/usr/local --with-ensurepip=install
 RUN make install
 ENV PY_PATH /usr/local/bin/python3
