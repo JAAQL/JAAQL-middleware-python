@@ -490,6 +490,14 @@ DOCUMENTATION__document = SwaggerDocumentation(
     ]
 )
 
+ARG_RES__as_attachment = SwaggerArgumentResponse(
+    name=KEY__as_attachment,
+    description="Whether in the browser the 'Content-Disposition' header should be set as attachment",
+    arg_type=bool,
+    required=False,
+    condition="Defaults to false"
+)
+
 DOCUMENTATION__rendered_document = SwaggerDocumentation(
     tags="Documents",
     security=False,
@@ -497,13 +505,7 @@ DOCUMENTATION__rendered_document = SwaggerDocumentation(
         name="Stream rendered document",
         description="Streams a rendered document as a downlaod",
         method=REST__GET,
-        arguments=[ARG_RES__document_id, SwaggerArgumentResponse(
-            name=KEY__as_attachment,
-            description="Whether in the browser the 'Content-Disposition' header should be set as attachment",
-            arg_type=bool,
-            required=False,
-            condition="Defaults to false"
-        )],
+        arguments=[ARG_RES__document_id, ARG_RES__as_attachment],
         response=SwaggerFlatResponse(
             description="The raw file data. Cannot be re-downloaded after this",
             body=BODY__file
@@ -561,4 +563,50 @@ DOCUMENTATION__refresh_app_config = SwaggerDocumentation(
             ARG_RES__configuration
         ]
     )
+)
+
+KEY__file_name = "file_name"
+KEY__dir_name = "directory_name"
+
+ARG_RES__file_name = SwaggerArgumentResponse(
+    name=KEY__file_name,
+    description="The name of the file",
+    arg_type=str,
+    example=["my-image.png"]
+)
+
+ARG_RES__dir_name = SwaggerArgumentResponse(
+    name=KEY__dir_name,
+    description="The name of the directory, do not end with /",
+    arg_type=str,
+    example=["my_app/current_project"]
+)
+
+DOCUMENTATION__file_system = SwaggerDocumentation(
+    tags="File System",
+    security=False,
+    methods=[
+        SwaggerMethod(
+            name="Get file",
+            description="Gets a file, having been provided a name",
+            method=REST__GET,
+            arguments=[ARG_RES__file_name, ARG_RES__as_attachment],
+            response=SwaggerFlatResponse(
+                description="The raw file data",
+                body=BODY__file
+            )
+        ),
+        SwaggerMethod(
+            name="Put file",
+            description="Puts a file, having been provided a name and contents",
+            method=REST__POST,
+            arguments=ARG_RES__dir_name
+        ),
+        SwaggerMethod(
+            name="Delete file",
+            description="Deletes a file, having been provided a name",
+            method=REST__DELETE,
+            arguments=ARG_RES__file_name
+        )
+    ]
 )

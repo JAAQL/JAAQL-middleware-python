@@ -10,6 +10,9 @@ RUN apt-get install -y git
 RUN apt-get install -y cron
 
 ENV INSTALL_PATH /JAAQL-middleware-python
+ENV JAAQL_LOCATION $INSTALL_PATH
+RUN mkdir -p $JAAQL_LOCATION/user_volumes
+VOLUME $JAAQL_LOCATION/user_volumes
 ENV JAAQL_DEPLOYED true
 ENV PIGGYBACK_LETSENCRYPT FALSE
 COPY . $INSTALL_PATH

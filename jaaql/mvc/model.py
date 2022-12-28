@@ -1,3 +1,5 @@
+from werkzeug.datastructures import FileStorage
+
 from jaaql.email.email_manager_service import EmailAttachment
 from jaaql.mvc.base_model import BaseJAAQLModel, VAULT_KEY__jwt_crypt_key
 from jaaql.exceptions.http_status_exception import HttpStatusException, HTTPStatus, ERR__already_installed, ERR__already_signed_up
@@ -13,6 +15,7 @@ from jaaql.utilities import crypt_utils
 from io import BytesIO
 from flask import send_file
 import threading
+import pathlib
 from datetime import datetime, timedelta
 from jaaql.mvc.base_model import JAAQLPivotInfo
 from os.path import dirname
@@ -21,6 +24,7 @@ import uuid
 import json
 import random
 import os
+import re
 from queue import Queue
 
 ERR__refresh_expired = "Token too old to be used for refresh. Please authenticate again"
@@ -85,6 +89,8 @@ SIGNUP__not_started = 0
 SIGNUP__started = 1
 SIGNUP__already_registered = 2
 SIGNUP__completed = 3
+
+REGEX__allowed_file_name = r'^(((\/\.)|[\/.])?[A-Za-z0-9 !"£$%^&*()\-_+=\[{}\];:\'@#~,<>?|`]+)+$'
 
 
 class JAAQLModel(BaseJAAQLModel):
@@ -605,6 +611,59 @@ class JAAQLModel(BaseJAAQLModel):
             buffer.seek(0)
 
             return send_file(buffer, as_attachment=as_attachment, download_name=res[KEY__filename])
+
+    def _file_system_validate_file_name(self, file_name: str):
+        file_name = file_name.strip().replace("\\", "/")
+        if not re.match(REGEX__allowed_file_name, file_name):
+            raise HttpStatusException("File name is not allowed.")
+        return file_name
+
+    def _file_system_resolve_location(self, user_id: str, file_name: str, make_parent: bool = False, check_exist: bool = False):
+        file_name = self._file_system_validate_file_name(file_name)
+        file_parent = "user_volumes"
+        if self.is_container:
+            file_parent = join(os.environ['JAAQL_LOCATION'], file_parent)
+
+        file_path = join(file_parent, user_id, file_name).replace("\\", "/")
+        if len(file_path) > 255:
+            raise HttpStatusException("File path too long. Max length " + str(255 - len(join(file_parent, user_id)) - 1))  # -1 represents the final join character
+
+        if make_parent:
+            the_split = file_name.split("/")
+            if len(the_split) > 5:
+                raise HttpStatusException("Too many sub directories in file path. Max depth is 5")
+            pathlib.Path("/".join(file_path.split("/")[:-1])).mkdir(parents=True, exist_ok=True)
+
+        if check_exist and not os.path.exists(file_path):
+            raise HttpStatusException("File path does not exist")
+
+        if os.path.exists(file_path) and not os.path.isfile(file_path):
+            raise HttpStatusException("File is actually a directory")
+
+        return file_path.split("/")[-1], file_path
+
+    def file_system_get_file(self, user_id: str, file_name: str, as_attachment: bool = False):
+        file_name, file_path = self._file_system_resolve_location(user_id, file_name, check_exist=True)
+
+        if not self.is_container:
+            file_path = join(os.getcwd(), file_path)
+
+        return send_file(file_path, as_attachment=as_attachment, download_name=file_name)
+
+    def file_system_delete_file(self, user_id: str, file_name: str):
+        file_name, file_path = self._file_system_resolve_location(user_id, file_name, check_exist=True)
+
+        os.remove(file_path)
+
+    def file_system_put_file(self, user_id: str, uploaded_files: [FileStorage], directory_name: str):
+        for uploaded_file in uploaded_files:
+            file_name = uploaded_file.filename
+            if len(file_name.strip()) == 0:
+                raise HttpStatusException("File name cannot be empty")
+            file_name = join(directory_name, file_name)
+            file_name, file_path = self._file_system_resolve_location(user_id, file_name, make_parent=True)
+
+            uploaded_file.save(file_path)
 
     def render_document(self, inputs: dict, auth_token: str, ip_address: str, tenant: str):
         inputs[KEY__oauth_token] = self.refresh_auth_token(auth_token, ip_address)

@@ -6,6 +6,8 @@ from werkzeug.exceptions import HTTPException, InternalServerError
 import inspect
 import json
 import requests
+from werkzeug.datastructures import ImmutableMultiDict
+import itertools
 from datetime import datetime
 from jaaql.exceptions.custom_http_status import CustomHTTPStatus
 import sys
@@ -92,7 +94,7 @@ class BaseJAAQLController:
         super().__init__()
         self.app = Flask(__name__, instance_relative_config=True)
         self.app.config[FLASK__json_sort_keys] = False
-        self.app.config[FLASK__max_content_length] = 1024 * 1024 * 2  # 2 MB
+        self.app.config[FLASK__max_content_length] = 1024 * 1024 * 20  # 10 MB
         self._init_error_handlers(self.app)
         self.model = model
         self.do_profiling = do_profiling
@@ -308,6 +310,10 @@ class BaseJAAQLController:
             real_resp = match_alpha_resp
 
         return real_resp
+
+    @staticmethod
+    def flatten_immutable_multi_dict_to_list(multi: ImmutableMultiDict):
+        return list(itertools.chain.from_iterable([data for _, data in multi.to_dict(flat=False).items()]))
 
     @staticmethod
     def get_input_as_dictionary(method: SwaggerMethod, is_prod: bool, fill_missing: bool = True):

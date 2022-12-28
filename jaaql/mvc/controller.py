@@ -1,5 +1,5 @@
 from jaaql.mvc.model import JAAQLModel
-from jaaql.mvc.base_controller import BaseJAAQLController
+from jaaql.mvc.base_controller import BaseJAAQLController, request
 from jaaql.documentation.documentation_internal import *
 from jaaql.documentation.documentation_public import *
 from jaaql.documentation.documentation_shared import *
@@ -124,3 +124,14 @@ class JAAQLController(BaseJAAQLController):
         @self.cors_route('/rendered_documents', DOCUMENTATION__rendered_document)
         def documents(http_inputs: dict):
             return self.model.fetch_document_stream(http_inputs)
+
+        @self.cors_route('/fs', DOCUMENTATION__file_system)
+        def documents(http_inputs: dict):
+            # TODO replace "123" with user_id and remove security=False
+            if self.is_get():
+                return self.model.file_system_get_file("123", **http_inputs)
+            elif self.is_delete():
+                return self.model.file_system_delete_file("123", **http_inputs)
+            else:
+                files = BaseJAAQLController.flatten_immutable_multi_dict_to_list(request.files)
+                return self.model.file_system_put_file("123", files, **http_inputs)
