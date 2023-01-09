@@ -124,12 +124,18 @@ class JAAQLModel(BaseJAAQLModel):
         execute_supplied_statement(self.jaaql_lookup_connection, QUERY__drop_email_account, {KEY__name: name, KEY__tenant: tenant})
         self.email_manager.reload_service()
 
-    def drop_database(self, tenant: str, connection: DBInterface, name: str, delete_record: bool):
+    def drop_database(self, tenant: str, connection: DBInterface, name: str, delete_record: bool, silent: bool):
         self.check_admin(connection, "drop_database")
         if delete_record is None:
             delete_record = True
+        if silent is None:
+            silent = False
         if delete_record:
-            execute_supplied_statement(self.jaaql_lookup_connection, QUERY__drop_database, {KEY__name: name, KEY__tenant: tenant})
+            try:
+                execute_supplied_statement(self.jaaql_lookup_connection, QUERY__drop_database, {KEY__name: name, KEY__tenant: tenant})
+            except HttpStatusException as ex:
+                if not silent:
+                    raise ex
         super_interface = self.create_interface_for_db(None, DB__postgres)
         try:
             # We can accept raw input into SQL as it has gone to the SQL function above and therefore been sanitised

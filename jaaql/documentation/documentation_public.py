@@ -545,6 +545,11 @@ DOCUMENTATION__drop_databases = SwaggerDocumentation(
                 arg_type=bool,
                 required=False,
                 condition="Defaults to false"
+            ),
+            SwaggerArgumentResponse(
+                name="silent",
+                description="Whether or not to return an error when the database doesn't exist",
+                arg_type=bool
             )
         ]
     )
