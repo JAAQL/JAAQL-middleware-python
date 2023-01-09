@@ -29,7 +29,6 @@ ERR__invalid_level = "Invalid level!"
 ERR__denied_create_user = "Cannot create that user with your current permissions"
 ERR__incorrect_credentials = "Incorrect credentials!"
 ERR__lacking_permissions = "Only an administrator can perform this action!"
-ERR__short_tenant_name = "Tenant name is too short!"
 ERR__schema_invalid = "Schema invalid!"
 ERR__cant_send_attachments = "Cannot send attachments to other people"
 ERR__keep_alive_failed = "Keep alive failed"
@@ -49,9 +48,6 @@ ERR__document_created_file = "Document is a file, cannot be downloaded in this w
 
 PG__default_connection_string = "postgresql://postgres:%s@localhost:5432/jaaql"
 DIR__scripts = "scripts"
-
-TENANT__jaaql = "jaaql"
-TENANT__default = "default"
 
 MODIFIER__allow_conflicts = " ON CONFLICT DO NOTHING"
 
@@ -98,7 +94,7 @@ class JAAQLModel(BaseJAAQLModel):
         threading.Thread(target=self.log_thread, args=[JAAQLModel.LOG_QUEUE])
 
     def check_is_internal_admin(self, connection: DBInterface):
-        execute_supplied_statement(connection, QUERY__fetch_singleton_as_permissions_check)
+        execute_supplied_statement(connection, QUERY__fetch_internal_admin)
 
     def log(self, user_id: str, occurred: datetime, duration_ms: int, exception: str, contr_input: str, ip: str, status: int, endpoint: str):
         JAAQLModel.LOG_QUEUE.put({
@@ -116,33 +112,9 @@ class JAAQLModel(BaseJAAQLModel):
         while True:
             execute_supplied_statement(self.jaaql_lookup_connection, QUERY__log_ins, log_queue.get())
 
-    def check_admin(self, connection: DBInterface, option: str):
-        execute_supplied_statement(connection, "SELECT * FROM check_" + option)  # Will error if this fails
-
-    def drop_email_account(self, tenant: str, connection: DBInterface, name: str):
-        self.check_admin(connection, "drop_email_account")
-        execute_supplied_statement(self.jaaql_lookup_connection, QUERY__drop_email_account, {KEY__name: name, KEY__tenant: tenant})
+    def drop_email_account(self, connection: DBInterface, name: str):
+        execute_supplied_statement(connection, QUERY__drop_email_account, {KEY__name: name})
         self.email_manager.reload_service()
-
-    def drop_database(self, tenant: str, connection: DBInterface, name: str, delete_record: bool, silent: bool):
-        self.check_admin(connection, "drop_database")
-        if delete_record is None:
-            delete_record = True
-        if silent is None:
-            silent = False
-        if delete_record:
-            try:
-                execute_supplied_statement(self.jaaql_lookup_connection, QUERY__drop_database, {KEY__name: name, KEY__tenant: tenant})
-            except HttpStatusException as ex:
-                if not silent:
-                    raise ex
-        super_interface = self.create_interface_for_db(None, DB__postgres)
-        try:
-            # We can accept raw input into SQL as it has gone to the SQL function above and therefore been sanitised
-            execute_supplied_statement(super_interface, "DROP DATABASE \"" + tenant + "__" + name + "\" WITH (FORCE)", autocommit=True)
-        except:
-            pass
-        super_interface.close()
 
     def redeploy(self, connection: DBInterface):
         self.check_is_internal_admin(connection)
@@ -158,24 +130,6 @@ class JAAQLModel(BaseJAAQLModel):
 
         threading.Thread(target=self.exit_jaaql, daemon=True).start()
 
-    def add_tenant(self, connection: DBInterface, name: str, tenant_admin_password: str = None, attach_tenant_admin_as: str = None):
-        if len(name) < 3:
-            raise HttpStatusException(ERR__short_tenant_name)
-
-        _, sk = crypt_utils.key_stretcher(str(uuid.uuid4()), length=crypt_utils.AES__key_length)
-        sk = sk.decode()
-
-        tenant_admin_account_id = execute_supplied_statement_singleton(connection, QUERY__create_tenant,
-                                                                       {KEY__the_tenant: name, KEY__enc_symmetric_key: sk})[RET__rows][0]
-
-        execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__attach_account, {
-            KEY__the_tenant: name,
-            KEY__user_id: tenant_admin_account_id,
-            KEY__enc_username: attach_tenant_admin_as if attach_tenant_admin_as else USERNAME__super
-        }, encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__enc_username], encryption_salts=self.get_repeatable_salt(name))
-        self.add_account_password(tenant_admin_account_id, tenant_admin_password)
-        self.fetch_tenant_symmetric_key(name)
-
     def add_account_password(self, user_id: str, password: str):
         crypt_utils.validate_password(password)
         salt = self.get_repeatable_salt(user_id)
@@ -186,24 +140,24 @@ class JAAQLModel(BaseJAAQLModel):
                                                            encrypt_parameters=[KEY__password_hash], as_objects=True)[KEY__id]
         execute_supplied_statement(self.jaaql_lookup_connection, QUERY__add_password_cache, {KEY__account: user_id, KEY__password: password_id})
 
-    def add_my_account_password(self, user_id: str, username: str, tenant: str, ip_address: str, old_password: str, password: str):
+    def add_my_account_password(self, user_id: str, username: str, ip_address: str, old_password: str, password: str):
         res = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_recent_passwords_with_account, {KEY__user_id: user_id},
                                                    decrypt_columns=[KEY__password_hash], encryption_key=self.get_db_crypt_key())
         if not crypt_utils.verify_password_hash(res[KEY__password_hash], old_password, salt=self.get_repeatable_salt(user_id)):
             raise HttpStatusException(ERR__incorrect_credentials)
         self.add_account_password(password, user_id)
-        return self.get_auth_token(tenant=tenant, password=password, ip_address=ip_address, username=username)
+        return self.get_auth_token(password=password, ip_address=ip_address, username=username)
 
-    def fetch_user_from_username(self, username: str, tenant: str, singleton_message: str = None, singleton_code: int = None):
+    def fetch_user_from_username(self, username: str, singleton_message: str = None, singleton_code: int = None):
         return execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_user_from_username, {KEY__username: username},
                                                     encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__username],
-                                                    encryption_salts={KEY__username: self.get_repeatable_salt(tenant)}, as_objects=True,
+                                                    encryption_salts={KEY__username: self.get_repeatable_salt()}, as_objects=True,
                                                     singleton_code=singleton_code, singleton_message=singleton_message)[KEY__user_id]
 
-    def fetch_user_record_from_username(self, username: str, tenant: str):
+    def fetch_user_record_from_username(self, username: str):
         return execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_user_record_from_username, {KEY__username: username},
                                                     encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__username],
-                                                    encryption_salts={KEY__username: self.get_repeatable_salt(tenant)}, as_objects=True)
+                                                    encryption_salts={KEY__username: self.get_repeatable_salt()}, as_objects=True)
 
     def select_from_data_validation_table(self, connection: DBInterface, val_table: str, pkey_vals: dict):
         val_table_esc = '"%s"' % val_table
@@ -236,7 +190,7 @@ class JAAQLModel(BaseJAAQLModel):
         select_table = template[KEY__data_validation_view] if template[KEY__data_validation_view] is not None else val_table
         return self.select_from_data_validation_table(connection, select_table, pkey_vals), pkey_vals
 
-    def user_invite(self, user_id: str, tenant: str = None, application: str = None, configuration: str = None, email_template: str = None,
+    def user_invite(self, user_id: str, application: str = None, configuration: str = None, email_template: str = None,
                     template_lookup: dict = None):
         if template_lookup is not None:
             template_lookup = json.dumps(template_lookup)
@@ -247,27 +201,31 @@ class JAAQLModel(BaseJAAQLModel):
             KEY__application: application,
             KEY__configuration: configuration,
             KEY__email_template: email_template,
-            KEY__tenant: tenant,
             KEY__invite_code: "".join([CODE__letters[random.randint(0, len(CODE__letters) - 1)] for _ in range(CODE__invite_length)])
         }
         return execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_insert, params, as_objects=True)
 
-    def fetch_interface_for_tenant(self, tenant: str, application: str, configuration: str, schema: str):
-        schemas = self.fetch_pivoted_application_schemas(tenant)
+    def fetch_interface(self, application: str, configuration: str, schema: str):
+        """
+        TODO this won't work. Used for emails, needs to be the database admin user for a database
+        :param application:
+        :param configuration:
+        :param schema:
+        :return:
+        """
+        schemas = self.fetch_pivoted_application_schemas()
         db_name = schemas[application][configuration][schema][KEY__database]
-        return self.create_interface_for_db(ROLE__jaaql if tenant == TENANT__jaaql else tenant + "__admin", tenant + "__" + db_name)
+        return self.create_interface_for_db(ROLE__jaaql, db_name)
 
     def request_signup(self, inputs: dict):
         template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_with_app_url, {
             KEY__name: inputs[KEY__email_template],
-            KEY__tenant: inputs[KEY__tenant],
             KEY__configuration: inputs[KEY__configuration],
             KEY__application: inputs[KEY__application]
         }, as_objects=True)
         template_already_exists = execute_supplied_statement_singleton(
             self.jaaql_lookup_connection, QUERY__fetch_email_template_with_app_url, {
                 KEY__name: inputs[KEY__already_signed_up_email_template],
-                KEY__tenant: inputs[KEY__tenant],
                 KEY__configuration: inputs[KEY__configuration],
                 KEY__application: inputs[KEY__application]
             }, as_objects=True
@@ -280,14 +238,14 @@ class JAAQLModel(BaseJAAQLModel):
 
         user_existed = False
         try:
-            user_id = self.create_tenant_account(self.jaaql_lookup_connection, inputs[KEY__tenant], {KEY__username: inputs[KEY__email]}, True)
+            user_id = self.create_account(self.jaaql_lookup_connection, {KEY__username: inputs[KEY__email]}, True)
         except HttpStatusException as hs:
             if not hs.message.startswith(SQL__err_duplicate_user):
                 raise hs  # Unrelated exception, raise it
 
-            res = self.fetch_user_recent_password(inputs[KEY__email], inputs[KEY__tenant])
+            res = self.fetch_user_recent_password(inputs[KEY__email])
             if len(res) == 0:
-                user_id = self.fetch_user_from_username(inputs[KEY__email], inputs[KEY__tenant])
+                user_id = self.fetch_user_from_username(inputs[KEY__email])
             else:
                 user_id = res[0][KEY__user_id]
                 user_existed = True
@@ -315,18 +273,15 @@ class JAAQLModel(BaseJAAQLModel):
             if EMAIL_PARAM__app_url in params:
                 raise HttpStatusException(ERR__unexpected_validation_column % EMAIL_PARAM__app_url)
 
-            interface = self.fetch_interface_for_tenant(inputs[KEY__tenant], template[KEY__application], inputs[KEY__configuration],
-                                                        template[KEY__schema])
+            interface = self.fetch_interface(template[KEY__application], inputs[KEY__configuration], template[KEY__schema])
             sanitized_params, pkey_vals = self.fetch_sanitized_email_params(interface, template, params)
 
-        invite_keys = self.user_invite(user_id, inputs[KEY__tenant], inputs[KEY__application], inputs[KEY__configuration], template[KEY__name],
-                                       pkey_vals)
+        invite_keys = self.user_invite(user_id, inputs[KEY__application], inputs[KEY__configuration], template[KEY__name], pkey_vals)
         optional_params = {EMAIL_PARAM__signup_key: invite_keys[KEY__invite_key], EMAIL_PARAM__invite_code: invite_keys[KEY__invite_code],
                            EMAIL_PARAM__app_url: app_url}
         optional_params = {**optional_params, **sanitized_params}
 
-        self.email_manager.construct_and_send_email(artifact_url, template, user_id, inputs[KEY__tenant], inputs[KEY__email], None, {},
-                                                    optional_params)
+        self.email_manager.construct_and_send_email(artifact_url, template, user_id, inputs[KEY__email], None, {}, optional_params)
 
         return {KEY__invite_key: invite_keys[KEY__invite_poll_key]}
 
@@ -336,7 +291,7 @@ class JAAQLModel(BaseJAAQLModel):
                                                     decrypt_columns=[KEY__email], encryption_key=self.get_db_crypt_key(),
                                                     singleton_message=ERR__cant_find_sign_up)
 
-        res = self.fetch_user_recent_password(resp[KEY__email], resp[KEY__tenant])
+        res = self.fetch_user_recent_password(resp[KEY__email])
         existed = len(res) != 0
 
         is_invite_key = str(resp[KEY__invite_key]) == inputs[KEY__invite_or_poll_key]
@@ -371,10 +326,10 @@ class JAAQLModel(BaseJAAQLModel):
 
         return {KEY__invite_key_status: status}
 
-    def fetch_user_recent_password(self, username: str, tenant: str):
+    def fetch_user_recent_password(self, username: str):
         res = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_recent_passwords, {
             KEY__enc_username: username
-        }, encryption_salts={KEY__enc_username: self.get_repeatable_salt(tenant)}, decrypt_columns=[KEY__password_hash, KEY__username],
+        }, encryption_salts={KEY__enc_username: self.get_repeatable_salt()}, decrypt_columns=[KEY__password_hash, KEY__username],
                                          encrypt_parameters=[KEY__enc_username], encryption_key=self.get_db_crypt_key(), as_objects=True)
         return res
 
@@ -385,16 +340,16 @@ class JAAQLModel(BaseJAAQLModel):
 
         username = resp[KEY__email]
 
-        res = self.fetch_user_recent_password(username, resp[KEY__tenant])
+        res = self.fetch_user_recent_password(username)
 
         if len(res) != 0:
             raise HttpStatusException(ERR__already_signed_up, response_code=HTTPStatus.CONFLICT)
 
-        self.add_account_password(self.fetch_user_from_username(username, resp[KEY__tenant]), password)
+        self.add_account_password(self.fetch_user_from_username(username), password)
 
         return {KEY__email: username}
 
-    def fetch_signup(self, token: str, tenant: str):
+    def fetch_signup(self, token: str):
         resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_fetch, parameters={KEY__invite_or_poll_key: token},
                                                     decrypt_columns=[KEY__email], encryption_key=self.get_db_crypt_key(),
                                                     as_objects=True, singleton_message=ERR__cant_find_sign_up)
@@ -402,10 +357,10 @@ class JAAQLModel(BaseJAAQLModel):
         res = {}
         if resp[KEY__email_template] and resp[ATTR__data_lookup_json]:
             template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_with_app_url,
-                                                            {KEY__name: resp[KEY__email_template], KEY__tenant: tenant,
+                                                            {KEY__name: resp[KEY__email_template],
                                                              KEY__configuration: resp[KEY__configuration], KEY__application: resp[KEY__application]},
                                                             as_objects=True)
-            interface = self.fetch_interface_for_tenant(tenant, template[KEY__application], resp[KEY__configuration], template[KEY__schema])
+            interface = self.fetch_interface(template[KEY__application], resp[KEY__configuration], template[KEY__schema])
             res[KEY__parameters] = self.select_from_data_validation_table(interface, template[KEY__data_validation_table],
                                                                           json.loads(resp[ATTR__data_lookup_json]))
 
@@ -418,17 +373,17 @@ class JAAQLModel(BaseJAAQLModel):
         del_query = "DELETE FROM " + val_table_esc + " WHERE " + pkeys_where + " RETURNING " + pkeys_returning
         execute_supplied_statement_singleton(connection, del_query, pkey_vals)
 
-    def finish_signup(self, token: str, tenant: str):
+    def finish_signup(self, token: str):
         resp = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_fetch, parameters={KEY__invite_or_poll_key: token},
                                                     decrypt_columns=[KEY__email], encryption_key=self.get_db_crypt_key(),
                                                     as_objects=True, singleton_message=ERR__cant_find_sign_up)
 
         if resp[KEY__email_template] and resp[ATTR__data_lookup_json]:
             template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_with_app_url,
-                                                            {KEY__name: resp[KEY__email_template], KEY__tenant: tenant,
+                                                            {KEY__name: resp[KEY__email_template],
                                                              KEY__configuration: resp[KEY__configuration]},
                                                             as_objects=True)[KEY__data_validation_table]
-            interface = self.fetch_interface_for_tenant(tenant, template[KEY__application], resp[KEY__configuration], template[KEY__schema])
+            interface = self.fetch_interface(template[KEY__application], resp[KEY__configuration], template[KEY__schema])
             self.delete_from_data_validation_table(interface, template, json.loads(resp[ATTR__data_lookup_json]))
 
         execute_supplied_statement(self.jaaql_lookup_connection, QUERY__sign_up_close, {KEY__invite_key: resp[KEY__invite_key]})
@@ -436,7 +391,6 @@ class JAAQLModel(BaseJAAQLModel):
     def send_reset_password_email(self, inputs: dict):
         template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_with_app_url, {
             KEY__name: inputs[KEY__email_template],
-            KEY__tenant: inputs[KEY__tenant],
             KEY__configuration: inputs[KEY__configuration],
             KEY__application: inputs[KEY__application]
         }, as_objects=True)
@@ -449,7 +403,7 @@ class JAAQLModel(BaseJAAQLModel):
         user_exists = True
         user = None
         try:
-            user = self.fetch_user_record_from_username(inputs[KEY__email], inputs[KEY__tenant])
+            user = self.fetch_user_record_from_username(inputs[KEY__email])
         except HttpStatusException:
             user_exists = False
 
@@ -461,7 +415,7 @@ class JAAQLModel(BaseJAAQLModel):
                                                             as_objects=True)[ATTR__count]
         else:
             attempts = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fake_reset_count,
-                                                            {KEY__email: inputs[KEY__email], KEY__tenant: inputs[KEY__tenant]},
+                                                            {KEY__email: inputs[KEY__email]},
                                                             encryption_key=self.get_db_crypt_key(),
                                                             encryption_salts={KEY__email: self.get_repeatable_salt()},
                                                             encrypt_parameters=[KEY__email], as_objects=True)[ATTR__count]
@@ -486,8 +440,7 @@ class JAAQLModel(BaseJAAQLModel):
                 if EMAIL_PARAM__app_url in params:
                     raise HttpStatusException(ERR__unexpected_validation_column % EMAIL_PARAM__app_url)
 
-                interface = self.fetch_interface_for_tenant(inputs[KEY__tenant], template[KEY__application], inputs[KEY__configuration],
-                                                            template[KEY__schema])
+                interface = self.fetch_interface(template[KEY__application], inputs[KEY__configuration], template[KEY__schema])
                 sanitized_params, pkey_vals = self.fetch_sanitized_email_params(interface, template, params)
 
             template_lookup = None
@@ -499,7 +452,6 @@ class JAAQLModel(BaseJAAQLModel):
                 KEY__email_template: template[KEY__name],
                 KEY__configuration: inputs[KEY__configuration],
                 KEY__application: inputs[KEY__application],
-                KEY__tenant: inputs[KEY__tenant],
                 KEY__reset_code: "".join([CODE__alphanumeric[random.randint(0, len(CODE__alphanumeric) - 1)] for _ in range(CODE__reset_length)])
             }
 
@@ -508,12 +460,10 @@ class JAAQLModel(BaseJAAQLModel):
                                EMAIL_PARAM__app_url: app_url}
             optional_params = {**optional_params, **sanitized_params}
 
-            self.email_manager.construct_and_send_email(artifact_url, template, user[KEY__user_id], inputs[KEY__tenant], inputs[KEY__email], None, {},
-                                                        optional_params)
+            self.email_manager.construct_and_send_email(artifact_url, template, user[KEY__user_id], inputs[KEY__email], None, {}, optional_params)
         else:
             params = {
                 KEY__email: inputs[KEY__email],
-                KEY__tenant: inputs[KEY__tenant]
             }
             reset_keys = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fake_reset_insert, params,
                                                               encryption_key=self.get_db_crypt_key(),
@@ -612,14 +562,13 @@ class JAAQLModel(BaseJAAQLModel):
 
             return send_file(buffer, as_attachment=as_attachment, download_name=res[KEY__filename])
 
-    def render_document(self, inputs: dict, auth_token: str, ip_address: str, tenant: str):
+    def render_document(self, inputs: dict, auth_token: str, ip_address: str):
         inputs[KEY__oauth_token] = self.refresh_auth_token(auth_token, ip_address)
-        inputs[KEY__tenant] = tenant
         return execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__ins_rendered_document, inputs,
                                                     encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__parameters, KEY__oauth_token],
                                                     as_objects=True)
 
-    def send_email(self, inputs: dict, auth_token: str, user_id: str, tenant: str, ip_address: str, username: str):
+    def send_email(self, inputs: dict, auth_token: str, user_id: str, ip_address: str, username: str):
         if inputs[KEY__recipient] is not None:
             raise HttpStatusException(HTTPStatus.NOT_IMPLEMENTED.description, HTTPStatus.NOT_IMPLEMENTED.value)
 
@@ -629,7 +578,6 @@ class JAAQLModel(BaseJAAQLModel):
         template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_with_app_url, {
             KEY__name: inputs[KEY__email_template],
             KEY__configuration: inputs[KEY__configuration],
-            KEY__tenant: tenant,
             KEY__application: inputs[KEY__application]
         }, as_objects=True)
         app_url = template.pop(KEY__application_url)
@@ -644,7 +592,7 @@ class JAAQLModel(BaseJAAQLModel):
             if EMAIL_PARAM__app_url in params:
                 raise HttpStatusException(ERR__unexpected_validation_column % EMAIL_PARAM__app_url)
 
-            interface = self.fetch_interface_for_tenant(tenant, template[KEY__application], inputs[KEY__configuration], template[KEY__schema])
+            interface = self.fetch_interface(template[KEY__application], inputs[KEY__configuration], template[KEY__schema])
             params, _ = self.fetch_sanitized_email_params(interface, template, params)
 
         optional_params = {EMAIL_PARAM__app_url: app_url}
@@ -659,7 +607,7 @@ class JAAQLModel(BaseJAAQLModel):
                 attachment[KEY__application] = inputs[KEY__application]
                 attachment[KEY__configuration] = inputs[KEY__configuration]
 
-        self.email_manager.construct_and_send_email(artifact_url, template, user_id, tenant, recipients, None, {}, optional_params,
+        self.email_manager.construct_and_send_email(artifact_url, template, user_id, recipients, None, {}, optional_params,
                                                     attachments=EmailAttachment.deserialize_list(inputs[KEY__attachments], template[KEY__name],
                                                                                                  app_url),
                                                     attachment_access_token=self.refresh_auth_token(auth_token, ip_address))
@@ -679,23 +627,22 @@ class JAAQLModel(BaseJAAQLModel):
         }
         if resp[KEY__email_template] and resp[ATTR__data_lookup_json]:
             template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_with_app_url,
-                                                            {KEY__name: resp[KEY__email_template], KEY__tenant: resp[KEY__tenant],
+                                                            {KEY__name: resp[KEY__email_template],
                                                              KEY__application: resp[KEY__application], KEY__configuration: resp[KEY__configuration]},
                                                             as_objects=True)
-            interface = self.fetch_interface_for_tenant(resp[KEY__tenant], template[KEY__application], resp[KEY__configuration],
-                                                        template[KEY__schema])
+            interface = self.fetch_interface(template[KEY__application], resp[KEY__configuration], template[KEY__schema])
             res[KEY__parameters] = self.select_from_data_validation_table(interface, template[KEY__data_validation_table],
                                                                           json.loads(resp[ATTR__data_lookup_json]))
 
         return res
 
-    def fetch_public_user(self, application: str, configuration: str, tenant: str):
+    def fetch_public_user(self, application: str, configuration: str):
         return execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_public_account_credentials,
-                                                    {KEY__application: application, KEY__configuration: configuration, KEY__tenant: tenant},
+                                                    {KEY__application: application, KEY__configuration: configuration},
                                                     as_objects=True, encryption_key=self.get_db_crypt_key(),
                                                     decrypt_columns=[KEY__password, KEY__username])
 
-    def create_tenant_account(self, connection: DBInterface, tenant: str, inputs: dict, specifying_tenant: bool = False):
+    def create_account(self, connection: DBInterface, inputs: dict):
         if inputs.get(KEY__password) is not None:
             crypt_utils.validate_password(inputs[KEY__password])
 
@@ -708,12 +655,10 @@ class JAAQLModel(BaseJAAQLModel):
         if inputs[KEY__password] is None and inputs[KEY__application] is not None:
             inputs[KEY__password] = str(uuid.uuid4())  # Set a default password for public user
         the_password = inputs[KEY__password]
-        query = QUERY__create_account_for_tenant if specifying_tenant else QUERY__create_tenant_account
-        if specifying_tenant:
-            inputs[KEY__tenant] = tenant
+        query = QUERY__create_account
         account_id = execute_supplied_statement_singleton(connection, query, inputs,
                                                           encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__username, KEY__password],
-                                                          encryption_salts={KEY__username: self.get_repeatable_salt(tenant)})[RET__rows][0]
+                                                          encryption_salts={KEY__username: self.get_repeatable_salt()})[RET__rows][0]
 
         if the_password:
             self.add_account_password(account_id, the_password)
@@ -730,7 +675,7 @@ class JAAQLModel(BaseJAAQLModel):
         if "PostgreSQL " not in version:
             raise HttpStatusException(ERR__keep_alive_failed)
 
-    def install(self, db_connection_string: str, superjaaql_password: str, default_tenant_password: str, install_key: str, allow_uninstall: bool):
+    def install(self, db_connection_string: str, jaaql_password: str, super_db_password: str, install_key: str, allow_uninstall: bool):
         if self.jaaql_lookup_connection is None:
             if allow_uninstall:
                 self.vault.insert_obj(VAULT_KEY__allow_jaaql_uninstall, True)
@@ -741,59 +686,43 @@ class JAAQLModel(BaseJAAQLModel):
             if db_connection_string is None:
                 db_connection_string = PG__default_connection_string % os.environ[PG_ENV__password]
 
-            address, port, db, username, db_password = DBInterface.fracture_uri(db_connection_string)
-            db = DB__jaaql
+            address, port, _, username, db_password = DBInterface.fracture_uri(db_connection_string)
 
-            super_interface = create_interface(self.config, address, port, db, username, db_password)
+            super_interface = create_interface(self.config, address, port, DB__jaaql, username, db_password)
             conn = super_interface.get_conn()
             super_interface.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "install_1.sql"))
             resp = super_interface.execute_query(conn, QUERY__setup_jaaql_role)
-            jaaql_password = resp[1][0][0]
+            jaaql_db_password = resp[1][0][0]
             super_interface.commit(conn)
             super_interface.put_conn(conn)
             super_interface.close()
 
-            self.jaaql_lookup_connection = create_interface(self.config, address, port, db, ROLE__jaaql, jaaql_password)
+            self.jaaql_lookup_connection = create_interface(self.config, address, port, DB__jaaql, ROLE__jaaql, jaaql_db_password)
             conn = self.jaaql_lookup_connection.get_conn()
             self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "install_2.sql"))
             self.jaaql_lookup_connection.commit(conn)
             self.jaaql_lookup_connection.put_conn(conn)
 
-            _, jesk = crypt_utils.key_stretcher(str(uuid.uuid4()), length=crypt_utils.AES__key_length)
-            jesk = jesk.decode()
-            _, desk = crypt_utils.key_stretcher(str(uuid.uuid4()), length=crypt_utils.AES__key_length)
-            desk = desk.decode()
-            resp = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__setup_system,
-                                              {KEY__jaaql_enc_symmetric_key: jesk, KEY__default_enc_symmetric_key: desk},
-                                              encrypt_parameters=[KEY__jaaql_enc_symmetric_key, KEY__default_enc_symmetric_key],
-                                              encryption_key=self.get_db_crypt_key())
-            tenant_admin_account_id = resp[RET__rows][0][0]
+            execute_supplied_statement(self.jaaql_lookup_connection, QUERY__setup_system)
 
             execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__attach_account, {
-                KEY__the_tenant: TENANT__jaaql,
                 KEY__user_id: ROLE__jaaql,
                 KEY__enc_username: USERNAME__jaaql
             }, encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__enc_username],
-                                                 encryption_salts={KEY__enc_username: self.get_repeatable_salt(TENANT__jaaql)})
+                                                 encryption_salts={KEY__enc_username: self.get_repeatable_salt()})
             execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__attach_account, {
-                KEY__the_tenant: TENANT__jaaql,
                 KEY__user_id: ROLE__postgres,
-                KEY__enc_username: USERNAME__superjaaql
+                KEY__enc_username: USERNAME__super_db
             }, encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__enc_username],
-                                                 encryption_salts={KEY__enc_username: self.get_repeatable_salt(TENANT__jaaql)})
-            execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__attach_account, {
-                KEY__the_tenant: TENANT__default,
-                KEY__user_id: tenant_admin_account_id,
-                KEY__enc_username: USERNAME__super
-            }, encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__enc_username],
-                                                 encryption_salts={KEY__enc_username: self.get_repeatable_salt(TENANT__default)})
-            self.add_account_password(tenant_admin_account_id, default_tenant_password)
-            self.add_account_password(ROLE__postgres, superjaaql_password)
+                                                 encryption_salts={KEY__enc_username: self.get_repeatable_salt()})
+
+            self.add_account_password(ROLE__postgres, super_db_password)
+            self.add_account_password(ROLE__jaaql, jaaql_password)
             self.jaaql_lookup_connection.close()
 
             super_conn_str = PROTOCOL__postgres + username + ":" + db_password + "@" + address + ":" + str(port) + "/"
             self.vault.insert_obj(VAULT_KEY__super_db_credentials, super_conn_str)
-            jaaql_lookup_str = PROTOCOL__postgres + ROLE__jaaql + ":" + jaaql_password + "@" + address + ":" + str(port) + "/" + DB__jaaql
+            jaaql_lookup_str = PROTOCOL__postgres + ROLE__jaaql + ":" + jaaql_db_password + "@" + address + ":" + str(port) + "/" + DB__jaaql
             self.vault.insert_obj(VAULT_KEY__jaaql_lookup_connection, jaaql_lookup_str)
 
             print("Rebooting to allow JAAQL config to be shared among workers")
@@ -820,7 +749,7 @@ class JAAQLModel(BaseJAAQLModel):
                 threading.Thread(target=self.verification_thread, args=[JAAQLModel.VERIFICATION_QUEUE], daemon=True).start()
             JAAQLModel.VERIFICATION_QUEUE.put((auth_token, ip_address, complete))
             payload = json.loads(base64url_decode(auth_token.split(".")[1].encode("UTF-8")).decode())
-            return payload[KEY__user_id], payload[KEY__tenant], payload[KEY__username], payload[KEY__ip_id], payload[KEY__is_public]
+            return payload[KEY__user_id], payload[KEY__username], payload[KEY__ip_id], payload[KEY__is_public]
         except Exception:
             raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
@@ -832,12 +761,12 @@ class JAAQLModel(BaseJAAQLModel):
         execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_matching_recent_passwords_with_account, lookup,
                                              singleton_message=ERR__invalid_token, singleton_code=HTTPStatus.UNAUTHORIZED, skip_commit=True)
 
-        return decoded[KEY__user_id], decoded[KEY__tenant], decoded[KEY__username], decoded[KEY__ip_id], decoded[KEY__is_public]
+        return decoded[KEY__user_id], decoded[KEY__username], decoded[KEY__ip_id], decoded[KEY__is_public]
 
-    def refresh_cached_canned_query_service(self, connection: DBInterface, tenant: str, application: str, configuration: str):
-        self.check_admin(connection, "refresh_application_config")
+    def refresh_cached_canned_query_service(self, connection: DBInterface, application: str, configuration: str):
+        self.check_is_internal_admin(connection)
 
-        self.cached_canned_query_service.refresh_configuration(self.is_container, self.jaaql_lookup_connection, tenant, application, configuration)
+        self.cached_canned_query_service.refresh_configuration(self.is_container, self.jaaql_lookup_connection, application, configuration)
 
     def refresh_auth_token(self, auth_token: str, ip_address: str):
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), auth_token, JWT_PURPOSE__oauth, allow_expired=True)
@@ -847,16 +776,16 @@ class JAAQLModel(BaseJAAQLModel):
         if datetime.fromisoformat(decoded[KEY__created]) + timedelta(milliseconds=self.refresh_expiry_ms) < datetime.now():
             raise HttpStatusException(ERR__refresh_expired, HTTPStatus.UNAUTHORIZED)
 
-        return self.get_auth_token(decoded[KEY__username], decoded[KEY__tenant], ip_address)
+        return self.get_auth_token(decoded[KEY__username], ip_address)
 
-    def get_auth_token(self, username: str, tenant: str, ip_address: str, password: str = None, response: JAAQLResponse = None):
+    def get_auth_token(self, username: str, ip_address: str, password: str = None, response: JAAQLResponse = None):
         incorrect_credentials = False
         user_id = None
         res = None
         encrypted_ip = None
 
         try:
-            user_id = self.fetch_user_from_username(username, tenant, singleton_code=HTTPStatus.UNAUTHORIZED)
+            user_id = self.fetch_user_from_username(username, singleton_code=HTTPStatus.UNAUTHORIZED)
         except HttpStatusException as exc:
             if exc.response_code == HTTPStatus.UNAUTHORIZED:
                 incorrect_credentials = True
@@ -864,12 +793,12 @@ class JAAQLModel(BaseJAAQLModel):
                 raise exc
 
         if not incorrect_credentials:
-            salt_tenant_user = self.get_repeatable_salt(tenant + user_id)
+            salt_user = self.get_repeatable_salt(user_id)
 
-            encrypted_ip = jaaql__encrypt(ip_address, self.get_db_crypt_key(), salt_tenant_user)
+            encrypted_ip = jaaql__encrypt(ip_address, self.get_db_crypt_key(), salt_user)
 
             the_kwargs = {
-                "encryption_salts": {KEY__enc_username: self.get_repeatable_salt(tenant)},
+                "encryption_salts": {KEY__enc_username: self.get_repeatable_salt()},
                 "decrypt_columns": [KEY__password_hash, KEY__username],
                 "encrypt_parameters": [KEY__enc_username],
                 "encryption_key": self.get_db_crypt_key(),
@@ -906,7 +835,6 @@ class JAAQLModel(BaseJAAQLModel):
             KEY__user_id: str(res[KEY__user_id]),
             KEY__password_id: str(res[KEY__password_id]),
             KEY__username: res[KEY__username],
-            KEY__tenant: tenant,
             KEY__address: ip_address,
             KEY__ip_id: str(address),
             KEY__created: datetime.now().isoformat(),
@@ -919,8 +847,8 @@ class JAAQLModel(BaseJAAQLModel):
 
         return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data, JWT_PURPOSE__oauth, expiry_ms=self.token_expiry_ms)
 
-    def fetch_pivoted_application_schemas(self, tenant: str):
-        data = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_application_schemas, {KEY__tenant: tenant}, as_objects=True,
+    def fetch_pivoted_application_schemas(self):
+        data = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_application_schemas, as_objects=True,
                                           skip_commit=True)
 
         return self.group(self.pivot(data,
@@ -932,13 +860,13 @@ class JAAQLModel(BaseJAAQLModel):
         address, port, _, username, password = DBInterface.fracture_uri(jaaql_uri)
         return create_interface(self.config, address, port, database, username, password=password, role=user_id, sub_role=sub_role)
 
-    def submit(self, inputs: dict, user_id: str, tenant: str, verification_hook: Queue):
+    def submit(self, inputs: dict, user_id: str, verification_hook: Queue):
         if not isinstance(inputs, dict):
             raise HttpStatusException("Expected object or string input")
 
         if KEY__application in inputs:
-            tenant_application_configs = self.fetch_pivoted_application_schemas(tenant)
-            app = tenant_application_configs[inputs[KEY__application]]
+            application_configs = self.fetch_pivoted_application_schemas()
+            app = application_configs[inputs[KEY__application]]
             config = app[inputs[KEY__configuration]]
 
             found_db = None
@@ -960,15 +888,10 @@ class JAAQLModel(BaseJAAQLModel):
 
         if KEY__database not in inputs:
             inputs[KEY__database] = DB__jaaql
-        else:
-            inputs[KEY__database] = tenant + "__" + inputs[KEY__database]
 
         sub_role = inputs.pop(KEY__role) if KEY__role in inputs else None
-        if sub_role is not None:
-            sub_role = tenant + "__" + sub_role
         required_db = self.create_interface_for_db(user_id, inputs[KEY__database], sub_role)
 
         return InterpretJAAQL(required_db).transform(inputs, skip_commit=inputs.get(KEY__read_only), wait_hook=verification_hook,
-                                                     encryption_key=self.fetch_tenant_symmetric_key(tenant),
-                                                     canned_query_service=self.cached_canned_query_service,
-                                                     tenant=tenant)
+                                                     encryption_key=self.get_db_crypt_key(),
+                                                     canned_query_service=self.cached_canned_query_service)

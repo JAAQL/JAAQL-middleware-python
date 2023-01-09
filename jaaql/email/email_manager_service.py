@@ -4,7 +4,7 @@ import uuid
 
 from http import HTTPStatus
 from jaaql.db.db_interface import DBInterface
-from jaaql.db.db_utils import execute_supplied_statement, execute_supplied_statement_singleton, load_tenant_symmetric_keys
+from jaaql.db.db_utils import execute_supplied_statement, execute_supplied_statement_singleton
 from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.utilities.utils import load_config, await_jaaql_installation, get_jaaql_connection, time_delta_ms
 from jaaql.utilities.crypt_utils import decrypt_raw
@@ -28,7 +28,7 @@ import sys
 from flask import Flask, jsonify, request
 from jaaql.utilities.vault import Vault, DIR__vault
 from jaaql.constants import VAULT_KEY__db_crypt_key, KEY__encrypted_password, KEY__id, KEY__template, KEY__sender, ENCODING__ascii, PORT__ems, \
-    ENDPOINT__reload_accounts, ENDPOINT__send_email, KEY__tenant, KEY__attachment_name, KEY__parameters, KEY__url, KEY__oauth_token, \
+    ENDPOINT__reload_accounts, ENDPOINT__send_email, KEY__attachment_name, KEY__parameters, KEY__url, KEY__oauth_token, \
     KEY__document_id, KEY__create_file, DIR__render_template, KEY__render_as, KEY__content, DIR__www, KEY__email_account_name, \
     KEY__email_account_send_name, KEY__email_account_protocol, KEY__email_account_host, KEY__email_account_port, KEY__email_account_username, \
     KEY__override_send_name, KEY__application, ENVIRON__install_path, KEY__artifact_base_uri
@@ -38,10 +38,10 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 
 QUERY__mark_rendered_document_completed = "UPDATE rendered_document SET completed = current_timestamp, filename = :filename, content = :content WHERE document_id = :document_id"
-QUERY__fetch_unrendered_document = "SELECT able.url, ac.artifact_base_uri, able.render_as, rd.document_id, rd.encrypted_parameters as parameters, rd.create_file, rd.encrypted_access_token as oauth_token FROM rendered_document rd INNER JOIN renderable_document able ON rd.document = able.name INNER JOIN application_configuration ac ON rd.tenant = ac.tenant AND rd.configuration = ac.name AND rd.application = ac.application WHERE rd.completed is null ORDER BY rd.created LIMIT 1"
+QUERY__fetch_unrendered_document = "SELECT able.url, ac.artifact_base_uri, able.render_as, rd.document_id, rd.encrypted_parameters as parameters, rd.create_file, rd.encrypted_access_token as oauth_token FROM rendered_document rd INNER JOIN renderable_document able ON rd.document = able.name INNER JOIN application_configuration ac ON rd.configuration = ac.name AND rd.application = ac.application WHERE rd.completed is null ORDER BY rd.created LIMIT 1"
 QUERY__update_email_account_password = "UPDATE email_account SET encrypted_password = :encrypted_password WHERE id = :id"
 QUERY__load_email_accounts = "SELECT * FROM email_account"
-QUERY__ins_email_history = "INSERT INTO email_history (application, tenant, template, sender, encrypted_subject, encrypted_body, encrypted_attachments, encrypted_recipients, encrypted_recipients_keys, override_send_name) VALUES (:application, :tenant, :template, :sender, :encrypted_subject, :encrypted_body, :encrypted_attachments, :encrypted_recipients, :encrypted_recipients_keys, :override_send_name)"
+QUERY__ins_email_history = "INSERT INTO email_history (application, template, sender, encrypted_subject, encrypted_body, encrypted_attachments, encrypted_recipients, encrypted_recipients_keys, override_send_name) VALUES (:application, :template, :sender, :encrypted_subject, :encrypted_body, :encrypted_attachments, :encrypted_recipients, :encrypted_recipients_keys, :override_send_name)"
 QUERY__fetch_email_template = "SELECT rd.url FROM renderable_document rd INNER JOIN renderable_document_template rdt ON rd.name = rdt.attachment WHERE rd.name = :name AND rdt.template = :template"
 QUERY__purge_rendered_documents = "DELETE FROM rendered_document rd USING renderable_document able WHERE rd.document = able.name AND completed is not null and completed > current_timestamp + interval '5 minutes' RETURNING rd.document_id, rd.create_file, able.render_as"
 
@@ -277,12 +277,11 @@ TYPE__email_attachments = Union[EmailAttachment, List[EmailAttachment]]
 
 
 class Email:
-    def __init__(self, sender: str, tenant: str, application: str, template: str, from_account: str, to: Union[str, List[str]],
+    def __init__(self, sender: str, application: str, template: str, from_account: str, to: Union[str, List[str]],
                  recipient_names: Union[str, List[str]], subject: str = None, body: str = None, attachments: TYPE__email_attachments = None,
                  is_html: bool = True, attachment_access_token: str = None, override_send_name: str = None):
         self.sender = sender
         self.application = application
-        self.tenant = tenant
         self.template = template
         self.from_account = from_account
         if isinstance(to, list) != isinstance(recipient_names, list):
@@ -305,7 +304,7 @@ class Email:
         self.attachment_access_token = attachment_access_token
 
     def repr_json(self):
-        return dict(sender=self.sender, tenant=self.tenant, application=self.application, template=self.template, from_account=self.from_account,
+        return dict(sender=self.sender, application=self.application, template=self.template, from_account=self.from_account,
                     to=self.to, recipient_names=self.recipient_names, subject=self.subject, body=self.body,
                     attachments=[attachment.repr_json() for attachment in self.attachments] if self.attachments is not None else None,
                     is_html=self.is_html, attachment_access_token=self.attachment_access_token, override_send_name=self.override_send_name)
@@ -315,7 +314,7 @@ class Email:
         attachments = None
         if email["attachments"] is not None:
             attachments = [EmailAttachment.deserialize(attachment) for attachment in email["attachments"]]
-        return Email(email["sender"], email["tenant"], email["application"], email["template"], email["from_account"], email["to"],
+        return Email(email["sender"], email["application"], email["template"], email["from_account"], email["to"],
                      email["recipient_names"], email["subject"], email["body"], attachments, email["is_html"], email["attachment_access_token"],
                      email["override_send_name"])
 
@@ -334,54 +333,38 @@ class EmailManagerService:
 
         self.is_gunicorn = is_gunicorn
 
-        self.tenant_symmetric_keys = load_tenant_symmetric_keys(connection, self.db_crypt_key)
-
         self.reload_lock = threading.Lock()
         self.reload_accounts()
 
         self.driven_chrome = DrivenChrome(connection, self.db_crypt_key, self.is_gunicorn)
 
-    def fetch_tenant_symmetric_key(self, tenant: str):
-        if tenant not in self.tenant_symmetric_keys:
-            self.tenant_symmetric_keys = load_tenant_symmetric_keys(self.connection, self.db_crypt_key)
-        return self.tenant_symmetric_keys[tenant]
-
     def reload_accounts(self):
         with self.reload_lock:
             accounts = execute_supplied_statement(self.connection, QUERY__load_email_accounts, as_objects=True)
             for account in accounts:
-                account[KEY__encrypted_password] = decrypt_raw(self.fetch_tenant_symmetric_key(account[KEY__tenant]),
-                                                               account[KEY__encrypted_password])
+                account[KEY__encrypted_password] = decrypt_raw(self.db_crypt_key, account[KEY__encrypted_password])
             email_queues = {}
 
             for account in accounts:
-                credentials_tenant = self.email_credentials.get(account[KEY__tenant], {})
-                if account[KEY__email_account_name] not in credentials_tenant and account[KEY__encrypted_password] is None:
+                if account[KEY__email_account_name] not in self.email_credentials.credentials and account[KEY__encrypted_password] is None:
                     raise Exception(ERR__password_not_found % account[KEY__email_account_name])
-                elif account[KEY__email_account_name] in credentials_tenant and account[KEY__encrypted_password] is None:
+                elif account[KEY__email_account_name] in self.email_credentials.credentials and account[KEY__encrypted_password] is None:
                     execute_supplied_statement(self.connection, QUERY__update_email_account_password,  # Stores the password
-                                               {KEY__encrypted_password: credentials_tenant[account[KEY__email_account_name]],
+                                               {KEY__encrypted_password: self.email_credentials.credentials[account[KEY__email_account_name]],
                                                 KEY__id: account[KEY__id]},
                                                encrypt_parameters=[KEY__encrypted_password],
-                                               encryption_key=self.fetch_tenant_symmetric_key(account[KEY__tenant]))
+                                               encryption_key=self.db_crypt_key)
                 cur_queue = Queue()
 
-                existing_tenant_queues = self.email_queues.get(account[KEY__tenant], {})
-                if account[KEY__tenant] not in email_queues:
-                    cur_tenant_queues = {}
-                    email_queues[account[KEY__tenant]] = cur_tenant_queues
-                else:
-                    cur_tenant_queues = email_queues.get[account[KEY__tenant]]
-
-                if str(account[KEY__email_account_name]) not in existing_tenant_queues:
-                    cur_tenant_queues[str(account[KEY__email_account_name])] = cur_queue
+                if str(account[KEY__email_account_name]) not in self.email_queues:
+                    email_queues[str(account[KEY__email_account_name])] = cur_queue
                     password = account[KEY__encrypted_password]
                     if password is None:
-                        password = credentials_tenant[account[KEY__email_account_name]]
+                        password = self.email_credentials[account[KEY__email_account_name]]
                     method_args = [account, cur_queue, password]
                     threading.Thread(target=self.email_connection_thread, args=method_args, daemon=True).start()
                 else:
-                    cur_tenant_queues[str(account[KEY__email_account_name])] = cur_tenant_queues[str(account[KEY__id])]
+                    email_queues[str(account[KEY__email_account_name])] = self.email_queues[str(account[KEY__email_account_name])]
 
             self.email_queues = email_queues
 
@@ -465,7 +448,6 @@ class EmailManagerService:
 
                 execute_supplied_statement(self.connection, QUERY__ins_email_history, {
                         KEY__application: email.application,
-                        KEY__tenant: email.tenant,
                         KEY__template: email.template,
                         KEY__sender: email.sender,
                         KEY__override_send_name: email.override_send_name,
@@ -483,7 +465,7 @@ class EmailManagerService:
                     ]
                 )
             except Empty:
-                if account[KEY__email_account_name] not in self.email_queues.get(account[KEY__tenant], {}):
+                if account[KEY__email_account_name] not in self.email_queues:
                     break
             except Exception:
                 traceback.print_exc()  # Something went wrong
@@ -494,12 +476,12 @@ class EmailManagerService:
             pass
 
     def send_email(self, email: Email):
-        if email.from_account in self.email_queues.get(email.tenant, {}):
-            self.email_queues[email.tenant][email.from_account].put(email)
+        if email.from_account in self.email_queues:
+            self.email_queues[email.from_account].put(email)
         else:
             self.reload_accounts()
-            if email.from_account in self.email_queues.get(email.tenant, {}):
-                self.email_queues[email.tenant][email.from_account].put(email)
+            if email.from_account in self.email_queues:
+                self.email_queues[email.from_account].put(email)
             else:
                 raise Exception(ERR__email_not_found % email.from_account)
 

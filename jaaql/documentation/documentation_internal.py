@@ -1,6 +1,6 @@
 from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
-from jaaql.documentation.documentation_shared import rename_arg, ARG_RES__tenant, ARG_RES__password
+from jaaql.documentation.documentation_shared import rename_arg, ARG_RES__application, ARG_RES__configuration
 
 TITLE = "JAAQL Internal API"
 DESCRIPTION = "Collection of methods in the JAAQL internal API"
@@ -16,6 +16,19 @@ ARG_RES__install_key = SwaggerArgumentResponse(
 
 ARG_RES__uninstall_key = rename_arg(ARG_RES__install_key, KEY__uninstall_key, ARG_RES__install_key.description.replace("INSTALL", "UNINSTALL"))
 
+DOCUMENTATION__canned_queries = SwaggerDocumentation(
+    tags="Application",
+    methods=SwaggerMethod(
+        name="Refresh Canned Queries",
+        description="Refreshes the application configuration canned queries.",
+        method=REST__POST,
+        arguments=[
+            ARG_RES__application,
+            ARG_RES__configuration
+        ]
+    )
+)
+
 DOCUMENTATION__install = SwaggerDocumentation(
     tags="Installation",
     security=False,  # This method is not secured as the system is not setup yet. It uses a OTP token system via logs
@@ -28,7 +41,7 @@ DOCUMENTATION__install = SwaggerDocumentation(
         body=[
             SwaggerArgumentResponse(
                 name="db_connection_string",
-                description="Database connection string",
+                description="Database connection string for the superuser",
                 arg_type=str,
                 example=["postgresql://postgres:123456@localhost:5432/",
                          "postgresql://postgres:pa55word@localhost:5432/"],
@@ -37,24 +50,18 @@ DOCUMENTATION__install = SwaggerDocumentation(
             ),
             ARG_RES__install_key,
             SwaggerArgumentResponse(
-                name=KEY__default_tenant_password,
-                description="As well as the jaaql tenant, the default tenant is also created. The super user for this tenant has a username "
-                            "'tenantsuper'",
+                name=KEY__jaaql_password,
+                description="The password for the jaaql user, can create applications, configurations",
                 example=["pa55word"],
                 strip=True,
                 arg_type=str
             ),
             SwaggerArgumentResponse(
-                name=KEY__superjaaql_password,
-                description="At the postgres level, the postgres user is used to set up the jaaql user. If you want "
-                            "access to the postgres user through JAAQL, please provide a password and this user will be setup for "
-                            "you. This is a JAAQL login for superjaaql so it is entirely independent of the postgres password at "
-                            "the database level. If you do not supply this password, you will not be able to login to jaaql "
-                            "authenticating as postgres with the local database node. You can currently not set this up later but it is possible ",
+                name=KEY__super_db_password,
+                description="Gives access to the database super user",
                 example=["passw0rd"],
-                required=False,
+                required=True,
                 strip=True,
-                condition="Does the superjaaql user have a password",
                 arg_type=str
             ),
             SwaggerArgumentResponse(
@@ -124,19 +131,6 @@ DOCUMENTATION__is_alive = SwaggerDocumentation(
         name="Check is alive",
         description="An endpoint that can be called by any service to see if the service is alive",
         method=REST__GET
-    )
-)
-
-DOCUMENTATION__add_tenant = SwaggerDocumentation(
-    tags="Tenants",
-    methods=SwaggerMethod(
-        name="Add Tenant",
-        method=REST__POST,
-        description="Adds a new tenant",
-        arguments=[
-            rename_arg(ARG_RES__tenant, KEY__tenant_name),
-            rename_arg(ARG_RES__password, new_description="The password for the tenant super user")
-        ]
     )
 )
 

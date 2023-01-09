@@ -29,7 +29,6 @@ ARG__ip_address = "ip_address"
 ARG__response = "response"
 ARG__username = "username"
 ARG__profiler = "profiler"
-ARG__tenant = "tenant"
 ARG__auth_token = "auth_token"
 ARG__connection = "connection"
 ARG__is_public = "is_public"
@@ -63,7 +62,6 @@ ERR__method_required_connection = "Method requires connection input yet marked a
 ERR__method_required_is_public = "Method requires is_public input yet marked as not secure in documentation"
 ERR__method_required_user_id = "Method requires user id input yet marked as not secure in documentation"
 ERR__method_required_user_connection = "Method requires user connection input yet marked as not secure in documentation"
-ERR__method_required_tenant = "Method requires tenant input yet marked as not secure in documentation"
 ERR__method_required_username = "Method requires username yet marked as not secure in documentation"
 ERR__sentinel_failed = "Sentinel failed. Reponse code '%d' and content '%s'"
 
@@ -404,6 +402,10 @@ class BaseJAAQLController:
         def wrap_func(view_func):
             @wraps(view_func)
             def routed_function(view_func_local):
+                if not self.model.has_installed and not route.startswith('/internal'):
+                    resp = Response("Still installing. Be patient", status=HTTPStatus.SERVICE_UNAVAILABLE)
+                    self._cors(resp)
+                    return resp
                 start_time = datetime.now()
                 request_id = uuid.uuid4()
                 self.perform_profile(request_id, route=route, method=request.method)
@@ -418,7 +420,6 @@ class BaseJAAQLController:
 
                     user_id = None
                     ip_id = None
-                    tenant = None
                     username = None
                     is_public = None
                     verification_hook = None
@@ -429,11 +430,11 @@ class BaseJAAQLController:
 
                     if swagger_documentation.security:
                         if verification_hook:
-                            user_id, tenant, username, ip_id, is_public = self.model.verify_auth_token_threaded(request.headers.get(HEADER__security),
+                            user_id, username, ip_id, is_public = self.model.verify_auth_token_threaded(request.headers.get(HEADER__security),
                                                                                                                 ip_addr, verification_hook)
                             self.perform_profile(request_id, "Verify JWT Threaded")
                         else:
-                            user_id, tenant, username, ip_id, is_public = self.model.verify_auth_token(request.headers.get(HEADER__security), ip_addr)
+                            user_id, username, ip_id, is_public = self.model.verify_auth_token(request.headers.get(HEADER__security), ip_addr)
                             self.perform_profile(request_id, "Verify JWT")
 
                     supply_dict = {}
@@ -460,17 +461,12 @@ class BaseJAAQLController:
                                 if not swagger_documentation.security:
                                     raise Exception(ERR__method_required_user_connection)
                                 connect_db = arg.split(ARG_START__connection)[1]
-                                supply_dict[arg] = self.model.create_interface_for_db(user_id, tenant + "__" + connect_db, sub_role=user_id)
+                                supply_dict[arg] = self.model.create_interface_for_db(user_id, connect_db, sub_role=user_id)
 
                         for arg in inspect.getfullargspec(view_func_local).args:
                             if arg.startswith(ARG_START__jaaql_connection):
                                 connect_db = arg.split(ARG_START__jaaql_connection)[1]
-                                supply_dict[arg] = self.model.create_interface_for_db(user_id, "jaaql__" + connect_db, sub_role=ROLE__jaaql)
-
-                        if ARG__tenant in inspect.getfullargspec(view_func_local).args:
-                            if not swagger_documentation.security:
-                                raise Exception(ERR__method_required_tenant)
-                            supply_dict[ARG__tenant] = tenant
+                                supply_dict[arg] = self.model.create_interface_for_db(user_id, connect_db, sub_role=ROLE__jaaql)
 
                         if ARG__username in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:

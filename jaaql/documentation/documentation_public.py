@@ -1,7 +1,7 @@
 from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
-from jaaql.documentation.documentation_shared import ARG_RES__username, EXAMPLE__password, ARG_RES__password, RES__oauth_token, ARG_RES__tenant,\
-    rename_arg, set_required, set_nullable
+from jaaql.documentation.documentation_shared import ARG_RES__username, EXAMPLE__password, ARG_RES__password, RES__oauth_token,\
+    rename_arg, set_required, set_nullable, ARG_RES__application, ARG_RES__configuration
 
 TITLE = "JAAQL API"
 DESCRIPTION = "Collection of methods in the JAAQL API"
@@ -10,14 +10,6 @@ FILENAME = "jaaql_api"
 # Not unused. Used to generate html files
 from jaaql.documentation.documentation_shared import DOCUMENTATION__oauth_token, DOCUMENTATION__oauth_refresh
 
-ARG_RES__application = SwaggerArgumentResponse(
-    name=KEY__application,
-    description="The application",
-    example=["playground"],
-    required=False,
-    arg_type=str,
-    condition="If this is a public user"
-)
 ARG_RES__application_nullable = SwaggerArgumentResponse(
     name=KEY__application,
     description="The application, if you want to make this a public user",
@@ -25,12 +17,6 @@ ARG_RES__application_nullable = SwaggerArgumentResponse(
     required=False,
     arg_type=str,
     condition="If this is a public user"
-)
-ARG_RES__configuration = SwaggerArgumentResponse(
-    name=KEY__configuration,
-    description="The application configuration",
-    example=["main"],
-    arg_type=str
 )
 ARG_RES__configuration_nullable = SwaggerArgumentResponse(
     name=KEY__configuration,
@@ -48,12 +34,12 @@ ARG_RES__parameters = SwaggerArgumentResponse(
     condition="Is signup data provided"
 )
 
-DOCUMENTATION__create_tenant_account = SwaggerDocumentation(
-    tags="Tenant Admin",
+DOCUMENTATION__create_account = SwaggerDocumentation(
+    tags="Admin",
     methods=SwaggerMethod(
         method=REST__POST,
-        name="Create tenant account",
-        description="Will create an account under your tenant, if you have privileges to do so",
+        name="Create account",
+        description="Will create an account, if you have privileges to do so",
         body=[
             ARG_RES__username,
             ARG_RES__application_nullable,
@@ -116,7 +102,6 @@ DOCUMENTATION__sign_up_request_invite = SwaggerDocumentation(
         body=[
             ARG_RES__email,
             ARG_RES__parameters,
-            ARG_RES__tenant,
             ARG_RES__configuration,
             ARG_RES__application,
             ARG_RES__email_template,
@@ -244,7 +229,6 @@ DOCUMENTATION__reset_password = SwaggerDocumentation(
         method=REST__POST,
         body=[
             ARG_RES__email,
-            ARG_RES__tenant,
             ARG_RES__reset_password_email_template,
             ARG_RES__application,
             ARG_RES__configuration,
@@ -353,8 +337,7 @@ DOCUMENTATION__public_user = SwaggerDocumentation(
         description="Fetches the public user",
         arguments=[
             set_required(ARG_RES__application, new_description="The application with which the user is associated"),
-            ARG_RES__configuration,
-            ARG_RES__tenant
+            ARG_RES__configuration
         ],
         response=SwaggerResponse(
             description="Credentials for the public user",
@@ -526,44 +509,9 @@ DOCUMENTATION__drop_email_account = SwaggerDocumentation(
     )
 )
 
-DOCUMENTATION__drop_databases = SwaggerDocumentation(
-    tags="Database",
-    methods=SwaggerMethod(
-        name="Drop database",
-        description="Drops the database associated with a tenant",
-        method=REST__DELETE,
-        arguments=[
-            SwaggerArgumentResponse(
-                name=KEY__name,
-                description="The name of the database",
-                arg_type=str,
-                example=["invoicing_live"]
-            ),
-            SwaggerArgumentResponse(
-                name="delete_record",
-                description="Whether or not to delete the JAAQL record of this database or just the physical db. Defaults to false",
-                arg_type=bool,
-                required=False,
-                condition="Defaults to false"
-            ),
-            SwaggerArgumentResponse(
-                name="silent",
-                description="Whether or not to return an error when the database doesn't exist",
-                arg_type=bool
-            )
-        ]
-    )
-)
-
-DOCUMENTATION__refresh_app_config = SwaggerDocumentation(
-    tags="Application",
-    methods=SwaggerMethod(
-        name="Refresh Config",
-        description="Refreshes the application configuration. You must be a tenant admin to perform this",
-        method=REST__POST,
-        arguments=[
-            ARG_RES__application,
-            ARG_RES__configuration
-        ]
-    )
+ARG_RES__database_name = SwaggerArgumentResponse(
+    name=KEY__name,
+    description="The name of the database",
+    arg_type=str,
+    example=["invoicing_live"]
 )

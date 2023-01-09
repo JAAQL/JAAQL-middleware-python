@@ -41,9 +41,9 @@ def bootup(vault_key, is_gunicorn: bool = False, install_on_bootup: bool = False
         with open(install_key_file, "r") as install_key_file:
             install_key = install_key_file.read().strip()
         json_data = {
-            "superjaaql_password": "pa55word",
+            "super_db_password": "pa55word",
+            "jaaql_password": "pa55word",
             "install_key": install_key,
-            "default_tenant_password": "passw0rd",
             "allow_uninstall": False
         }
         if not is_gunicorn:
