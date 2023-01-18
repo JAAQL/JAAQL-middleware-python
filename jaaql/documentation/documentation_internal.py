@@ -1,6 +1,6 @@
 from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
-from jaaql.documentation.documentation_shared import rename_arg, ARG_RES__tenant, ARG_RES__password
+from jaaql.documentation.documentation_shared import rename_arg
 
 TITLE = "JAAQL Internal API"
 DESCRIPTION = "Collection of methods in the JAAQL internal API"
@@ -37,15 +37,14 @@ DOCUMENTATION__install = SwaggerDocumentation(
             ),
             ARG_RES__install_key,
             SwaggerArgumentResponse(
-                name=KEY__default_tenant_password,
-                description="As well as the jaaql tenant, the default tenant is also created. The super user for this tenant has a username "
-                            "'tenantsuper'",
+                name=KEY__super_jaaql_password,
+                description="The password for the jaaql user, the primary function of is to create database admin users",
                 example=["pa55word"],
                 strip=True,
                 arg_type=str
             ),
             SwaggerArgumentResponse(
-                name=KEY__superjaaql_password,
+                name=KEY__super_db_password,
                 description="At the postgres level, the postgres user is used to set up the jaaql user. If you want "
                             "access to the postgres user through JAAQL, please provide a password and this user will be setup for "
                             "you. This is a JAAQL login for superjaaql so it is entirely independent of the postgres password at "
@@ -124,19 +123,6 @@ DOCUMENTATION__is_alive = SwaggerDocumentation(
         name="Check is alive",
         description="An endpoint that can be called by any service to see if the service is alive",
         method=REST__GET
-    )
-)
-
-DOCUMENTATION__add_tenant = SwaggerDocumentation(
-    tags="Tenants",
-    methods=SwaggerMethod(
-        name="Add Tenant",
-        method=REST__POST,
-        description="Adds a new tenant",
-        arguments=[
-            rename_arg(ARG_RES__tenant, KEY__tenant_name),
-            rename_arg(ARG_RES__password, new_description="The password for the tenant super user")
-        ]
     )
 )
 

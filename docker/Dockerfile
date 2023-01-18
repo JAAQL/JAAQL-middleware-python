@@ -12,19 +12,6 @@ RUN apt-get install -y cron
 ENV INSTALL_PATH /JAAQL-middleware-python
 ENV JAAQL_DEPLOYED true
 ENV PIGGYBACK_LETSENCRYPT FALSE
-COPY . $INSTALL_PATH
-
-RUN git clone https://github.com/JAAQL/JEQL.git
-WORKDIR JEQL
-RUN git checkout tags/v3.0.4
-WORKDIR /
-
-RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini
-RUN mv $INSTALL_PATH/jaaql/config/config-docker.ini $INSTALL_PATH/jaaql/config/config.ini
-
-RUN mkdir -p $INSTALL_PATH/www
-RUN mkdir -p $INSTALL_PATH/log
-RUN chown -R "$USER":www-data $INSTALL_PATH/www
 
 RUN mkdir -p /etc/letsencrypt/live
 
@@ -58,27 +45,11 @@ WORKDIR /
 RUN $PY_PATH -m ensurepip --default-pip
 RUN $PY_PATH -mpip install -U pip wheel
 RUN $PY_PATH -mpip install certbot-nginx==1.2.0
-RUN $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt
-
-RUN mv $INSTALL_PATH/docker/jaaql.sql /docker-entrypoint-initdb.d/01-jaaql.sql
-RUN dos2unix $INSTALL_PATH/docker/pg_reload.sh
-RUN mv $INSTALL_PATH/docker/pg_reload.sh /docker-entrypoint-initdb.d/02-pg_reload.sh
-RUN mv $INSTALL_PATH/docker/entrypoint.sh entrypoint.sh
-RUN dos2unix entrypoint.sh
-RUN dos2unix $INSTALL_PATH/base_reboot.sh
-
-WORKDIR $INSTALL_PATH
-RUN $PY_PATH setup.py sdist bdist_wheel
-
-RUN VERSION=$(grep '^VERSION = ' /JAAQL-middleware-python/jaaql/constants.py | cut -d'=' -f2 | cut -d'"' -f2) && $PIP_PATH install --no-deps /JAAQL-middleware-python/dist/jaaql_middleware_python-"$VERSION"-py3-none-any.whl
-WORKDIR /
 
 ARG CHROME_VERSION="95.0.4638.69-1"
 RUN wget --no-verbose -O /tmp/chrome.deb https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb \
   && apt install -y /tmp/chrome.deb \
   && rm /tmp/chrome.deb
-
-RUN mkdir -p $INSTALL_PATH/log
 
 RUN apt-get install unzip
 RUN wget -N https://chromedriver.storage.googleapis.com/95.0.4638.69/chromedriver_linux64.zip -P ~/
@@ -93,6 +64,14 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get -y install xorg xvfb gtk2-engines-pix
 RUN apt-get -y install dbus-x11 xfonts-base xfonts-100dpi xfonts-75dpi xfonts-cyrillic xfonts-scalable
 RUN apt-get -y install imagemagick x11-apps
 
+COPY requirements.txt $INSTALL_PATH/requirements.txt
+RUN $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt
+
+RUN git clone https://github.com/JAAQL/JEQL.git
+WORKDIR JEQL
+RUN git checkout tags/v3.0.4
+WORKDIR /
+
 COPY ./pgextension /pgextension
 RUN /bin/mkdir -p '/usr/share/postgresql/15/extension'
 RUN /bin/mkdir -p '/usr/lib/postgresql/15/lib'
@@ -103,5 +82,28 @@ RUN /bin/mkdir -p '/usr/lib/postgresql/15/lib/bitcode/jaaql'
 RUN /bin/mkdir -p '/usr/lib/postgresql/15/lib/bitcode'/jaaql/
 RUN /usr/bin/install -c -m 644 /pgextension/bin/jaaql.bc '/usr/lib/postgresql/15/lib/bitcode'/jaaql/./
 RUN mv /pgextension/bin/jaaql.index.bc '/usr/lib/postgresql/15/lib/bitcode'
+
+COPY . $INSTALL_PATH
+
+RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini
+RUN mv $INSTALL_PATH/jaaql/config/config-docker.ini $INSTALL_PATH/jaaql/config/config.ini
+
+RUN mkdir -p $INSTALL_PATH/www
+RUN mkdir -p $INSTALL_PATH/log
+RUN chown -R "$USER":www-data $INSTALL_PATH/www
+RUN mv $INSTALL_PATH/docker/jaaql.sql /docker-entrypoint-initdb.d/01-jaaql.sql
+RUN dos2unix $INSTALL_PATH/docker/pg_reload.sh
+RUN mv $INSTALL_PATH/docker/pg_reload.sh /docker-entrypoint-initdb.d/02-pg_reload.sh
+RUN mv $INSTALL_PATH/docker/entrypoint.sh entrypoint.sh
+RUN dos2unix entrypoint.sh
+RUN dos2unix $INSTALL_PATH/base_reboot.sh
+
+WORKDIR $INSTALL_PATH
+RUN $PY_PATH setup.py sdist bdist_wheel
+
+RUN VERSION=$(grep '^VERSION = ' /JAAQL-middleware-python/jaaql/constants.py | cut -d'=' -f2 | cut -d'"' -f2) && $PIP_PATH install --no-deps /JAAQL-middleware-python/dist/jaaql_middleware_python-"$VERSION"-py3-none-any.whl
+WORKDIR /
+
+RUN mkdir -p $INSTALL_PATH/log
 
 ENTRYPOINT ["sh", "entrypoint.sh"]

@@ -20,7 +20,8 @@ KEY__render_as = "render_as"
 KEY__default_tenant_password = "default_tenant_password"
 KEY__url = "url"
 KEY__artifact_base_uri = "artifact_base_uri"
-KEY__superjaaql_password = "superjaaql_password"
+KEY__super_jaaql_password = "super_jaaql_password"
+KEY__super_db_password = "super_db_password"
 KEY__public_username = "public_username"
 KEY__records_total = "records_total"
 KEY__records_filtered = "records_filtered"
@@ -244,7 +245,7 @@ HTML__base64_png = "data:image/png;base64,"
 FORMAT__png = "png"
 
 NODE__host_node = "host"
-DB__jaaql = "jaaql__jaaql"
+DB__jaaql = "jaaql"
 DB__postgres = "postgres"
 
 PORT__ems = 6061
@@ -275,5 +276,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.1.7"
+VERSION = "4.1.9"
 

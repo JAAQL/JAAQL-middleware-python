@@ -55,9 +55,12 @@ class JAAQLController(BaseJAAQLController):
         def drop_email_account(tenant: str, http_inputs: dict, connection: DBInterface):
             self.model.drop_email_account(tenant, connection, **http_inputs)
 
-        @self.cors_route('/database', DOCUMENTATION__drop_databases)
+        @self.cors_route('/database', DOCUMENTATION__databases)
         def drop_database(tenant: str, http_inputs: dict, connection: DBInterface):
-            self.model.drop_database(tenant, connection, **http_inputs)
+            if self.is_delete():
+                self.model.drop_database(tenant, connection, **http_inputs)
+            else:
+                self.model.create_database(connection, **http_inputs)
 
         @self.cors_route('/accounts', DOCUMENTATION__create_tenant_account)
         def accounts(connection: DBInterface, tenant: str, http_inputs: dict):

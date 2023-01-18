@@ -85,14 +85,9 @@ def get_config(tenant: str, folder_tenant: str, file_tenant: str, role: str, fol
     return ret_tenant, ret_role, ret_databases
 
 
-def create_interface_for_db(config, super_credentials: str, database: str, tenant: str, sub_role: str):
+def create_interface_for_db(config, super_credentials: str, database: str, sub_role: str):
     address, port, _, username, password = DBInterface.fracture_uri(super_credentials)
-    if database == "jaaql":
-        database = "jaaql__jaaql"
-    else:
-        database = tenant + "__" + database
-    if sub_role != "jaaql":
-        sub_role = tenant + "__" + sub_role
+
     return create_interface(config, address, port, database, username, password=password, sub_role=sub_role)
 
 
