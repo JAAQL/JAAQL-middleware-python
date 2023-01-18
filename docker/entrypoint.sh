@@ -163,11 +163,11 @@ service nginx restart
 CERT_DIR=/etc/letsencrypt/live/$SERVER_ADDRESS
 if [ "$IS_HTTPS" = "TRUE" ] && [ ! -d "$CERT_DIR" ] ; then
   echo "Initialising certbot"
-  $PYPY_PATH/bin/certbot --nginx -d $SERVER_ADDRESS -d www.$SERVER_ADDRESS --redirect --noninteractive --no-eff-email --email $HTTPS_EMAIL --agree-tos -w $INSTALL_PATH/www
+  $CERTBOT_PATH --nginx -d $SERVER_ADDRESS -d www.$SERVER_ADDRESS --redirect --noninteractive --no-eff-email --email $HTTPS_EMAIL --agree-tos -w $INSTALL_PATH/www
   service nginx restart
 elif [ "$IS_HTTPS" = "TRUE" ] && [ -d "$CERT_DIR" ] ; then
   echo "Found existing certificates. Installing"
-  printf "1,2\n1\n" | $PYPY_PATH/bin/certbot --nginx
+  printf "1,2\n1\n" | $CERTBOT_PATH --nginx
   service nginx restart
 fi
 
@@ -177,8 +177,8 @@ if [ "$IS_HTTPS" = "TRUE" ] ; then
   if [ "$PIGGYBACK_LETSENCRYPT" = "TRUE" ] ; then
     echo "Skipping certbot renewal as piggybacking implementation"
   else
-    $PYPY_PATH/bin/certbot renew --dry-run &
-    echo "0 0,12 * * * root $PYPY_PATH/bin/python -c 'import random; import time; time.sleep(random.random() * 3600)' && $PYPY_PATH/bin/certbot renew -q" | tee -a /etc/crontab > /dev/null
+    $CERTBOT_PATH renew --dry-run &
+    echo "0 0,12 * * * root $PY_PATH -c 'import random; import time; time.sleep(random.random() * 3600)' && $CERTBOT_PATH renew -q" | tee -a /etc/crontab > /dev/null
   fi
 fi
 
@@ -186,8 +186,8 @@ cd $INSTALL_PATH
 export PYTHONPATH=.
 export PYTHONUNBUFFERED=TRUE
 
-$PYPY_PATH/bin/python /JAAQL-middleware-python/jaaql/email/patch_ems.py &> $LOG_FILE_EMAILS &
-$PYPY_PATH/bin/python /JAAQL-middleware-python/jaaql/services/patch_script_install.py &> $LOG_FILE_SCRIPT_INSTALL &
+$PY_PATH /JAAQL-middleware-python/jaaql/email/patch_ems.py &> $LOG_FILE_EMAILS &
+$PY_PATH /JAAQL-middleware-python/jaaql/services/patch_script_install.py &> $LOG_FILE_SCRIPT_INSTALL &
 
 echo "from jaaql.patch import monkey_patch" >> wsgi_patch.py
 echo "monkey_patch()" >> wsgi_patch.py
@@ -195,7 +195,7 @@ echo "from wsgi import build_app" >> wsgi_patch.py
 
 while :
 do
-  $PYPY_PATH/bin/gunicorn -p app.pid --bind unix:jaaql.sock -m 777 --config /JAAQL-middleware-python/docker/gunicorn_config.py --access-logformat '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(M)sms"' --access-logfile $ACCESS_LOG_FILE --log-file $LOG_FILE --capture-output --log-level info 'wsgi_patch:build_app()'
+  $GUNICORN_PATH -p app.pid --bind unix:jaaql.sock -m 777 --config /JAAQL-middleware-python/docker/gunicorn_config.py --access-logformat '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(M)sms"' --access-logfile $ACCESS_LOG_FILE --log-file $LOG_FILE --capture-output --log-level info 'wsgi_patch:build_app()'
   chmod +777 /JAAQL-middleware-python/base_reboot.sh
   /JAAQL-middleware-python/base_reboot.sh
   replace_config

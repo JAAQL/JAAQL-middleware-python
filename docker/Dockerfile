@@ -42,14 +42,23 @@ RUN apt-get -y install libzbar0
 RUN apt-get install dos2unix
 RUN apt -y install bzip2
 RUN apt -y install wget
-RUN wget https://downloads.python.org/pypy/pypy3.8-v7.3.9-linux64.tar.bz2
-RUN tar xf pypy3.8-v7.3.9-linux64.tar.bz2
-ENV PYPY_PATH /pypy3.8-v7.3.9-linux64
-RUN .$PYPY_PATH/bin/pypy -m ensurepip --default-pip
-RUN .$PYPY_PATH/bin/pypy -mpip install -U pip wheel
-RUN .$PYPY_PATH/bin/pypy -mpip install certbot-nginx==1.2.0
-RUN sed -i 's/psycopg\[binary\]/psycopg/g' /JAAQL-middleware-python/requirements.txt
-RUN .$PYPY_PATH/bin/pypy -mpip install -r $INSTALL_PATH/requirements.txt
+RUN wget https://www.python.org/ftp/python/3.8.16/Python-3.8.16.tar.xz
+RUN tar xf Python-3.8.16.tar.xz
+RUN apt install build-essential zlib1g-dev \
+    libncurses5-dev libgdbm-dev libnss3-dev \
+    libssl-dev libreadline-dev libffi-dev curl -y
+WORKDIR /Python-3.8.16
+RUN ./configure --enable-optimizations --prefix=/usr/local --with-ensurepip=install
+RUN make install
+ENV PY_PATH /usr/local/bin/python3
+ENV PIP_PATH /usr/local/bin/pip3
+ENV GUNICORN_PATH /usr/local/bin/gunicorn
+ENV CERTBOT_PATH /usr/local/bin/certbot
+WORKDIR /
+RUN $PY_PATH -m ensurepip --default-pip
+RUN $PY_PATH -mpip install -U pip wheel
+RUN $PY_PATH -mpip install certbot-nginx==1.2.0
+RUN $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt
 
 RUN mv $INSTALL_PATH/docker/jaaql.sql /docker-entrypoint-initdb.d/01-jaaql.sql
 RUN dos2unix $INSTALL_PATH/docker/pg_reload.sh
@@ -59,12 +68,12 @@ RUN dos2unix entrypoint.sh
 RUN dos2unix $INSTALL_PATH/base_reboot.sh
 
 WORKDIR $INSTALL_PATH
-RUN $PYPY_PATH/bin/python setup.py sdist bdist_wheel
+RUN $PY_PATH setup.py sdist bdist_wheel
 
-RUN VERSION=$(grep '^VERSION = ' /JAAQL-middleware-python/jaaql/constants.py | cut -d'=' -f2 | cut -d'"' -f2) && $PYPY_PATH/bin/pip install --no-deps /JAAQL-middleware-python/dist/jaaql_middleware_python-"$VERSION"-py3-none-any.whl
+RUN VERSION=$(grep '^VERSION = ' /JAAQL-middleware-python/jaaql/constants.py | cut -d'=' -f2 | cut -d'"' -f2) && $PIP_PATH install --no-deps /JAAQL-middleware-python/dist/jaaql_middleware_python-"$VERSION"-py3-none-any.whl
 WORKDIR /
 
-ARG CHROME_VERSION="95.0.4638.69-1"
+ARG CHROME_VERSION="109.0.5414.74-1"
 RUN wget --no-verbose -O /tmp/chrome.deb https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb \
   && apt install -y /tmp/chrome.deb \
   && rm /tmp/chrome.deb
@@ -72,7 +81,7 @@ RUN wget --no-verbose -O /tmp/chrome.deb https://dl.google.com/linux/chrome/deb/
 RUN mkdir -p $INSTALL_PATH/log
 
 RUN apt-get install unzip
-RUN wget -N https://chromedriver.storage.googleapis.com/95.0.4638.69/chromedriver_linux64.zip -P ~/
+RUN wget -N https://chromedriver.storage.googleapis.com/109.0.5414.74/chromedriver_linux64.zip -P ~/
 RUN unzip ~/chromedriver_linux64.zip -d ~/
 RUN rm ~/chromedriver_linux64.zip
 RUN mv -f ~/chromedriver /usr/local/bin/chromedriver
