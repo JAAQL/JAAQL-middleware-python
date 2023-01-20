@@ -46,7 +46,7 @@ RUN wget https://www.python.org/ftp/python/3.8.16/Python-3.8.16.tar.xz
 RUN tar xf Python-3.8.16.tar.xz
 RUN apt install build-essential zlib1g-dev \
     libncurses5-dev libgdbm-dev libnss3-dev \
-    libssl-dev libreadline-dev libffi-dev curl -y
+    libssl-dev libreadline-dev libbz2-dev libffi-dev curl -y
 WORKDIR /Python-3.8.16
 RUN ./configure --enable-optimizations --prefix=/usr/local --with-ensurepip=install
 RUN make install
