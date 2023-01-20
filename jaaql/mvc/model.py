@@ -479,7 +479,6 @@ class JAAQLModel(BaseJAAQLModel):
                 KEY__email_template: template[KEY__name],
                 KEY__configuration: inputs[KEY__configuration],
                 KEY__application: inputs[KEY__application],
-                KEY__tenant: inputs[KEY__tenant],
                 KEY__reset_code: "".join([CODE__alphanumeric[random.randint(0, len(CODE__alphanumeric) - 1)] for _ in range(CODE__reset_length)])
             }
 
@@ -488,12 +487,10 @@ class JAAQLModel(BaseJAAQLModel):
                                EMAIL_PARAM__app_url: app_url}
             optional_params = {**optional_params, **sanitized_params}
 
-            self.email_manager.construct_and_send_email(artifact_url, template, user[KEY__user_id], inputs[KEY__tenant], inputs[KEY__email], None, {},
-                                                        optional_params)
+            self.email_manager.construct_and_send_email(artifact_url, template, user[KEY__user_id], inputs[KEY__email], None, {}, optional_params)
         else:
             params = {
                 KEY__email: inputs[KEY__email],
-                KEY__tenant: inputs[KEY__tenant]
             }
             reset_keys = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fake_reset_insert, params,
                                                               encryption_key=self.get_db_crypt_key(),
@@ -592,14 +589,13 @@ class JAAQLModel(BaseJAAQLModel):
 
             return send_file(buffer, as_attachment=as_attachment, download_name=res[KEY__filename])
 
-    def render_document(self, inputs: dict, auth_token: str, ip_address: str, tenant: str):
+    def render_document(self, inputs: dict, auth_token: str, ip_address: str):
         inputs[KEY__oauth_token] = self.refresh_auth_token(auth_token, ip_address)
-        inputs[KEY__tenant] = tenant
         return execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__ins_rendered_document, inputs,
                                                     encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__parameters, KEY__oauth_token],
                                                     as_objects=True)
 
-    def send_email(self, inputs: dict, auth_token: str, user_id: str, tenant: str, ip_address: str, username: str):
+    def send_email(self, inputs: dict, auth_token: str, user_id: str, ip_address: str, username: str):
         if inputs[KEY__recipient] is not None:
             raise HttpStatusException(HTTPStatus.NOT_IMPLEMENTED.description, HTTPStatus.NOT_IMPLEMENTED.value)
 
@@ -609,7 +605,6 @@ class JAAQLModel(BaseJAAQLModel):
         template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_with_app_url, {
             KEY__name: inputs[KEY__email_template],
             KEY__configuration: inputs[KEY__configuration],
-            KEY__tenant: tenant,
             KEY__application: inputs[KEY__application]
         }, as_objects=True)
         app_url = template.pop(KEY__application_url)
@@ -624,7 +619,7 @@ class JAAQLModel(BaseJAAQLModel):
             if EMAIL_PARAM__app_url in params:
                 raise HttpStatusException(ERR__unexpected_validation_column % EMAIL_PARAM__app_url)
 
-            interface = self.fetch_interface_for_tenant(tenant, template[KEY__application], inputs[KEY__configuration], template[KEY__schema])
+            interface = self.fetch_interface(template[KEY__application], inputs[KEY__configuration], template[KEY__schema])
             params, _ = self.fetch_sanitized_email_params(interface, template, params)
 
         optional_params = {EMAIL_PARAM__app_url: app_url}
@@ -639,7 +634,7 @@ class JAAQLModel(BaseJAAQLModel):
                 attachment[KEY__application] = inputs[KEY__application]
                 attachment[KEY__configuration] = inputs[KEY__configuration]
 
-        self.email_manager.construct_and_send_email(artifact_url, template, user_id, tenant, recipients, None, {}, optional_params,
+        self.email_manager.construct_and_send_email(artifact_url, template, user_id, recipients, None, {}, optional_params,
                                                     attachments=EmailAttachment.deserialize_list(inputs[KEY__attachments], template[KEY__name],
                                                                                                  app_url),
                                                     attachment_access_token=self.refresh_auth_token(auth_token, ip_address))
@@ -659,23 +654,22 @@ class JAAQLModel(BaseJAAQLModel):
         }
         if resp[KEY__email_template] and resp[ATTR__data_lookup_json]:
             template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_with_app_url,
-                                                            {KEY__name: resp[KEY__email_template], KEY__tenant: resp[KEY__tenant],
+                                                            {KEY__name: resp[KEY__email_template],
                                                              KEY__application: resp[KEY__application], KEY__configuration: resp[KEY__configuration]},
                                                             as_objects=True)
-            interface = self.fetch_interface_for_tenant(resp[KEY__tenant], template[KEY__application], resp[KEY__configuration],
-                                                        template[KEY__schema])
+            interface = self.fetch_interface(template[KEY__application], resp[KEY__configuration], template[KEY__schema])
             res[KEY__parameters] = self.select_from_data_validation_table(interface, template[KEY__data_validation_table],
                                                                           json.loads(resp[ATTR__data_lookup_json]))
 
         return res
 
-    def fetch_public_user(self, application: str, configuration: str, tenant: str):
+    def fetch_public_user(self, application: str, configuration: str):
         return execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_public_account_credentials,
-                                                    {KEY__application: application, KEY__configuration: configuration, KEY__tenant: tenant},
+                                                    {KEY__application: application, KEY__configuration: configuration},
                                                     as_objects=True, encryption_key=self.get_db_crypt_key(),
                                                     decrypt_columns=[KEY__password, KEY__username])
 
-    def create_tenant_account(self, connection: DBInterface, tenant: str, inputs: dict, specifying_tenant: bool = False):
+    def create_account(self, connection: DBInterface, inputs: dict):
         if inputs.get(KEY__password) is not None:
             crypt_utils.validate_password(inputs[KEY__password])
 
@@ -688,12 +682,10 @@ class JAAQLModel(BaseJAAQLModel):
         if inputs[KEY__password] is None and inputs[KEY__application] is not None:
             inputs[KEY__password] = str(uuid.uuid4())  # Set a default password for public user
         the_password = inputs[KEY__password]
-        query = QUERY__create_account_for_tenant if specifying_tenant else QUERY__create_tenant_account
-        if specifying_tenant:
-            inputs[KEY__tenant] = tenant
+        query = QUERY__create_account
         account_id = execute_supplied_statement_singleton(connection, query, inputs,
                                                           encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__username, KEY__password],
-                                                          encryption_salts={KEY__username: self.get_repeatable_salt(tenant)})[RET__rows][0]
+                                                          encryption_salts={KEY__username: self.get_repeatable_salt()})[RET__rows][0]
 
         if the_password:
             self.add_account_password(account_id, the_password)
@@ -710,74 +702,9 @@ class JAAQLModel(BaseJAAQLModel):
         if "PostgreSQL " not in version:
             raise HttpStatusException(ERR__keep_alive_failed)
 
-    def install(self, db_connection_string: str, superjaaql_password: str, default_tenant_password: str, install_key: str, allow_uninstall: bool):
+    def install(self, db_connection_string: str, superjaaql_password: str, install_key: str, allow_uninstall: bool):
         if self.jaaql_lookup_connection is None:
-            if allow_uninstall:
-                self.vault.insert_obj(VAULT_KEY__allow_jaaql_uninstall, True)
-
-            if install_key != self.install_key:
-                raise HttpStatusException(ERR__incorrect_install_key, HTTPStatus.UNAUTHORIZED)
-
-            if db_connection_string is None:
-                db_connection_string = PG__default_connection_string % os.environ[PG_ENV__password]
-
-            address, port, db, username, db_password = DBInterface.fracture_uri(db_connection_string)
-            db = DB__jaaql
-
-            super_interface = create_interface(self.config, address, port, db, username, db_password)
-            conn = super_interface.get_conn()
-            super_interface.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "install_1.sql"))
-            resp = super_interface.execute_query(conn, QUERY__setup_jaaql_role)
-            jaaql_password = resp[1][0][0]
-            super_interface.commit(conn)
-            super_interface.put_conn(conn)
-            super_interface.close()
-
-            self.jaaql_lookup_connection = create_interface(self.config, address, port, db, ROLE__jaaql, jaaql_password)
-            conn = self.jaaql_lookup_connection.get_conn()
-            self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "install_2.sql"))
-            self.jaaql_lookup_connection.commit(conn)
-            self.jaaql_lookup_connection.put_conn(conn)
-
-            _, jesk = crypt_utils.key_stretcher(str(uuid.uuid4()), length=crypt_utils.AES__key_length)
-            jesk = jesk.decode()
-            _, desk = crypt_utils.key_stretcher(str(uuid.uuid4()), length=crypt_utils.AES__key_length)
-            desk = desk.decode()
-            resp = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__setup_system,
-                                              {KEY__jaaql_enc_symmetric_key: jesk, KEY__default_enc_symmetric_key: desk},
-                                              encrypt_parameters=[KEY__jaaql_enc_symmetric_key, KEY__default_enc_symmetric_key],
-                                              encryption_key=self.get_db_crypt_key())
-            tenant_admin_account_id = resp[RET__rows][0][0]
-
-            execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__attach_account, {
-                KEY__the_tenant: TENANT__jaaql,
-                KEY__user_id: ROLE__jaaql,
-                KEY__enc_username: USERNAME__jaaql
-            }, encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__enc_username],
-                                                 encryption_salts={KEY__enc_username: self.get_repeatable_salt(TENANT__jaaql)})
-            execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__attach_account, {
-                KEY__the_tenant: TENANT__jaaql,
-                KEY__user_id: ROLE__postgres,
-                KEY__enc_username: USERNAME__superjaaql
-            }, encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__enc_username],
-                                                 encryption_salts={KEY__enc_username: self.get_repeatable_salt(TENANT__jaaql)})
-            execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__attach_account, {
-                KEY__the_tenant: TENANT__default,
-                KEY__user_id: tenant_admin_account_id,
-                KEY__enc_username: USERNAME__super
-            }, encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__enc_username],
-                                                 encryption_salts={KEY__enc_username: self.get_repeatable_salt(TENANT__default)})
-            self.add_account_password(tenant_admin_account_id, default_tenant_password)
-            self.add_account_password(ROLE__postgres, superjaaql_password)
-            self.jaaql_lookup_connection.close()
-
-            super_conn_str = PROTOCOL__postgres + username + ":" + db_password + "@" + address + ":" + str(port) + "/"
-            self.vault.insert_obj(VAULT_KEY__super_db_credentials, super_conn_str)
-            jaaql_lookup_str = PROTOCOL__postgres + ROLE__jaaql + ":" + jaaql_password + "@" + address + ":" + str(port) + "/" + DB__jaaql
-            self.vault.insert_obj(VAULT_KEY__jaaql_lookup_connection, jaaql_lookup_str)
-
-            print("Rebooting to allow JAAQL config to be shared among workers")
-            threading.Thread(target=self.exit_jaaql).start()
+            pass  # TODO install
         else:
             raise HttpStatusException(ERR__already_installed)
 
@@ -800,7 +727,7 @@ class JAAQLModel(BaseJAAQLModel):
                 threading.Thread(target=self.verification_thread, args=[JAAQLModel.VERIFICATION_QUEUE], daemon=True).start()
             JAAQLModel.VERIFICATION_QUEUE.put((auth_token, ip_address, complete))
             payload = json.loads(base64url_decode(auth_token.split(".")[1].encode("UTF-8")).decode())
-            return payload[KEY__user_id], payload[KEY__tenant], payload[KEY__username], payload[KEY__ip_id], payload[KEY__is_public]
+            return payload[KEY__user_id], payload[KEY__username], payload[KEY__ip_id], payload[KEY__is_public]
         except Exception:
             raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
@@ -812,7 +739,7 @@ class JAAQLModel(BaseJAAQLModel):
         execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_matching_recent_passwords_with_account, lookup,
                                              singleton_message=ERR__invalid_token, singleton_code=HTTPStatus.UNAUTHORIZED, skip_commit=True)
 
-        return decoded[KEY__user_id], decoded[KEY__tenant], decoded[KEY__username], decoded[KEY__ip_id], decoded[KEY__is_public]
+        return decoded[KEY__user_id], decoded[KEY__username], decoded[KEY__ip_id], decoded[KEY__is_public]
 
     def refresh_cached_canned_query_service(self, connection: DBInterface, application: str, configuration: str):
         self.check_admin(connection, "refresh_application_config")

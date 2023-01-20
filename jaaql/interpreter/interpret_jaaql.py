@@ -102,7 +102,7 @@ class InterpretJAAQL:
         self.db_interface = db_interface
 
     def transform(self, operation: Union[dict, str], conn=None, skip_commit: bool = False, wait_hook: queue.Queue = None,
-                  encryption_key: bytes = None, autocommit: bool = False, canned_query_service=None, tenant: str = None):
+                  encryption_key: bytes = None, autocommit: bool = False, canned_query_service=None):
         if (not isinstance(operation, dict)) and (not isinstance(operation, str)):
             raise HttpStatusException(ERR_malformed_operation_type, HTTPStatus.BAD_REQUEST)
 
@@ -126,7 +126,7 @@ class InterpretJAAQL:
         if is_dict_operation:
             query = operation.get(KEY_query)
             if query is None:
-                canned_query = canned_query_service.get_canned_query(tenant, operation[KEY__application], operation[KEY__configuration],
+                canned_query = canned_query_service.get_canned_query(operation[KEY__application], operation[KEY__configuration],
                                                                      operation[KEY__file], operation[KEY__position])
                 query = {"query": {KEY_query: canned_query, KEY_assert: operation.get(KEY_assert), KEY_decrypt: operation.get(KEY_decrypt),
                                    KEY_parameters: {}}}
@@ -150,7 +150,7 @@ class InterpretJAAQL:
                                     if isinstance(sub_val, str):
                                         all_replaced = False
                                     else:
-                                        canned_query = canned_query_service.get_canned_query(tenant, operation[KEY__application],
+                                        canned_query = canned_query_service.get_canned_query(operation[KEY__application],
                                                                                              operation[KEY__configuration],
                                                                                              sub_val[KEY__file], sub_val[KEY__position])
                                         val[sub_key] = canned_query
@@ -164,7 +164,7 @@ class InterpretJAAQL:
                                     all_replaced = False
                                     fetched_query = val[KEY_query]
                                 else:
-                                    fetched_query = canned_query_service.get_canned_query(tenant, operation[KEY__application],
+                                    fetched_query = canned_query_service.get_canned_query(operation[KEY__application],
                                                                                           operation[KEY__configuration],
                                                                                           val[KEY_query][KEY__file], val[KEY_query][KEY__position])
                                 query[key] = {KEY_query: fetched_query, KEY_assert: val.get(KEY_assert), KEY_decrypt: val.get(KEY_decrypt),

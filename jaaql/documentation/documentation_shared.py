@@ -9,14 +9,6 @@ OUTPUT = False
 
 ENDPOINT__refresh = "/oauth/refresh"
 
-ARG_RES__tenant = SwaggerArgumentResponse(
-    name=KEY__tenant,
-    description="The name of the tenant",
-    arg_type=str,
-    lower=True,
-    strip=True,
-    example="default"
-)
 
 ARG_RES__deletion_key = SwaggerArgumentResponse(
     name=KEY__deletion_key,
@@ -208,7 +200,6 @@ DOCUMENTATION__oauth_token = SwaggerDocumentation(
                     "an MFA key and you will returned the aforementioned 200 response",
         method=REST__POST,
         body=[
-            ARG_RES__tenant,
             ARG_RES__username,
             ARG_RES__password
         ],

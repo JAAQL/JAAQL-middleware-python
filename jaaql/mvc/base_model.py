@@ -5,7 +5,7 @@ from jaaql.db.db_interface import DBInterface
 import jaaql.utilities.crypt_utils as crypt_utils
 from jaaql.migrations.migrations import run_migrations
 from jaaql.email.email_manager import EmailManager
-from jaaql.db.db_utils import execute_supplied_statement, create_interface, load_tenant_symmetric_keys
+from jaaql.db.db_utils import execute_supplied_statement, create_interface
 import hashlib
 from jaaql.constants import *
 from jaaql.utilities.options import OPT_KEY__canned_queries
@@ -243,17 +243,16 @@ class BaseJAAQLModel:
 
         self.set_jaaql_lookup_connection()
 
-        self.tenant_reload_lock = threading.Lock()
-        self.tenant_symmetric_keys = None
-        self.load_keys()
+        self.reload_lock = threading.Lock()
+        self.symmetric_keys = None
 
         if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):
-            run_migrations(self.jaaql_lookup_connection, self.is_container, options=options, fetch_tenant_key_func=self.fetch_tenant_symmetric_key)
+            run_migrations(self.jaaql_lookup_connection, self.is_container, options=options, key=self.get_db_crypt_key())
 
             if migration_project_name is not None:
                 run_migrations(self.jaaql_lookup_connection, self.is_container, migration_project_name, migration_folder=migration_folder,
                                config=self.config, super_credentials=self.vault.get_obj(VAULT_KEY__super_db_credentials), options=options,
-                               fetch_tenant_key_func=self.fetch_tenant_symmetric_key)
+                               key=self.get_db_crypt_key())
 
             if self.is_container:
                 self.jaaql_lookup_connection.close()  # Each individual class will have one
@@ -269,20 +268,6 @@ class BaseJAAQLModel:
             self.vault.insert_obj(VAULT_KEY__jaaql_local_access_key, str(uuid.uuid4()))
 
         self.local_access_key = self.vault.get_obj(VAULT_KEY__jaaql_local_access_key)
-
-    def load_keys(self):
-        if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):
-            self.tenant_symmetric_keys = load_tenant_symmetric_keys(self.jaaql_lookup_connection, self.get_db_crypt_key())
-
-    def fetch_tenant_symmetric_key(self, tenant: str):
-        if tenant in self.tenant_symmetric_keys:
-            return self.tenant_symmetric_keys[tenant]
-
-        with self.tenant_reload_lock:
-            if tenant not in self.tenant_symmetric_keys:
-                self.load_keys()
-
-        return self.tenant_symmetric_keys[tenant]
 
     def get_db_crypt_key(self):
         return self.vault.get_obj(VAULT_KEY__db_crypt_key).encode(crypt_utils.ENCODING__ascii)

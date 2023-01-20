@@ -1,11 +1,9 @@
 from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
-from jaaql.constants import ENCODING__utf, KEY__tenant_name, KEY__enc_symmetric_key
-from jaaql.mvc.queries import QUERY__load_tenant_symmetric_keys
+from jaaql.constants import ENCODING__utf
 from typing import Union
 import jaaql.utilities.crypt_utils as crypt_utils
 from jaaql.db.db_pg_interface import DBPGInterface
-from jaaql.db.db_interface import DBInterface
 
 ERR__encryption_key_required = "Encryption key required. Check internal function calls"
 ERR__duplicated_encrypt_parameter = "Duplicated value in encrypt_parameters list"
@@ -165,9 +163,3 @@ def execute_supplied_statements(db_interface, queries: Union[str, list],
         data = [db_interface.objectify(obj) for obj in data]
 
     return data
-
-
-def load_tenant_symmetric_keys(connection: DBInterface, crypt_key: bytes):
-    keys = execute_supplied_statement(connection, QUERY__load_tenant_symmetric_keys, as_objects=True,
-                                      encryption_key=crypt_key, decrypt_columns=[KEY__enc_symmetric_key])
-    return {row[KEY__tenant_name]: row[KEY__enc_symmetric_key].encode() for row in keys}

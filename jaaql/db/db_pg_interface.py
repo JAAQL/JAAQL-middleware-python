@@ -21,7 +21,7 @@ PGCONN__max_conns = 10
 TIMEOUT = 2.5
 
 ERR__invalid_role = "Role not allowed, invalid format!"
-ERR__must_use_canned_query = "Must use canned query as you are not a tenant admin!"
+ERR__must_use_canned_query = "Must use canned query as you are not an admin!"
 
 QUERY__dba_query = "SELECT pg_has_role(datdba::regrole, 'MEMBER') FROM pg_database WHERE datname = %(database)s;"
 

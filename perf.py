@@ -10,7 +10,7 @@ THREAD_COUNT = 20
 
 
 def do_perf(num_req: int, ev: Event, ret_ev: Event):
-    res = requests.post("http://127.0.0.1/api/oauth/token", json={"tenant": "default", "username": "super", "password": "passw0rd"}).json()
+    res = requests.post("http://127.0.0.1/api/oauth/token", json={"username": "super", "password": "passw0rd"}).json()
     ret_ev.set()
     ev.wait()
     for _ in range(num_req):

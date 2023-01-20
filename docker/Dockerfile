@@ -26,6 +26,7 @@ RUN apt -y install nginx
 VOLUME /etc/nginx/sites-available/
 
 RUN apt-get -y install libzbar0
+RUN apt-get -y install libbz2-dev
 RUN apt-get install dos2unix
 RUN apt -y install bzip2
 RUN apt -y install wget
@@ -46,13 +47,13 @@ RUN $PY_PATH -m ensurepip --default-pip
 RUN $PY_PATH -mpip install -U pip wheel
 RUN $PY_PATH -mpip install certbot-nginx==1.2.0
 
-ARG CHROME_VERSION="95.0.4638.69-1"
+ARG CHROME_VERSION="109.0.5414.74-1"
 RUN wget --no-verbose -O /tmp/chrome.deb https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb \
   && apt install -y /tmp/chrome.deb \
   && rm /tmp/chrome.deb
 
 RUN apt-get install unzip
-RUN wget -N https://chromedriver.storage.googleapis.com/95.0.4638.69/chromedriver_linux64.zip -P ~/
+RUN wget -N https://chromedriver.storage.googleapis.com/109.0.5414.74/chromedriver_linux64.zip -P ~/
 RUN unzip ~/chromedriver_linux64.zip -d ~/
 RUN rm ~/chromedriver_linux64.zip
 RUN mv -f ~/chromedriver /usr/local/bin/chromedriver

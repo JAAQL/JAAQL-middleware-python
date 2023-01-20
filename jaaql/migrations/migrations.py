@@ -37,14 +37,11 @@ REGEX__migration_replacement_and_encrypt = r'#{{JAAQL__[A-Z_]+}}'
 
 
 def load_config_file(location: str) -> (str, str, str):
-    ret_tenant = None
     ret_role = None
     ret_databases = None
     try:
         the_content = open(location, "r").read()
 
-        if "TENANT=" in the_content:
-            ret_tenant = the_content.split("TENANT=")[1].split("\r")[0].split("\n")[0].strip()
         if "ROLE=" in the_content:
             ret_role = the_content.split("ROLE=")[1].split("\r")[0].split("\n")[0].strip()
         if "DATABASES=" in the_content:
@@ -52,21 +49,13 @@ def load_config_file(location: str) -> (str, str, str):
     except:
         pass
 
-    return ret_tenant, ret_role, ret_databases
+    return ret_role, ret_databases
 
 
-def get_config(tenant: str, folder_tenant: str, file_tenant: str, role: str, folder_role: str, file_role: str, databases: str,
+def get_config(role: str, folder_role: str, file_role: str, databases: str,
                folder_databases: str, file_databases: str):
-    ret_tenant = "jaaql"
     ret_role = "jaaql"
     ret_databases = ["jaaql"]
-
-    if tenant is not None:
-        ret_tenant = tenant
-    if folder_tenant is not None:
-        ret_tenant = folder_tenant
-    if file_tenant is not None:
-        ret_tenant = file_tenant
 
     if role is not None:
         ret_role = role
@@ -82,7 +71,7 @@ def get_config(tenant: str, folder_tenant: str, file_tenant: str, role: str, fol
     if file_databases is not None:
         ret_databases = file_databases.split(",")
 
-    return ret_tenant, ret_role, ret_databases
+    return ret_role, ret_databases
 
 
 def create_interface_for_db(config, super_credentials: str, database: str, sub_role: str):
@@ -91,7 +80,7 @@ def create_interface_for_db(config, super_credentials: str, database: str, sub_r
     return create_interface(config, address, port, database, username, password=password, sub_role=sub_role)
 
 
-def replace_options_environment_variables(query: str, parsed_options: dict, tenant_crypt_key: bytes, is_deployed: bool, config, fixed_salt: bool):
+def replace_options_environment_variables(query: str, parsed_options: dict, crypt_key: bytes, is_deployed: bool, config, fixed_salt: bool):
     last_index = 0
     prepared = ""
     for match in re.finditer(REGEX__migration_replacement_and_encrypt, query):
@@ -111,7 +100,7 @@ def replace_options_environment_variables(query: str, parsed_options: dict, tena
         iv = None
         if fixed_salt:
             iv = b"\x00" * AES__iv_length
-        prepared += encrypt_raw(tenant_crypt_key, to_crypt, iv=iv)
+        prepared += encrypt_raw(crypt_key, to_crypt, iv=iv)
 
     prepared += query[last_index:]
     query = prepared
@@ -160,11 +149,11 @@ def replace_options_environment_variables(query: str, parsed_options: dict, tena
 
 
 def run_migrations(db_interface: DBInterface, is_deployed: bool, project_name: str = None, migration_folder: str = None, config=None,
-                   super_credentials: str = None, options: dict = None, fetch_tenant_key_func=None):
+                   super_credentials: str = None, options: dict = None, key: bytes = None):
     if migration_folder is None:
         migration_folder = join(get_jaaql_root(), PATH_MIGRATIONS)
 
-    base_override_tenant, base_override_role, base_override_databases = load_config_file(join(migration_folder, "config"))
+    base_override_role, base_override_databases = load_config_file(join(migration_folder, "config"))
 
     if project_name is None:
         project_name = PROJECT_JAAQL
@@ -176,7 +165,7 @@ def run_migrations(db_interface: DBInterface, is_deployed: bool, project_name: s
 
     statement_load_table = {"query": QUERY_LOAD_TABLE, "parameters": {ATTR_PROJECT_NAME: project_name}}
 
-    tenancy_dbs = {}
+    dbs = {}
 
     try:
         migration_history = db_interface.objectify(ij.transform(statement_load_table, conn=conn))
@@ -191,36 +180,32 @@ def run_migrations(db_interface: DBInterface, is_deployed: bool, project_name: s
     version_folders = sorted([version_folder for version_folder in listdir(migration_folder) if
                               isdir(join(migration_folder, version_folder)) and '.' in version_folder])
     for version_folder in version_folders:
-        folder_override_tenant, folder_override_role, folder_override_databases = load_config_file(join(migration_folder, version_folder, "config"))
+        folder_override_role, folder_override_databases = load_config_file(join(migration_folder, version_folder, "config"))
 
         script_files = sorted([script_file for script_file in listdir(join(migration_folder, version_folder)) if
                                script_file.endswith(EXTENSION_SQL)])
         for script_file in script_files:
             config_file_name = join(migration_folder, version_folder, script_file.split(EXTENSION_SQL)[0] + ".config")
-            script_override_tenant, script_override_role, script_override_databases = load_config_file(config_file_name)
+            script_override_role, script_override_databases = load_config_file(config_file_name)
             full_name = version_folder + "/" + script_file
             content = open(join(migration_folder, version_folder, script_file), "r").read()
-            cur_tenant, cur_role, cur_databases = get_config(base_override_tenant, folder_override_tenant, script_override_tenant,
-                                                             base_override_role, folder_override_role, script_override_role,
+            cur_role, cur_databases = get_config(base_override_role, folder_override_role, script_override_role,
                                                              base_override_databases, folder_override_databases, script_override_databases)
-            content_for_hash = replace_options_environment_variables(content, options, fetch_tenant_key_func(cur_tenant), is_deployed, config,
+            content_for_hash = replace_options_environment_variables(content, options, key, is_deployed, config,
                                                                      fixed_salt=True)
-            content = replace_options_environment_variables(content, options, fetch_tenant_key_func(cur_tenant), is_deployed, config,
+            content = replace_options_environment_variables(content, options, key, is_deployed, config,
                                                             fixed_salt=False)
 
-            hash_content = content_for_hash + cur_tenant + cur_role + str(cur_databases)
+            hash_content = content_for_hash + cur_role + str(cur_databases)
             checksum = hashlib.md5(hash_content.encode("UTF-8")).digest()
             checksum = int.from_bytes(checksum[0:3], byteorder="little")
             if full_name not in installed_scripts:
                 start_time = datetime.now()
-                if cur_tenant not in tenancy_dbs:
-                    tenancy_dbs[cur_tenant] = {}
-                cur_tenancy_dbs = tenancy_dbs[cur_tenant]
 
                 for db in cur_databases:
-                    if db not in cur_tenancy_dbs:
-                        cur_tenancy_dbs[db] = create_interface_for_db(config, super_credentials, db, cur_tenant, cur_role)
-                    update_db_interface = cur_tenancy_dbs[db]
+                    if db not in dbs:
+                        dbs[db] = create_interface_for_db(config, super_credentials, db, cur_role)
+                    update_db_interface = dbs[db]
                     if not hasattr(update_db_interface, "attached_conns"):
                         update_db_interface.attached_conns = {}
                     update_db_interface.sub_role = cur_role
@@ -250,10 +235,9 @@ def run_migrations(db_interface: DBInterface, is_deployed: bool, project_name: s
                     raise Exception("Migration mismatch for " + script_file + ". Locally calculated checksum " + str(
                         checksum) + " yet in db table found " + str(existing_checksum))
 
-    for cur_tenant in tenancy_dbs.values():
-        for cur_db in cur_tenant.values():
-            for cur_conn in cur_db.attached_conns.values():
-                cur_db.put_conn(cur_conn)
-            cur_db.close()
+    for cur_db in dbs.values():
+        for cur_conn in cur_db.attached_conns.values():
+            cur_db.put_conn(cur_conn)
+        cur_db.close()
 
     db_interface.put_conn(conn)

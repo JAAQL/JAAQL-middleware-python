@@ -299,5 +299,5 @@ function init(requestHelper) {
 
 window.onload = function() {
     window.READ_ONLY = false;
-    JEQL.initNoTenant(APPLICATION_NAME, init);
+    JEQL.init(APPLICATION_NAME, null, init);
 };

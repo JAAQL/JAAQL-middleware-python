@@ -43,7 +43,6 @@ def bootup(vault_key, is_gunicorn: bool = False, install_on_bootup: bool = False
         json_data = {
             "superjaaql_password": "pa55word",
             "install_key": install_key,
-            "default_tenant_password": "passw0rd",
             "allow_uninstall": False
         }
         if not is_gunicorn:

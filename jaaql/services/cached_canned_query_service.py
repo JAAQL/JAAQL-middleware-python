@@ -1,7 +1,7 @@
 from jaaql.db.db_interface import DBInterface
 from jaaql.db.db_utils import execute_supplied_statement_singleton, execute_supplied_statement
 from jaaql.mvc.queries import QUERY__load_application_configuration, QUERY__load_application_configurations
-from jaaql.constants import KEY__tenant, KEY__application, KEY__configuration, KEY__artifact_base_uri, FILE__canned_queries
+from jaaql.constants import KEY__application, KEY__configuration, KEY__artifact_base_uri, FILE__canned_queries
 from jaaql.utilities.utils_no_project_imports import load_artifact
 from jaaql.exceptions.http_status_exception import HttpStatusException
 from requests.exceptions import RequestException
@@ -19,20 +19,17 @@ class CachedCannedQueryService:
     def init_canned_queries(self, is_container: bool, connection: DBInterface):
         configs = execute_supplied_statement(connection, QUERY__load_application_configurations, as_objects=True)
         for config in configs:
-            self.refresh_configuration(is_container, connection, config[KEY__tenant], config[KEY__application], config[KEY__configuration],
+            self.refresh_configuration(is_container, connection, config[KEY__application], config[KEY__configuration],
                                        config[KEY__artifact_base_uri])
 
-    def get_canned_query(self, tenant: str, application: str, configuration: str, file: str, pos: int) -> str:
-        if tenant not in self.canned_queries:
-            raise HttpStatusException(ERR__invalid_query % "tenant")
-
-        if application not in self.canned_queries[tenant]:
+    def get_canned_query(self, application: str, configuration: str, file: str, pos: int) -> str:
+        if application not in self.canned_queries:
             raise HttpStatusException(ERR__invalid_query % "application")
 
-        if configuration not in self.canned_queries[tenant][application]:
+        if configuration not in self.canned_queries[application]:
             raise HttpStatusException(ERR__invalid_query % "configuration")
 
-        queries = self.canned_queries[tenant][application][configuration]
+        queries = self.canned_queries[application][configuration]
 
         if file not in queries:
             raise HttpStatusException(ERR__invalid_query % "file")
@@ -42,12 +39,12 @@ class CachedCannedQueryService:
 
         return queries[file][pos]
 
-    def refresh_configuration(self, is_container: bool, connection: DBInterface, tenant: str, application: str, configuration: str,
+    def refresh_configuration(self, is_container: bool, connection: DBInterface, application: str, configuration: str,
                               config_resource_url: str = None):
         if config_resource_url is None:
             config_resource_url = execute_supplied_statement_singleton(connection, QUERY__load_application_configuration,
-                                                                       {KEY__tenant: tenant, KEY__application: application,
-                                                                        KEY__configuration: configuration}, as_objects=True)[KEY__artifact_base_uri]
+                                                                       {KEY__application: application, KEY__configuration: configuration},
+                                                                       as_objects=True)[KEY__artifact_base_uri]
 
         canned_queries = None
         try:
@@ -58,15 +55,12 @@ class CachedCannedQueryService:
         except RequestException:
             pass  # Same as above
 
-        if tenant not in canned_queries:
-            self.canned_queries[tenant] = {}
+        if application not in canned_queries:
+            self.canned_queries[application] = {}
 
-        if application not in canned_queries[tenant]:
-            self.canned_queries[tenant][application] = {}
+        if configuration not in canned_queries[application]:
+            self.canned_queries[application][configuration] = {}
 
-        if configuration not in canned_queries[tenant][configuration]:
-            self.canned_queries[tenant][application][configuration] = {}
-
-        self.canned_queries[tenant][application][configuration] = canned_queries
+        self.canned_queries[application][configuration] = canned_queries
 
         # TODO broadcast this to other workers
