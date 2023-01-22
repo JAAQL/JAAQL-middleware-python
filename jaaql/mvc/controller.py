@@ -27,7 +27,7 @@ class JAAQLController(BaseJAAQLController):
         def refresh_oauth_token(auth_token: str, ip_address: str):
             return self.model.refresh_auth_token(auth_token, ip_address)
 
-        @self.cors_route('/refresh-app-config', DOCUMENTATION__refresh_app_config)
+        @self.cors_route('/internal/canned-queries', DOCUMENTATION__canned_queries)
         def refresh_app_config(connection: DBInterface, inputs: dict):
             self.model.refresh_cached_canned_query_service(connection, **inputs)
 
@@ -50,13 +50,6 @@ class JAAQLController(BaseJAAQLController):
         @self.cors_route('/email/account', DOCUMENTATION__drop_email_account)
         def drop_email_account(http_inputs: dict, connection: DBInterface):
             self.model.drop_email_account(connection, **http_inputs)
-
-        @self.cors_route('/database', DOCUMENTATION__databases)
-        def drop_database(http_inputs: dict, connection: DBInterface):
-            if self.is_delete():
-                self.model.drop_database(connection, **http_inputs)
-            else:
-                self.model.create_database(connection, **http_inputs)
 
         @self.cors_route('/accounts', DOCUMENTATION__create_account)
         def accounts(connection: DBInterface, http_inputs: dict):

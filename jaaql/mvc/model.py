@@ -94,7 +94,7 @@ class JAAQLModel(BaseJAAQLModel):
         threading.Thread(target=self.log_thread, args=[JAAQLModel.LOG_QUEUE])
 
     def check_is_internal_admin(self, connection: DBInterface):
-        execute_supplied_statement(connection, QUERY__fetch_singleton_as_permissions_check)
+        execute_supplied_statement(connection, QUERY__fetch_internal_admin)
 
     def log(self, user_id: str, occurred: datetime, duration_ms: int, exception: str, contr_input: str, ip: str, status: int, endpoint: str):
         JAAQLModel.LOG_QUEUE.put({
@@ -112,36 +112,9 @@ class JAAQLModel(BaseJAAQLModel):
         while True:
             execute_supplied_statement(self.jaaql_lookup_connection, QUERY__log_ins, log_queue.get())
 
-    def check_admin(self, connection: DBInterface, option: str):
-        execute_supplied_statement(connection, "SELECT * FROM check_" + option)  # Will error if this fails
-
     def drop_email_account(self, connection: DBInterface, name: str):
-        self.check_admin(connection, "drop_email_account")
-        execute_supplied_statement(self.jaaql_lookup_connection, QUERY__drop_email_account, {KEY__name: name})
+        execute_supplied_statement(connection, QUERY__drop_email_account, {KEY__name: name})
         self.email_manager.reload_service()
-
-    def create_database(self, connection: DBInterface, name: str):
-        execute_supplied_statement(connection, "SELECT create_database(:name)", {KEY__name: name})
-
-    def drop_database(self, connection: DBInterface, name: str, delete_record: bool, silent: bool):
-        self.check_admin(connection, "drop_database")
-        if delete_record is None:
-            delete_record = True
-        if silent is None:
-            silent = False
-        if delete_record:
-            try:
-                execute_supplied_statement(self.jaaql_lookup_connection, QUERY__drop_database, {KEY__name: name})
-            except HttpStatusException as ex:
-                if not silent:
-                    raise ex
-        super_interface = self.create_interface_for_db(None, DB__postgres)
-        try:
-            # We can accept raw input into SQL as it has gone to the SQL function above and therefore been sanitised
-            execute_supplied_statement(super_interface, "DROP DATABASE \"" + name + "\" WITH (FORCE)", autocommit=True)
-        except:
-            pass
-        super_interface.close()
 
     def redeploy(self, connection: DBInterface):
         self.check_is_internal_admin(connection)
@@ -702,9 +675,58 @@ class JAAQLModel(BaseJAAQLModel):
         if "PostgreSQL " not in version:
             raise HttpStatusException(ERR__keep_alive_failed)
 
-    def install(self, db_connection_string: str, superjaaql_password: str, install_key: str, allow_uninstall: bool):
+    def install(self, db_connection_string: str, jaaql_password: str, super_db_password: str, install_key: str, allow_uninstall: bool):
         if self.jaaql_lookup_connection is None:
-            pass  # TODO install
+            if allow_uninstall:
+                self.vault.insert_obj(VAULT_KEY__allow_jaaql_uninstall, True)
+
+            if install_key != self.install_key:
+                raise HttpStatusException(ERR__incorrect_install_key, HTTPStatus.UNAUTHORIZED)
+
+            if db_connection_string is None:
+                db_connection_string = PG__default_connection_string % os.environ[PG_ENV__password]
+
+            address, port, _, username, db_password = DBInterface.fracture_uri(db_connection_string)
+
+            super_interface = create_interface(self.config, address, port, DB__jaaql, username, db_password)
+            conn = super_interface.get_conn()
+            super_interface.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "install_1.sql"))
+            resp = super_interface.execute_query(conn, QUERY__setup_jaaql_role)
+            jaaql_db_password = resp[1][0][0]
+            super_interface.commit(conn)
+            super_interface.put_conn(conn)
+            super_interface.close()
+
+            self.jaaql_lookup_connection = create_interface(self.config, address, port, DB__jaaql, ROLE__jaaql, jaaql_db_password)
+            conn = self.jaaql_lookup_connection.get_conn()
+            self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "install_2.sql"))
+            self.jaaql_lookup_connection.commit(conn)
+            self.jaaql_lookup_connection.put_conn(conn)
+
+            execute_supplied_statement(self.jaaql_lookup_connection, QUERY__setup_system)
+
+            execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__attach_account, {
+                KEY__user_id: ROLE__jaaql,
+                KEY__enc_username: USERNAME__jaaql
+            }, encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__enc_username],
+                                                 encryption_salts={KEY__enc_username: self.get_repeatable_salt()})
+            execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__attach_account, {
+                KEY__user_id: ROLE__postgres,
+                KEY__enc_username: USERNAME__super_db
+            }, encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__enc_username],
+                                                 encryption_salts={KEY__enc_username: self.get_repeatable_salt()})
+
+            self.add_account_password(ROLE__postgres, super_db_password)
+            self.add_account_password(ROLE__jaaql, jaaql_password)
+            self.jaaql_lookup_connection.close()
+
+            super_conn_str = PROTOCOL__postgres + username + ":" + db_password + "@" + address + ":" + str(port) + "/"
+            self.vault.insert_obj(VAULT_KEY__super_db_credentials, super_conn_str)
+            jaaql_lookup_str = PROTOCOL__postgres + ROLE__jaaql + ":" + jaaql_db_password + "@" + address + ":" + str(port) + "/" + DB__jaaql
+            self.vault.insert_obj(VAULT_KEY__jaaql_lookup_connection, jaaql_lookup_str)
+
+            print("Rebooting to allow JAAQL config to be shared among workers")
+            threading.Thread(target=self.exit_jaaql).start()
         else:
             raise HttpStatusException(ERR__already_installed)
 
@@ -742,7 +764,7 @@ class JAAQLModel(BaseJAAQLModel):
         return decoded[KEY__user_id], decoded[KEY__username], decoded[KEY__ip_id], decoded[KEY__is_public]
 
     def refresh_cached_canned_query_service(self, connection: DBInterface, application: str, configuration: str):
-        self.check_admin(connection, "refresh_application_config")
+        self.check_is_internal_admin(connection)
 
         self.cached_canned_query_service.refresh_configuration(self.is_container, self.jaaql_lookup_connection, application, configuration)
 

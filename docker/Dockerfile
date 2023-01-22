@@ -34,7 +34,7 @@ RUN wget https://www.python.org/ftp/python/3.11.1/Python-3.11.1.tar.xz
 RUN tar xf Python-3.11.1.tar.xz
 RUN apt install build-essential zlib1g-dev \
     libncurses5-dev libgdbm-dev libnss3-dev \
-    libssl-dev libreadline-dev libffi-dev curl -y
+    libssl-dev libreadline-dev libffi-dev libbz2-dev curl -y
 WORKDIR /Python-3.11.1
 RUN ./configure --enable-optimizations --prefix=/usr/local --with-ensurepip=install
 RUN make install
@@ -70,7 +70,7 @@ RUN $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt
 
 RUN git clone https://github.com/JAAQL/JEQL.git
 WORKDIR JEQL
-RUN git checkout tags/v3.0.4
+RUN git checkout tags/v3.0.5
 WORKDIR /
 
 COPY ./pgextension /pgextension

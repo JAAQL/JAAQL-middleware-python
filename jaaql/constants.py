@@ -20,7 +20,7 @@ KEY__render_as = "render_as"
 KEY__default_password = "default_password"
 KEY__url = "url"
 KEY__artifact_base_uri = "artifact_base_uri"
-KEY__super_jaaql_password = "super_jaaql_password"
+KEY__jaaql_password = "jaaql_password"
 KEY__super_db_password = "super_db_password"
 KEY__public_username = "public_username"
 KEY__records_total = "records_total"
@@ -266,12 +266,11 @@ DATASET__default_desc = "Default dataset description"
 HTTP_STATUS__too_early = 425  # Shiv for python 3.8
 
 USERNAME__jaaql = "jaaql"
-USERNAME__superjaaql = "superjaaql"
-USERNAME__super = "super"
+USERNAME__super_db = "super_db"
 ROLE__jaaql = "jaaql"
 ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.2.0"
+VERSION = "4.3.0"
 

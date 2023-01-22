@@ -9,6 +9,21 @@ OUTPUT = False
 
 ENDPOINT__refresh = "/oauth/refresh"
 
+ARG_RES__application = SwaggerArgumentResponse(
+    name=KEY__application,
+    description="The application",
+    example=["playground"],
+    required=False,
+    arg_type=str,
+    condition="If this is a public user"
+)
+
+ARG_RES__configuration = SwaggerArgumentResponse(
+    name=KEY__configuration,
+    description="The application configuration",
+    example=["main"],
+    arg_type=str
+)
 
 ARG_RES__deletion_key = SwaggerArgumentResponse(
     name=KEY__deletion_key,

@@ -1,7 +1,7 @@
 from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
 from jaaql.documentation.documentation_shared import ARG_RES__username, EXAMPLE__password, ARG_RES__password, RES__oauth_token,\
-    rename_arg, set_required, set_nullable
+    rename_arg, set_required, set_nullable, ARG_RES__application, ARG_RES__configuration
 
 TITLE = "JAAQL API"
 DESCRIPTION = "Collection of methods in the JAAQL API"
@@ -10,14 +10,6 @@ FILENAME = "jaaql_api"
 # Not unused. Used to generate html files
 from jaaql.documentation.documentation_shared import DOCUMENTATION__oauth_token, DOCUMENTATION__oauth_refresh
 
-ARG_RES__application = SwaggerArgumentResponse(
-    name=KEY__application,
-    description="The application",
-    example=["playground"],
-    required=False,
-    arg_type=str,
-    condition="If this is a public user"
-)
 ARG_RES__application_nullable = SwaggerArgumentResponse(
     name=KEY__application,
     description="The application, if you want to make this a public user",
@@ -25,12 +17,6 @@ ARG_RES__application_nullable = SwaggerArgumentResponse(
     required=False,
     arg_type=str,
     condition="If this is a public user"
-)
-ARG_RES__configuration = SwaggerArgumentResponse(
-    name=KEY__configuration,
-    description="The application configuration",
-    example=["main"],
-    arg_type=str
 )
 ARG_RES__configuration_nullable = SwaggerArgumentResponse(
     name=KEY__configuration,
@@ -528,53 +514,4 @@ ARG_RES__database_name = SwaggerArgumentResponse(
     description="The name of the database",
     arg_type=str,
     example=["invoicing_live"]
-)
-
-DOCUMENTATION__databases = SwaggerDocumentation(
-    tags="Database",
-    methods=[
-        SwaggerMethod(
-            name="Drop database",
-            description="Drops the database",
-            method=REST__DELETE,
-            arguments=[
-                ARG_RES__database_name,
-                SwaggerArgumentResponse(
-                    name="delete_record",
-                    description="Whether or not to delete the JAAQL record of this database or just the physical db. Defaults to false",
-                    arg_type=bool,
-                    required=False,
-                    condition="Defaults to false"
-                ),
-                SwaggerArgumentResponse(
-                    name="silent",
-                    description="Whether or not to return an error when the database doesn't exist",
-                    arg_type=bool,
-                    required=False,
-                    condition="Defaults to false"
-                )
-            ]
-        ),
-        SwaggerMethod(
-            name="Create database",
-            description="Creates the database",
-            method=REST__POST,
-            arguments=[
-                ARG_RES__database_name
-            ]
-        )
-    ]
-)
-
-DOCUMENTATION__refresh_app_config = SwaggerDocumentation(
-    tags="Application",
-    methods=SwaggerMethod(
-        name="Refresh Config",
-        description="Refreshes the application configuration.",
-        method=REST__POST,
-        arguments=[
-            ARG_RES__application,
-            ARG_RES__configuration
-        ]
-    )
 )

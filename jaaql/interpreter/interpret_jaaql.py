@@ -33,6 +33,7 @@ KEY_select = "select"
 KEY_where = "where"
 KEY_echo = "echo"
 KEY_query = "query"
+KEY_autocommit = "autocommit"
 KEY_order_by = "order by"
 KEY_group_by = "group by"
 KEY_assert = "assert"
@@ -125,6 +126,11 @@ class InterpretJAAQL:
 
         if is_dict_operation:
             query = operation.get(KEY_query)
+            if KEY_autocommit in operation:
+                if conn.autocommit != operation[KEY_autocommit]:
+                    conn.commit()
+                conn.autocommit = operation[KEY_autocommit]
+
             if query is None:
                 canned_query = canned_query_service.get_canned_query(operation[KEY__application], operation[KEY__configuration],
                                                                      operation[KEY__file], operation[KEY__position])

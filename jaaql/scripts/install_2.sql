@@ -4,28 +4,12 @@ CREATE DOMAIN safe_path AS varchar(255) CHECK (VALUE ~* '^[a-z0-9_\-\/]+$');
 -- Install script
 -- (1) Create tables
 
-create view table_primary_cols as (
-    SELECT c.column_name, tc.table_name
-    FROM information_schema.table_constraints tc
-    JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name)
-    JOIN information_schema.columns AS c ON c.table_schema = tc.constraint_schema
-      AND tc.table_name = c.table_name AND ccu.column_name = c.column_name
-    WHERE constraint_type = 'PRIMARY KEY' AND c.table_schema = 'public'
+-- Selecting from this table will verify if the connected account can check admin accounts
+create table check_admin (
+    singleton int primary key not null,
+    check (singleton = 0)
 );
-
-create view table_cols_marked_primary as (
-    SELECT
-        col.table_name,
-        col.column_name,
-        CASE WHEN tpc.column_name is not null then true else false end as is_primary
-    FROM information_schema.columns col
-    LEFT JOIN table_primary_cols tpc ON tpc.table_name = col.table_name AND col.column_name = tpc.column_name
-    WHERE col.table_schema = 'public'
-);
-
-create table database (
-    name character varying(63) not null,
-    primary key (name) );
+INSERT INTO check_admin (singleton) VALUES (0);
 
 create table application (
     description varchar(256) not null,
@@ -267,9 +251,6 @@ alter table application_database add constraint application_database__configurat
 alter table application_database add constraint application_database__schema
     foreign key (application, schema)
         references application_schema (application, name) ON DELETE CASCADE ON UPDATE CASCADE;
-alter table application_database add constraint application_database__database
-    foreign key (database)
-        references database (name) ON DELETE CASCADE ON UPDATE CASCADE;
 
 create function account_id_from_username(enc_username text) returns jaaql_account_id as
 $$
@@ -279,7 +260,7 @@ BEGIN
     SELECT user_id INTO account_id FROM account WHERE username = enc_username;
     return account_id;
 END
-$$ language plpgsql SECURITY DEFINER;
+$$ language plpgsql;
 
 create function attach_account(account_id jaaql_account_id, enc_username text) returns void as
 $$
@@ -294,12 +275,12 @@ $$
 DECLARE
     account_id jaaql_account_id;
 BEGIN
-    INSERT INTO account (username, application, configuration, public_password) VALUES (enc_username, _application, _configuration, _password) RETURNING user_id INTO account_id;
+    INSERT INTO account (username, application, configuration, public_password) VALUES (enc_username, _application, _configuration,
+                                                                                        _password) RETURNING user_id INTO account_id;
     EXECUTE 'CREATE ROLE ' || quote_ident(account_id);
     if _application is null then
         EXECUTE 'GRANT jaaql__registered TO ' || quote_ident(account_id);
     end if;
-    EXECUTE 'GRANT jaaql__public TO ' || quote_ident(account_id);
     return account_id;
 END
 $$ language plpgsql;
@@ -312,64 +293,6 @@ END
 $$ language plpgsql SECURITY DEFINER;
 GRANT execute on function close_my_account() to jaaql__registered;
 
-create function create_application(name postgres_addressable_name, description text) returns void as
-$$
-BEGIN
-    INSERT INTO application (description, name) VALUES (create_application.description, create_application.name);
-END
-$$ language plpgsql SECURITY DEFINER;
-
-create function drop_application(name postgres_addressable_name) returns void as
-$$
-BEGIN
-    DELETE FROM application A WHERE A.name = drop_application.name;
-END
-$$ language plpgsql SECURITY DEFINER;
-
-create function add_schema_to_application(application postgres_addressable_name, schema postgres_addressable_name, is_default boolean = false) returns void as
-$$
-BEGIN
-    INSERT INTO application_schema (application, name, is_default) VALUES (add_schema_to_application.application, add_schema_to_application.schema, add_schema_to_application.is_default);
-END;
-$$ language plpgsql SECURITY DEFINER;
-
-create function drop_from_application_schema(application postgres_addressable_name, schema postgres_addressable_name) returns void as
-$$
-BEGIN
-    DELETE FROM application_schema A WHERE A.application = drop_from_application_schema.application AND A.name = drop_from_application_schema.schema;
-END;
-$$ language plpgsql SECURITY DEFINER;
-
-create function associate_database_to_application_configuration(application postgres_addressable_name, configuration postgres_addressable_name, schema postgres_addressable_name, database postgres_addressable_name) returns void as
-$$
-BEGIN
-    INSERT INTO application_database (application, configuration, schema, database) VALUES (associate_database_to_application_configuration.application, associate_database_to_application_configuration.configuration, associate_database_to_application_configuration.schema, associate_database_to_application_configuration.database);
-END;
-$$ language plpgsql SECURITY DEFINER;
-
-create function dissociate_database_from_application_configuration(application postgres_addressable_name, configuration postgres_addressable_name, schema postgres_addressable_name, database postgres_addressable_name) returns void as
-$$
-#variable_conflict use_variable
-BEGIN
-    DELETE FROM application_database A WHERE A.application = application AND A.database = database AND A.configuration = configuration AND A.schema = schema;
-END;
-$$ language plpgsql SECURITY DEFINER;
-
-create function create_application_configuration(application postgres_addressable_name, configuration postgres_addressable_name, url text, artifacts text) returns void as
-$$
-BEGIN
-    INSERT INTO application_configuration (application, url, name, artifact_base_uri) VALUES (create_application_configuration.application, create_application_configuration.url, create_application_configuration.configuration, artifacts);
-END;
-$$ language plpgsql SECURITY DEFINER;
-
-create function drop_application_configuration(application postgres_addressable_name, configuration postgres_addressable_name) returns void as
-$$
-#variable_conflict use_variable
-BEGIN
-    DELETE FROM application_configuration A WHERE A.application = application AND A.name = configuration;
-END;
-$$ language plpgsql SECURITY DEFINER;
-
 create table renderable_document (
     name      varchar(40) NOT null,
     application character varying(63) not null,
@@ -380,20 +303,6 @@ create table renderable_document (
     check (render_as in ('pdf'))
 );
 
-create function register_renderable_document(_application character varying(63), _name varchar(40), _url text, _render_as varchar(10)) returns void as
-$$
-BEGIN
-    INSERT INTO renderable_document(application, name, url, render_as) VALUES (_application, _name, _url, _render_as);
-END
-$$ language plpgsql SECURITY DEFINER;
-
-create function deregister_renderable_document(_name varchar(60)) returns void as
-$$
-BEGIN
-    DELETE FROM renderable_document WHERE name = _name;
-END
-$$ language plpgsql SECURITY DEFINER;
-
 create table renderable_document_template (
     attachment varchar(40) not null,
     template   varchar(60) not null,
@@ -403,47 +312,20 @@ create table renderable_document_template (
     FOREIGN KEY (attachment, application) references renderable_document(name, application) ON DELETE CASCADE
 );
 
-create function associate_renderable_document_with_template(_application character varying(63), _attachment varchar(40), _template varchar(60)) returns void as
+create function setup() returns void as
 $$
 BEGIN
-    INSERT INTO renderable_document_template(attachment, template, application) VALUES (_attachment, _template, _application);
-END
-$$ language plpgsql SECURITY DEFINER;
+    INSERT INTO application (name, description) VALUES ('console', 'The console application');
 
-create function disassociate_renderable_document_from_template(_name varchar(60)) returns void as
-$$
-BEGIN
-    DELETE FROM renderable_document WHERE name = _name;
-END
-$$ language plpgsql SECURITY DEFINER;
+    INSERT INTO application (name, description) VALUES ('manager', 'The administration panel for JAAQL');
+    INSERT INTO application_schema (application, name) VALUES ('manager', 'default');
+    INSERT INTO application_configuration (application, name, url, artifact_base_uri) VALUES ('manager', 'default', '', '');
+    INSERT INTO application_database (application, configuration, schema, database) VALUES ('manager', 'default', 'default', 'jaaql');
 
-create view check_drop_database as (SELECT true);
-create view check_refresh_application_config as (SELECT true);
-create view check_drop_email_account as (SELECT true);
-
-create function setup(jaaql_enc_symmetric_key varchar(256), default_enc_symmetric_key varchar(256)) returns jaaql_account_id as
-$$
-DECLARE
-    account_id jaaql_account_id;
-BEGIN
-    GRANT jaaql__super to postgres with admin option;
-    GRANT jaaql__super to jaaql with admin option;
-
-    PERFORM create_database('jaaql', true);
-    PERFORM create_database('play_db');
-    PERFORM create_application('console', 'The console application');
-
-    PERFORM create_application('manager', 'The administration panel for JAAQL');
-    PERFORM add_schema_to_application('manager', 'default');
-    PERFORM create_application_configuration('manager', 'main', '', '');
-    PERFORM associate_database_to_application_configuration('manager', 'main', 'default', 'jaaql');
-
-    PERFORM create_application('playground', 'Allows testing for new JAAQL/JEQL features');
-    PERFORM add_schema_to_application('playground', 'default');
-    PERFORM create_application_configuration('playground', 'main', '', '');
-    PERFORM associate_database_to_application_configuration('playground', 'main', 'default', 'play_db');
-
-    return account_id;
+    INSERT INTO application (name, description) VALUES ('playground', 'Allows testing for new JAAQL/JEQL features');
+    INSERT INTO application_schema (application, name) VALUES ('playground', 'default');
+    INSERT INTO application_configuration (application, name, url, artifact_base_uri) VALUES ('playground', 'default', '', '');
+    INSERT INTO application_database (application, configuration, schema, database) VALUES ('playground', 'default', 'default', 'play_db');
 END
 $$ language plpgsql;
 

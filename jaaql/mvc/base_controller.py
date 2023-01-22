@@ -402,6 +402,10 @@ class BaseJAAQLController:
         def wrap_func(view_func):
             @wraps(view_func)
             def routed_function(view_func_local):
+                if not self.model.has_installed and not route.startswith('/internal'):
+                    resp = Response("Still installing. Be patient", status=HTTPStatus.SERVICE_UNAVAILABLE)
+                    self._cors(resp)
+                    return resp
                 start_time = datetime.now()
                 request_id = uuid.uuid4()
                 self.perform_profile(request_id, route=route, method=request.method)
