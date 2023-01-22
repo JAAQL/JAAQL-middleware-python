@@ -39,7 +39,7 @@ class EmailManager:
     def uri_encode_replace(val):
         return quote(str(val))
 
-    def construct_and_send_email(self, artifact_base_uri: str, template: dict, sender: str, tenant: str, to_email: str, to_name: str,
+    def construct_and_send_email(self, artifact_base_uri: str, template: dict, sender: str, to_email: str, to_name: str,
                                  parameters: dict = None, optional_parameters: dict = None, attachments: TYPE__email_attachments = None,
                                  attachment_access_token: str = None):
         loaded_template = load_artifact(self.is_container, artifact_base_uri, template[KEY__app_relative_path])
@@ -58,7 +58,7 @@ class EmailManager:
             for attachment in attachment_list:
                 attachment.format_attachment_url(artifact_base_uri, self.is_container)
 
-        self.send_email(Email(str(sender), tenant, template[KEY__application], str(template[KEY__email_template_name]), str(template[KEY__account]),
+        self.send_email(Email(str(sender), template[KEY__application], str(template[KEY__email_template_name]), str(template[KEY__account]),
                               to_email, to_name, subject=subject, body=loaded_template, is_html=True, attachments=attachments,
                               attachment_access_token=attachment_access_token, override_send_name=template[KEY__override_send_name]))
 

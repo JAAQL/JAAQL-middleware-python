@@ -4,16 +4,17 @@ create extension jaaql;
 DO
 $do$
 BEGIN
-   IF EXISTS (SELECT FROM pg_database WHERE datname = 'jaaql__jaaql') THEN
+   IF EXISTS (SELECT FROM pg_database WHERE datname = 'jaaql') THEN
       RAISE NOTICE 'Database already exists';  -- optional
    ELSE
       PERFORM dblink_exec('dbname=' || current_database(),  -- current db
-                        'create database jaaql__jaaql
+                        'create database jaaql
                             with
                             ENCODING = ''UTF8''
                             TABLESPACE = pg_default
                             CONNECTION LIMIT = -1;');
-      PERFORM dblink_exec('dbname=jaaql__jaaql', 'ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;');
+      PERFORM dblink_exec('dbname=jaaql', 'create extension jaaql;');
+      PERFORM dblink_exec('dbname=jaaql', 'ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;');
    END IF;
 END
 $do$;

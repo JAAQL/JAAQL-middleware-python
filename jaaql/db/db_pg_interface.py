@@ -3,7 +3,7 @@ import uuid
 from psycopg import OperationalError
 from psycopg_pool import ConnectionPool
 import queue
-from psycopg.errors import ProgrammingError, InvalidParameterValue
+from psycopg.errors import ProgrammingError, InvalidParameterValue, UndefinedFunction
 import threading
 import traceback
 from jaaql.constants import ERR__invalid_token
@@ -21,7 +21,7 @@ PGCONN__max_conns = 10
 TIMEOUT = 2.5
 
 ERR__invalid_role = "Role not allowed, invalid format!"
-ERR__must_use_canned_query = "Must use canned query as you are not a tenant admin!"
+ERR__must_use_canned_query = "Must use canned query as you are not an admin!"
 
 QUERY__dba_query = "SELECT pg_has_role(datdba::regrole, 'MEMBER') FROM pg_database WHERE datname = %(database)s;"
 
@@ -98,7 +98,7 @@ class DBPGInterface(DBInterface):
                 if the_pool is not None:
                     the_pool.close()
                 if "does not exist" in str(ex).split("\"")[-1] or "couldn't get a connection after" in str(ex):
-                    raise HttpStatusException("Database \"" + "__".join(self.db_name.split("__")[1:]) + "\" does not exist",
+                    raise HttpStatusException("Database \"" + self.db_name + "\" does not exist",
                                               CustomHTTPStatus.DATABASE_NO_EXIST)
                 else:
                     raise HttpStatusException(str(ex))
@@ -112,7 +112,10 @@ class DBPGInterface(DBInterface):
             try:
                 with conn.cursor() as cursor:
                     if self.role is not None:
-                        cursor.execute("SELECT jaaql__set_session_authorization('" + self.role + "', '" + conn.jaaql_reset_key + "');")
+                        try:
+                            cursor.execute("SELECT jaaql__set_session_authorization('" + self.role + "', '" + conn.jaaql_reset_key + "');")
+                        except UndefinedFunction:
+                            raise HttpStatusException("Database '%s' has not been configured for usage with JAAQL. Please ask the dba to run 'configure_database_for_use_with_jaaql' from the jaaql database" % self.db_name)
                     if self.sub_role is not None:
                         cursor.execute("SET ROLE \"" + self.sub_role + "\"")
             except InvalidParameterValue:
@@ -127,7 +130,7 @@ class DBPGInterface(DBInterface):
                         self.pg_pool.getconn(timeout=TIMEOUT)
                     except OperationalError:
                         self.close()
-                        raise HttpStatusException("Database \"" + "__".join(self.db_name.split("__")[1:]) + "\" does not exist",
+                        raise HttpStatusException("Database \"" + self.db_name + "\" does not exist",
                                                   CustomHTTPStatus.DATABASE_NO_EXIST)
 
                     conn = self._get_conn(False)
