@@ -244,7 +244,6 @@ class BaseJAAQLModel:
         self.set_jaaql_lookup_connection()
 
         self.reload_lock = threading.Lock()
-        self.symmetric_keys = None
 
         if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):
             run_migrations(self.jaaql_lookup_connection, self.is_container, options=options, key=self.get_db_crypt_key())

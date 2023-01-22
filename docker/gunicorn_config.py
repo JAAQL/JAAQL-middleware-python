@@ -10,7 +10,6 @@ has_checked_for_install = False
 
 def post_worker_init(worker):
     worker.wsgi.model.set_jaaql_lookup_connection()
-    worker.wsgi.model.load_keys()
 
 
 def child_exit(server, worker):
