@@ -68,11 +68,6 @@ RUN apt-get -y install imagemagick x11-apps
 COPY requirements.txt $INSTALL_PATH/requirements.txt
 RUN $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt
 
-RUN git clone https://github.com/JAAQL/JEQL.git
-WORKDIR JEQL
-RUN git checkout tags/v3.0.6
-WORKDIR /
-
 COPY ./pgextension /pgextension
 RUN /bin/mkdir -p '/usr/share/postgresql/15/extension'
 RUN /bin/mkdir -p '/usr/lib/postgresql/15/lib'
@@ -85,6 +80,11 @@ RUN /usr/bin/install -c -m 644 /pgextension/bin/jaaql.bc '/usr/lib/postgresql/15
 RUN mv /pgextension/bin/jaaql.index.bc '/usr/lib/postgresql/15/lib/bitcode'
 
 COPY . $INSTALL_PATH
+
+RUN git clone https://github.com/JAAQL/JEQL.git
+WORKDIR JEQL
+RUN git checkout tags/v3.0.6
+WORKDIR /
 
 RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini
 RUN mv $INSTALL_PATH/jaaql/config/config-docker.ini $INSTALL_PATH/jaaql/config/config.ini
