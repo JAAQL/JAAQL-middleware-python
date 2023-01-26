@@ -12,19 +12,19 @@ from jaaql.documentation.documentation_shared import DOCUMENTATION__oauth_token,
 
 ARG_RES__application_nullable = SwaggerArgumentResponse(
     name=KEY__application,
-    description="The application, if you want to make this a public user",
+    description="The application",
     example=["playground"],
     required=False,
     arg_type=str,
-    condition="If this is a public user"
+    condition="If this is required"
 )
 ARG_RES__configuration_nullable = SwaggerArgumentResponse(
     name=KEY__configuration,
-    description="The configuration, if you want to make this a public user",
+    description="The configuration",
     example=["main"],
     required=False,
     arg_type=str,
-    condition="If this is a public user"
+    condition="If this is required"
 )
 ARG_RES__parameters = SwaggerArgumentResponse(
     name=KEY__parameters,
@@ -41,18 +41,7 @@ DOCUMENTATION__create_account = SwaggerDocumentation(
         name="Create account",
         description="Will create an account, if you have privileges to do so",
         body=[
-            ARG_RES__username,
-            ARG_RES__application_nullable,
-            ARG_RES__configuration_nullable,
-            SwaggerArgumentResponse(
-                name=KEY__password,
-                description="The password, if you want to make this a public user",
-                example=EXAMPLE__password,
-                required=False,
-                strip=True,
-                arg_type=str,
-                condition="If this is a public user"
-            )
+            ARG_RES__username
         ]
     )
 )
@@ -328,24 +317,6 @@ DOCUMENTATION__password = SwaggerDocumentation(
     )
 )
 
-DOCUMENTATION__public_user = SwaggerDocumentation(
-    tags="Public Users",
-    security=False,
-    methods=SwaggerMethod(
-        method=REST__GET,
-        name="Fetch public user",
-        description="Fetches the public user",
-        arguments=[
-            set_required(ARG_RES__application, new_description="The application with which the user is associated"),
-            ARG_RES__configuration
-        ],
-        response=SwaggerResponse(
-            description="Credentials for the public user",
-            response=[ARG_RES__username, ARG_RES__password]
-        )
-    )
-)
-
 DOCUMENTATION__submit = SwaggerDocumentation(
     tags="Queries",
     methods=SwaggerMethod(
@@ -460,7 +431,7 @@ DOCUMENTATION__document = SwaggerDocumentation(
                 ),
                 SwaggerFlatResponse(
                     description="Document still rendering",
-                    code=HTTP_STATUS__too_early,
+                    code=HTTPStatus.TOO_EARLY,
                     body=ERR__document_still_rendering
                 ),
                 SwaggerFlatResponse(

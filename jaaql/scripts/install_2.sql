@@ -102,14 +102,8 @@ create table account (
     user_id jaaql_account_id not null default gen_random_uuid(),
     username character varying(255) not null,
     deleted boolean default false,
-    application varchar(63),
     password uuid,
-    configuration varchar(63),
-    FOREIGN KEY (application) REFERENCES application(name) ON DELETE CASCADE,
-    FOREIGN KEY (application, configuration) REFERENCES application_configuration(application, name) ON DELETE CASCADE,
     public_password text,
-    CHECK ((application is null) = (public_password is null)),
-    CHECK((application is null) = (configuration is null)),
     primary key (user_id));
 CREATE UNIQUE INDEX account_unq_email ON account (username);
 -- account_password...
@@ -269,16 +263,14 @@ BEGIN
 END
 $$ language plpgsql;
 
-create function create_account(enc_username text, _application character varying(63) = null, _configuration character varying(63) = null,
-                               _password text = null) returns jaaql_account_id as
+create function create_account(enc_username text, is_public boolean = false) returns jaaql_account_id as
 $$
 DECLARE
     account_id jaaql_account_id;
 BEGIN
-    INSERT INTO account (username, application, configuration, public_password) VALUES (enc_username, _application, _configuration,
-                                                                                        _password) RETURNING user_id INTO account_id;
+    INSERT INTO account (username) VALUES (enc_username) RETURNING user_id INTO account_id;
     EXECUTE 'CREATE ROLE ' || quote_ident(account_id);
-    if _application is null then
+    if is_public is null then
         EXECUTE 'GRANT jaaql__registered TO ' || quote_ident(account_id);
     end if;
     return account_id;
@@ -384,7 +376,6 @@ grant select on my_ips to jaaql__registered;
 create view fetch_recent_passwords as (
     SELECT
         a.user_id,
-        a.application,
         ap.id as password_id,
         a.username,
         password_hash
@@ -397,7 +388,6 @@ create view fetch_recent_passwords as (
 create view fetch_recent_passwords_with_ips as (
     SELECT
         user_id,
-        application,
         password_id,
         username,
         password_hash,

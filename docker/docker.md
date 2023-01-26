@@ -71,7 +71,7 @@ Additional lines can be used
     -e LOG_TO_OUTPUT=TRUE \
     -e OUTPUT_QUERY_EXCEPTIONS=TRUE \
     -e JAAQL_EMAIL_CREDENTIALS=base64encodedcredentials \
-    -e JEQL_VERSION=3.0.5 \
+    -e JEQL_VERSION=3.0.6 \
     -e SENTINEL_URL=jaaql.io:8443
     --mount type=bind,source="$(pwd)"/install_scripts,target=/JAAQL-middleware-python/install_scripts \
 

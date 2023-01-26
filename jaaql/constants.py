@@ -263,10 +263,10 @@ CONFIG__default_desc = "Default config description"
 DATASET__default = "Default dataset"
 DATASET__default_desc = "Default dataset description"
 
-HTTP_STATUS__too_early = 425  # Shiv for python 3.8
-
 USERNAME__jaaql = "jaaql"
 USERNAME__super_db = "super_db"
+USERNAME__public = "public"
+PASSWORD__public = "jaaql_public_password"
 ROLE__jaaql = "jaaql"
 ROLE__postgres = "postgres"
 

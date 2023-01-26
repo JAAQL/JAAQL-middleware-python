@@ -70,7 +70,7 @@ RUN $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt
 
 RUN git clone https://github.com/JAAQL/JEQL.git
 WORKDIR JEQL
-RUN git checkout tags/v3.0.5
+RUN git checkout tags/v3.0.6
 WORKDIR /
 
 COPY ./pgextension /pgextension

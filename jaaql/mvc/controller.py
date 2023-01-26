@@ -59,10 +59,6 @@ class JAAQLController(BaseJAAQLController):
         def password(user_id: str, username: str, ip_address: str, http_inputs: dict):
             return self.model.add_my_account_password(user_id, username, ip_address, **http_inputs)
 
-        @self.cors_route('/public', DOCUMENTATION__public_user)
-        def public_user(http_inputs: dict):
-            return self.model.fetch_public_user(**http_inputs)
-
         @self.cors_route('/submit', DOCUMENTATION__submit)
         def submit(http_inputs: dict, user_id: str, verification_hook: queue.Queue):
             return self.model.submit(http_inputs, user_id, verification_hook=verification_hook)

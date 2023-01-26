@@ -529,7 +529,7 @@ class JAAQLModel(BaseJAAQLModel):
                                                    as_objects=True)
 
         if not res[KEY__completed]:
-            raise HttpStatusException(ERR__document_still_rendering, HTTP_STATUS__too_early)
+            raise HttpStatusException(ERR__document_still_rendering, HTTPStatus.TOO_EARLY)
 
         if res[KEY__create_file]:
             if inputs[KEY__as_attachment] is not None:
@@ -545,7 +545,7 @@ class JAAQLModel(BaseJAAQLModel):
                                                    as_objects=True)
 
         if not res[KEY__completed]:
-            raise HttpStatusException(ERR__document_still_rendering, HTTP_STATUS__too_early)
+            raise HttpStatusException(ERR__document_still_rendering, HTTPStatus.TOO_EARLY)
 
         if res[KEY__create_file]:
             raise HttpStatusException(ERR__document_created_file)
@@ -636,32 +636,18 @@ class JAAQLModel(BaseJAAQLModel):
 
         return res
 
-    def fetch_public_user(self, application: str, configuration: str):
-        return execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_public_account_credentials,
-                                                    {KEY__application: application, KEY__configuration: configuration},
-                                                    as_objects=True, encryption_key=self.get_db_crypt_key(),
-                                                    decrypt_columns=[KEY__password, KEY__username])
-
-    def create_account(self, connection: DBInterface, inputs: dict):
-        if inputs.get(KEY__password) is not None:
+    def create_account(self, connection: DBInterface, inputs: dict, password: str = None, is_public: bool = False):
+        if inputs.get(KEY__password) is not None and not is_public:
             crypt_utils.validate_password(inputs[KEY__password])
 
-        if KEY__application not in inputs:
-            inputs[KEY__application] = None
-        if KEY__configuration not in inputs:
-            inputs[KEY__configuration] = None
-        if KEY__password not in inputs:
-            inputs[KEY__password] = None
-        if inputs[KEY__password] is None and inputs[KEY__application] is not None:
-            inputs[KEY__password] = str(uuid.uuid4())  # Set a default password for public user
-        the_password = inputs[KEY__password]
-        query = QUERY__create_account
-        account_id = execute_supplied_statement_singleton(connection, query, inputs,
-                                                          encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__username, KEY__password],
+        inputs[KEY__is_public] = is_public
+
+        account_id = execute_supplied_statement_singleton(connection, QUERY__create_account, inputs,
+                                                          encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__username],
                                                           encryption_salts={KEY__username: self.get_repeatable_salt()})[RET__rows][0]
 
-        if the_password:
-            self.add_account_password(account_id, the_password)
+        if password:
+            self.add_account_password(account_id, password)
 
         return account_id
 
@@ -718,6 +704,9 @@ class JAAQLModel(BaseJAAQLModel):
 
             self.add_account_password(ROLE__postgres, super_db_password)
             self.add_account_password(ROLE__jaaql, jaaql_password)
+
+            self.create_account(self.jaaql_lookup_connection, {KEY__username: USERNAME__public}, PASSWORD__public, True)
+
             self.jaaql_lookup_connection.close()
 
             super_conn_str = PROTOCOL__postgres + username + ":" + db_password + "@" + address + ":" + str(port) + "/"
@@ -838,7 +827,7 @@ class JAAQLModel(BaseJAAQLModel):
             KEY__address: ip_address,
             KEY__ip_id: str(address),
             KEY__created: datetime.now().isoformat(),
-            KEY__is_public: res[KEY__application] is not None
+            KEY__is_public: res[KEY__username] == USERNAME__public
         }
 
         if response is not None:
