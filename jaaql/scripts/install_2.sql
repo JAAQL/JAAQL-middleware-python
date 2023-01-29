@@ -1,4 +1,5 @@
-CREATE ROLE jaaql__registered;
+CREATE ROLE registered;
+CREATE ROLE anonymous;
 CREATE DOMAIN safe_path AS varchar(255) CHECK (VALUE ~* '^[a-z0-9_\-\/]+$');
 
 -- Install script
@@ -270,8 +271,10 @@ DECLARE
 BEGIN
     INSERT INTO account (username) VALUES (enc_username) RETURNING user_id INTO account_id;
     EXECUTE 'CREATE ROLE ' || quote_ident(account_id);
-    if is_public is null then
-        EXECUTE 'GRANT jaaql__registered TO ' || quote_ident(account_id);
+    if is_public then
+        EXECUTE 'GRANT anonymous TO ' || quote_ident(account_id);
+    else
+        EXECUTE 'GRANT registered TO ' || quote_ident(account_id);
     end if;
     return account_id;
 END
@@ -283,7 +286,7 @@ BEGIN
     UPDATE account SET deleted = current_timestamp WHERE user_id = session_user;
 END
 $$ language plpgsql SECURITY DEFINER;
-GRANT execute on function close_my_account() to jaaql__registered;
+GRANT execute on function close_my_account() to registered;
 
 create table renderable_document (
     name      varchar(40) NOT null,
@@ -359,7 +362,7 @@ create view my_logs as (
     INNER JOIN account_ip ip ON log.login_ip = ip.id
     ORDER BY occurred DESC
 );
-grant select on my_logs to jaaql__registered;
+grant select on my_logs to registered;
 
 create view my_ips as (
     SELECT
@@ -371,7 +374,7 @@ create view my_ips as (
     INNER JOIN account us ON us.user_id = ip.account AND us.deleted is null AND us.user_id = session_user
     ORDER BY first_login DESC
 );
-grant select on my_ips to jaaql__registered;
+grant select on my_ips to registered;
 
 create view fetch_recent_passwords as (
     SELECT
