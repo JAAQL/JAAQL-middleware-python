@@ -147,14 +147,14 @@ class BaseJAAQLController:
 
             if isinstance(arg.arg_type, SwaggerList) and arg.name in data:
                 if not isinstance(data[arg.name], list):
-                    raise HttpStatusException(ERR__argument_wrong_type % (arg.name, str(type(data[arg.name])),
-                                                                          str(type(list))), HTTPStatus.BAD_REQUEST)
+                    raise HttpStatusException(ERR__argument_wrong_type % (arg.name, type(data[arg.name]).__name__,
+                                                                          type(list).__name__), HTTPStatus.BAD_REQUEST)
                 for itm in data[arg.name]:
                     BaseJAAQLController.validate_data_rec(arg.arg_type.responses, itm, fill_missing)
             elif arg.name in data and arg.arg_type == ARG_RESP__allow_all:
                 if not isinstance(data[arg.name], dict):
-                    raise HttpStatusException(ERR__argument_wrong_type % (arg.name, str(type(data[arg.name])),
-                                                                          str(type(dict))), HTTPStatus.BAD_REQUEST)
+                    raise HttpStatusException(ERR__argument_wrong_type % (arg.name, type(data[arg.name]).__name__,
+                                                                          type(dict).__name__), HTTPStatus.BAD_REQUEST)
             elif arg.name in data and not isinstance(data[arg.name], arg.arg_type):
                 if data[arg.name] is None and not arg.required:
                     continue
@@ -184,8 +184,8 @@ class BaseJAAQLController:
                         pass
 
                 if was_err:
-                    raise HttpStatusException(ERR__argument_wrong_type % (arg.name, str(type(data[arg.name])),
-                                                                          str(arg.arg_type)), HTTPStatus.BAD_REQUEST)
+                    raise HttpStatusException(ERR__argument_wrong_type % (arg.name, type(data[arg.name]).__name__,
+                                                                          arg.arg_type.__name__), HTTPStatus.BAD_REQUEST)
             elif arg.name not in data and fill_missing:
                 data[arg.name] = None
             elif arg.arg_type == str and arg.name in data and data[arg.name] is not None:
@@ -231,7 +231,7 @@ class BaseJAAQLController:
         '5' can be cast to 5 and then back to '5' it's considered equal and the cast is performed
         :return:
         """
-        err_mess = ERR__response_wrong_type % (str(name), str(type(real_resp[name])), str(arg_type))
+        err_mess = ERR__response_wrong_type % (str(name), type(real_resp[name]).__name__, arg_type.__name__)
         bi_cast = None
         try:
             # Bi directional cast. Cast to expected type and then cast back

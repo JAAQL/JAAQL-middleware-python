@@ -3,7 +3,7 @@ import uuid
 from psycopg import OperationalError
 from psycopg_pool import ConnectionPool
 import queue
-from psycopg.errors import ProgrammingError, InvalidParameterValue, UndefinedFunction
+from psycopg.errors import ProgrammingError, InvalidParameterValue, UndefinedFunction, InternalError
 import threading
 import traceback
 from jaaql.constants import ERR__invalid_token
@@ -114,6 +114,12 @@ class DBPGInterface(DBInterface):
                     if self.role is not None:
                         try:
                             cursor.execute("SELECT jaaql__set_session_authorization('" + self.role + "', '" + conn.jaaql_reset_key + "');")
+                        except InternalError as ex:
+                            if str(ex).startswith("role \"") and str(ex).endswith("\" does not exist"):
+                                raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
+                            else:
+                                traceback.print_exc()
+                                raise ex
                         except UndefinedFunction:
                             raise HttpStatusException("Database '%s' has not been configured for usage with JAAQL. Please ask the dba to run 'configure_database_for_use_with_jaaql' from the jaaql database" % self.db_name)
                     if self.sub_role is not None:
