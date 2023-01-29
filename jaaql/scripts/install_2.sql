@@ -1,6 +1,6 @@
 CREATE ROLE registered;
 CREATE ROLE anonymous;
-CREATE DOMAIN safe_path AS varchar(255) CHECK (VALUE ~* '^[a-z0-9_\-\/]+$');
+CREATE DOMAIN safe_path AS varchar(255) CHECK (VALUE ~* '^[a-z0-9_\-\/]+(.[a-zA-Z0-9]+)?$');
 
 -- Install script
 -- (1) Create tables
