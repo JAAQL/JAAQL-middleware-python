@@ -64,7 +64,8 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt && \
     rm -rf /usr/local/lib/python${PYTHON_MAJOR_VERSION}/test && \
     rm -rf /Python-${PYTHON_VERSION} && \
-    rm -rf /Python-${PYTHON_VERSION}.tar.xz
+    rm -rf /Python-${PYTHON_VERSION}.tar.xz && \
+    apt-get autoremove --purge
 
 COPY . $INSTALL_PATH
 
