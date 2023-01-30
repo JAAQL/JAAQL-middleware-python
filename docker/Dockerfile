@@ -93,8 +93,6 @@ RUN mkdir -p $INSTALL_PATH/www
 RUN mkdir -p $INSTALL_PATH/log
 RUN chown -R "$USER":www-data $INSTALL_PATH/www
 RUN mv $INSTALL_PATH/docker/jaaql.sql /docker-entrypoint-initdb.d/01-jaaql.sql
-RUN dos2unix $INSTALL_PATH/docker/pg_reload.sh
-RUN mv $INSTALL_PATH/docker/pg_reload.sh /docker-entrypoint-initdb.d/02-pg_reload.sh
 RUN mv $INSTALL_PATH/docker/entrypoint.sh entrypoint.sh
 RUN dos2unix entrypoint.sh
 RUN dos2unix $INSTALL_PATH/base_reboot.sh
