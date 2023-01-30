@@ -13,6 +13,7 @@ ENV JAAQL_DEPLOYED true
 ENV PIGGYBACK_LETSENCRYPT FALSE
 
 ARG CHROME_VERSION="109.0.5414.74-1"
+ARG PYTHON_VERSION="3.11.1"
 
 RUN apt-get update && apt-get install -y build-essential \
     apt install -y libpq-dev \
@@ -26,8 +27,8 @@ RUN apt-get update && apt-get install -y build-essential \
     apt-get install dos2unix \
     apt -y install bzip2 \
     apt -y install wget \
-    wget https://www.python.org/ftp/python/3.11.1/Python-3.11.1.tar.xz \
-    tar xf Python-3.11.1.tar.xz \
+    wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tar.xz \
+    tar xf Python-${PYTHON_VERSION}.tar.xz \
     apt install build-essential zlib1g-dev \
     libncurses5-dev libgdbm-dev libnss3-dev \
     libssl-dev libreadline-dev libffi-dev libbz2-dev curl -y
@@ -39,7 +40,7 @@ COPY requirements.txt $INSTALL_PATH/requirements.txt
 COPY ./pgextension /pgextension
 VOLUME /etc/nginx/sites-available/
 
-WORKDIR /Python-3.11.1
+WORKDIR /Python-${PYTHON_VERSION}
 RUN ./configure --enable-optimizations --prefix=/usr/local --with-ensurepip=install \
      make install
 WORKDIR /
