@@ -1,4 +1,4 @@
-FROM postgres:15.1
+FROM postgres:14.6
 LABEL maintainer="jaaql.io"
 
 EXPOSE 80
@@ -13,7 +13,14 @@ ENV JAAQL_DEPLOYED true
 ENV PIGGYBACK_LETSENCRYPT FALSE
 
 ARG CHROME_VERSION="109.0.5414.74-1"
-ARG PYTHON_VERSION="3.8.16"
+ARG PYTHON_MAJOR_VERSION="3.8"
+ARG PYTHON_VERSION="${PYTHON_MAJOR_VERSION}.16"
+
+VOLUME /etc/letsencrypt
+VOLUME $INSTALL_PATH/vault
+COPY docker/jaaql.service /lib/systemd/system/jaaql.service
+COPY requirements.txt $INSTALL_PATH/requirements.txt
+VOLUME /etc/nginx/sites-available/
 
 RUN apt-get update && apt-get install -y build-essential && apt update && \
     apt install -y libpq-dev && \
@@ -30,21 +37,15 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     tar xf Python-${PYTHON_VERSION}.tar.xz && \
     apt install build-essential zlib1g-dev -y \
     libncurses5-dev libgdbm-dev libnss3-dev -y \
-    libssl-dev libreadline-dev libffi-dev libbz2-dev curl -y
-
-VOLUME /etc/letsencrypt
-VOLUME $INSTALL_PATH/vault
-COPY docker/jaaql.service /lib/systemd/system/jaaql.service
-COPY requirements.txt $INSTALL_PATH/requirements.txt
-VOLUME /etc/nginx/sites-available/
-
-WORKDIR /Python-${PYTHON_VERSION}
-RUN ./configure --enable-optimizations --prefix=/usr/local --with-ensurepip=install && \
-     make install
-WORKDIR /
-RUN $PY_PATH -m ensurepip --default-pip && \
+    libssl-dev libreadline-dev libffi-dev libbz2-dev curl -y && \
+    cd /Python-${PYTHON_VERSION} && \
+    ./configure --enable-optimizations --disable-test-modules --without-doc-strings --prefix=/usr/local --with-ensurepip=install && \
+    make install && \
+    cd ../ && \
+    $PY_PATH -m ensurepip --default-pip && \
     $PY_PATH -mpip install -U pip wheel && \
     $PY_PATH -mpip install certbot-nginx==1.2.0 && \
+    apt-get purge --auto-remove build-essential -y && \
     wget --no-verbose -O /tmp/chrome.deb https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb && \
     apt install -y /tmp/chrome.deb && \
     rm /tmp/chrome.deb && \
@@ -61,18 +62,17 @@ RUN $PY_PATH -m ensurepip --default-pip && \
     apt-get -y install dbus-x11 xfonts-base xfonts-100dpi xfonts-75dpi xfonts-cyrillic xfonts-scalable && \
     apt-get -y install imagemagick x11-apps && \
     $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt && \
-    rm -rf /usr/local/lib/python3.8/test && \
-    rm -rf /Python-3.8.16 && \
-    rm -rf /Python3.8.16.tar.xz
+    rm -rf /usr/local/lib/python${PYTHON_MAJOR_VERSION}/test && \
+    rm -rf /Python-${PYTHON_VERSION} && \
+    rm -rf /Python-${PYTHON_VERSION}.tar.xz
 
 COPY . $INSTALL_PATH
 
-RUN git clone https://github.com/JAAQL/JEQL.git
-WORKDIR JEQL
-RUN git checkout tags/v2.2.20
-WORKDIR /
-
-RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini && \
+RUN git clone https://github.com/JAAQL/JEQL.git && \
+    cd JEQL && \
+    git checkout tags/v2.2.20 && \
+    cd ../ && \
+    rm -rf $INSTALL_PATH/jaaql/config/config.ini && \
     mv $INSTALL_PATH/jaaql/config/config-docker.ini $INSTALL_PATH/jaaql/config/config.ini && \
     mkdir -p $INSTALL_PATH/www && \
     mkdir -p $INSTALL_PATH/log && \
@@ -80,14 +80,11 @@ RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini && \
     mv $INSTALL_PATH/docker/jaaql.sql /docker-entrypoint-initdb.d/01-jaaql.sql && \
     mv $INSTALL_PATH/docker/entrypoint.sh entrypoint.sh && \
     dos2unix entrypoint.sh && \
-    dos2unix $INSTALL_PATH/base_reboot.sh
-
-WORKDIR $INSTALL_PATH
-RUN $PY_PATH setup.py sdist bdist_wheel
-
-RUN VERSION=$(grep '^VERSION = ' /JAAQL-middleware-python/jaaql/constants.py | cut -d'=' -f2 | cut -d'"' -f2) && $PIP_PATH install --no-deps /JAAQL-middleware-python/dist/jaaql_middleware_python-"$VERSION"-py3-none-any.whl
-WORKDIR /
-
-RUN mkdir -p $INSTALL_PATH/log
+    dos2unix $INSTALL_PATH/base_reboot.sh && \
+    cd $INSTALL_PATH && \
+    $PY_PATH setup.py sdist bdist_wheel && \
+    VERSION=$(grep '^VERSION = ' /JAAQL-middleware-python/jaaql/constants.py | cut -d'=' -f2 | cut -d'"' -f2) && $PIP_PATH install --no-deps /JAAQL-middleware-python/dist/jaaql_middleware_python-"$VERSION"-py3-none-any.whl && \
+    cd / && \
+    mkdir -p $INSTALL_PATH/log
 
 ENTRYPOINT ["sh", "entrypoint.sh"]
