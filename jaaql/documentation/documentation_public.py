@@ -41,7 +41,11 @@ DOCUMENTATION__create_account = SwaggerDocumentation(
         name="Create account",
         description="Will create an account, if you have privileges to do so",
         body=[
-            ARG_RES__username
+            ARG_RES__username,
+            set_nullable(ARG_RES__password),
+            set_nullable(SwaggerArgumentResponse(
+                name=KEY__att
+            ))
         ]
     )
 )

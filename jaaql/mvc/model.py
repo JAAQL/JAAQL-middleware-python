@@ -637,11 +637,12 @@ class JAAQLModel(BaseJAAQLModel):
 
         return res
 
-    def create_account(self, connection: DBInterface, inputs: dict, password: str = None, is_public: bool = False):
+    def create_account(self, connection: DBInterface, inputs: dict, is_public: bool = False):
         if inputs.get(KEY__password) is not None and not is_public:
             crypt_utils.validate_password(inputs[KEY__password])
 
         inputs[KEY__is_public] = is_public
+        password = inputs.pop(KEY__password, None)
 
         account_id = execute_supplied_statement_singleton(connection, QUERY__create_account, inputs,
                                                           encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__username],
@@ -706,7 +707,7 @@ class JAAQLModel(BaseJAAQLModel):
             self.add_account_password(ROLE__postgres, super_db_password)
             self.add_account_password(ROLE__jaaql, jaaql_password)
 
-            self.create_account(self.jaaql_lookup_connection, {KEY__username: USERNAME__public}, PASSWORD__public, True)
+            self.create_account(self.jaaql_lookup_connection, {KEY__username: USERNAME__public, KEY__password: PASSWORD__public})
 
             self.jaaql_lookup_connection.close()
 

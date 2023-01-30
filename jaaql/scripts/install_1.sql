@@ -38,7 +38,7 @@ $$
 DECLARE
     account_id postgres_addressable_name;
 BEGIN
-    if attach_as then
+    if attach_as is not null then
         EXECUTE 'CREATE ROLE ' || quote_ident(attach_as);
         INSERT INTO account (username, user_id) VALUES (enc_username, attach_as) RETURNING user_id INTO account_id;
     else
