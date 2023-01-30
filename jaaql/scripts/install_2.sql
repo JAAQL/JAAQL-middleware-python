@@ -1,6 +1,4 @@
-CREATE ROLE registered;
-CREATE ROLE anonymous;
-CREATE DOMAIN safe_path AS varchar(255) CHECK (VALUE ~* '^[a-z0-9_\-\/]+(.[a-zA-Z0-9]+)?$');
+CREATE DOMAIN safe_path AS varchar(255) CHECK (VALUE ~* '^[a-z0-9_\-\/]+(\.[a-zA-Z0-9]+)?$');
 
 -- Install script
 -- (1) Create tables
@@ -37,7 +35,7 @@ create table email_account (
     name varchar(60) not null,
     PRIMARY KEY (name),
     send_name varchar(255) not null,
-    protocol varchar(4) not null,
+    protocol varchar(4) not null default 'smtp',
     check (protocol in ('smtp')),
     host varchar(255) not null,
     port integer not null,
@@ -100,7 +98,7 @@ create table email_template_configuration (
 
 -- account...
 create table account (
-    user_id jaaql_account_id not null default gen_random_uuid(),
+    user_id postgres_addressable_name not null default gen_random_uuid(),
     username character varying(255) not null,
     deleted boolean default false,
     password uuid,
@@ -110,7 +108,7 @@ CREATE UNIQUE INDEX account_unq_email ON account (username);
 -- account_password...
 create table account_password (
     id uuid primary key not null default gen_random_uuid(),
-    account jaaql_account_id not null,
+    account postgres_addressable_name not null,
     password_hash character varying(512) not null,
     created timestamp not null default current_timestamp,
     unique(account, password_hash)
@@ -151,82 +149,6 @@ create view my_email_template_defaults as (
 );
 GRANT SELECT ON my_email_template_defaults TO PUBLIC;
 
-create function add_email_account(name varchar(60), send_name varchar(255), host varchar(255), port integer, username varchar(255), encrypted_password text) returns void as
-$$
-BEGIN
-    INSERT INTO email_account (name, send_name, protocol, host, port, username, encrypted_password)
-    VALUES (add_email_account.name, add_email_account.send_name, 'smtp',
-            add_email_account.host, add_email_account.port, add_email_account.username,
-            add_email_account.encrypted_password);
-END
-$$ language plpgsql SECURITY DEFINER;
-
-create function drop_email_account(name varchar(60)) returns void as
-$$
-BEGIN
-    DELETE FROM email_account WHERE email_account.name = drop_email_account.name;
-END
-$$ language plpgsql SECURITY DEFINER;
-
-create function register_email_template(name varchar(60), application character varying(63), subject varchar(255),
-                                        description text, app_relative_path safe_path = null, schema character varying(63) = null,
-                                        data_validation_table postgres_addressable_name = null, data_validation_view postgres_addressable_name = null, recipient_validation_view postgres_addressable_name = null,
-                                        allow_signup boolean = false, allow_confirm_signup_attempt boolean = false, allow_reset_password boolean = false,
-                                        default_email_signup boolean = null, _default_email_already_signed_up boolean = null, default_reset_password boolean = null) returns void as
-$$
-BEGIN
-    if register_email_template.default_email_signup is false then
-        register_email_template.default_email_signup = null;
-    end if;
-    if _default_email_already_signed_up is false then
-        _default_email_already_signed_up = null;
-    end if;
-    if register_email_template.default_reset_password is false then
-        register_email_template.default_reset_password = null;
-    end if;
-    INSERT INTO email_template(name, application,
-                               subject, description, app_relative_path,
-                               schema, data_validation_table, data_validation_view,
-                               recipient_validation_view, allow_signup, allow_confirm_signup_attempt,
-                               allow_reset_password, default_email_signup, default_email_already_signed_up,
-                               default_reset_password) VALUES (
-                                                                                           register_email_template.name, register_email_template.application,
-                                                                                           register_email_template.subject, register_email_template.description, register_email_template.app_relative_path,
-                                                                                           register_email_template.schema, register_email_template.data_validation_table, register_email_template.data_validation_view,
-                                                                                           register_email_template.recipient_validation_view, register_email_template.allow_signup, register_email_template.allow_confirm_signup_attempt,
-                                                                                           register_email_template.allow_reset_password, register_email_template.default_email_signup, _default_email_already_signed_up,
-                                                                                           register_email_template.default_reset_password);
-END
-$$ language plpgsql SECURITY DEFINER;
-
-create function deregister_email_template(_name varchar(60)) returns void as
-$$
-BEGIN
-    DELETE FROM email_template WHERE name = _name;
-END
-$$ language plpgsql SECURITY DEFINER;
-
-create function associate_email_template_with_application_configuration(template varchar(60), application character varying(63), configuration varchar(63),
-                                                                        account varchar(60), override_send_name varchar(255) = null) returns void as
-$$
-BEGIN
-    INSERT INTO email_template_configuration(application, configuration,
-                                             template, account, override_send_name)
-                                             VALUES (associate_email_template_with_application_configuration.application, associate_email_template_with_application_configuration.configuration,
-                                                     associate_email_template_with_application_configuration.template, associate_email_template_with_application_configuration.account,
-                                                     associate_email_template_with_application_configuration.override_send_name);
-END
-$$ language plpgsql SECURITY DEFINER;
-
-create function disassociate_email_template_with_application_configuration(template varchar(60), application character varying(63), configuration varchar(63)) returns void as
-$$
-BEGIN
-    DELETE FROM email_template_configuration etc WHERE etc.application = disassociate_email_template_with_application_configuration.application
-                                                 AND etc.template = disassociate_email_template_with_application_configuration.template
-                                                 AND etc.configuration = disassociate_email_template_with_application_configuration.configuration;
-END
-$$ language plpgsql SECURITY DEFINER;
-
 -- account_password...
 alter table account_password add constraint account_password__account
     foreign key (account)
@@ -247,36 +169,20 @@ alter table application_database add constraint application_database__schema
     foreign key (application, schema)
         references application_schema (application, name) ON DELETE CASCADE ON UPDATE CASCADE;
 
-create function account_id_from_username(enc_username text) returns jaaql_account_id as
+create function account_id_from_username(enc_username text) returns postgres_addressable_name as
 $$
 DECLARE
-    account_id jaaql_account_id;
+    account_id postgres_addressable_name;
 BEGIN
     SELECT user_id INTO account_id FROM account WHERE username = enc_username;
     return account_id;
 END
 $$ language plpgsql;
 
-create function attach_account(account_id jaaql_account_id, enc_username text) returns void as
+create function attach_account(account_id postgres_addressable_name, enc_username text) returns void as
 $$
 BEGIN
     INSERT INTO account (username, user_id) VALUES (enc_username, account_id);
-END
-$$ language plpgsql;
-
-create function create_account(enc_username text, is_public boolean = false) returns jaaql_account_id as
-$$
-DECLARE
-    account_id jaaql_account_id;
-BEGIN
-    INSERT INTO account (username) VALUES (enc_username) RETURNING user_id INTO account_id;
-    EXECUTE 'CREATE ROLE ' || quote_ident(account_id);
-    if is_public then
-        EXECUTE 'GRANT anonymous TO ' || quote_ident(account_id);
-    else
-        EXECUTE 'GRANT registered TO ' || quote_ident(account_id);
-    end if;
-    return account_id;
 END
 $$ language plpgsql;
 
@@ -326,7 +232,7 @@ $$ language plpgsql;
 
 create table account_ip (
     id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
-    account jaaql_account_id not null,
+    account postgres_addressable_name not null,
     encrypted_address varchar(255),
     first_login timestamptz not null default current_timestamp,
     most_recent_login timestamptz not null default current_timestamp,
@@ -336,7 +242,7 @@ create table account_ip (
 
 create table log (
     id uuid primary key not null default gen_random_uuid(),
-    the_user jaaql_account_id,
+    the_user postgres_addressable_name,
     occurred timestamptz not null default current_timestamp,
     duration_ms integer not null,
     encrypted_exception text,
@@ -408,7 +314,7 @@ create table sign_up (
     code_attempts int default 0 not null,
     activated boolean not null default false,
     used_key_a boolean not null default false,
-    account jaaql_account_id not null,
+    account postgres_addressable_name not null,
     FOREIGN KEY (account) REFERENCES account ON DELETE CASCADE,
     closed timestamptz,
     created timestamptz default current_timestamp not null,
@@ -432,7 +338,7 @@ create table reset_password (
     code_attempts int default 0 not null,
     activated boolean not null default false,
     used_key_a boolean not null default false,
-    the_user jaaql_account_id not null,
+    the_user postgres_addressable_name not null,
     FOREIGN KEY (the_user) REFERENCES account ON DELETE CASCADE,
     closed timestamptz,
     created timestamptz default current_timestamp not null,
@@ -462,7 +368,7 @@ create table email_history (
     application character varying(63) not null,
     override_send_name varchar(255),
     FOREIGN KEY (template, application) REFERENCES email_template(name, application) ON DELETE SET NULL,
-    sender jaaql_account_id not null,
+    sender postgres_addressable_name not null,
     FOREIGN KEY (sender) REFERENCES account ON DELETE CASCADE,
     sent timestamptz not null default current_timestamp,
     encrypted_subject text,

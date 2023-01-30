@@ -4,19 +4,23 @@ from jaaql.constants import ENVIRON__install_path
 from os.path import join
 import requests
 from typing import Union
+import re
+
+ALLOWABLE_FILE_PATH = r'^[a-z0-9_\-\/]+(\.[a-zA-Z0-9]+)?$'
+FILE_EXTENSION = r'\.[a-zA-Z0-9]+$'
 
 
 def time_delta_ms(start_time: datetime, end_time: datetime) -> int:
     return int(round((end_time - start_time).total_seconds() * 1000))
 
 
-def load_artifact(is_container: bool, artifact_base_uri: str, app_relative_path: str):
+def load_artifact(is_container: bool, artifact_base_uri: str, app_relative_path: str, default_extension: str = ".html"):
     if app_relative_path is None:
         return None
 
     if check_allowable_file_path(app_relative_path):
         raise Exception("Database has been tampered with! Cannot send email")
-    if not app_relative_path.endswith(".html"):
+    if re.search(FILE_EXTENSION, app_relative_path) is None:
         app_relative_path = app_relative_path + ".html"
     if not artifact_base_uri.startswith("https://") and not artifact_base_uri.startswith("http://"):
         if is_container:
@@ -26,14 +30,17 @@ def load_artifact(is_container: bool, artifact_base_uri: str, app_relative_path:
         if artifact_base_uri.startswith("file:///"):
             return open(join(artifact_base_uri.split("file:///")[1].replace("%20", " "), app_relative_path), "r").read()
         else:
-            return open(join(os.environ[ENVIRON__install_path], "www", artifact_base_uri, app_relative_path), "r").read()
+            base_path = os.environ.get(ENVIRON__install_path)
+            if base_path is None:
+                base_path = ""
+            return open(join(base_path, "www", artifact_base_uri, app_relative_path), "r").read()
     else:
         splitter = "" if artifact_base_uri.endswith("/") else "/"
         return requests.get(artifact_base_uri + splitter + app_relative_path).text
 
 
 def check_allowable_file_path(uri):
-    return not isinstance(uri, str) or any([not letter.isalnum() and letter not in ['-', '_', '/'] for letter in uri])
+    return re.match(ALLOWABLE_FILE_PATH, uri) is None
 
 
 def pull_from_dict(self, inputs: dict, keys: Union[list, str, dict]):

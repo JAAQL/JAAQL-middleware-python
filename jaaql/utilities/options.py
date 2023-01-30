@@ -54,8 +54,7 @@ DEFAULT_OPTIONS: List[Option] = [
         short="e",
         long=OPT_KEY__email_credentials,
         required=False,
-        description="Provides SMTP/IMAP email credentials into the JAAQL server. Base64 encoded json dict of the format"
-        " { \"my_account_name\": \"my_account_password\" }",
+        description="Provides email credentials into the JAAQL server",
         is_flag=False
     ),
     Option(

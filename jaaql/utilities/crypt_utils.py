@@ -100,6 +100,13 @@ def encrypt_raw(secret_key: bytes, data: any, iv: bytes = None) -> str:
     return b64e(iv).decode(ENCODING__ascii) + "." + b64e(ct).decode(ENCODING__ascii)
 
 
+def decrypt_raw_ex(secret_key: bytes, data: str) -> str:
+    try:
+        return decrypt_raw(secret_key, data)
+    except Exception as ex:
+        raise Exception("Could not decrypt data. Either key was invalid or data is malformatted")
+
+
 def decrypt_raw(secret_key: bytes, data: str) -> str:
     unpadder = padding.PKCS7(PKCS7__length).unpadder()
     iv = b64d(data.split(".")[0])

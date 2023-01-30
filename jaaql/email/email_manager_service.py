@@ -7,7 +7,6 @@ from jaaql.db.db_interface import DBInterface
 from jaaql.db.db_utils import execute_supplied_statement, execute_supplied_statement_singleton
 from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.utilities.utils import load_config, await_jaaql_installation, get_jaaql_connection, time_delta_ms
-from jaaql.utilities.crypt_utils import decrypt_raw
 from urllib.parse import quote
 from jaaql.utilities.utils_no_project_imports import check_allowable_file_path
 import json
@@ -31,7 +30,7 @@ from jaaql.constants import VAULT_KEY__db_crypt_key, KEY__encrypted_password, KE
     ENDPOINT__reload_accounts, ENDPOINT__send_email, KEY__attachment_name, KEY__parameters, KEY__url, KEY__oauth_token, \
     KEY__document_id, KEY__create_file, DIR__render_template, KEY__render_as, KEY__content, DIR__www, KEY__email_account_name, \
     KEY__email_account_send_name, KEY__email_account_protocol, KEY__email_account_host, KEY__email_account_port, KEY__email_account_username, \
-    KEY__override_send_name, KEY__application, ENVIRON__install_path, KEY__artifact_base_uri
+    KEY__override_send_name, KEY__application, ENVIRON__install_path, KEY__artifact_base_uri, KEY__email_account_password
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -41,6 +40,7 @@ QUERY__mark_rendered_document_completed = "UPDATE rendered_document SET complete
 QUERY__fetch_unrendered_document = "SELECT able.url, ac.artifact_base_uri, able.render_as, rd.document_id, rd.encrypted_parameters as parameters, rd.create_file, rd.encrypted_access_token as oauth_token FROM rendered_document rd INNER JOIN renderable_document able ON rd.document = able.name INNER JOIN application_configuration ac ON rd.configuration = ac.name AND rd.application = ac.application WHERE rd.completed is null ORDER BY rd.created LIMIT 1"
 QUERY__update_email_account_password = "UPDATE email_account SET encrypted_password = :encrypted_password WHERE id = :id"
 QUERY__load_email_accounts = "SELECT * FROM email_account"
+QUERY__create_email_account = "INSERT INTO email_account (name, send_name, host, port, username, encrypted_password) VALUES (:name, :send_name, :host, :port, :username, :password) ON CONFLICT ON CONSTRAINT email_account_pkey DO UPDATE SET send_name = excluded.send_name, host = excluded.host, port = excluded.port, username = excluded.username, encrypted_password = excluded.encrypted_password"
 QUERY__ins_email_history = "INSERT INTO email_history (application, template, sender, encrypted_subject, encrypted_body, encrypted_attachments, encrypted_recipients, encrypted_recipients_keys, override_send_name) VALUES (:application, :template, :sender, :encrypted_subject, :encrypted_body, :encrypted_attachments, :encrypted_recipients, :encrypted_recipients_keys, :override_send_name)"
 QUERY__fetch_email_template = "SELECT rd.url FROM renderable_document rd INNER JOIN renderable_document_template rdt ON rd.name = rdt.attachment WHERE rd.name = :name AND rdt.template = :template"
 QUERY__purge_rendered_documents = "DELETE FROM rendered_document rd USING renderable_document able WHERE rd.document = able.name AND completed is not null and completed > current_timestamp + interval '5 minutes' RETURNING rd.document_id, rd.create_file, able.render_as"
@@ -57,7 +57,6 @@ ATTR__filename = "filename"
 
 ELE__jaaql_filename = "jaaql_filename"
 
-ERR__password_not_found = "Password not found for email account with name '%s'"
 ERR__email_not_found = "Email account not found with name '%s'"
 ERR__invalid_call_to_internal_email_service = "Invalid call to internal email service"
 ERR__attachment_timeout = "Could not send email! Attachment rendering timed out!"
@@ -321,11 +320,11 @@ class Email:
 
 class EmailManagerService:
 
-    def __init__(self, connection: DBInterface, email_credentials: Optional[str], db_crypt_key: bytes, is_gunicorn: bool):
-        if email_credentials is None:
-            self.email_credentials = {}
+    def __init__(self, connection: DBInterface, email_accounts: Optional[str], db_crypt_key: bytes, is_gunicorn: bool):
+        if email_accounts is None:
+            self.email_accounts = {}
         else:
-            self.email_credentials = json.loads(b64d(email_credentials).decode(ENCODING__ascii))
+            self.email_accounts = json.loads(b64d(email_accounts).decode(ENCODING__ascii))
         self.db_crypt_key = db_crypt_key
         self.connection = connection
 
@@ -340,27 +339,32 @@ class EmailManagerService:
 
     def reload_accounts(self):
         with self.reload_lock:
-            accounts = execute_supplied_statement(self.connection, QUERY__load_email_accounts, as_objects=True)
-            for account in accounts:
-                account[KEY__encrypted_password] = decrypt_raw(self.db_crypt_key, account[KEY__encrypted_password])
+            supplied_accounts_formatted = [
+                {
+                    KEY__email_account_name: name,
+                    KEY__email_account_host: account[KEY__email_account_host],
+                    KEY__email_account_port: account[KEY__email_account_port],
+                    KEY__email_account_username: account[KEY__email_account_username],
+                    KEY__email_account_password: account[KEY__email_account_password],
+                    KEY__email_account_send_name: account[KEY__email_account_send_name],
+                }
+                for name, account in self.email_accounts.items()
+            ]
+
+            for account in supplied_accounts_formatted:
+                execute_supplied_statement(self.connection, QUERY__create_email_account, account, encryption_key=self.db_crypt_key,
+                                           encrypt_parameters=[KEY__email_account_password])
+
+            accounts = execute_supplied_statement(self.connection, QUERY__load_email_accounts, as_objects=True,
+                                                  decrypt_columns=[KEY__encrypted_password], encryption_key=self.db_crypt_key)
             email_queues = {}
 
             for account in accounts:
-                if account[KEY__email_account_name] not in self.email_credentials.credentials and account[KEY__encrypted_password] is None:
-                    raise Exception(ERR__password_not_found % account[KEY__email_account_name])
-                elif account[KEY__email_account_name] in self.email_credentials.credentials and account[KEY__encrypted_password] is None:
-                    execute_supplied_statement(self.connection, QUERY__update_email_account_password,  # Stores the password
-                                               {KEY__encrypted_password: self.email_credentials.credentials[account[KEY__email_account_name]],
-                                                KEY__id: account[KEY__id]},
-                                               encrypt_parameters=[KEY__encrypted_password],
-                                               encryption_key=self.db_crypt_key)
                 cur_queue = Queue()
 
                 if str(account[KEY__email_account_name]) not in self.email_queues:
                     email_queues[str(account[KEY__email_account_name])] = cur_queue
                     password = account[KEY__encrypted_password]
-                    if password is None:
-                        password = self.email_credentials[account[KEY__email_account_name]]
                     method_args = [account, cur_queue, password]
                     threading.Thread(target=self.email_connection_thread, args=method_args, daemon=True).start()
                 else:
@@ -509,13 +513,13 @@ def create_app(ems: EmailManagerService):
     return app
 
 
-def create_flask_app(vault_key=None, email_credentials=None, is_gunicorn: bool = False):
+def create_flask_app(vault_key=None, email_accounts=None, is_gunicorn: bool = False):
     config = load_config(is_gunicorn)
     await_jaaql_installation(config, is_gunicorn)
     vault = Vault(vault_key, DIR__vault)
     jaaql_lookup_connection = get_jaaql_connection(config, vault)
     db_crypt_key = vault.get_obj(VAULT_KEY__db_crypt_key).encode(ENCODING__ascii)
 
-    flask_app = create_app(EmailManagerService(jaaql_lookup_connection, email_credentials, db_crypt_key, is_gunicorn))
+    flask_app = create_app(EmailManagerService(jaaql_lookup_connection, email_accounts, db_crypt_key, is_gunicorn))
     print("Created email manager app host, running flask", file=sys.stderr)
     flask_app.run(port=PORT__ems, host="0.0.0.0", threaded=True)

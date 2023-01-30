@@ -1,7 +1,9 @@
+import traceback
+
 from jaaql.exceptions.http_status_exception import *
 from datetime import datetime
 import re
-from jaaql.utilities.crypt_utils import encrypt_raw, decrypt_raw
+from jaaql.utilities.crypt_utils import encrypt_raw, decrypt_raw_ex
 import uuid
 import queue
 from jaaql.db.db_interface import DBInterface, ECHO__none
@@ -270,7 +272,7 @@ class InterpretJAAQL:
 
                         if len(query_obj[KEY_decrypt]) != 0:
                             res["rows"] = [
-                                [decrypt_raw(encryption_key, val) if col in query_obj[KEY_decrypt] and val is not None else val for val, col in
+                                [decrypt_raw_ex(encryption_key, val) if col in query_obj[KEY_decrypt] and val is not None else val for val, col in
                                  zip(row, res["columns"])] for row in res["rows"]]
 
             if len(unused_orig_parameters):

@@ -26,8 +26,8 @@ from queue import Queue
 ERR__refresh_expired = "Token too old to be used for refresh. Please authenticate again"
 ERR__incorrect_install_key = "Incorrect install key!"
 ERR__invalid_level = "Invalid level!"
-ERR__denied_create_user = "Cannot create that user with your current permissions"
 ERR__incorrect_credentials = "Incorrect credentials!"
+ERR__email_template_not_installed = "Either email template does not exist or email template has not been attached to this application configuration"
 ERR__lacking_permissions = "Only an administrator can perform this action!"
 ERR__schema_invalid = "Schema invalid!"
 ERR__cant_send_attachments = "Cannot send attachments to other people"
@@ -222,14 +222,13 @@ class JAAQLModel(BaseJAAQLModel):
             KEY__name: inputs[KEY__email_template],
             KEY__configuration: inputs[KEY__configuration],
             KEY__application: inputs[KEY__application]
-        }, as_objects=True)
+        }, as_objects=True, singleton_message=ERR__email_template_not_installed)
         template_already_exists = execute_supplied_statement_singleton(
             self.jaaql_lookup_connection, QUERY__fetch_email_template_with_app_url, {
                 KEY__name: inputs[KEY__already_signed_up_email_template],
                 KEY__configuration: inputs[KEY__configuration],
                 KEY__application: inputs[KEY__application]
-            }, as_objects=True
-        )
+            }, as_objects=True, singleton_message=ERR__email_template_not_installed)
         artifact_url = template.pop(KEY__artifact_base_uri)
         app_url = template.pop(KEY__application_url)
 
@@ -238,7 +237,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         user_existed = False
         try:
-            user_id = self.create_account(self.jaaql_lookup_connection, {KEY__username: inputs[KEY__email]}, True)
+            user_id = self.create_account(self.jaaql_lookup_connection, {KEY__username: inputs[KEY__email]})
         except HttpStatusException as hs:
             if not hs.message.startswith(SQL__err_duplicate_user):
                 raise hs  # Unrelated exception, raise it
@@ -256,8 +255,10 @@ class JAAQLModel(BaseJAAQLModel):
             raise HttpStatusException(ERR__too_many_signup_attempts, HTTPStatus.TOO_MANY_REQUESTS)
 
         params = inputs[KEY__parameters]
-        if params is not None and template[KEY__data_validation_table] is None:
+        if params is not None and len(params) != 0 and template[KEY__data_validation_table] is None:
             raise HttpStatusException(ERR__unexpected_parameters)
+        if params is not None and len(params) == 0:
+            params = None
         if params is None and template[KEY__data_validation_table] is not None:
             params = {}
 
@@ -393,7 +394,7 @@ class JAAQLModel(BaseJAAQLModel):
             KEY__name: inputs[KEY__email_template],
             KEY__configuration: inputs[KEY__configuration],
             KEY__application: inputs[KEY__application]
-        }, as_objects=True)
+        }, as_objects=True, singleton_message=ERR__email_template_not_installed)
         app_url = template.pop(KEY__application_url)
         artifact_url = template.pop(KEY__artifact_base_uri)
 
