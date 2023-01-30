@@ -71,7 +71,10 @@ RUN $PY_PATH -m ensurepip --default-pip \
      /bin/mkdir -p '/usr/lib/postgresql/15/lib/bitcode/jaaql' \
      /bin/mkdir -p '/usr/lib/postgresql/15/lib/bitcode'/jaaql/ \
      /usr/bin/install -c -m 644 /pgextension/bin/jaaql.bc '/usr/lib/postgresql/15/lib/bitcode'/jaaql/./ \
-     mv /pgextension/bin/jaaql.index.bc '/usr/lib/postgresql/15/lib/bitcode'
+     mv /pgextension/bin/jaaql.index.bc '/usr/lib/postgresql/15/lib/bitcode' \
+     rm -rf /usr/local/lib/python3.11/test && \
+     rm -rf /Python-${PYTHON_VERSION} && \
+     rm -rf /Python-${PYTHON_VERSION}.tar.xz
 
 COPY . $INSTALL_PATH
 
