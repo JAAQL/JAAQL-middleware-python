@@ -61,8 +61,6 @@ RUN $PY_PATH -mpip install certbot-nginx==1.2.0
 RUN $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt
 
 RUN mv $INSTALL_PATH/docker/jaaql.sql /docker-entrypoint-initdb.d/01-jaaql.sql
-RUN dos2unix $INSTALL_PATH/docker/pg_reload.sh
-RUN mv $INSTALL_PATH/docker/pg_reload.sh /docker-entrypoint-initdb.d/02-pg_reload.sh
 RUN mv $INSTALL_PATH/docker/entrypoint.sh entrypoint.sh
 RUN dos2unix entrypoint.sh
 RUN dos2unix $INSTALL_PATH/base_reboot.sh
