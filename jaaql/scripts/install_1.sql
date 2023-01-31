@@ -42,8 +42,8 @@ BEGIN
         EXECUTE 'CREATE ROLE ' || quote_ident(attach_as);
         INSERT INTO account (username, user_id) VALUES (enc_username, attach_as) RETURNING user_id INTO account_id;
     else
-        EXECUTE 'CREATE ROLE ' || quote_ident(account_id);
         INSERT INTO account (username) VALUES (enc_username) RETURNING user_id INTO account_id;
+        EXECUTE 'CREATE ROLE ' || quote_ident(account_id);
     end if;
     if is_public then
         EXECUTE 'GRANT anonymous TO ' || quote_ident(account_id);
@@ -53,7 +53,6 @@ BEGIN
     return account_id;
 END
 $$ language plpgsql SECURITY DEFINER;
-grant execute on function create_account(text, boolean) to jaaql;
 
 create or replace function setup_jaaql_role() returns text as
 $$
@@ -65,6 +64,7 @@ BEGIN
     CREATE ROLE registered;
     GRANT anonymous to registered;
     execute 'CREATE ROLE jaaql WITH LOGIN ENCRYPTED PASSWORD ''' || secure_pass || '''';
+    grant execute on function create_account(text, boolean, postgres_addressable_name) to jaaql;
     ALTER DEFAULT PRIVILEGES FOR ROLE jaaql REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
     ALTER database jaaql OWNER TO jaaql;
     return secure_pass;

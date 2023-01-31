@@ -148,6 +148,7 @@ KEY__email_account_port = "port"
 KEY__email_account_username = "username"
 KEY__email_account_password = "password"
 KEY__email_account_send_name = "send_name"
+KEY__email_account_whitelist = "whitelist"
 KEY__encrypted_address = "encrypted_address"
 KEY__password_id = "password_id"
 KEY__created = "created"
@@ -274,5 +275,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.3.6"
+VERSION = "4.4.3"
 

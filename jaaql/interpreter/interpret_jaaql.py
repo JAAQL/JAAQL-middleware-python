@@ -281,7 +281,7 @@ class InterpretJAAQL:
             if is_dict_query:
                 new_ex = HttpStatusException(str(ex))
                 if isinstance(ex, HttpStatusException):
-                    new_ex.response_code = new_ex.response_code
+                    new_ex.response_code = ex.response_code
                 ex = new_ex
 
                 ex.message = {

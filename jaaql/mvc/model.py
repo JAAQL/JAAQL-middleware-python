@@ -644,6 +644,9 @@ class JAAQLModel(BaseJAAQLModel):
         inputs[KEY__is_public] = is_public
         password = inputs.pop(KEY__password, None)
 
+        if KEY__attach_as not in inputs:
+            inputs[KEY__attach_as] = None
+
         account_id = execute_supplied_statement_singleton(connection, QUERY__create_account, inputs,
                                                           encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__username],
                                                           encryption_salts={KEY__username: self.get_repeatable_salt()})[RET__rows][0]
@@ -839,8 +842,7 @@ class JAAQLModel(BaseJAAQLModel):
         return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data, JWT_PURPOSE__oauth, expiry_ms=self.token_expiry_ms)
 
     def fetch_pivoted_application_schemas(self):
-        data = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_application_schemas, as_objects=True,
-                                          skip_commit=True)
+        data = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_application_schemas, as_objects=True, skip_commit=True)
 
         return self.group(self.pivot(data,
                           [JAAQLPivotInfo(KEY__configuration, "name", "configuration_name"),
@@ -857,7 +859,13 @@ class JAAQLModel(BaseJAAQLModel):
 
         if KEY__application in inputs:
             application_configs = self.fetch_pivoted_application_schemas()
+            if inputs[KEY__application] not in application_configs:
+                raise HttpStatusException("Application '%s' does not exist!" % inputs[KEY__application])
             app = application_configs[inputs[KEY__application]]
+
+            if inputs[KEY__configuration] not in app:
+                raise HttpStatusException("Configuration '%s' does not exist for application '%s'!" % (inputs[KEY__configuration],
+                                                                                                       inputs[KEY__application]))
             config = app[inputs[KEY__configuration]]
 
             found_db = None

@@ -30,7 +30,8 @@ from jaaql.constants import VAULT_KEY__db_crypt_key, KEY__encrypted_password, KE
     ENDPOINT__reload_accounts, ENDPOINT__send_email, KEY__attachment_name, KEY__parameters, KEY__url, KEY__oauth_token, \
     KEY__document_id, KEY__create_file, DIR__render_template, KEY__render_as, KEY__content, DIR__www, KEY__email_account_name, \
     KEY__email_account_send_name, KEY__email_account_protocol, KEY__email_account_host, KEY__email_account_port, KEY__email_account_username, \
-    KEY__override_send_name, KEY__application, ENVIRON__install_path, KEY__artifact_base_uri, KEY__email_account_password
+    KEY__override_send_name, KEY__application, ENVIRON__install_path, KEY__artifact_base_uri, KEY__email_account_password, \
+    KEY__email_account_whitelist
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -40,7 +41,7 @@ QUERY__mark_rendered_document_completed = "UPDATE rendered_document SET complete
 QUERY__fetch_unrendered_document = "SELECT able.url, ac.artifact_base_uri, able.render_as, rd.document_id, rd.encrypted_parameters as parameters, rd.create_file, rd.encrypted_access_token as oauth_token FROM rendered_document rd INNER JOIN renderable_document able ON rd.document = able.name INNER JOIN application_configuration ac ON rd.configuration = ac.name AND rd.application = ac.application WHERE rd.completed is null ORDER BY rd.created LIMIT 1"
 QUERY__update_email_account_password = "UPDATE email_account SET encrypted_password = :encrypted_password WHERE id = :id"
 QUERY__load_email_accounts = "SELECT * FROM email_account"
-QUERY__create_email_account = "INSERT INTO email_account (name, send_name, host, port, username, encrypted_password) VALUES (:name, :send_name, :host, :port, :username, :password) ON CONFLICT ON CONSTRAINT email_account_pkey DO UPDATE SET send_name = excluded.send_name, host = excluded.host, port = excluded.port, username = excluded.username, encrypted_password = excluded.encrypted_password"
+QUERY__create_email_account = "INSERT INTO email_account (name, send_name, host, port, username, encrypted_password, whitelist) VALUES (:name, :send_name, :host, :port, :username, :password, :whitelist) ON CONFLICT ON CONSTRAINT email_account_pkey DO UPDATE SET send_name = excluded.send_name, host = excluded.host, port = excluded.port, username = excluded.username, encrypted_password = excluded.encrypted_password, whitelist = excluded.whitelist"
 QUERY__ins_email_history = "INSERT INTO email_history (application, template, sender, encrypted_subject, encrypted_body, encrypted_attachments, encrypted_recipients, encrypted_recipients_keys, override_send_name) VALUES (:application, :template, :sender, :encrypted_subject, :encrypted_body, :encrypted_attachments, :encrypted_recipients, :encrypted_recipients_keys, :override_send_name)"
 QUERY__fetch_email_template = "SELECT rd.url FROM renderable_document rd INNER JOIN renderable_document_template rdt ON rd.name = rdt.attachment WHERE rd.name = :name AND rdt.template = :template"
 QUERY__purge_rendered_documents = "DELETE FROM rendered_document rd USING renderable_document able WHERE rd.document = able.name AND completed is not null and completed > current_timestamp + interval '5 minutes' RETURNING rd.document_id, rd.create_file, able.render_as"
@@ -347,6 +348,7 @@ class EmailManagerService:
                     KEY__email_account_username: account[KEY__email_account_username],
                     KEY__email_account_password: account[KEY__email_account_password],
                     KEY__email_account_send_name: account[KEY__email_account_send_name],
+                    KEY__email_account_whitelist: account[KEY__email_account_whitelist]
                 }
                 for name, account in self.email_accounts.items()
             ]
@@ -441,33 +443,59 @@ class EmailManagerService:
                     if not self.is_connected(conn):
                         conn = self.fetch_conn(conn_lib, account, password)
                 formatted_body, to_send = self.construct_message(account, email)
-                if self.is_gunicorn:
-                    conn.send_message(to_send, account[KEY__email_account_username], email.to)
-                else:
-                    print("SENDING EMAIL")
-                    print(email.subject)
-                    print(email.body)
-                    print(account[KEY__email_account_username])
-                    print(email.to)
+                send_to = email.to
+                whitelist = account[KEY__email_account_whitelist]
+                if whitelist is not None and whitelist != "":
+                    send_to = []
+                    for to in email.to:
+                        start_len = len(send_to)
 
-                execute_supplied_statement(self.connection, QUERY__ins_email_history, {
-                        KEY__application: email.application,
-                        KEY__template: email.template,
-                        KEY__sender: email.sender,
-                        KEY__override_send_name: email.override_send_name,
-                        KEY__encrypted_subject: email.subject,
-                        KEY__encrypted_body: formatted_body,
-                        KEY__encrypted_attachments: self.format_attachments_for_storage(email.attachments),
-                        KEY__encrypted_recipients: SPLIT__address.join(email.to),
-                        KEY__encrypted_recipients_keys: SPLIT__address.join(email.recipient_names)
-                    }, encryption_key=self.db_crypt_key, encrypt_parameters=[
-                        KEY__encrypted_subject,
-                        KEY__encrypted_body,
-                        KEY__encrypted_attachments,
-                        KEY__encrypted_recipients,
-                        KEY__encrypted_recipients_keys
-                    ]
-                )
+                        for check in whitelist.split(","):
+                            check = check.strip()
+                            domain = check.split("@")[1].lower()
+                            to_domain = to.strip().split("@")[1].lower()
+                            if check.startswith("*@"):
+                                if domain == to_domain:
+                                    send_to.append(to)
+                                    break
+                            elif domain == to_domain:
+                                person = check.split("@")[0].lower()
+                                to_person = to.strip().split("@")[0].lower().split("+")[0]
+                                if person == to_person:
+                                    send_to.append(to)
+                                    break
+
+                        if len(send_to) == start_len:
+                            print("Address '%s' rejected by whitelist for account '%s'" % (to, account[KEY__email_account_name]))
+
+                if len(send_to) != 0:
+                    if self.is_gunicorn:
+                        conn.send_message(to_send, account[KEY__email_account_username], email.to)
+                    else:
+                        print("SENDING EMAIL")
+                        print(email.subject)
+                        print(email.body)
+                        print(account[KEY__email_account_username])
+                        print(email.to)
+
+                    execute_supplied_statement(self.connection, QUERY__ins_email_history, {
+                            KEY__application: email.application,
+                            KEY__template: email.template,
+                            KEY__sender: email.sender,
+                            KEY__override_send_name: email.override_send_name,
+                            KEY__encrypted_subject: email.subject,
+                            KEY__encrypted_body: formatted_body,
+                            KEY__encrypted_attachments: self.format_attachments_for_storage(email.attachments),
+                            KEY__encrypted_recipients: SPLIT__address.join(email.to),
+                            KEY__encrypted_recipients_keys: SPLIT__address.join(email.recipient_names)
+                        }, encryption_key=self.db_crypt_key, encrypt_parameters=[
+                            KEY__encrypted_subject,
+                            KEY__encrypted_body,
+                            KEY__encrypted_attachments,
+                            KEY__encrypted_recipients,
+                            KEY__encrypted_recipients_keys
+                        ]
+                    )
             except Empty:
                 if account[KEY__email_account_name] not in self.email_queues:
                     break

@@ -42,10 +42,15 @@ DOCUMENTATION__create_account = SwaggerDocumentation(
         description="Will create an account, if you have privileges to do so",
         body=[
             ARG_RES__username,
-            set_nullable(ARG_RES__password),
-            set_nullable(SwaggerArgumentResponse(
-                name=KEY__att
-            ))
+            set_nullable(ARG_RES__password, "Whether the user is given a password"),
+            SwaggerArgumentResponse(
+                name=KEY__attach_as,
+                description="Whether the user will attach as a role",
+                arg_type=str,
+                required=False,
+                condition="Defaults to false",
+                example="my-role"
+            )
         ]
     )
 )

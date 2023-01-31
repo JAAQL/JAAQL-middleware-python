@@ -40,7 +40,8 @@ create table email_account (
     host varchar(255) not null,
     port integer not null,
     username varchar(255) not null,
-    encrypted_password text not null
+    encrypted_password text not null,
+    whitelist varchar(2047) not null
 );
 
 create table email_template (
