@@ -2,6 +2,7 @@ from datetime import datetime
 import os
 from jaaql.constants import ENVIRON__install_path
 from os.path import join
+from jaaql.exceptions.http_status_exception import HttpStatusException
 import requests
 from typing import Union
 import re
@@ -33,7 +34,11 @@ def load_artifact(is_container: bool, artifact_base_uri: str, app_relative_path:
             base_path = os.environ.get(ENVIRON__install_path)
             if base_path is None:
                 base_path = ""
-            return open(join(base_path, "www", artifact_base_uri, app_relative_path), "r").read()
+            template_path = join(base_path, "www", artifact_base_uri, app_relative_path)
+            try:
+                return open(template_path, "r").read()
+            except FileNotFoundError:
+                raise HttpStatusException("Could not find template at path '%s'. Are you sure the template is accessible to JAAQL?" % template_path)
     else:
         splitter = "" if artifact_base_uri.endswith("/") else "/"
         return requests.get(artifact_base_uri + splitter + app_relative_path).text

@@ -408,7 +408,11 @@ class EmailManagerService:
         return True if status == 250 else False
 
     def fetch_conn(self, conn_lib, account: dict, password: str):
-        conn = conn_lib(account[KEY__email_account_host], port=account[KEY__email_account_port])
+        conn = conn_lib(account[KEY__email_account_host], port=account[KEY__email_account_port], timeout=30)
+        if conn is None:
+            raise Exception("Could not connect to email account '%s' with address '%s:%d'" % (account[KEY__email_account_name],
+                                                                                              account[KEY__email_account_host],
+                                                                                              account[KEY__email_account_port]))
 
         context = ssl.SSLContext(ssl.PROTOCOL_TLS)
 
@@ -432,22 +436,26 @@ class EmailManagerService:
     def email_connection_thread(self, account: dict, queue: Queue, password: str):
         conn_lib = None
         conn = None
-        if self.is_gunicorn:
-            conn_lib = imaplib.IMAP4 if account[KEY__email_account_protocol] == PROTOCOL__imap else smtplib.SMTP
-            conn = self.fetch_conn(conn_lib, account, password)
+        try:
+            if True:
+                conn_lib = imaplib.IMAP4 if account[KEY__email_account_protocol] == PROTOCOL__imap else smtplib.SMTP
+                conn = self.fetch_conn(conn_lib, account, password)
+        except Exception as ex:
+            traceback.print_exc()
+            raise ex
 
         while True:
             try:
                 email: Email = queue.get(timeout=10)
-                if self.is_gunicorn:
+                if True:
                     if not self.is_connected(conn):
                         conn = self.fetch_conn(conn_lib, account, password)
-                formatted_body, to_send = self.construct_message(account, email)
                 send_to = email.to
+                send_recipients = email.recipient_names
                 whitelist = account[KEY__email_account_whitelist]
                 if whitelist is not None and whitelist != "":
                     send_to = []
-                    for to in email.to:
+                    for to, recipient in zip(email.to, email.recipient_names):
                         start_len = len(send_to)
 
                         for check in whitelist.split(","):
@@ -457,26 +465,32 @@ class EmailManagerService:
                             if check.startswith("*@"):
                                 if domain == to_domain:
                                     send_to.append(to)
+                                    send_recipients.append(recipient)
                                     break
                             elif domain == to_domain:
                                 person = check.split("@")[0].lower()
                                 to_person = to.strip().split("@")[0].lower().split("+")[0]
                                 if person == to_person:
                                     send_to.append(to)
+                                    send_recipients.append(recipient)
                                     break
 
                         if len(send_to) == start_len:
                             print("Address '%s' rejected by whitelist for account '%s'" % (to, account[KEY__email_account_name]))
 
+                email.to = send_to
+                email.recipient_names = send_recipients
+                formatted_body, to_send = self.construct_message(account, email)
+
                 if len(send_to) != 0:
-                    if self.is_gunicorn:
-                        conn.send_message(to_send, account[KEY__email_account_username], email.to)
+                    if True:
+                        conn.send_message(to_send, account[KEY__email_account_username], send_to)
                     else:
                         print("SENDING EMAIL")
                         print(email.subject)
                         print(email.body)
                         print(account[KEY__email_account_username])
-                        print(email.to)
+                        print(send_to)
 
                     execute_supplied_statement(self.connection, QUERY__ins_email_history, {
                             KEY__application: email.application,
@@ -486,8 +500,8 @@ class EmailManagerService:
                             KEY__encrypted_subject: email.subject,
                             KEY__encrypted_body: formatted_body,
                             KEY__encrypted_attachments: self.format_attachments_for_storage(email.attachments),
-                            KEY__encrypted_recipients: SPLIT__address.join(email.to),
-                            KEY__encrypted_recipients_keys: SPLIT__address.join(email.recipient_names)
+                            KEY__encrypted_recipients: SPLIT__address.join(send_to),
+                            KEY__encrypted_recipients_keys: SPLIT__address.join(send_recipients)
                         }, encryption_key=self.db_crypt_key, encrypt_parameters=[
                             KEY__encrypted_subject,
                             KEY__encrypted_body,
