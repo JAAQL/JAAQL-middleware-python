@@ -45,9 +45,7 @@ BEGIN
         INSERT INTO account (username) VALUES (enc_username) RETURNING user_id INTO account_id;
         EXECUTE 'CREATE ROLE ' || quote_ident(account_id);
     end if;
-    if is_public then
-        EXECUTE 'GRANT anonymous TO ' || quote_ident(account_id);
-    else
+    if not is_public then
         EXECUTE 'GRANT registered TO ' || quote_ident(account_id);
     end if;
     return account_id;
@@ -60,9 +58,7 @@ DECLARE
     secure_pass text;
 BEGIN
     SELECT gen_random_uuid()::varchar INTO secure_pass;
-    CREATE ROLE anonymous;
     CREATE ROLE registered;
-    GRANT anonymous to registered;
     execute 'CREATE ROLE jaaql WITH LOGIN ENCRYPTED PASSWORD ''' || secure_pass || '''';
     grant execute on function create_account(text, boolean, postgres_addressable_name) to jaaql;
     ALTER DEFAULT PRIVILEGES FOR ROLE jaaql REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;

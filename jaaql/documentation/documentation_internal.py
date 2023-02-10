@@ -1,6 +1,6 @@
 from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
-from jaaql.documentation.documentation_shared import rename_arg, ARG_RES__application, ARG_RES__configuration
+from jaaql.documentation.documentation_shared import rename_arg, ARG_RES__application
 
 TITLE = "JAAQL Internal API"
 DESCRIPTION = "Collection of methods in the JAAQL internal API"
@@ -20,11 +20,10 @@ DOCUMENTATION__canned_queries = SwaggerDocumentation(
     tags="Application",
     methods=SwaggerMethod(
         name="Refresh Canned Queries",
-        description="Refreshes the application configuration canned queries.",
+        description="Refreshes the application canned queries.",
         method=REST__POST,
         arguments=[
-            ARG_RES__application,
-            ARG_RES__configuration
+            ARG_RES__application
         ]
     )
 )
@@ -51,7 +50,7 @@ DOCUMENTATION__install = SwaggerDocumentation(
             ARG_RES__install_key,
             SwaggerArgumentResponse(
                 name=KEY__jaaql_password,
-                description="The password for the jaaql user, can create applications, configurations",
+                description="The password for the jaaql user, can create applications",
                 example=["pa55word"],
                 strip=True,
                 arg_type=str

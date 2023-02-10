@@ -1,7 +1,7 @@
 from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
-from jaaql.documentation.documentation_shared import ARG_RES__username, EXAMPLE__password, ARG_RES__password, RES__oauth_token,\
-    rename_arg, set_required, set_nullable, ARG_RES__application, ARG_RES__configuration
+from jaaql.documentation.documentation_shared import ARG_RES__username, ARG_RES__password, RES__oauth_token,\
+    rename_arg, set_nullable, ARG_RES__application
 
 TITLE = "JAAQL API"
 DESCRIPTION = "Collection of methods in the JAAQL API"
@@ -14,14 +14,6 @@ ARG_RES__application_nullable = SwaggerArgumentResponse(
     name=KEY__application,
     description="The application",
     example=["playground"],
-    required=False,
-    arg_type=str,
-    condition="If this is required"
-)
-ARG_RES__configuration_nullable = SwaggerArgumentResponse(
-    name=KEY__configuration,
-    description="The configuration",
-    example=["main"],
     required=False,
     arg_type=str,
     condition="If this is required"
@@ -100,7 +92,6 @@ DOCUMENTATION__sign_up_request_invite = SwaggerDocumentation(
         body=[
             ARG_RES__email,
             ARG_RES__parameters,
-            ARG_RES__configuration,
             ARG_RES__application,
             ARG_RES__email_template,
             ARG_RES__already_signed_up_email_template
@@ -229,7 +220,6 @@ DOCUMENTATION__reset_password = SwaggerDocumentation(
             ARG_RES__email,
             ARG_RES__reset_password_email_template,
             ARG_RES__application,
-            ARG_RES__configuration,
             ARG_RES__parameters
         ],
         response=[
@@ -351,7 +341,6 @@ ARG_RES__renderable_document = [
         arg_type=ARG_RESP__allow_all
     ),
     set_nullable(ARG_RES__application, "Not required if being sent in an email as this is specified in the email"),
-    set_nullable(ARG_RES__configuration, "Not required if being sent in an email as this is specified in the email"),
 ]
 
 ARG_RES__attachments_for_send = SwaggerArgumentResponse(
@@ -385,7 +374,6 @@ DOCUMENTATION__email = SwaggerDocumentation(
             method=REST__POST,
             body=[
                 ARG_RES__application,
-                ARG_RES__configuration,
                 ARG_RES__parameters,
                 ARG_RES__attachments_for_send
             ] + ARG_RES__email_base

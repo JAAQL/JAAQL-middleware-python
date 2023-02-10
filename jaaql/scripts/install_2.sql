@@ -11,8 +11,10 @@ create table check_admin (
 INSERT INTO check_admin (singleton) VALUES (0);
 
 create table application (
-    description varchar(256) not null,
-    name character varying(63) not null,
+    description varchar(256),
+    name postgres_addressable_name not null,
+    base_url varchar(254) not null,
+    artifacts_source varchar(254),  --Used to load templates and renderable documents
     primary key (name) );
 
 -- application_schema...
@@ -20,50 +22,38 @@ create table application_schema (
     application character varying(63) not null,
     name character varying(63) not null,
     is_default boolean not null default false,
+    database character varying(63) not null,
     primary key (application, name) );
 CREATE UNIQUE INDEX application_schema_one_default ON application_schema (application, is_default) WHERE is_default;
 
--- application_database...
-create table application_database (
+create table email_dispatcher (
     application character varying(63) not null,
-    configuration character varying(63) not null,
-    schema character varying(63) not null,
-    database character varying(63) not null,
-    primary key (application, configuration, schema, database) );
-
-create table email_account (
     name varchar(60) not null,
-    PRIMARY KEY (name),
-    send_name varchar(255) not null,
-    protocol varchar(4) not null default 'smtp',
+    PRIMARY KEY (application, name),
+    display_name varchar(255) not null,
+    protocol varchar(4) default 'smtp',
     check (protocol in ('smtp')),
-    host varchar(255) not null,
-    port integer not null,
-    username varchar(255) not null,
-    encrypted_password text not null,
-    whitelist varchar(2047) not null
+    mail_server varchar(255),
+    port integer,
+    username varchar(255),
+    encrypted_password text,
+    destination_whitelist varchar(2047)
 );
 
 create table email_template (
-    name varchar(60) NOT NULL,
     application character varying(63) not null,
-    PRIMARY KEY (name, application),
-    FOREIGN KEY (application) REFERENCES application(name) ON UPDATE CASCADE ON DELETE CASCADE,
-    subject varchar(255),
+    name postgres_addressable_name NOT NULL,
+    PRIMARY KEY (application, name),
+    FOREIGN KEY (application) REFERENCES application (name) ON UPDATE CASCADE ON DELETE CASCADE,
     description text,
-    app_relative_path safe_path,  -- Not a mistake for this domain type. Means app_relative_path cannot be ../../secret. Also secured at application level code in case db is tampered with
-    check ((subject is null) = (app_relative_path is null)),
-    schema character varying(63),
-    FOREIGN KEY (schema, application) REFERENCES application_schema(name, application),
-    data_validation_table postgres_addressable_name,
-    data_validation_view postgres_addressable_name,
-    CHECK ((data_validation_table is null and data_validation_view is null) or data_validation_table is not null),
-    recipient_validation_view postgres_addressable_name,
-    check ((recipient_validation_view is null and data_validation_table is null) or schema is not null),
-    allow_signup boolean default false not null,
-    allow_confirm_signup_attempt boolean default false not null,
-    allow_reset_password boolean default false not null,
-    check (allow_signup::int + allow_confirm_signup_attempt::int + allow_reset_password::int < 2),
+    content_url safe_path,  -- Not a mistake for this domain type. Means app_relative_path cannot be ../../secret. Also secured at application level code in case db is tampered with
+    validation_schema character varying(63),
+    FOREIGN KEY (validation_schema, application) REFERENCES application_schema(name, application),
+    type varchar(10) not null,
+    check (type = 'S' or type = 'A' or type = 'R'),
+    dispatcher varchar(60) NOT NULL,
+    FOREIGN KEY (application, dispatcher) REFERENCES email_dispatcher(application, name) ON DELETE CASCADE ON UPDATE CASCADE,
+
     default_email_signup boolean,
     check (default_email_signup is not false),
     default_email_already_signed_up boolean,
@@ -75,35 +65,12 @@ CREATE UNIQUE INDEX template_unq_signup ON email_template (name, application, de
 CREATE UNIQUE INDEX template_unq_already_signed_up ON email_template (name, application, default_email_already_signed_up);
 CREATE UNIQUE INDEX template_unq_reset_password ON email_template (name, application, default_reset_password);
 
--- application_configuration...
-create table application_configuration (
-    application character varying(63) not null,
-    url varchar(254) not null,
-    artifact_base_uri varchar(254) not null,  --Used to load templates and renderable documents
-    name character varying(63) not null,
-    primary key (application, name)
-);
-
-create table email_template_configuration (
-    application character varying(63) not null,
-    configuration character varying(63) not null,
-    template varchar(60) not null,
-    account varchar(60) NOT NULL,
-    override_send_name varchar(255),
-    primary key (application, configuration, template),
-    FOREIGN KEY (account) REFERENCES email_account(name) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (application, template) REFERENCES email_template(application, name) ON UPDATE CASCADE ON DELETE CASCADE,
-    FOREIGN KEY (application) REFERENCES application(name) ON UPDATE CASCADE ON DELETE CASCADE,
-    FOREIGN KEY (application, configuration) REFERENCES application_configuration(application, name) ON UPDATE CASCADE ON DELETE CASCADE
-);
-
 -- account...
 create table account (
     user_id postgres_addressable_name not null default gen_random_uuid(),
     username character varying(255) not null,
     deleted boolean default false,
     password uuid,
-    public_password text,
     primary key (user_id));
 CREATE UNIQUE INDEX account_unq_email ON account (username);
 -- account_password...
@@ -119,37 +86,6 @@ alter table account add constraint account_current_password__account
     foreign key (password)
         references account_password (id);
 
-create view application_schemas as (
-    SELECT
-        app.name,
-        ac.name as configuration_name,
-        ac.url as configuration_url,
-        asch.name as schema_name,
-        ad.database as schema_database,
-        asch.is_default as schema_is_default
-    FROM
-        application app
-    INNER JOIN application_configuration ac ON app.name = ac.application
-    INNER JOIN application_schema asch ON app.name = asch.application
-    LEFT JOIN application_database ad ON asch.application = ad.application AND asch.name = ad.schema AND ac.name = ad.configuration
-    ORDER BY app.name, configuration, schema
-);
-
-create view my_email_template_defaults as (
-    SELECT
-        app.name as application,
-        etds.name as default_email_signup_template,
-        etdas.name as default_email_already_signed_up_template,
-        etdr.name as default_reset_password_template
-    FROM
-        application app
-    LEFT JOIN email_template etds on app.name = etds.application AND etds.default_email_signup
-    LEFT JOIN email_template etdas on app.name = etdas.application AND etdas.default_email_already_signed_up
-    LEFT JOIN email_template etdr on app.name = etdr.application AND etdr.default_reset_password
-    ORDER BY app.name
-);
-GRANT SELECT ON my_email_template_defaults TO PUBLIC;
-
 -- account_password...
 alter table account_password add constraint account_password__account
     foreign key (account)
@@ -158,17 +94,6 @@ alter table account_password add constraint account_password__account
 alter table application_schema add constraint application_schema__application
     foreign key (application)
         references application (name) ON DELETE CASCADE ON UPDATE CASCADE;
--- application_configuration...
-alter table application_configuration add constraint application_configuration__application
-    foreign key (application)
-        references application (name) ON DELETE CASCADE ON UPDATE CASCADE;
--- application_database...
-alter table application_database add constraint application_database__configuration
-    foreign key (application, configuration)
-        references application_configuration (application, name) ON DELETE CASCADE ON UPDATE CASCADE;
-alter table application_database add constraint application_database__schema
-    foreign key (application, schema)
-        references application_schema (application, name) ON DELETE CASCADE ON UPDATE CASCADE;
 
 create function account_id_from_username(enc_username text) returns postgres_addressable_name as
 $$
@@ -213,23 +138,6 @@ create table renderable_document_template (
     FOREIGN KEY (template, application) references email_template(name, application) ON DELETE CASCADE,
     FOREIGN KEY (attachment, application) references renderable_document(name, application) ON DELETE CASCADE
 );
-
-create function setup() returns void as
-$$
-BEGIN
-    INSERT INTO application (name, description) VALUES ('console', 'The console application');
-
-    INSERT INTO application (name, description) VALUES ('manager', 'The administration panel for JAAQL');
-    INSERT INTO application_schema (application, name) VALUES ('manager', 'default');
-    INSERT INTO application_configuration (application, name, url, artifact_base_uri) VALUES ('manager', 'default', '', '');
-    INSERT INTO application_database (application, configuration, schema, database) VALUES ('manager', 'default', 'default', 'jaaql');
-
-    INSERT INTO application (name, description) VALUES ('playground', 'Allows testing for new JAAQL/JEQL features');
-    INSERT INTO application_schema (application, name) VALUES ('playground', 'default');
-    INSERT INTO application_configuration (application, name, url, artifact_base_uri) VALUES ('playground', 'default', '', '');
-    INSERT INTO application_database (application, configuration, schema, database) VALUES ('playground', 'default', 'default', 'play_db');
-END
-$$ language plpgsql;
 
 create table account_ip (
     id uuid PRIMARY KEY NOT NULL default gen_random_uuid(),
@@ -322,11 +230,8 @@ create table sign_up (
     expiry_ms integer not null default 1000 * 60 * 60 * 24 * 14, -- 2 weeks
     code_expiry_ms integer not null default 1000 * 60 * 15, -- 15 minutes
     email_template varchar(60),
-    configuration varchar(63),
-    application character varying(63),
-    check ((application is null) = (configuration is null)),
+    application character varying(63) not null,
     FOREIGN KEY (email_template, application) REFERENCES email_template (name, application) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (email_template, application, configuration) REFERENCES email_template_configuration (template, application, configuration) ON DELETE CASCADE ON UPDATE CASCADE,
     data_lookup_json text,
     check ((data_lookup_json is null and email_template is null) or email_template is not null)
 );
@@ -346,12 +251,9 @@ create table reset_password (
     expiry_ms integer not null default 1000 * 60 * 60 * 2, -- 2 hours. Important this is the same as above fake table
     code_expiry_ms integer not null default 1000 * 60 * 15, -- 15 minutes. Important this is the same as above fake table
     email_template varchar(60),  -- Deliberately null as we can have a reset password managed by the admin
-    application character varying(63),
-    configuration varchar(63),
-    check ((application is null) = (configuration is null)),
+    application character varying(63) not null,
     data_lookup_json text,
     FOREIGN KEY (email_template, application) REFERENCES email_template(name, application) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (email_template, application, configuration) REFERENCES email_template_configuration (template, application, configuration) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 create table fake_reset_password (
@@ -383,9 +285,7 @@ create table rendered_document (
     document_id uuid PRIMARY KEY not null default gen_random_uuid(),
     document varchar(40) NOT NULL,
     application character varying(63) not null,
-    configuration character varying(63) not null,
     FOREIGN KEY (application) REFERENCES application(name) ON DELETE CASCADE,
-    FOREIGN KEY (application, configuration) REFERENCES application_configuration (application, name),
     created timestamptz not null default current_timestamp,
     encrypted_parameters text,
     encrypted_access_token text,

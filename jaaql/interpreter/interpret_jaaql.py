@@ -1,5 +1,3 @@
-import traceback
-
 from jaaql.exceptions.http_status_exception import *
 from datetime import datetime
 import re
@@ -7,7 +5,7 @@ from jaaql.utilities.crypt_utils import encrypt_raw, decrypt_raw_ex
 import uuid
 import queue
 from jaaql.db.db_interface import DBInterface, ECHO__none
-from jaaql.constants import KEY__position, KEY__file, KEY__application, KEY__configuration, KEY__error, KEY__error_row_number, KEY__error_query, \
+from jaaql.constants import KEY__position, KEY__file, KEY__application, KEY__error, KEY__error_row_number, KEY__error_query, \
     KEY__error_set, KEY__error_index
 from typing import Union
 
@@ -134,7 +132,7 @@ class InterpretJAAQL:
                 conn.autocommit = operation[KEY_autocommit]
 
             if query is None:
-                canned_query = canned_query_service.get_canned_query(operation[KEY__application], operation[KEY__configuration],
+                canned_query = canned_query_service.get_canned_query(operation[KEY__application],
                                                                      operation[KEY__file], operation[KEY__position])
                 query = {"query": {KEY_query: canned_query, KEY_assert: operation.get(KEY_assert), KEY_decrypt: operation.get(KEY_decrypt),
                                    KEY_parameters: {}}}
@@ -159,7 +157,6 @@ class InterpretJAAQL:
                                         all_replaced = False
                                     else:
                                         canned_query = canned_query_service.get_canned_query(operation[KEY__application],
-                                                                                             operation[KEY__configuration],
                                                                                              sub_val[KEY__file], sub_val[KEY__position])
                                         val[sub_key] = canned_query
                                 if KEY_parameters not in val:
@@ -173,7 +170,6 @@ class InterpretJAAQL:
                                     fetched_query = val[KEY_query]
                                 else:
                                     fetched_query = canned_query_service.get_canned_query(operation[KEY__application],
-                                                                                          operation[KEY__configuration],
                                                                                           val[KEY_query][KEY__file], val[KEY_query][KEY__position])
                                 query[key] = {KEY_query: fetched_query, KEY_assert: val.get(KEY_assert), KEY_decrypt: val.get(KEY_decrypt),
                                               KEY_parameters: val.get(KEY_parameters, {})}

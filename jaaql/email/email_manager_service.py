@@ -9,6 +9,7 @@ from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.utilities.utils import load_config, await_jaaql_installation, get_jaaql_connection, time_delta_ms
 from urllib.parse import quote
 from jaaql.utilities.utils_no_project_imports import check_allowable_file_path
+from email.utils import formatdate, make_msgid
 import json
 import imaplib
 import smtplib
@@ -21,6 +22,7 @@ from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
 from queue import Queue, Empty
 import threading
+import re
 import ssl
 import time
 import sys
@@ -30,7 +32,7 @@ from jaaql.constants import VAULT_KEY__db_crypt_key, KEY__encrypted_password, KE
     ENDPOINT__reload_accounts, ENDPOINT__send_email, KEY__attachment_name, KEY__parameters, KEY__url, KEY__oauth_token, \
     KEY__document_id, KEY__create_file, DIR__render_template, KEY__render_as, KEY__content, DIR__www, KEY__email_account_name, \
     KEY__email_account_send_name, KEY__email_account_protocol, KEY__email_account_host, KEY__email_account_port, KEY__email_account_username, \
-    KEY__override_send_name, KEY__application, ENVIRON__install_path, KEY__artifact_base_uri, KEY__email_account_password, \
+    KEY__override_send_name, KEY__application, ENVIRON__install_path, KEY__artifact_base_url, KEY__email_account_password, \
     KEY__email_account_whitelist
 
 from selenium import webdriver
@@ -38,7 +40,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 
 QUERY__mark_rendered_document_completed = "UPDATE rendered_document SET completed = current_timestamp, filename = :filename, content = :content WHERE document_id = :document_id"
-QUERY__fetch_unrendered_document = "SELECT able.url, ac.artifact_base_uri, able.render_as, rd.document_id, rd.encrypted_parameters as parameters, rd.create_file, rd.encrypted_access_token as oauth_token FROM rendered_document rd INNER JOIN renderable_document able ON rd.document = able.name INNER JOIN application_configuration ac ON rd.configuration = ac.name AND rd.application = ac.application WHERE rd.completed is null ORDER BY rd.created LIMIT 1"
+QUERY__fetch_unrendered_document = "SELECT able.url, ac.artifact_base_url, able.render_as, rd.document_id, rd.encrypted_parameters as parameters, rd.create_file, rd.encrypted_access_token as oauth_token FROM rendered_document rd INNER JOIN renderable_document able ON rd.document = able.name INNER JOIN application a ON rd.application = a.name WHERE rd.completed is null ORDER BY rd.created LIMIT 1"
 QUERY__update_email_account_password = "UPDATE email_account SET encrypted_password = :encrypted_password WHERE id = :id"
 QUERY__load_email_accounts = "SELECT * FROM email_account"
 QUERY__create_email_account = "INSERT INTO email_account (name, send_name, host, port, username, encrypted_password, whitelist) VALUES (:name, :send_name, :host, :port, :username, :password, :whitelist) ON CONFLICT ON CONSTRAINT email_account_pkey DO UPDATE SET send_name = excluded.send_name, host = excluded.host, port = excluded.port, username = excluded.username, encrypted_password = excluded.encrypted_password, whitelist = excluded.whitelist"
@@ -72,11 +74,15 @@ EMAIL__from = "From"
 EMAIL__from_email = "From_Email"
 EMAIL__to = "To"
 EMAIL__subject = "Subject"
+EMAIL__date = "Date"
+EMAIL__message_id = "Message-ID"
 
 SPLIT__address = ", "
 
 TIMEOUT__attachment = 60000
 TIMEOUT__filename = 15000
+
+REGEX__html_tags = r'<(\/[a-zA-Z]+|(!?[a-zA-Z]+((\s)*((\"?[^(\">)]*\"?)|[a-zA-Z]*\s*=\s*\"[^\"]*\"))*))>'
 
 
 class DrivenChrome:
@@ -144,8 +150,8 @@ class DrivenChrome:
                 if resp[KEY__parameters]:
                     parameters = json.loads(resp[KEY__parameters])
 
-                base_uri = EmailAttachment.static_format_attached_url(resp[KEY__artifact_base_uri], self.is_deployed)
-                filename, content = self.chrome_page_to_pdf(base_uri, resp[KEY__oauth_token], parameters)
+                base_url = EmailAttachment.static_format_attached_url(resp[KEY__artifact_base_url], self.is_deployed)
+                filename, content = self.chrome_page_to_pdf(base_url, resp[KEY__oauth_token], parameters)
 
                 inputs = {KEY__document_id: resp[KEY__document_id], KEY__content: None, ATTR__filename: filename}
                 if resp[KEY__create_file]:
@@ -210,21 +216,21 @@ class EmailAttachment:
         self.template = str(template)
 
     @staticmethod
-    def static_format_attached_url(artifact_base_uri: str, is_container: bool):
-        if not artifact_base_uri.startswith("https://") and not artifact_base_uri.startswith("http://"):
+    def static_format_attached_url(artifact_base_url: str, is_container: bool):
+        if not artifact_base_url.startswith("https://") and not artifact_base_url.startswith("http://"):
             if is_container:
-                if check_allowable_file_path(artifact_base_uri):
+                if check_allowable_file_path(artifact_base_url):
                     raise Exception("Illegal artifact base url")
 
-            if artifact_base_uri.startswith("file:///"):
-                return artifact_base_uri
+            if artifact_base_url.startswith("file:///"):
+                return artifact_base_url
             else:
-                return "file://" + os.environ[ENVIRON__install_path] + "/www/" + artifact_base_uri
+                return "file://" + os.environ[ENVIRON__install_path] + "/www/" + artifact_base_url
         else:
-            return artifact_base_uri
+            return artifact_base_url
 
-    def format_attachment_url(self, artifact_base_uri: str, is_container: bool):
-        self.artifact_base = EmailAttachment.static_format_attached_url(artifact_base_uri, is_container)
+    def format_attachment_url(self, artifact_base_url: str, is_container: bool):
+        self.artifact_base = EmailAttachment.static_format_attached_url(artifact_base_url, is_container)
 
     def build_attachment(self, access_token: str, driven_chrome: DrivenChrome) -> MIMEApplication:
         self.access_token = access_token
@@ -380,6 +386,7 @@ class EmailManagerService:
         message = MIMEMultipart("alternative")
 
         if email.is_html:
+            message.attach(MIMEText(re.sub(REGEX__html_tags, "", send_body).strip()))
             message.attach(MIMEText(send_body, 'html'))
         else:
             message.attach(MIMEText(send_body, 'plain'))
@@ -392,6 +399,8 @@ class EmailManagerService:
             send_name = email.override_send_name
         message_final[EMAIL__from] = send_name + " <" + account[KEY__email_account_username] + ">"
         message_final[EMAIL__subject] = email.subject
+        message_final[EMAIL__date] = formatdate()
+        message_final[EMAIL__message_id] = make_msgid()
 
         if email.attachments is not None:
             email_attachments = email.attachments
@@ -453,6 +462,7 @@ class EmailManagerService:
                 send_to = email.to
                 send_recipients = email.recipient_names
                 whitelist = account[KEY__email_account_whitelist]
+                whitelist = None
                 if whitelist is not None and whitelist != "":
                     send_to = []
                     for to, recipient in zip(email.to, email.recipient_names):
@@ -491,7 +501,6 @@ class EmailManagerService:
                         print(email.body)
                         print(account[KEY__email_account_username])
                         print(send_to)
-
                     execute_supplied_statement(self.connection, QUERY__ins_email_history, {
                             KEY__application: email.application,
                             KEY__template: email.template,

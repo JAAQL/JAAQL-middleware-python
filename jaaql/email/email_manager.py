@@ -1,11 +1,9 @@
-import os
 import re
 import threading
 
 from typing import Callable
 from jaaql.email.email_manager_service import Email, TYPE__email_attachments
 import requests
-from os.path import join
 from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.constants import *
 from urllib.parse import quote
@@ -18,6 +16,9 @@ REPLACE__str = "{{%s}}"
 REPLACE__uri_encoded_str = "[[%s]]"
 ERR__missing_parameter = "Missing parameter from template '%s'"
 ERR__unexpected_parameter_in_template = "Unexpected parameter in template '%s'"
+
+EMAIL_HTML__start = "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\r\n<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"en\">\r\n<body>\r\n"
+EMAIL_HTML__end = "\r\n</body>\r\n</html>"
 
 
 class EmailManager:
@@ -39,10 +40,12 @@ class EmailManager:
     def uri_encode_replace(val):
         return quote(str(val))
 
-    def construct_and_send_email(self, artifact_base_uri: str, template: dict, sender: str, to_email: str, to_name: str,
+    def construct_and_send_email(self, artifact_base_url: str, template: dict, sender: str, to_email: str, to_name: str,
                                  parameters: dict = None, optional_parameters: dict = None, attachments: TYPE__email_attachments = None,
                                  attachment_access_token: str = None):
-        loaded_template = load_artifact(self.is_container, artifact_base_uri, template[KEY__app_relative_path])
+        loaded_template = load_artifact(self.is_container, artifact_base_url, template[KEY__app_relative_path])
+        if template[KEY__app_relative_path].lower().endswith(".htmlbody"):
+            loaded_template = EMAIL_HTML__start + loaded_template + EMAIL_HTML__end
         if loaded_template is None:
             return
 
@@ -57,7 +60,7 @@ class EmailManager:
             if not isinstance(attachment_list, list):
                 attachment_list = [attachment_list]
             for attachment in attachment_list:
-                attachment.format_attachment_url(artifact_base_uri, self.is_container)
+                attachment.format_attachment_url(artifact_base_url, self.is_container)
 
         self.send_email(Email(str(sender), template[KEY__application], str(template[KEY__email_template_name]), str(template[KEY__account]),
                               to_email, to_name, subject=subject, body=loaded_template, is_html=True, attachments=attachments,

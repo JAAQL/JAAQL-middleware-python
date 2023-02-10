@@ -27,7 +27,7 @@ ERR__refresh_expired = "Token too old to be used for refresh. Please authenticat
 ERR__incorrect_install_key = "Incorrect install key!"
 ERR__invalid_level = "Invalid level!"
 ERR__incorrect_credentials = "Incorrect credentials!"
-ERR__email_template_not_installed = "Either email template does not exist or email template has not been attached to this application configuration"
+ERR__email_template_not_installed = "Either email template does not exist"
 ERR__lacking_permissions = "Only an administrator can perform this action!"
 ERR__schema_invalid = "Schema invalid!"
 ERR__cant_send_attachments = "Cannot send attachments to other people"
@@ -71,10 +71,10 @@ RESET__not_started = 0
 RESET__started = 1
 RESET__completed = 2
 
-CODE__letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-CODE__invite_length = 5
+CODE__letters = "ABCDEFGHIJKLMNPQRSTUVWXYZ"
+CODE__invite_length = 6
 CODE__max_attempts = 3
-CODE__alphanumeric = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+CODE__alphanumeric = "ABCDEFGHIJKLMNPQRSTUVWXYZ123456789"
 CODE__reset_length = 8
 
 SIGNUP__not_started = 0
@@ -190,7 +190,7 @@ class JAAQLModel(BaseJAAQLModel):
         select_table = template[KEY__data_validation_view] if template[KEY__data_validation_view] is not None else val_table
         return self.select_from_data_validation_table(connection, select_table, pkey_vals), pkey_vals
 
-    def user_invite(self, user_id: str, application: str = None, configuration: str = None, email_template: str = None,
+    def user_invite(self, user_id: str, application: str = None, email_template: str = None,
                     template_lookup: dict = None):
         if template_lookup is not None:
             template_lookup = json.dumps(template_lookup)
@@ -199,37 +199,33 @@ class JAAQLModel(BaseJAAQLModel):
             ATTR__data_lookup_json: template_lookup,
             ATTR__the_user: user_id,
             KEY__application: application,
-            KEY__configuration: configuration,
             KEY__email_template: email_template,
             KEY__invite_code: "".join([CODE__letters[random.randint(0, len(CODE__letters) - 1)] for _ in range(CODE__invite_length)])
         }
         return execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__sign_up_insert, params, as_objects=True)
 
-    def fetch_interface(self, application: str, configuration: str, schema: str):
+    def fetch_interface(self, application: str, schema: str):
         """
         TODO this won't work. Used for emails, needs to be the database admin user for a database
         :param application:
-        :param configuration:
         :param schema:
         :return:
         """
         schemas = self.fetch_pivoted_application_schemas()
-        db_name = schemas[application][configuration][schema][KEY__database]
+        db_name = schemas[application][schema][KEY__database]
         return self.create_interface_for_db(ROLE__jaaql, db_name)
 
     def request_signup(self, inputs: dict):
         template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_with_app_url, {
             KEY__name: inputs[KEY__email_template],
-            KEY__configuration: inputs[KEY__configuration],
             KEY__application: inputs[KEY__application]
         }, as_objects=True, singleton_message=ERR__email_template_not_installed)
         template_already_exists = execute_supplied_statement_singleton(
             self.jaaql_lookup_connection, QUERY__fetch_email_template_with_app_url, {
                 KEY__name: inputs[KEY__already_signed_up_email_template],
-                KEY__configuration: inputs[KEY__configuration],
                 KEY__application: inputs[KEY__application]
             }, as_objects=True, singleton_message=ERR__email_template_not_installed)
-        artifact_url = template.pop(KEY__artifact_base_uri)
+        artifact_url = template.pop(KEY__artifact_base_url)
         app_url = template.pop(KEY__application_url)
 
         if not template[KEY__allow_signup] or not template_already_exists[KEY__allow_confirm_signup_attempt]:
@@ -274,10 +270,10 @@ class JAAQLModel(BaseJAAQLModel):
             if EMAIL_PARAM__app_url in params:
                 raise HttpStatusException(ERR__unexpected_validation_column % EMAIL_PARAM__app_url)
 
-            interface = self.fetch_interface(template[KEY__application], inputs[KEY__configuration], template[KEY__schema])
+            interface = self.fetch_interface(template[KEY__application], template[KEY__schema])
             sanitized_params, pkey_vals = self.fetch_sanitized_email_params(interface, template, params)
 
-        invite_keys = self.user_invite(user_id, inputs[KEY__application], inputs[KEY__configuration], template[KEY__name], pkey_vals)
+        invite_keys = self.user_invite(user_id, inputs[KEY__application], template[KEY__name], pkey_vals)
         optional_params = {EMAIL_PARAM__signup_key: invite_keys[KEY__invite_key], EMAIL_PARAM__invite_code: invite_keys[KEY__invite_code],
                            EMAIL_PARAM__app_url: app_url}
         optional_params = {**optional_params, **sanitized_params}
@@ -359,9 +355,9 @@ class JAAQLModel(BaseJAAQLModel):
         if resp[KEY__email_template] and resp[ATTR__data_lookup_json]:
             template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_with_app_url,
                                                             {KEY__name: resp[KEY__email_template],
-                                                             KEY__configuration: resp[KEY__configuration], KEY__application: resp[KEY__application]},
+                                                            KEY__application: resp[KEY__application]},
                                                             as_objects=True)
-            interface = self.fetch_interface(template[KEY__application], resp[KEY__configuration], template[KEY__schema])
+            interface = self.fetch_interface(template[KEY__application], template[KEY__schema])
             res[KEY__parameters] = self.select_from_data_validation_table(interface, template[KEY__data_validation_table],
                                                                           json.loads(resp[ATTR__data_lookup_json]))
 
@@ -381,10 +377,9 @@ class JAAQLModel(BaseJAAQLModel):
 
         if resp[KEY__email_template] and resp[ATTR__data_lookup_json]:
             template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_with_app_url,
-                                                            {KEY__name: resp[KEY__email_template],
-                                                             KEY__configuration: resp[KEY__configuration]},
+                                                            {KEY__name: resp[KEY__email_template]},
                                                             as_objects=True)[KEY__data_validation_table]
-            interface = self.fetch_interface(template[KEY__application], resp[KEY__configuration], template[KEY__schema])
+            interface = self.fetch_interface(template[KEY__application], template[KEY__schema])
             self.delete_from_data_validation_table(interface, template, json.loads(resp[ATTR__data_lookup_json]))
 
         execute_supplied_statement(self.jaaql_lookup_connection, QUERY__sign_up_close, {KEY__invite_key: resp[KEY__invite_key]})
@@ -392,11 +387,10 @@ class JAAQLModel(BaseJAAQLModel):
     def send_reset_password_email(self, inputs: dict):
         template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_with_app_url, {
             KEY__name: inputs[KEY__email_template],
-            KEY__configuration: inputs[KEY__configuration],
             KEY__application: inputs[KEY__application]
         }, as_objects=True, singleton_message=ERR__email_template_not_installed)
         app_url = template.pop(KEY__application_url)
-        artifact_url = template.pop(KEY__artifact_base_uri)
+        artifact_url = template.pop(KEY__artifact_base_url)
 
         if not template[KEY__allow_reset_password]:
             raise HttpStatusException(ERR__template_reset_password)
@@ -441,7 +435,7 @@ class JAAQLModel(BaseJAAQLModel):
                 if EMAIL_PARAM__app_url in params:
                     raise HttpStatusException(ERR__unexpected_validation_column % EMAIL_PARAM__app_url)
 
-                interface = self.fetch_interface(template[KEY__application], inputs[KEY__configuration], template[KEY__schema])
+                interface = self.fetch_interface(template[KEY__application], template[KEY__schema])
                 sanitized_params, pkey_vals = self.fetch_sanitized_email_params(interface, template, params)
 
             template_lookup = None
@@ -451,7 +445,6 @@ class JAAQLModel(BaseJAAQLModel):
                 ATTR__data_lookup_json: template_lookup,
                 ATTR__the_user: user[KEY__user_id],
                 KEY__email_template: template[KEY__name],
-                KEY__configuration: inputs[KEY__configuration],
                 KEY__application: inputs[KEY__application],
                 KEY__reset_code: "".join([CODE__alphanumeric[random.randint(0, len(CODE__alphanumeric) - 1)] for _ in range(CODE__reset_length)])
             }
@@ -578,11 +571,10 @@ class JAAQLModel(BaseJAAQLModel):
 
         template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_with_app_url, {
             KEY__name: inputs[KEY__email_template],
-            KEY__configuration: inputs[KEY__configuration],
             KEY__application: inputs[KEY__application]
         }, as_objects=True)
         app_url = template.pop(KEY__application_url)
-        artifact_url = template.pop(KEY__artifact_base_uri)
+        artifact_url = template.pop(KEY__artifact_base_url)
 
         params = inputs[KEY__parameters]
         if params is not None and template[KEY__data_validation_table] is None:
@@ -593,7 +585,7 @@ class JAAQLModel(BaseJAAQLModel):
             if EMAIL_PARAM__app_url in params:
                 raise HttpStatusException(ERR__unexpected_validation_column % EMAIL_PARAM__app_url)
 
-            interface = self.fetch_interface(template[KEY__application], inputs[KEY__configuration], template[KEY__schema])
+            interface = self.fetch_interface(template[KEY__application], template[KEY__schema])
             params, _ = self.fetch_sanitized_email_params(interface, template, params)
 
         optional_params = {EMAIL_PARAM__app_url: app_url}
@@ -606,7 +598,6 @@ class JAAQLModel(BaseJAAQLModel):
         if inputs[KEY__attachments] is not None:
             for attachment in inputs[KEY__attachments]:
                 attachment[KEY__application] = inputs[KEY__application]
-                attachment[KEY__configuration] = inputs[KEY__configuration]
 
         self.email_manager.construct_and_send_email(artifact_url, template, user_id, recipients, None, {}, optional_params,
                                                     attachments=EmailAttachment.deserialize_list(inputs[KEY__attachments], template[KEY__name],
@@ -629,9 +620,9 @@ class JAAQLModel(BaseJAAQLModel):
         if resp[KEY__email_template] and resp[ATTR__data_lookup_json]:
             template = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_email_template_with_app_url,
                                                             {KEY__name: resp[KEY__email_template],
-                                                             KEY__application: resp[KEY__application], KEY__configuration: resp[KEY__configuration]},
+                                                             KEY__application: resp[KEY__application]},
                                                             as_objects=True)
-            interface = self.fetch_interface(template[KEY__application], resp[KEY__configuration], template[KEY__schema])
+            interface = self.fetch_interface(template[KEY__application], template[KEY__schema])
             res[KEY__parameters] = self.select_from_data_validation_table(interface, template[KEY__data_validation_table],
                                                                           json.loads(resp[ATTR__data_lookup_json]))
 
@@ -710,7 +701,8 @@ class JAAQLModel(BaseJAAQLModel):
             self.add_account_password(ROLE__postgres, super_db_password)
             self.add_account_password(ROLE__jaaql, jaaql_password)
 
-            self.create_account(self.jaaql_lookup_connection, {KEY__username: USERNAME__public, KEY__password: PASSWORD__public})
+            self.create_account(self.jaaql_lookup_connection, {KEY__username: USERNAME__anonymous, KEY__password: PASSWORD__anonymous,
+                                                               KEY__attach_as: USERNAME__anonymous}, is_public=True)
 
             self.jaaql_lookup_connection.close()
 
@@ -757,10 +749,10 @@ class JAAQLModel(BaseJAAQLModel):
 
         return decoded[KEY__user_id], decoded[KEY__username], decoded[KEY__ip_id], decoded[KEY__is_public]
 
-    def refresh_cached_canned_query_service(self, connection: DBInterface, application: str, configuration: str):
+    def refresh_cached_canned_query_service(self, connection: DBInterface, application: str):
         self.check_is_internal_admin(connection)
 
-        self.cached_canned_query_service.refresh_configuration(self.is_container, self.jaaql_lookup_connection, application, configuration)
+        self.cached_canned_query_service.refresh_application(self.is_container, self.jaaql_lookup_connection, application)
 
     def refresh_auth_token(self, auth_token: str, ip_address: str):
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), auth_token, JWT_PURPOSE__oauth, allow_expired=True)
@@ -832,7 +824,7 @@ class JAAQLModel(BaseJAAQLModel):
             KEY__address: ip_address,
             KEY__ip_id: str(address),
             KEY__created: datetime.now().isoformat(),
-            KEY__is_public: res[KEY__username] == USERNAME__public
+            KEY__is_public: res[KEY__username] == USERNAME__anonymous
         }
 
         if response is not None:
@@ -840,13 +832,6 @@ class JAAQLModel(BaseJAAQLModel):
             response.ip_id = str(address)
 
         return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data, JWT_PURPOSE__oauth, expiry_ms=self.token_expiry_ms)
-
-    def fetch_pivoted_application_schemas(self):
-        data = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_application_schemas, as_objects=True, skip_commit=True)
-
-        return self.group(self.pivot(data,
-                          [JAAQLPivotInfo(KEY__configuration, "name", "configuration_name"),
-                           JAAQLPivotInfo(KEY__schema, "configuration_name", "schema_name")]), KEY__name)
 
     def create_interface_for_db(self, user_id: str, database: str, sub_role: str = None):
         jaaql_uri = self.vault.get_obj(VAULT_KEY__super_db_credentials)
@@ -858,25 +843,19 @@ class JAAQLModel(BaseJAAQLModel):
             raise HttpStatusException("Expected object or string input")
 
         if KEY__application in inputs:
-            application_configs = self.fetch_pivoted_application_schemas()
-            if inputs[KEY__application] not in application_configs:
-                raise HttpStatusException("Application '%s' does not exist!" % inputs[KEY__application])
-            app = application_configs[inputs[KEY__application]]
-
-            if inputs[KEY__configuration] not in app:
-                raise HttpStatusException("Configuration '%s' does not exist for application '%s'!" % (inputs[KEY__configuration],
-                                                                                                       inputs[KEY__application]))
-            config = app[inputs[KEY__configuration]]
+            application = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_application,
+                                                     {KEY__application: inputs[KEY__application]}, as_objects=True)
+            application = {itm[KEY__name]: itm for itm in application}
 
             found_db = None
             if KEY__schema in inputs:
-                found_db = config[inputs[KEY__schema]][KEY__database]
+                found_db = application[inputs[KEY__schema]][KEY__database]
                 inputs.pop(KEY__schema)
             else:
-                if len(config) == 1:
-                    found_db = config[list(config.keys())[0]][KEY__database]
+                if len(application) == 1:
+                    found_db = application[list(application.keys())[0]][KEY__database]
                 else:
-                    found_dbs = [val[KEY__database] for _, val in config.items() if val[KEY__is_default]]
+                    found_dbs = [val[KEY__database] for _, val in input.items() if val[KEY__is_default]]
                     if len(found_dbs) == 1:
                         found_db = found_dbs[0]
 
