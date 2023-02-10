@@ -72,7 +72,7 @@ def bootup(vault_key, is_gunicorn: bool = False, install_on_bootup: bool = False
                 if i != 0:
                     print()
 
-                with open(join(script_root, script), "r") as script_file:
+                with open(join(script_root, script), "r", encoding="utf-8") as script_file:
                     print("Processing script " + script)
                     process_script(script_file.read(), base_url, bypass_header)
                 i += 1
