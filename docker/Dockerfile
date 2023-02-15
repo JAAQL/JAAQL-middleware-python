@@ -1,4 +1,4 @@
-FROM postgres:15.1
+FROM postgres:15.2
 LABEL maintainer="jaaql.io"
 
 EXPOSE 80
@@ -14,7 +14,7 @@ ENV PIGGYBACK_LETSENCRYPT FALSE
 
 ARG CHROME_VERSION="109.0.5414.74-1"
 ARG PYTHON_MAJOR_VERSION="3.11"
-ARG PYTHON_VERSION="${PYTHON_MAJOR_VERSION}.1"
+ARG PYTHON_VERSION="${PYTHON_MAJOR_VERSION}.2"
 
 VOLUME /etc/letsencrypt
 VOLUME $INSTALL_PATH/vault
@@ -75,7 +75,14 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     rm -rf /usr/local/lib/python${PYTHON_MAJOR_VERSION}/test && \
     rm -rf /Python-${PYTHON_VERSION} && \
     rm -rf /Python-${PYTHON_VERSION}.tar.xz && \
+    apt-get -y install locales && \
+    sed -i '/en_GB.UTF-8/s/^# //g' /etc/locale.gen && \
+    locale-gen && \
     apt-get autoremove --purge -y
+
+ENV LANG en_GB.UTF-8
+ENV LANGUAGE en_GB:en
+ENV LC_ALL en_GB.UTF-8
 
 COPY . $INSTALL_PATH
 
@@ -91,6 +98,8 @@ RUN git clone https://github.com/JAAQL/JEQL.git && \
     mv $INSTALL_PATH/docker/jaaql.sql /docker-entrypoint-initdb.d/01-jaaql.sql && \
     mv $INSTALL_PATH/docker/entrypoint.sh entrypoint.sh && \
     dos2unix entrypoint.sh && \
+    mv $INSTALL_PATH/docker/pg_reboot.sh pg_reboot.sh && \
+    dos2unix pg_reboot.sh && \
     dos2unix $INSTALL_PATH/base_reboot.sh && \
     cd $INSTALL_PATH && \
     $PY_PATH setup.py sdist bdist_wheel && \

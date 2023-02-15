@@ -44,7 +44,7 @@ def bootup(vault_key, is_gunicorn: bool = False, install_on_bootup: bool = False
             "super_db_password": "passw0rd",
             "jaaql_password": "pa55word",
             "install_key": install_key,
-            "allow_uninstall": False
+            "allow_uninstall": True
         }
         if not is_gunicorn:
             json_data["db_connection_string"] = "postgresql://postgres:123456@localhost:5434/"

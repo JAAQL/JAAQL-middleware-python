@@ -32,6 +32,14 @@ class DBPGInterface(DBInterface):
     HOST_POOLS_QUEUES = {}
 
     @staticmethod
+    def close_all_pools():
+        for _, user_pool_dict in DBPGInterface.HOST_POOLS.items():
+            for _, pool in user_pool_dict.items():
+                pool.close()
+        DBPGInterface.HOST_POOLS = {}
+        DBPGInterface.HOST_POOLS_QUEUES = {}
+
+    @staticmethod
     def put_conn_threaded(username: str, db_name: str, the_queue: queue.Queue):
         while True:
             try:

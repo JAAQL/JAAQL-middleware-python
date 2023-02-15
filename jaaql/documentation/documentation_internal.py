@@ -1,6 +1,5 @@
 from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
-from jaaql.documentation.documentation_shared import rename_arg, ARG_RES__application
 
 TITLE = "JAAQL Internal API"
 DESCRIPTION = "Collection of methods in the JAAQL internal API"
@@ -12,20 +11,6 @@ ARG_RES__install_key = SwaggerArgumentResponse(
     arg_type=str,
     example=["aefc1b08-a573-466f-bdd0-706ae281cc99", "ec63aa9a-b189-419f-8e0b-7fcc4ff8c857"],
     required=True
-)
-
-ARG_RES__uninstall_key = rename_arg(ARG_RES__install_key, KEY__uninstall_key, ARG_RES__install_key.description.replace("INSTALL", "UNINSTALL"))
-
-DOCUMENTATION__canned_queries = SwaggerDocumentation(
-    tags="Application",
-    methods=SwaggerMethod(
-        name="Refresh Canned Queries",
-        description="Refreshes the application canned queries.",
-        method=REST__POST,
-        arguments=[
-            ARG_RES__application
-        ]
-    )
 )
 
 DOCUMENTATION__install = SwaggerDocumentation(
@@ -50,7 +35,7 @@ DOCUMENTATION__install = SwaggerDocumentation(
             ARG_RES__install_key,
             SwaggerArgumentResponse(
                 name=KEY__jaaql_password,
-                description="The password for the jaaql user, can create applications",
+                description="The password for the jaaql user, can create applications, configurations",
                 example=["pa55word"],
                 strip=True,
                 arg_type=str
@@ -83,25 +68,6 @@ DOCUMENTATION__install = SwaggerDocumentation(
     )
 )
 
-DOCUMENTATION__uninstall = SwaggerDocumentation(
-    tags="Installation",
-    security=False,  # Would not matter which user uses it, needs root db credentials
-    methods=SwaggerMethod(
-        name="Uninstall JAAQL",
-        description="Uninstalls the JAAQL system",
-        method=REST__POST,
-        body=[
-            SwaggerArgumentResponse(
-                name=KEY__db_super_user_password,
-                description="The password for the database super user account",
-                example=["123456"],
-                arg_type=str
-            ),
-            ARG_RES__uninstall_key
-        ]
-    )
-)
-
 DOCUMENTATION__is_installed = SwaggerDocumentation(
     tags="Installation",
     security=False,
@@ -120,9 +86,6 @@ DOCUMENTATION__is_installed = SwaggerDocumentation(
     )
 )
 
-# Not unused. Used to generate html files
-from jaaql.documentation.documentation_shared import DOCUMENTATION__oauth_token, DOCUMENTATION__oauth_refresh
-
 DOCUMENTATION__is_alive = SwaggerDocumentation(
     security=False,
     tags="Is Alive",
@@ -133,14 +96,14 @@ DOCUMENTATION__is_alive = SwaggerDocumentation(
     )
 )
 
-DOCUMENTATION__deploy = SwaggerDocumentation(
-    tags="Deployment",
-    methods=[
-        SwaggerMethod(
-            name="Redeploys the JAAQL service",
-            description="Will redeploy the JAAQL service, loading the latest version from git. In the future will "
-                        "support loading a specific tagged version",
-            method=REST__POST
-        )
-    ]
+DOCUMENTATION__clean = SwaggerDocumentation(
+    tags="Installation",
+    methods=SwaggerMethod(
+        name="Clean database",
+        description="Will clear the database and leave jaaql installed",
+        method=REST__POST
+    )
 )
+
+# Not unused. Used to generate html files
+from jaaql.documentation.documentation_shared import DOCUMENTATION__oauth_token, DOCUMENTATION__oauth_refresh

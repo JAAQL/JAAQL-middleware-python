@@ -4,7 +4,7 @@ import re
 import logging
 import pkgutil
 from jaaql.openapi.swagger_documentation import produce_all_documentation
-from jaaql.email.email_manager_service import create_flask_app as create_email_service_app
+# from jaaql.email.email_manager_service import create_flask_app as create_email_service_app
 from jaaql.services.script_install import bootup
 from typing import List
 from jaaql.utilities.options import parse_options, OPT_KEY__vault_key, OPT_KEY__email_credentials, OPT_KEY__local_install, Option, OPT_KEY__profiling
@@ -80,8 +80,8 @@ def create_app(override_config_path: str = None, controllers: [JAAQLControllerIn
         options = {}
 
     if not is_gunicorn:
-        threading.Thread(target=create_email_service_app, args=[options.get(OPT_KEY__vault_key), options.get(OPT_KEY__email_credentials)],
-                         daemon=True).start()
+        # threading.Thread(target=create_email_service_app, args=[options.get(OPT_KEY__vault_key), options.get(OPT_KEY__email_credentials)],
+        #                  daemon=True).start()
         threading.Thread(target=bootup, args=[options.get(OPT_KEY__vault_key), False, OPT_KEY__local_install in options], daemon=True).start()
 
     if OPT_KEY__vault_key in options:

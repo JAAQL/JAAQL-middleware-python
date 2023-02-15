@@ -1,0 +1,15 @@
+vault/*
+swagger/*
+log/*
+letsencrypt/*
+
+docker.md
+examples.md
+Dockerfile
+.gitignore
+
+chromedriver.exe
+install_key
+install_scripts
+
+www/*

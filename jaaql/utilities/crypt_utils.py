@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
 from jaaql.constants import ENCODING__ascii
+import hashlib
 
 
 FERNET__key_length = 32
@@ -33,6 +34,13 @@ JWT__purpose = "__purpose"
 JWT__algo = "HS256"
 
 MAX_LONG = 2**63-1
+
+
+def get_repeatable_salt(repeatable: str, addition: str = None):
+    if addition is not None:
+        return hashlib.md5((repeatable + addition).encode(ENCODING__ascii)).digest()
+    else:
+        return repeatable.encode(ENCODING__ascii)
 
 
 def fetch_epoch_ms():

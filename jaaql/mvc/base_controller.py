@@ -24,14 +24,14 @@ from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMet
 from jaaql.exceptions.http_status_exception import *
 
 ARG__http_inputs = "http_inputs"
-ARG__user_id = "user_id"
+ARG__account_id = "account_id"
 ARG__ip_address = "ip_address"
 ARG__response = "response"
 ARG__username = "username"
 ARG__profiler = "profiler"
 ARG__auth_token = "auth_token"
 ARG__connection = "connection"
-ARG__is_public = "is_public"
+ARG__is_the_anonymous_user = "is_the_anonymous_user"
 ARG__verification_hook = "verification_hook"
 ARG_START__connection = "connection__"
 ARG_START__jaaql_connection = "jaaql_" + ARG_START__connection
@@ -59,8 +59,8 @@ ERR__unexpected_response_field = "Unexpected response field '%s'"
 ERR__method_required_security = "Method requires connection input yet marked as not secure in documentation"
 ERR__method_required_token = "Method requires oauth token input yet marked as not secure in documentation"
 ERR__method_required_connection = "Method requires connection input yet marked as not secure in documentation"
-ERR__method_required_is_public = "Method requires is_public input yet marked as not secure in documentation"
-ERR__method_required_user_id = "Method requires user id input yet marked as not secure in documentation"
+ERR__method_required_is_the_anonymous_user = "Method requires is_public input yet marked as not secure in documentation"
+ERR__method_required_account_id = "Method requires account id input yet marked as not secure in documentation"
 ERR__method_required_user_connection = "Method requires user connection input yet marked as not secure in documentation"
 ERR__method_required_username = "Method requires username yet marked as not secure in documentation"
 ERR__sentinel_failed = "Sentinel failed. Reponse code '%d' and content '%s'"
@@ -418,7 +418,7 @@ class BaseJAAQLController:
                     the_method = BaseJAAQLController.get_method(swagger_documentation)
                     self.perform_profile(request_id, "Fetch method")
 
-                    user_id = None
+                    account_id = None
                     ip_id = None
                     username = None
                     is_public = None
@@ -430,11 +430,11 @@ class BaseJAAQLController:
 
                     if swagger_documentation.security:
                         if verification_hook:
-                            user_id, username, ip_id, is_public = self.model.verify_auth_token_threaded(request.headers.get(HEADER__security),
-                                                                                                                ip_addr, verification_hook)
+                            account_id, username, ip_id, is_public = self.model.verify_auth_token_threaded(request.headers.get(HEADER__security),
+                                                                                                           ip_addr, verification_hook)
                             self.perform_profile(request_id, "Verify JWT Threaded")
                         else:
-                            user_id, username, ip_id, is_public = self.model.verify_auth_token(request.headers.get(HEADER__security), ip_addr)
+                            account_id, username, ip_id, is_public = self.model.verify_auth_token(request.headers.get(HEADER__security), ip_addr)
                             self.perform_profile(request_id, "Verify JWT")
 
                     supply_dict = {}
@@ -447,10 +447,10 @@ class BaseJAAQLController:
                             supply_dict[ARG__http_inputs] = BaseJAAQLController.get_input_as_dictionary(the_method, self.is_prod)
                             method_input = self.log_safe_dump(supply_dict[ARG__http_inputs])
 
-                        if ARG__user_id in inspect.getfullargspec(view_func_local).args:
+                        if ARG__account_id in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:
-                                raise Exception(ERR__method_required_user_id)
-                            supply_dict[ARG__user_id] = user_id
+                                raise Exception(ERR__method_required_account_id)
+                            supply_dict[ARG__account_id] = account_id
 
                         if method.parallel_verification:
                             supply_dict[ARG__verification_hook] = verification_hook
@@ -461,12 +461,12 @@ class BaseJAAQLController:
                                 if not swagger_documentation.security:
                                     raise Exception(ERR__method_required_user_connection)
                                 connect_db = arg.split(ARG_START__connection)[1]
-                                supply_dict[arg] = self.model.create_interface_for_db(user_id, connect_db, sub_role=user_id)
+                                supply_dict[arg] = self.model.create_interface_for_db(account_id, connect_db, sub_role=account_id)
 
                         for arg in inspect.getfullargspec(view_func_local).args:
                             if arg.startswith(ARG_START__jaaql_connection):
                                 connect_db = arg.split(ARG_START__jaaql_connection)[1]
-                                supply_dict[arg] = self.model.create_interface_for_db(user_id, connect_db, sub_role=ROLE__jaaql)
+                                supply_dict[arg] = self.model.create_interface_for_db(account_id, connect_db, sub_role=ROLE__jaaql)
 
                         if ARG__username in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:
@@ -487,12 +487,12 @@ class BaseJAAQLController:
                         if ARG__connection in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:
                                 raise Exception(ERR__method_required_connection)
-                            supply_dict[ARG__connection] = self.model.create_interface_for_db(user_id, DB__jaaql)
+                            supply_dict[ARG__connection] = self.model.create_interface_for_db(account_id, DB__jaaql)
 
-                        if ARG__is_public in inspect.getfullargspec(view_func_local).args:
+                        if ARG__is_the_anonymous_user in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:
-                                raise Exception(ERR__method_required_is_public)
-                            supply_dict[ARG__is_public] = is_public
+                                raise Exception(ERR__method_required_is_the_anonymous_user)
+                            supply_dict[ARG__is_the_anonymous_user] = is_public
 
                         self.perform_profile(request_id, "Fetch args")
                         if ARG__profiler in inspect.getfullargspec(view_func_local).args:
@@ -503,7 +503,7 @@ class BaseJAAQLController:
                         self.perform_profile(request_id, "Perform work")
 
                         if not swagger_documentation.security:
-                            user_id = jaaql_resp.user_id
+                            account_id = jaaql_resp.account_id
                             ip_id = jaaql_resp.ip_id
 
                         status = jaaql_resp.response_code
@@ -549,8 +549,6 @@ class BaseJAAQLController:
                         throw_ex = ex
 
                     duration = round((datetime.now() - start_time).total_seconds() * 1000)
-                    if user_id is not None:
-                        self.model.log(user_id, start_time, duration, ex_msg, method_input, ip_id, ret_status, route)
 
                     self.perform_profile(request_id, "Cleanup")
 
@@ -567,8 +565,8 @@ class BaseJAAQLController:
                 self._cors(resp)
                 self.perform_profile(request_id, "Jsonify")
 
-                if not BaseJAAQLController.is_options():
-                    print("Total time taken: " + str(time_delta_ms(start_time, datetime.now())) + "ms")
+                # if not BaseJAAQLController.is_options():
+                #     print("Total time taken: " + str(time_delta_ms(start_time, datetime.now())) + "ms")
 
                 return resp
 

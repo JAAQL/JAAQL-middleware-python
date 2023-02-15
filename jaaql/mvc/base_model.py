@@ -4,9 +4,7 @@ from jaaql.utilities.vault import Vault, DIR__vault
 from jaaql.db.db_interface import DBInterface
 import jaaql.utilities.crypt_utils as crypt_utils
 from jaaql.migrations.migrations import run_migrations
-from jaaql.email.email_manager import EmailManager
 from jaaql.db.db_utils import execute_supplied_statement, create_interface
-import hashlib
 from jaaql.constants import *
 from jaaql.utilities.options import OPT_KEY__canned_queries
 from jaaql.config_constants import *
@@ -256,7 +254,7 @@ class BaseJAAQLModel:
             if self.is_container:
                 self.jaaql_lookup_connection.close()  # Each individual class will have one
 
-            self.email_manager = EmailManager(self.is_container)
+            # self.email_manager = EmailManager(self.is_container)
         else:
             self.install_key = str(uuid.uuid4())
             with open(os.path.join(dirname(dirname(dirname(__file__))), "install_key"), "w") as install_key_file:
@@ -271,12 +269,12 @@ class BaseJAAQLModel:
     def get_db_crypt_key(self):
         return self.vault.get_obj(VAULT_KEY__db_crypt_key).encode(crypt_utils.ENCODING__ascii)
 
+    def get_vault_repeatable_salt(self):
+        return self.vault.get_obj(VAULT_KEY__db_repeatable_salt)
+
     def get_repeatable_salt(self, addition: str = None):
         repeatable = self.vault.get_obj(VAULT_KEY__db_repeatable_salt)
-        if addition is not None:
-            return hashlib.md5((repeatable + addition).encode(crypt_utils.ENCODING__ascii)).digest()
-        else:
-            return repeatable.encode(crypt_utils.ENCODING__ascii)
+        return crypt_utils.get_repeatable_salt(repeatable, addition)
 
     def setup_paging_parameters(self, inputs: dict, has_deleted: bool = True):
         inputs_no_del = inputs.copy()

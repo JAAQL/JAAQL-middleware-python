@@ -1,5 +1,4 @@
 import re
-import threading
 
 from typing import Callable
 from jaaql.email.email_manager_service import Email, TYPE__email_attachments
@@ -8,7 +7,6 @@ from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.constants import *
 from urllib.parse import quote
 from jaaql.utilities.utils_no_project_imports import load_artifact
-import time
 
 REGEX__email_parameter = r'({{)([a-zA-Z0-9_\-]+)(}})'
 REGEX__email_uri_encoded_parameter = r'(\[\[)([a-zA-Z0-9_\-]+)(\]\])'
@@ -28,13 +26,6 @@ class EmailManager:
 
     def send_email(self, email: Email):
         requests.post("http://127.0.0.1:" + str(PORT__ems) + ENDPOINT__send_email, json=email.repr_json())
-
-    def wait_and_then_reload_service(self):
-        time.sleep(0.5)
-        requests.post("http://127.0.0.1:" + str(PORT__ems) + ENDPOINT__reload_accounts)
-
-    def reload_service(self):
-        threading.Thread(target=self.wait_and_then_reload_service).start()
 
     @staticmethod
     def uri_encode_replace(val):
