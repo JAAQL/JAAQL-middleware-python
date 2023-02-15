@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.exceptions.fxls at 13/02/2023, 20:27:29
+This script was generated from jaaql.exceptions.fxls at 15/02/2023, 23:08:14
 """
 
 from jaaql.utilities.crypt_utils import get_repeatable_salt
@@ -123,5 +123,5 @@ def exists_matching_validated_ip_address(
 QUERY___add_or_update_validated_ip_address = "INSERT INTO validated_ip_address (account, encrypted_salted_ip_address) VALUES (:account, :encrypted_salted_ip_address) ON CONFLICT ON CONSTRAINT validated_ip_address_encrypted_salted_ip_address_key DO UPDATE SET last_authentication_timestamp = current_timestamp RETURNING uuid as uuid"
 
 
-QUERY__fetch_application_schemas = "SELECT S.name, S.database, A.default_schema is not null as is_default FROM application_schema S LEFT JOIN application A ON A.name = S.application AND A.default_schema = S.name WHERE S.application = :application"
+QUERY__fetch_application_schemas = "SELECT S.name, S.database, (A.default_schema = S.name) as is_default, A.is_live FROM application_schema S INNER JOIN application A ON A.name = S.application WHERE S.application = :application"
 KEY__is_default = "is_default"

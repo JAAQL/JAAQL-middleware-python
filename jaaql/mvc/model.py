@@ -332,6 +332,10 @@ class JAAQLModel(BaseJAAQLModel):
             schemas = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_application_schemas, {
                 KG__application_schema__application: inputs[KEY__application]
             }, as_objects=True)
+            if len(schemas) == 0:
+                raise HttpStatusException("Application has no schemas!")
+            if not schemas[0][KG__application__is_live]:
+                raise HttpStatusException("Application is currently being deployed. Please wait a few minutes until deployment is complete")
             schemas = {itm[KG__application_schema__name]: itm for itm in schemas}
 
             found_db = None
@@ -342,7 +346,7 @@ class JAAQLModel(BaseJAAQLModel):
                 if len(schemas) == 1:
                     found_db = schemas[list(schemas.keys())[0]][KEY__database]
                 else:
-                    found_dbs = [val[KEY__database] for _, val in inputs.items() if val[KEY__is_default]]
+                    found_dbs = [val[KEY__database] for _, val in schemas.items() if val[KEY__is_default]]
                     if len(found_dbs) == 1:
                         found_db = found_dbs[0]
 
