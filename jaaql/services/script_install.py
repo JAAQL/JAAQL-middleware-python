@@ -17,15 +17,19 @@ def process_script(script: str, base_url: str, bypass_header: dict):
     if len(commands[0]) == 0:
         print("Script is empty")
     for command in commands:
-        action = command.split("\n")[0].strip()
-        method = action.split(" ")[0]
-        endpoint = action.split(" ")[1]
+        try:
+            action = command.split("\n")[0].strip()
+            method = action.split(" ")[0]
+            endpoint = action.split(" ")[1]
 
-        loaded_json = None
-        if len(command.split("\n")) > 1:
-            loaded_json = json.loads("\n".join(command.split("\n")[1:]).strip())
-
-        requests.request(method, base_url + endpoint, headers=bypass_header, json=loaded_json)
+            loaded_json = None
+            if len(command.split("\n")) > 1:
+                loaded_json = json.loads("\n".join(command.split("\n")[1:]).strip())
+        except ValueError:
+            print("command {0} is unprocessable - skipping script {1}".format(command, script))
+            return
+        else:
+            requests.request(method, base_url + endpoint, headers=bypass_header, json=loaded_json)
 
 
 def bootup(vault_key, is_gunicorn: bool = False, install_on_bootup: bool = False):
@@ -48,7 +52,7 @@ def bootup(vault_key, is_gunicorn: bool = False, install_on_bootup: bool = False
             "allow_uninstall": False
         }
         if not is_gunicorn:
-            json_data["db_connection_string"] = "postgresql://postgres:123456@localhost:5432/jaaql"
+            json_data["db_connection_string"] = os.environ.get("DB_CONNECTION_STRING", "postgresql://postgres:123456@localhost:5432/jaaql")
         requests.post(base_url + ENDPOINT__install, json=json_data)
 
     await_ems_startup()
