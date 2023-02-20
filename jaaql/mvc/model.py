@@ -19,6 +19,7 @@ import os
 from queue import Queue
 import subprocess
 import time
+import random
 
 
 ERR__refresh_expired = "Token too old to be used for refresh. Please authenticate again"
@@ -31,7 +32,8 @@ ERR__schema_invalid = "Schema invalid!"
 ERR__cant_send_attachments = "Cannot send attachments to other people"
 ERR__keep_alive_failed = "Keep alive failed"
 ERR__template_not_signup = "One of the supplied templates is not suitable for signup"
-ERR__unexpected_parameters = "Signup data not expected"
+ERR__unexpected_parameters = "Email parameters were not expected"
+ERR__expected_parameters = "Email parameters were expected"
 ERR__unexpected_validation_column = "Unexpected column in the input parameters '%s'"
 ERR__data_validation_table_no_primary = "Data validation table has no primary key"
 ERR__cant_find_sign_up = "Cannot locate sign up with key. The key is either incorrect, has expired or has not been activated with the emailed code"
@@ -60,10 +62,9 @@ ATTR__created = "created"
 ATTR__expiry_code_ms = "code_expiry_ms"
 ATTR__used_key_a = "used_key_a"
 
-SQL__err_duplicate_user = "duplicate key value violates unique constraint \"account_unq_email\""
+SQL__err_duplicate = "duplicate key value violates unique constraint"
 
-RESEND__invite_max = 2
-RESEND__invite_not_registered_max = 3
+RESEND__invite_max = 3
 RESEND__reset_max = 2
 RESET__not_started = 0
 RESET__started = 1
@@ -92,7 +93,7 @@ class JAAQLModel(BaseJAAQLModel):
         raise HttpStatusException("Not yet implemented", response_code=HTTPStatus.NOT_IMPLEMENTED)
 
     def create_account_with_potential_password(self, connection: DBInterface, username: str, attach_as: str = None, password: str = None,
-                                               already_exists: bool = False, is_the_anonymous_user: bool = False, ):
+                                               already_exists: bool = False, is_the_anonymous_user: bool = False):
         account_id = create_account(connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
                                     username, attach_as, already_exists,
                                     is_the_anonymous_user)
@@ -186,7 +187,7 @@ class JAAQLModel(BaseJAAQLModel):
             super_interface.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "02.install_super_user.exceptions.sql"))
             super_interface.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "03.install_super_user.handwritten.sql"))
             if jaaql_db_password is not None:
-                resp = super_interface.execute_query(conn, QUERY__setup_jaaql_role_with_password, {KEY__password: jaaql_db_password})
+                super_interface.execute_query(conn, QUERY__setup_jaaql_role_with_password, {KEY__password: jaaql_db_password})
             else:
                 resp = super_interface.execute_query(conn, QUERY__setup_jaaql_role)
                 jaaql_db_password = resp[1][0][0]
@@ -324,7 +325,91 @@ class JAAQLModel(BaseJAAQLModel):
         address, port, _, username, password = DBInterface.fracture_uri(jaaql_uri)
         return create_interface(self.config, address, port, database, username, password=password, role=user_id, sub_role=sub_role)
 
-    def submit(self, inputs: dict, account_id: str, verification_hook: Queue):
+    def attach_dispatcher_credentials(self, connection: DBInterface, inputs: dict):
+        email_dispatcher__update(connection, self.get_db_crypt_key(), **inputs)
+
+    def email_template_fetch_validation_reference(self, account_id, application: str, template: str, parameters: dict):
+        template = email_template__select(self.jaaql_lookup_connection, application, template)
+        if parameters is None and template[KG__email_template__validation_schema] is not None:
+            raise Exception(ERR__expected_parameters)
+        if parameters is not None and template[KG__email_template__validation_schema] is None:
+            raise Exception(ERR__unexpected_parameters)
+
+        val_cols = execute_supplied_statement(connection, QUERY__fetch_table_columns,
+                                              {KEY__table_name: val_table}, as_objects=True)
+
+        pass  # To return the template as a dict AND the reference
+
+    def send_email(self, account_id, template: dict, validation_reference: dict, additional_parameters: dict):
+        pass
+
+    def gen_security_event_unlock_code(self, codeset: str, length: int):
+        return "".join([codeset[random.randint(0, len(codeset) - 1)] for _ in range(length)])
+
+    def sign_up(self, inputs: dict):
+        app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
+        if inputs[KEY__sign_up_template] is None:
+            inputs[KEY__sign_up_template] = app[KG__application__default_s_et]
+        if inputs[KEY__already_signed_up_template] is None:
+            inputs[KEY__already_signed_up_template] = app[KG__application__default_a_et]
+
+        if inputs[KEY__sign_up_template] is not None:
+            sign_up_template = email_template__select(self.jaaql_lookup_connection, inputs[KG__security_event__application],
+                                                      inputs[KEY__sign_up_template])
+            if sign_up_template[KG__email_template__type] != EMAIL_TYPE__signup:
+                raise HttpStatusException(ERR__template_not_signup)
+
+        if inputs[KEY__already_signed_up_template] is not None:
+            already_signed_up_template = email_template__select(self.jaaql_lookup_connection, inputs[KG__security_event__application],
+                                                                inputs[KEY__already_signed_up_template])
+            if already_signed_up_template[KG__email_template__type] != EMAIL_TYPE__already_signed_up:
+                raise HttpStatusException(ERR__template_not_signup)
+
+        account_existed = False
+        try:
+            account_id = self.create_account_with_potential_password(self.jaaql_lookup_connection, inputs[KEY__username])
+        except HttpStatusException as hs:
+            if not hs.message.startswith(SQL__err_duplicate):
+                raise hs  # Unrelated exception, raise it
+
+            account = fetch_account_from_username(self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
+                                                  inputs[KEY__username])
+            account_id = account[KG__account__id]
+            if account[KG__account__most_recent_password] is None:
+                account_existed = False
+
+        count = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
+                                                     QUERY__count_registered_account_security_events_of_type_in_24hr_window,
+                                                     {
+                                                         KEY__type_one: EMAIL_TYPE__signup,
+                                                         KEY__type_two: EMAIL_TYPE__already_signed_up,
+                                                         KG__registered_account_security_event__account: account_id
+                                                     }, as_objects=True)[ATTR__count]
+
+        if count >= RESEND__invite_max:
+            raise HttpStatusException(ERR__too_many_signup_attempts, HTTPStatus.TOO_MANY_REQUESTS)
+
+        template = None
+        if account_existed and inputs[KEY__already_signed_up_template] is not None:
+            template = inputs[KEY__already_signed_up_template]
+        elif not account_existed and inputs[KEY__sign_up_template] is not None:
+            template = inputs[KEY__sign_up_template]
+
+        sec_env_ins = security_event__insert(self.jaaql_lookup_connection, inputs[KG__security_event__application])
+        validation_reference, template = self.email_template_fetch_validation_reference(account_id, app[KG__application__name], template,
+                                                                                        inputs[KEY__parameters])
+        reg_env_ins = registered_account_security_event__insert(self.jaaql_lookup_connection, inputs[KG__security_event__application],
+                                                                sec_env_ins[KG__security_event__event_lock], account_id,
+                                                                self.gen_security_event_unlock_code(CODE__letters, CODE__invite_length),
+                                                                template,
+                                                                json.dumps(validation_reference) if validation_reference is not None else None)
+        self.send_email(template, validation_reference)
+
+        return {
+            KG__security_event__event_lock: sec_env_ins[KG__security_event__event_lock]
+        }
+
+    def submit(self, inputs: dict, account_id: str, verification_hook: Queue = None):
         if not isinstance(inputs, dict):
             raise HttpStatusException("Expected object or string input")
 

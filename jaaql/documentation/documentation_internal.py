@@ -1,5 +1,6 @@
 from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
+from jaaql.mvc.generated_queries import *
 
 TITLE = "JAAQL Internal API"
 DESCRIPTION = "Collection of methods in the JAAQL internal API"
@@ -107,3 +108,50 @@ DOCUMENTATION__clean = SwaggerDocumentation(
 
 # Not unused. Used to generate html files
 from jaaql.documentation.documentation_shared import DOCUMENTATION__oauth_token, DOCUMENTATION__oauth_refresh
+
+DOCUMENTATION__dispatchers = SwaggerDocumentation(
+    tags="Dispatchers",
+    methods=SwaggerMethod(
+        name="Attach credentials to dispatcher",
+        description="Given a prime key for a dispatcher, will encrypt credentials and attach at the database level",
+        method=REST__POST,
+        body=[
+            SwaggerArgumentResponse(
+                name=KG__email_dispatcher__application,
+                description="The application of the dispatcher",
+                arg_type=str,
+                example=["out-and-about"]
+            ),
+            SwaggerArgumentResponse(
+                name=KG__email_dispatcher__name,
+                description="The name of the email dispatcher",
+                arg_type=str,
+                example="default"
+            ),
+            SwaggerArgumentResponse(
+                name=KG__email_dispatcher__url,
+                description="The url of the mail server against which the dispatcher will authenticate",
+                arg_type=str,
+                example="mail-server.nl"
+            ),
+            SwaggerArgumentResponse(
+                name=KG__email_dispatcher__port,
+                description="The port of the email server which you can connect to using SMTP STARTTLS",
+                arg_type=int,
+                example=587
+            ),
+            SwaggerArgumentResponse(
+                name=KG__email_dispatcher__username,
+                description="The username with which the dispatcher will authenticate",
+                arg_type=str,
+                example="address@domain.com"
+            ),
+            SwaggerArgumentResponse(
+                name=KG__email_dispatcher__password,
+                description="The password with which the dispatcher will authenticate",
+                arg_type=str,
+                example="pa55word"
+            )
+        ]
+    )
+)

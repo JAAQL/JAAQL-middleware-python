@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.fxli at 15/02/2023, 23:19:44
+This script was generated from jaaql.fxli at 19/02/2023, 03:29:20
 """
 
 from jaaql.db.db_interface import DBInterface
@@ -1017,9 +1017,9 @@ KG__security_event__wrong_key_attempt_count = "wrong_key_attempt_count"
 # Generated queries for table 'security_event'
 QG__security_event_delete = "DELETE FROM security_event WHERE application = :application AND event_lock = :event_lock"
 QG__security_event_insert = """
-    INSERT INTO security_event (application, event_lock)
-    VALUES (:application, :event_lock)
-    RETURNING creation_timestamp, wrong_key_attempt_count
+    INSERT INTO security_event (application)
+    VALUES (:application)
+    RETURNING event_lock, creation_timestamp, wrong_key_attempt_count
 """
 QG__security_event_select = "SELECT * FROM security_event WHERE application = :application AND event_lock = :event_lock"
 QG__security_event_update = """
@@ -1085,14 +1085,12 @@ def security_event__select(
 
 def security_event__insert(
     connection: DBInterface,
-    application, event_lock, wrong_key_attempt_count
+    application
 ):
     return execute_supplied_statement_singleton(
         connection, QG__security_event_insert,
         {
-            KG__security_event__application: application,
-            KG__security_event__event_lock: event_lock,
-            KG__security_event__wrong_key_attempt_count: wrong_key_attempt_count
+            KG__security_event__application: application
         }, as_objects=True
     )
 
@@ -1212,11 +1210,12 @@ KG__registered_account_security_event__jaaql_validation_reference = "jaaql_valid
 QG__registered_account_security_event_delete = "DELETE FROM registered_account_security_event WHERE application = :application AND event_lock = :event_lock"
 QG__registered_account_security_event_insert = """
     INSERT INTO registered_account_security_event (application, event_lock, email_template,
-        account, unlock_key, unlock_code,
-        unlock_timestamp, event_completion_timestamp, jaaql_validation_reference)
+        account, unlock_code, unlock_timestamp,
+        event_completion_timestamp, jaaql_validation_reference)
     VALUES (:application, :event_lock, :email_template,
-        :account, :unlock_key, :unlock_code,
-        :unlock_timestamp, :event_completion_timestamp, :jaaql_validation_reference)
+        :account, :unlock_code, :unlock_timestamp,
+        :event_completion_timestamp, :jaaql_validation_reference)
+    RETURNING unlock_key
 """
 QG__registered_account_security_event_select = "SELECT * FROM registered_account_security_event WHERE application = :application AND event_lock = :event_lock"
 QG__registered_account_security_event_update = """
@@ -1295,21 +1294,20 @@ def registered_account_security_event__select(
 def registered_account_security_event__insert(
     connection: DBInterface,
     application, event_lock, account,
-    unlock_key, unlock_code, unlock_timestamp,
-    event_completion_timestamp,
-    email_template=None, jaaql_validation_reference=None
+    unlock_code,
+    email_template=None, unlock_timestamp=None, event_completion_timestamp=None,
+    jaaql_validation_reference=None
 ):
-    execute_supplied_statement(
+    return execute_supplied_statement_singleton(
         connection, QG__registered_account_security_event_insert,
         {
             KG__registered_account_security_event__application: application,
             KG__registered_account_security_event__event_lock: event_lock,
             KG__registered_account_security_event__email_template: email_template,
             KG__registered_account_security_event__account: account,
-            KG__registered_account_security_event__unlock_key: unlock_key,
             KG__registered_account_security_event__unlock_code: unlock_code,
             KG__registered_account_security_event__unlock_timestamp: unlock_timestamp,
             KG__registered_account_security_event__event_completion_timestamp: event_completion_timestamp,
             KG__registered_account_security_event__jaaql_validation_reference: jaaql_validation_reference
-        }
+        }, as_objects=True
     )

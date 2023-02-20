@@ -50,3 +50,11 @@ class JAAQLController(BaseJAAQLController):
         @self.cors_route('/internal/clean', DOCUMENTATION__clean)
         def clean(connection: DBInterface):
             self.model.clean(connection)
+
+        @self.cors_route('/internal/dispatchers', DOCUMENTATION__dispatchers)
+        def dispatchers(connection: DBInterface, http_inputs: dict):
+            self.model.attach_dispatcher_credentials(connection, http_inputs)
+
+        @self.cors_route('/sign-up', DOCUMENTATION__sign_up_request_invite)
+        def sign_up(http_inputs: dict):
+            self.model.sign_up()

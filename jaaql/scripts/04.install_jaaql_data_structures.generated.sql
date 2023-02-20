@@ -102,11 +102,11 @@ create table validated_ip_address (
 -- security_event...
 create table security_event (
     application internet_name not null,
-    event_lock uuid not null,
+    event_lock uuid not null default gen_random_uuid(),
     creation_timestamp timestamp not null default current_timestamp,
-    wrong_key_attempt_count attempt_count not null default 0,
+    wrong_key_attempt_count current_attempt_count not null default 0,
     primary key (application, event_lock),
-    check (wrong_key_attempt_count between 1 and 3) );
+    check (wrong_key_attempt_count between 0 and 3) );
 -- unregistered_account_security_event...
 create table unregistered_account_security_event (
     application internet_name not null,
@@ -120,10 +120,10 @@ create table registered_account_security_event (
     event_lock uuid not null,
     email_template object_name,
     account postgres_role not null,
-    unlock_key uuid not null,
+    unlock_key uuid not null default gen_random_uuid(),
     unlock_code unlock_code not null,
-    unlock_timestamp timestamp not null,
-    event_completion_timestamp timestamp not null,
+    unlock_timestamp timestamp,
+    event_completion_timestamp timestamp,
     jaaql_validation_reference text,
     primary key (application, event_lock) );
 

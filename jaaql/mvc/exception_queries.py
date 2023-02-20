@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.exceptions.fxls at 15/02/2023, 23:19:44
+This script was generated from jaaql.exceptions.fxls at 19/02/2023, 03:29:20
 """
 
 from jaaql.utilities.crypt_utils import get_repeatable_salt
@@ -67,6 +67,21 @@ def fetch_most_recent_password_from_username(
     )
 
 
+QUERY__fetch_account_from_username = "SELECT * FROM account WHERE username = :username"
+
+
+def fetch_account_from_username(
+    connection: DBInterface, encryption_key: bytes, vault_repeatable_salt: str,
+    username, singleton_code: int = None, singleton_message: str = None
+):
+    return execute_supplied_statement_singleton(
+        connection, QUERY__fetch_account_from_username, {KG__account__username: username},
+        encryption_key=encryption_key, encrypt_parameters=[KG__account__username], encryption_salts={
+            KG__account__username: get_repeatable_salt(vault_repeatable_salt)
+        }, as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+    )
+
+
 QUERY__create_account = "SELECT create_account(:username, :attach_as, :already_exists, :is_the_anonymous_user) as account_id"
 KEY__attach_as = "attach_as"
 KEY__already_exists = "already_exists"
@@ -125,3 +140,19 @@ QUERY___add_or_update_validated_ip_address = "INSERT INTO validated_ip_address (
 
 QUERY__fetch_application_schemas = "SELECT S.name, S.database, (A.default_schema = S.name) as is_default, A.is_live FROM application_schema S INNER JOIN application A ON A.name = S.application WHERE S.application = :application"
 KEY__is_default = "is_default"
+
+QUERY__count_registered_account_security_events_of_type_in_24hr_window = """
+    SELECT
+        COUNT(*)
+    FROM registered_account_security_event R
+    INNER JOIN security_event S on R.application = S.application AND R.event_lock = S.event_lock
+    INNER JOIN email_template E ON E.name = R.email_template AND E.application = R.application
+    WHERE E.type IN (:type_one, :type_two) AND account = :account AND (creation_timestamp + interval '24 hour') > current_timestamp
+"""
+KEY__type_one = "type_one"
+KEY__type_two = "type_two"
+EMAIL_TYPE__signup = "S"
+EMAIL_TYPE__already_signed_up = "A"
+EMAIL_TYPE__reset_password = "R"
+EMAIL_TYPE__unregistered_password_reset = "U"
+EMAIL_TYPE__general = "G"
