@@ -12,6 +12,7 @@ CREATE DOMAIN url AS character varying(256);
 CREATE DOMAIN location AS character varying(256);
 CREATE DOMAIN object_name AS character varying(63) CHECK (VALUE ~* '^[a-z0-9_]*$');
 CREATE DOMAIN validity_period AS integer;
+CREATE DOMAIN short_validity_period AS integer;
 CREATE DOMAIN person_name AS character varying(64);
 CREATE DOMAIN email_dispatch_protocol AS character varying(8);
 CREATE DOMAIN internet_port AS integer;

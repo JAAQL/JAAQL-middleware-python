@@ -1,6 +1,6 @@
 from datetime import datetime
 import os
-from jaaql.constants import ENVIRON__install_path
+from jaaql.constants import ENVIRON__install_path, ARTIFACTS_DEFAULT_DIRECTORY
 from os.path import join
 from jaaql.exceptions.http_status_exception import HttpStatusException
 import requests
@@ -8,26 +8,26 @@ from typing import Union
 import re
 
 ALLOWABLE_FILE_PATH = r'^[a-z0-9_\-\/]+(\.[a-zA-Z0-9]+)?$'
-FILE_EXTENSION = r'\.[a-zA-Z0-9]+$'
 
 
 def time_delta_ms(start_time: datetime, end_time: datetime) -> int:
     return int(round((end_time - start_time).total_seconds() * 1000))
 
 
-def load_artifact(is_container: bool, artifact_base_url: str, app_relative_path: str, default_extension: str = ".html"):
+def load_artifact(is_container: bool, artifact_base_url: str, app_relative_path: str):
     if app_relative_path is None:
         return None
 
+    if artifact_base_url is None:
+        artifact_base_url = ARTIFACTS_DEFAULT_DIRECTORY
+
     if check_allowable_file_path(app_relative_path):
         raise Exception("Database has been tampered with! Cannot send email")
-    if re.search(FILE_EXTENSION, app_relative_path) is None:
-        app_relative_path = app_relative_path + ".html"
     if not artifact_base_url.startswith("https://") and not artifact_base_url.startswith("http://"):
         if is_container:
             if check_allowable_file_path(artifact_base_url):
                 print(artifact_base_url)
-                raise Exception("Illegal artifact base url")
+                raise Exception("Illegal artifact source directory")
         if artifact_base_url.startswith("file:///"):
             return open(join(artifact_base_url.split("file:///")[1].replace("%20", " "), app_relative_path), "r").read()
         else:
@@ -36,7 +36,7 @@ def load_artifact(is_container: bool, artifact_base_url: str, app_relative_path:
                 base_path = ""
             template_path = join(base_path, "www", artifact_base_url, app_relative_path)
             try:
-                return open(template_path, "r").read()
+                return open(template_path.replace("\\", "/"), "r").read()
             except FileNotFoundError:
                 raise HttpStatusException("Could not find template at path '%s'. Are you sure the template is accessible to JAAQL?" % template_path)
     else:

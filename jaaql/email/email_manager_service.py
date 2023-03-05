@@ -1,62 +1,28 @@
 import os
 import traceback
 import uuid
+import time
 
-from http import HTTPStatus
-from jaaql.db.db_interface import DBInterface
-from jaaql.db.db_utils import execute_supplied_statement, execute_supplied_statement_singleton
-from jaaql.exceptions.http_status_exception import HttpStatusException
-from jaaql.utilities.utils import load_config, await_jaaql_installation, get_jaaql_connection, time_delta_ms
-from urllib.parse import quote
+from jaaql.constants import *
+from jaaql.utilities.utils import load_config, await_jaaql_installation, get_jaaql_connection
 from jaaql.utilities.utils_no_project_imports import check_allowable_file_path
 from email.utils import formatdate, make_msgid
-import json
-import imaplib
-import smtplib
-import base64
-from base64 import urlsafe_b64decode as b64d, urlsafe_b64encode as b64e
-from typing import Union, List, Optional
-from datetime import datetime
+from smtplib import SMTP, SMTPException, SMTPAuthenticationError
+from base64 import urlsafe_b64encode as b64e
+from typing import Union, List
 from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
 from queue import Queue, Empty
-import threading
 import re
+import hashlib
+import json
 import ssl
-import time
 import sys
+import threading
 from flask import Flask, jsonify, request
+from jaaql.mvc.generated_queries import *
 from jaaql.utilities.vault import Vault, DIR__vault
-from jaaql.constants import VAULT_KEY__db_crypt_key, KEY__encrypted_password, KEY__id, KEY__template, KEY__sender, ENCODING__ascii, PORT__ems, \
-    ENDPOINT__reload_accounts, ENDPOINT__send_email, KEY__attachment_name, KEY__parameters, KEY__url, KEY__oauth_token, \
-    KEY__document_id, KEY__create_file, DIR__render_template, KEY__render_as, KEY__content, DIR__www, KEY__email_account_name, \
-    KEY__email_account_send_name, KEY__email_account_protocol, KEY__email_account_host, KEY__email_account_port, KEY__email_account_username, \
-    KEY__override_send_name, KEY__application, ENVIRON__install_path, KEY__artifact_base_url, KEY__email_account_password, \
-    KEY__email_account_whitelist
-
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-
-QUERY__mark_rendered_document_completed = "UPDATE rendered_document SET completed = current_timestamp, filename = :filename, content = :content WHERE document_id = :document_id"
-QUERY__fetch_unrendered_document = "SELECT able.url, ac.artifact_base_url, able.render_as, rd.document_id, rd.encrypted_parameters as parameters, rd.create_file, rd.encrypted_access_token as oauth_token FROM rendered_document rd INNER JOIN renderable_document able ON rd.document = able.name INNER JOIN application a ON rd.application = a.name WHERE rd.completed is null ORDER BY rd.created LIMIT 1"
-QUERY__update_email_account_password = "UPDATE email_account SET encrypted_password = :encrypted_password WHERE id = :id"
-QUERY__load_email_accounts = "SELECT * FROM email_account"
-QUERY__create_email_account = "INSERT INTO email_account (name, send_name, host, port, username, encrypted_password, whitelist) VALUES (:name, :send_name, :host, :port, :username, :password, :whitelist) ON CONFLICT ON CONSTRAINT email_account_pkey DO UPDATE SET send_name = excluded.send_name, host = excluded.host, port = excluded.port, username = excluded.username, encrypted_password = excluded.encrypted_password, whitelist = excluded.whitelist"
-QUERY__ins_email_history = "INSERT INTO email_history (application, template, sender, encrypted_subject, encrypted_body, encrypted_attachments, encrypted_recipients, encrypted_recipients_keys, override_send_name) VALUES (:application, :template, :sender, :encrypted_subject, :encrypted_body, :encrypted_attachments, :encrypted_recipients, :encrypted_recipients_keys, :override_send_name)"
-QUERY__fetch_email_template = "SELECT rd.url FROM renderable_document rd INNER JOIN renderable_document_template rdt ON rd.name = rdt.attachment WHERE rd.name = :name AND rdt.template = :template"
-QUERY__purge_rendered_documents = "DELETE FROM rendered_document rd USING renderable_document able WHERE rd.document = able.name AND completed is not null and completed > current_timestamp + interval '5 minutes' RETURNING rd.document_id, rd.create_file, able.render_as"
-
-KEY__email_account = "email_account"
-KEY__encrypted_subject = "encrypted_subject"
-KEY__encrypted_body = "encrypted_body"
-KEY__encrypted_attachments = "encrypted_attachments"
-KEY__encrypted_recipients = "encrypted_recipients"
-KEY__encrypted_recipients_keys = "encrypted_recipients_keys"
-KEY__artifact_base = "artifact_base"
-
-ATTR__filename = "filename"
+from jaaql.constants import VAULT_KEY__db_crypt_key
 
 ELE__jaaql_filename = "jaaql_filename"
 
@@ -84,124 +50,7 @@ TIMEOUT__filename = 15000
 
 REGEX__html_tags = r'<(\/[a-zA-Z]+|(!?[a-zA-Z]+((\s)*((\"?[^(\">)]*\"?)|[a-zA-Z]*\s*=\s*\"[^\"]*\"))*))>'
 
-
-class DrivenChrome:
-    def __init__(self, db_interface: DBInterface, db_key: bytes, is_deployed: bool):
-        self.attachments = Queue()
-        self.completed_attachments = set()
-        self.errored_attachments = {}
-        self.db_interface = db_interface
-        self.chrome_lock = threading.Lock()
-        self.driver = None
-        self.is_deployed = is_deployed
-        self.db_key = db_key
-        self.template_dir_path = os.path.join(DIR__www, DIR__render_template)
-
-        self.a4_params = {'landscape': False, 'paperWidth': 8.27, 'paperHeight': 11.69, 'printBackground': True}
-
-        threading.Thread(target=self.start_chrome, daemon=True).start()
-        threading.Thread(target=self.purge_rendered_documents, daemon=True).start()
-
-    def parameters_to_get_str(self, access_token: str, parameters: dict):
-        if parameters is None:
-            parameters = {}
-        parameters[KEY__oauth_token] = access_token
-
-        return "?" + "&".join([key + "=" + quote(itm) for key, itm in parameters.items()])
-
-    def chrome_page_to_pdf(self, url: str, access_token: str, parameters: dict):
-        filename = None
-
-        with self.chrome_lock:
-            self.driver.get(url + self.parameters_to_get_str(access_token, parameters))
-            start_time = datetime.now()
-            while True:
-                filename = self.driver.find_elements(By.ID, ELE__jaaql_filename)
-                if len(filename) != 0:
-                    file_text = filename[0].get_attribute("innerHTML")
-                    if not file_text.endswith(".pdf"):
-                        file_text += ".pdf"
-                    filename = file_text
-                    break
-                else:
-                    if time_delta_ms(start_time, datetime.now()) > TIMEOUT__filename:
-                        raise HttpStatusException(ERR__attachment_filename)
-                    time.sleep(0.25)
-
-            return filename, base64.b64decode(self.driver.execute_cdp_cmd("Page.printToPDF", self.a4_params)["data"])
-
-    def purge_rendered_documents(self):
-        while True:
-            resp = execute_supplied_statement(self.db_interface, QUERY__purge_rendered_documents, as_objects=True)
-            for to_purge in resp:
-                if to_purge[KEY__create_file]:
-                    try:
-                        os.remove(os.path.join(self.template_dir_path, str(to_purge[KEY__document_id]) + "." + to_purge[KEY__render_as]))
-                    except FileNotFoundError:
-                        pass
-            time.sleep(5)
-
-    def render_document_requests(self):
-        while True:
-            try:
-                resp = execute_supplied_statement_singleton(self.db_interface, QUERY__fetch_unrendered_document, as_objects=True,
-                                                            decrypt_columns=[KEY__parameters, KEY__oauth_token], encryption_key=self.db_key)
-                parameters = {}
-                if resp[KEY__parameters]:
-                    parameters = json.loads(resp[KEY__parameters])
-
-                base_url = EmailAttachment.static_format_attached_url(resp[KEY__artifact_base_url], self.is_deployed)
-                filename, content = self.chrome_page_to_pdf(base_url, resp[KEY__oauth_token], parameters)
-
-                inputs = {KEY__document_id: resp[KEY__document_id], KEY__content: None, ATTR__filename: filename}
-                if resp[KEY__create_file]:
-                    if not os.path.exists(self.template_dir_path):
-                        os.mkdir(self.template_dir_path)
-                    with open(os.path.join(self.template_dir_path, str(resp[KEY__document_id]) + "." + resp[KEY__render_as]), "wb") as f:
-                        f.write(content)
-                else:
-                    inputs[KEY__content] = content
-
-                execute_supplied_statement(self.db_interface, QUERY__mark_rendered_document_completed, inputs)
-            except HttpStatusException as ex:
-                if ex.response_code == HTTPStatus.UNPROCESSABLE_ENTITY:
-                    time.sleep(0.25)
-                else:
-                    traceback.print_exc()
-
-    def start_chrome(self):
-        options = Options()
-        options.add_argument("--window-size=1920,1080")
-        options.headless = True
-        service_log_path = None
-
-        if self.is_deployed:
-            options.add_argument('--no-sandbox')
-            service_log_path = "log/chromedriver.log"
-
-        with webdriver.Chrome(options=options, service_log_path=service_log_path) as driver:
-            self.driver = driver
-            threading.Thread(target=self.render_document_requests, daemon=True).start()
-            while True:
-                current_attachment: 'EmailAttachment' = self.attachments.get()
-                try:
-                    url = execute_supplied_statement_singleton(self.db_interface, QUERY__fetch_email_template,
-                                                               {KEY__attachment_name: current_attachment.name,
-                                                                KEY__template: current_attachment.template}, as_objects=True)[KEY__url]
-                    if not url.endswith(".html"):
-                        url += ".html"
-                    url = current_attachment.artifact_base + "/" + url
-                    filename, content = self.chrome_page_to_pdf(url, current_attachment.access_token, current_attachment.parameters)
-                    current_attachment.content = content
-                    current_attachment.filename = filename
-                except HttpStatusException as ex:
-                    self.errored_attachments[current_attachment.id] = str(ex)
-                    self.completed_attachments.add(current_attachment.id)
-                except Exception as ex:
-                    traceback.print_exc()
-                    self.errored_attachments[current_attachment.id] = str(ex)
-                    self.completed_attachments.add(current_attachment.id)
-                self.completed_attachments.add(current_attachment.id)
+HTTP_ARG__oauth_token = "oauth_token"
 
 
 class EmailAttachment:
@@ -232,28 +81,6 @@ class EmailAttachment:
     def format_attachment_url(self, artifact_base_url: str, is_container: bool):
         self.artifact_base = EmailAttachment.static_format_attached_url(artifact_base_url, is_container)
 
-    def build_attachment(self, access_token: str, driven_chrome: DrivenChrome) -> MIMEApplication:
-        self.access_token = access_token
-        driven_chrome.attachments.put(self)
-
-        start_time = datetime.now()
-        while time_delta_ms(start_time, datetime.now()) < TIMEOUT__attachment:
-            if self.id in driven_chrome.completed_attachments:
-                break
-            time.sleep(1)
-
-        if self.id not in driven_chrome.completed_attachments:
-            raise Exception(ERR__attachment_timeout)
-        driven_chrome.completed_attachments.remove(self.id)
-
-        if self.id in driven_chrome.errored_attachments:
-            raise Exception(ERR__attachment_error % driven_chrome.errored_attachments.pop(self.id))
-
-        attachment = MIMEApplication(self.content, _subtype=self.filename.split(".")[-1])
-        attachment.add_header('Content-Disposition', 'attachment', filename=self.filename)
-
-        return attachment
-
     def repr_json(self):
         return dict(name=self.name, parameters=self.parameters, template=self.template, artifact_base=self.artifact_base)
 
@@ -283,13 +110,14 @@ TYPE__email_attachments = Union[EmailAttachment, List[EmailAttachment]]
 
 
 class Email:
-    def __init__(self, sender: str, application: str, template: str, from_account: str, to: Union[str, List[str]],
-                 recipient_names: Union[str, List[str]], subject: str = None, body: str = None, attachments: TYPE__email_attachments = None,
+    def __init__(self, application: str, template: str, dispatcher: str, to: Union[str, List[str]],
+                 subject: str, body: str, attachments: TYPE__email_attachments = None, recipient_names: Union[str, List[str]] = None,
                  is_html: bool = True, attachment_access_token: str = None, override_send_name: str = None):
-        self.sender = sender
         self.application = application
         self.template = template
-        self.from_account = from_account
+        self.dispatcher = dispatcher
+        if recipient_names is None:
+            recipient_names = to
         if isinstance(to, list) != isinstance(recipient_names, list):
             raise Exception(ERR__invalid_call_to_internal_email_service)
         if not isinstance(to, list):
@@ -310,7 +138,7 @@ class Email:
         self.attachment_access_token = attachment_access_token
 
     def repr_json(self):
-        return dict(sender=self.sender, application=self.application, template=self.template, from_account=self.from_account,
+        return dict(application=self.application, template=self.template, dispatcher=self.dispatcher,
                     to=self.to, recipient_names=self.recipient_names, subject=self.subject, body=self.body,
                     attachments=[attachment.repr_json() for attachment in self.attachments] if self.attachments is not None else None,
                     is_html=self.is_html, attachment_access_token=self.attachment_access_token, override_send_name=self.override_send_name)
@@ -320,67 +148,61 @@ class Email:
         attachments = None
         if email["attachments"] is not None:
             attachments = [EmailAttachment.deserialize(attachment) for attachment in email["attachments"]]
-        return Email(email["sender"], email["application"], email["template"], email["from_account"], email["to"],
-                     email["recipient_names"], email["subject"], email["body"], attachments, email["is_html"], email["attachment_access_token"],
+        return Email(email["application"], email["template"], email["dispatcher"], email["to"],
+                     email["subject"], email["body"], attachments, email["recipient_names"], email["is_html"], email["attachment_access_token"],
                      email["override_send_name"])
+
+
+class ParameterisedLock:
+    def __init__(self):
+        self.namespace_lock = threading.Lock()
+        self._lock_dict = {}
+
+    def acquire_lock(self, key: str, blocking: bool = False):
+        if key not in self._lock_dict:
+            with self.namespace_lock:
+                if key not in self._lock_dict:
+                    self._lock_dict[key] = threading.Lock()
+
+        return self._lock_dict[key].acquire(blocking=blocking)
+
+    def release_lock(self, key: str):
+        self._lock_dict[key].release()
+
+    def check_lock_held(self, key: str):
+        if key not in self._lock_dict:
+            return False
+        else:
+            return self._lock_dict[key].locked()
+
+
+class ThreadsafeQueueInitialiser:
+    def __init__(self):
+        self.parameterised_lock = ParameterisedLock()
+        self.queues = {}
+
+    def fetch_queue(self, key: str):
+        if key not in self.queues:
+            self.parameterised_lock.acquire_lock(key, True)
+            if key not in self.queues:
+                self.queues[key] = Queue()
+            self.parameterised_lock.release_lock(key)
+        return self.queues[key]
 
 
 class EmailManagerService:
 
-    def __init__(self, connection: DBInterface, email_accounts: Optional[str], db_crypt_key: bytes, is_gunicorn: bool):
-        if email_accounts is None:
-            self.email_accounts = {}
-        else:
-            self.email_accounts = json.loads(b64d(email_accounts).decode(ENCODING__ascii))
-        self.db_crypt_key = db_crypt_key
+    def __init__(self, connection: DBInterface, db_crypt_key: bytes, is_gunicorn: bool):
         self.connection = connection
-
-        self.email_queues = {}
-
+        self.db_crypt_key = db_crypt_key
         self.is_gunicorn = is_gunicorn
+        self.dispatchers = {}
+        self.dispatcher_blacklist = {}
+        self.parameterised_lock = ParameterisedLock()
+        self.threadsafe_queue_initialiser = ThreadsafeQueueInitialiser()
+        threading.Thread(target=self.dispatcher_manager_thread, daemon=True).start()
 
-        self.reload_lock = threading.Lock()
-        self.reload_accounts()
-
-        self.driven_chrome = DrivenChrome(connection, self.db_crypt_key, self.is_gunicorn)
-
-    def reload_accounts(self):
-        with self.reload_lock:
-            supplied_accounts_formatted = [
-                {
-                    KEY__email_account_name: name,
-                    KEY__email_account_host: account[KEY__email_account_host],
-                    KEY__email_account_port: account[KEY__email_account_port],
-                    KEY__email_account_username: account[KEY__email_account_username],
-                    KEY__email_account_password: account[KEY__email_account_password],
-                    KEY__email_account_send_name: account[KEY__email_account_send_name],
-                    KEY__email_account_whitelist: account[KEY__email_account_whitelist]
-                }
-                for name, account in self.email_accounts.items()
-            ]
-
-            for account in supplied_accounts_formatted:
-                execute_supplied_statement(self.connection, QUERY__create_email_account, account, encryption_key=self.db_crypt_key,
-                                           encrypt_parameters=[KEY__email_account_password])
-
-            accounts = execute_supplied_statement(self.connection, QUERY__load_email_accounts, as_objects=True,
-                                                  decrypt_columns=[KEY__encrypted_password], encryption_key=self.db_crypt_key)
-            email_queues = {}
-
-            for account in accounts:
-                cur_queue = Queue()
-
-                if str(account[KEY__email_account_name]) not in self.email_queues:
-                    email_queues[str(account[KEY__email_account_name])] = cur_queue
-                    password = account[KEY__encrypted_password]
-                    method_args = [account, cur_queue, password]
-                    threading.Thread(target=self.email_connection_thread, args=method_args, daemon=True).start()
-                else:
-                    email_queues[str(account[KEY__email_account_name])] = self.email_queues[str(account[KEY__email_account_name])]
-
-            self.email_queues = email_queues
-
-    def construct_message(self, account: dict, email: Email) -> (str, MIMEMultipart):
+    def construct_message(self, dispatcher_info: dict, email: Email) -> (str, MIMEMultipart):
         send_body = email.body
 
         message = MIMEMultipart("alternative")
@@ -394,10 +216,10 @@ class EmailManagerService:
         message_final = MIMEMultipart('mixed')
         message_final.attach(message)
         message_final[EMAIL__to] = SPLIT__address.join(email.to)
-        send_name = account[KEY__email_account_send_name]
+        send_name = dispatcher_info[KG__email_dispatcher__display_name]
         if email.override_send_name is not None:
             send_name = email.override_send_name
-        message_final[EMAIL__from] = send_name + " <" + account[KEY__email_account_username] + ">"
+        message_final[EMAIL__from] = send_name + " <" + dispatcher_info[KG__email_dispatcher__username] + ">"
         message_final[EMAIL__subject] = email.subject
         message_final[EMAIL__date] = formatdate()
         message_final[EMAIL__message_id] = make_msgid()
@@ -405,140 +227,198 @@ class EmailManagerService:
         if email.attachments is not None:
             email_attachments = email.attachments
             for attachment in email_attachments:
-                message_final.attach(attachment.build_attachment(email.attachment_access_token, self.driven_chrome))
+                pass  # TODO set up attachments
 
         return send_body, message_final
 
-    def is_connected(self, conn: smtplib.SMTP):
+    def is_connected(self, conn: SMTP):
         try:
             status = conn.noop()[0]
         except Exception:
             status = -1
         return True if status == 250 else False
 
-    def fetch_conn(self, conn_lib, account: dict, password: str):
-        conn = conn_lib(account[KEY__email_account_host], port=account[KEY__email_account_port], timeout=30)
+    def try_close_conn(self, conn):
+        try:
+            conn.close()
+        except:
+            pass
+
+    def fetch_conn(self, dispatcher_key: str, host: str, port: int, username: str, password: str):
+        if not self.is_gunicorn:
+            return None
+
+        conn = SMTP(host, port=port, timeout=30)
         if conn is None:
-            raise Exception("Could not connect to email account '%s' with address '%s:%d'" % (account[KEY__email_account_name],
-                                                                                              account[KEY__email_account_host],
-                                                                                              account[KEY__email_account_port]))
+            raise Exception("Could not connect to email dispatcher '%s' with address '%s:%d'" % dispatcher_key, host, port)
 
         context = ssl.SSLContext(ssl.PROTOCOL_TLS)
 
-        if conn_lib == smtplib.SMTP_SSL:
-            conn.ehlo()
         conn.starttls(context=context)
-        if conn_lib == smtplib.SMTP_SSL:
-            conn.ehlo()
-        conn.login(account[KEY__email_account_username], password)
+        conn.login(username, password)
 
         return conn
 
-    def format_attachments_for_storage(self, attachments: TYPE__email_attachments):
-        if attachments is None:
-            return None
-        if not isinstance(attachments, list):
-            attachments = [attachments]
-        attachments = "::".join([attachment.encode_filename() + ":" + attachment.encode_content() for attachment in attachments])
-        return attachments
+    def form_dispatcher_key(self, application: str, name: str):
+        return application + ":" + name
 
-    def email_connection_thread(self, account: dict, queue: Queue, password: str):
-        conn_lib = None
-        conn = None
-        try:
-            if True:
-                conn_lib = imaplib.IMAP4 if account[KEY__email_account_protocol] == PROTOCOL__imap else smtplib.SMTP
-                conn = self.fetch_conn(conn_lib, account, password)
-        except Exception as ex:
-            traceback.print_exc()
-            raise ex
+    def fetch_dispatchers_from_db(self):
+        return {
+            self.form_dispatcher_key(dispatcher[KG__email_dispatcher__application], dispatcher[KG__email_dispatcher__name]): (
+                dispatcher,
+                self.get_dispatcher_queue_from_key(self.form_dispatcher_key(dispatcher[KG__email_dispatcher__application],
+                                                                            dispatcher[KG__email_dispatcher__name]))
+            )
+            for dispatcher in email_dispatcher__select_all(self.connection, self.db_crypt_key)
+        }
 
+    def update_dispatchers(self):
+        new_dispatchers = self.fetch_dispatchers_from_db()
+        potentially_require_threads = {key: val for key, val in new_dispatchers.items() if not self.parameterised_lock.check_lock_held(key)}
+        for dispatcher_key, dispatcher_info in potentially_require_threads.items():
+            threading.Thread(target=self.dispatcher_thread, args=[dispatcher_key, dispatcher_info]).start()
+        self.dispatchers = new_dispatchers
+
+    def get_dispatcher_queue_from_key(self, dispatcher_key: str, no_default: bool = False):
+        default = None
+        if not no_default:
+            default = self.threadsafe_queue_initialiser.fetch_queue(dispatcher_key)
+        return self.dispatchers.get(dispatcher_key, (None, default))[1]
+
+    def get_dispatcher_info_from_key(self, dispatcher_key: str):
+        return self.dispatchers.get(dispatcher_key, (None, None))[0]
+
+    def dispatcher_manager_thread(self):
+        printed = False
         while True:
             try:
-                email: Email = queue.get(timeout=10)
-                if True:
-                    if not self.is_connected(conn):
-                        conn = self.fetch_conn(conn_lib, account, password)
-                send_to = email.to
-                send_recipients = email.recipient_names
-                whitelist = account[KEY__email_account_whitelist]
-                whitelist = None
-                if whitelist is not None and whitelist != "":
-                    send_to = []
-                    for to, recipient in zip(email.to, email.recipient_names):
-                        start_len = len(send_to)
-
-                        for check in whitelist.split(","):
-                            check = check.strip()
-                            domain = check.split("@")[1].lower()
-                            to_domain = to.strip().split("@")[1].lower()
-                            if check.startswith("*@"):
-                                if domain == to_domain:
-                                    send_to.append(to)
-                                    send_recipients.append(recipient)
-                                    break
-                            elif domain == to_domain:
-                                person = check.split("@")[0].lower()
-                                to_person = to.strip().split("@")[0].lower().split("+")[0]
-                                if person == to_person:
-                                    send_to.append(to)
-                                    send_recipients.append(recipient)
-                                    break
-
-                        if len(send_to) == start_len:
-                            print("Address '%s' rejected by whitelist for account '%s'" % (to, account[KEY__email_account_name]))
-
-                email.to = send_to
-                email.recipient_names = send_recipients
-                formatted_body, to_send = self.construct_message(account, email)
-
-                if len(send_to) != 0:
-                    if True:
-                        conn.send_message(to_send, account[KEY__email_account_username], send_to)
-                    else:
-                        print("SENDING EMAIL")
-                        print(email.subject)
-                        print(email.body)
-                        print(account[KEY__email_account_username])
-                        print(send_to)
-                    execute_supplied_statement(self.connection, QUERY__ins_email_history, {
-                            KEY__application: email.application,
-                            KEY__template: email.template,
-                            KEY__sender: email.sender,
-                            KEY__override_send_name: email.override_send_name,
-                            KEY__encrypted_subject: email.subject,
-                            KEY__encrypted_body: formatted_body,
-                            KEY__encrypted_attachments: self.format_attachments_for_storage(email.attachments),
-                            KEY__encrypted_recipients: SPLIT__address.join(send_to),
-                            KEY__encrypted_recipients_keys: SPLIT__address.join(send_recipients)
-                        }, encryption_key=self.db_crypt_key, encrypt_parameters=[
-                            KEY__encrypted_subject,
-                            KEY__encrypted_body,
-                            KEY__encrypted_attachments,
-                            KEY__encrypted_recipients,
-                            KEY__encrypted_recipients_keys
-                        ]
-                    )
-            except Empty:
-                if account[KEY__email_account_name] not in self.email_queues:
-                    break
+                self.update_dispatchers()
+                if printed:
+                    print("Successfully refreshed dispatchers after downtime")
+                printed = False
             except Exception:
-                traceback.print_exc()  # Something went wrong
+                if not printed:
+                    print("Could not update dispatchers. Is db disconnected?")
+                    traceback.print_exc()
+                printed = True
 
-        try:
-            conn.quit()
-        except Exception:
-            pass
+            time.sleep(15)
+
+
+    def send_email_with_connection(self, conn: SMTP, email: Email, dispatcher_key: str, dispatcher_info: dict):
+        send_to = email.to
+        send_recipients = email.recipient_names
+        whitelist = dispatcher_info[KG__email_dispatcher__whitelist]
+
+        if whitelist is not None and whitelist != "":
+            send_to = []
+            send_recipients = []
+            for to, recipient in zip(email.to, email.recipient_names):
+                if "@" not in to:
+                    raise Exception("Email address '%s' was invalid" % to)
+                start_len = len(send_to)
+
+                for check in whitelist.split(","):
+                    check = check.strip()
+                    domain = check.split("@")[1].lower()
+
+                    to_domain = to.strip().split("@")[1].lower()
+                    if check.startswith("*@"):
+                        if domain == to_domain:
+                            send_to.append(to)
+                            send_recipients.append(recipient)
+                            break
+                    elif domain == to_domain:
+                        person = check.split("@")[0].lower()
+                        to_person = to.strip().split("@")[0].lower().split("+")[0]
+                        if person == to_person:
+                            send_to.append(to)
+                            send_recipients.append(recipient)
+                            break
+
+                if len(send_to) == start_len:
+                    print("Address '%s' rejected by whitelist for account '%s'" % (to, dispatcher_key), file=sys.stderr)
+
+        if len(send_to) == 0:
+            return
+
+        email.to = send_to
+        email.recipient_names = send_recipients
+        formatted_body, to_send = self.construct_message(dispatcher_info, email)
+
+        if self.is_gunicorn:
+            conn.send_message(to_send, dispatcher_info[KG__email_dispatcher__display_name], send_to)
+        else:
+            print("==============================================")
+            print("Sending Email from '" + dispatcher_key + "'")
+            print(email.subject)
+            print(email.body)
+            print(dispatcher_info[KG__email_dispatcher__display_name])
+            print(send_to)
+            print("==============================================")
+
+    def hash_dispatcher_info(self, dispatcher_info):
+        return hashlib.md5(json.dumps(dispatcher_info, default=str).encode()).hexdigest()
+
+    def dispatcher_thread(self, dispatcher_key: str, dispatcher_info: dict):
+        did_acquire = self.parameterised_lock.acquire_lock(dispatcher_key)
+        if not did_acquire:
+            return  # Did not acquire the thread lock. Another thread is operating
+
+        queue = self.get_dispatcher_queue_from_key(dispatcher_key)
+        email = None
+
+        if self.dispatcher_blacklist.get(dispatcher_key, None) != self.hash_dispatcher_info(dispatcher_info):
+            if dispatcher_key in self.dispatcher_blacklist:
+                self.dispatcher_blacklist.pop(dispatcher_key)
+
+            try:
+                conn = None
+                while (dispatcher_key in self.dispatchers or queue.qsize() != 0) and dispatcher_key not in self.dispatcher_blacklist:
+                    try:
+                        # The dispatcher has been removed from the database AND all emails in the queue have been removed
+                        email = queue.get(timeout=10)
+                        new_dispatcher_info = self.get_dispatcher_info_from_key(dispatcher_key)
+                        if new_dispatcher_info is not None:
+                            dispatcher_info = new_dispatcher_info
+                        else:
+                            new_dispatcher_info = dispatcher_info  # Done for hashing purposes
+
+                        if self.hash_dispatcher_info(dispatcher_info) != self.hash_dispatcher_info(new_dispatcher_info):
+                            self.try_close_conn(conn)
+
+                        if not self.is_connected(conn):
+                            conn = self.fetch_conn(dispatcher_key, dispatcher_info[KG__email_dispatcher__url],
+                                                   dispatcher_info[KG__email_dispatcher__port], dispatcher_info[KG__email_dispatcher__username],
+                                                   dispatcher_info[KG__email_dispatcher__password])
+
+                        self.send_email_with_connection(conn, email, dispatcher_key, dispatcher_info)
+                    except Empty:
+                        pass  # Nothing wrong here. There were simply no emails received in the 10 seconds of queue wait time
+                    except SMTPAuthenticationError as ex:
+                        raise ex  # Caught in outer loop, we want to break free
+                    except SMTPException as ex:
+                        print("Issue sending email " + str(ex), file=sys.stderr)
+
+            except SMTPAuthenticationError:
+                queue.put(email)
+                print("Incorrect credentials for email dispatcher with key '%s'" % dispatcher_key, file=sys.stderr)
+                self.dispatcher_blacklist[dispatcher_key] = self.hash_dispatcher_info(dispatcher_info)
+            except Exception:
+                print("Unhandled email dispatcher exception", file=sys.stderr)
+                traceback.print_exc()
+
+        self.parameterised_lock.release_lock(dispatcher_key)
 
     def send_email(self, email: Email):
-        if email.from_account in self.email_queues:
-            self.email_queues[email.from_account].put(email)
-        else:
-            self.reload_accounts()
-            if email.from_account in self.email_queues:
-                self.email_queues[email.from_account].put(email)
-            else:
-                raise Exception(ERR__email_not_found % email.from_account)
+        dispatcher_key = self.form_dispatcher_key(email.application, email.dispatcher)
+        queue = self.get_dispatcher_queue_from_key(dispatcher_key, no_default=True)
+        if queue is None:
+            self.update_dispatchers()
+            queue = self.get_dispatcher_queue_from_key(dispatcher_key, no_default=True)
+            if queue is None:
+                raise Exception("Unable to find dispatcher with key '" + dispatcher_key + "'")
+        queue.put(email)
 
 
 def create_app(ems: EmailManagerService):
@@ -551,12 +431,6 @@ def create_app(ems: EmailManagerService):
 
         return jsonify("OK")
 
-    @app.route(ENDPOINT__reload_accounts, methods=["POST"])
-    def refresh_accounts():
-        ems.reload_accounts()
-
-        return jsonify("OK")
-
     @app.route("/", methods=["GET"])
     def is_alive():
         return jsonify("OK")
@@ -564,13 +438,13 @@ def create_app(ems: EmailManagerService):
     return app
 
 
-def create_flask_app(vault_key=None, email_accounts=None, is_gunicorn: bool = False):
+def create_flask_app(vault_key=None, is_gunicorn: bool = False):
     config = load_config(is_gunicorn)
     await_jaaql_installation(config, is_gunicorn)
     vault = Vault(vault_key, DIR__vault)
     jaaql_lookup_connection = get_jaaql_connection(config, vault)
     db_crypt_key = vault.get_obj(VAULT_KEY__db_crypt_key).encode(ENCODING__ascii)
 
-    flask_app = create_app(EmailManagerService(jaaql_lookup_connection, email_accounts, db_crypt_key, is_gunicorn))
+    flask_app = create_app(EmailManagerService(jaaql_lookup_connection, db_crypt_key, is_gunicorn))
     print("Created email manager app host, running flask", file=sys.stderr)
     flask_app.run(port=PORT__ems, host="0.0.0.0", threaded=True)

@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.fxli at 19/02/2023, 03:29:20
+This script was generated from jaaql.fxli at 05/03/2023, 02:10:34
 """
 
 from jaaql.db.db_interface import DBInterface
@@ -30,6 +30,7 @@ QG__application_insert = """
         :default_r_et, :default_u_et)
     RETURNING unlock_key_validity_period, unlock_code_validity_period, is_live
 """
+QG__application_select_all = "SELECT * FROM application"
 QG__application_select = "SELECT * FROM application WHERE name = :name"
 QG__application_update = """
     UPDATE
@@ -108,6 +109,15 @@ def application__select(
     )
 
 
+def application__select_all(
+    connection: DBInterface
+):
+    return execute_supplied_statement(
+        connection, QG__application_select_all,
+        as_objects=True
+    )
+
+
 def application__insert(
     connection: DBInterface,
     name, base_url,
@@ -140,6 +150,7 @@ QG__application_schema_insert = """
     INSERT INTO application_schema (application, name, database)
     VALUES (:application, :name, :database)
 """
+QG__application_schema_select_all = "SELECT * FROM application_schema"
 QG__application_schema_select = "SELECT * FROM application_schema WHERE application = :application AND name = :name"
 QG__application_schema_update = """
     UPDATE
@@ -200,6 +211,15 @@ def application_schema__select(
     )
 
 
+def application_schema__select_all(
+    connection: DBInterface
+):
+    return execute_supplied_statement(
+        connection, QG__application_schema_select_all,
+        as_objects=True
+    )
+
+
 def application_schema__insert(
     connection: DBInterface,
     application, name, database
@@ -235,6 +255,7 @@ QG__email_dispatcher_insert = """
         :protocol, :url, :port,
         :username, :password, :whitelist)
 """
+QG__email_dispatcher_select_all = "SELECT * FROM email_dispatcher"
 QG__email_dispatcher_select = "SELECT * FROM email_dispatcher WHERE application = :application AND name = :name"
 QG__email_dispatcher_update = """
     UPDATE
@@ -314,6 +335,17 @@ def email_dispatcher__select(
     )
 
 
+def email_dispatcher__select_all(
+    connection: DBInterface, encryption_key: bytes
+):
+    return execute_supplied_statement(
+        connection, QG__email_dispatcher_select_all, encryption_key=encryption_key, decrypt_columns=[
+            KG__email_dispatcher__password
+        ],
+        as_objects=True
+    )
+
+
 def email_dispatcher__insert(
     connection: DBInterface, encryption_key: bytes,
     application, name, display_name,
@@ -349,6 +381,7 @@ QG__jaaql_insert = """
     INSERT INTO jaaql (the_anonymous_user, security_event_attempt_limit)
     VALUES (:the_anonymous_user, :security_event_attempt_limit)
 """
+QG__jaaql_select_all = "SELECT * FROM jaaql"
 QG__jaaql_select = "SELECT * FROM jaaql"
 QG__jaaql_update = """
     UPDATE
@@ -391,6 +424,15 @@ def jaaql__select(
     )
 
 
+def jaaql__select_all(
+    connection: DBInterface
+):
+    return execute_supplied_statement(
+        connection, QG__jaaql_select_all,
+        as_objects=True
+    )
+
+
 def jaaql__insert(
     connection: DBInterface,
     the_anonymous_user, security_event_attempt_limit
@@ -411,15 +453,20 @@ KG__email_template__name = "name"
 KG__email_template__type = "type"
 KG__email_template__content_url = "content_url"
 KG__email_template__validation_schema = "validation_schema"
+KG__email_template__data_validation_table = "data_validation_table"
+KG__email_template__data_validation_view = "data_validation_view"
 
 # Generated queries for table 'email_template'
 QG__email_template_delete = "DELETE FROM email_template WHERE application = :application AND name = :name"
 QG__email_template_insert = """
     INSERT INTO email_template (application, dispatcher, name,
-        type, content_url, validation_schema)
+        type, content_url, validation_schema,
+        data_validation_table, data_validation_view)
     VALUES (:application, :dispatcher, :name,
-        :type, :content_url, :validation_schema)
+        :type, :content_url, :validation_schema,
+        :data_validation_table, :data_validation_view)
 """
+QG__email_template_select_all = "SELECT * FROM email_template"
 QG__email_template_select = "SELECT * FROM email_template WHERE application = :application AND name = :name"
 QG__email_template_update = """
     UPDATE
@@ -428,7 +475,9 @@ QG__email_template_update = """
         dispatcher = COALESCE(:dispatcher, dispatcher),
         type = COALESCE(:type, type),
         content_url = COALESCE(:content_url, content_url),
-        validation_schema = COALESCE(:validation_schema, validation_schema)
+        validation_schema = COALESCE(:validation_schema, validation_schema),
+        data_validation_table = COALESCE(:data_validation_table, data_validation_table),
+        data_validation_view = COALESCE(:data_validation_view, data_validation_view)
     WHERE
         application = :application AND name = :name
 """
@@ -453,7 +502,7 @@ def email_template__update(
     connection: DBInterface,
     application, name,
     dispatcher=None, type=None, content_url=None,
-    validation_schema=None
+    validation_schema=None, data_validation_table=None, data_validation_view=None
 ):
     execute_supplied_statement(
         connection, QG__email_template_update,
@@ -466,7 +515,9 @@ def email_template__update(
             KG__email_template__dispatcher: dispatcher,
             KG__email_template__type: type,
             KG__email_template__content_url: content_url,
-            KG__email_template__validation_schema: validation_schema
+            KG__email_template__validation_schema: validation_schema,
+            KG__email_template__data_validation_table: data_validation_table,
+            KG__email_template__data_validation_view: data_validation_view
         }
     )
 
@@ -487,11 +538,20 @@ def email_template__select(
     )
 
 
+def email_template__select_all(
+    connection: DBInterface
+):
+    return execute_supplied_statement(
+        connection, QG__email_template_select_all,
+        as_objects=True
+    )
+
+
 def email_template__insert(
     connection: DBInterface,
     application, dispatcher, name,
     type, content_url,
-    validation_schema=None
+    validation_schema=None, data_validation_table=None, data_validation_view=None
 ):
     execute_supplied_statement(
         connection, QG__email_template_insert,
@@ -501,7 +561,9 @@ def email_template__insert(
             KG__email_template__name: name,
             KG__email_template__type: type,
             KG__email_template__content_url: content_url,
-            KG__email_template__validation_schema: validation_schema
+            KG__email_template__validation_schema: validation_schema,
+            KG__email_template__data_validation_table: data_validation_table,
+            KG__email_template__data_validation_view: data_validation_view
         }
     )
 
@@ -520,6 +582,7 @@ QG__document_template_insert = """
     VALUES (:application, :name, :content_path,
         :email_template)
 """
+QG__document_template_select_all = "SELECT * FROM document_template"
 QG__document_template_select = "SELECT * FROM document_template WHERE application = :application AND name = :name"
 QG__document_template_update = """
     UPDATE
@@ -582,6 +645,15 @@ def document_template__select(
     )
 
 
+def document_template__select_all(
+    connection: DBInterface
+):
+    return execute_supplied_statement(
+        connection, QG__document_template_select_all,
+        as_objects=True
+    )
+
+
 def document_template__insert(
     connection: DBInterface,
     application, name, content_path,
@@ -616,6 +688,7 @@ QG__document_request_insert = """
         :encrypted_access_token, :encrypted_parameters, :render_timestamp)
     RETURNING request_timestamp
 """
+QG__document_request_select_all = "SELECT * FROM document_request"
 QG__document_request_select = "SELECT * FROM document_request WHERE uuid = :uuid"
 QG__document_request_update = """
     UPDATE
@@ -691,6 +764,18 @@ def document_request__select(
     )
 
 
+def document_request__select_all(
+    connection: DBInterface, encryption_key: bytes
+):
+    return execute_supplied_statement(
+        connection, QG__document_request_select_all, encryption_key=encryption_key, decrypt_columns=[
+            KG__document_request__encrypted_access_token,
+            KG__document_request__encrypted_parameters
+        ],
+        as_objects=True
+    )
+
+
 def document_request__insert(
     connection: DBInterface, encryption_key: bytes,
     application, template, uuid,
@@ -728,6 +813,7 @@ QG__account_insert = """
     VALUES (:id, :username, :deletion_timestamp,
         :most_recent_password)
 """
+QG__account_select_all = "SELECT * FROM account"
 QG__account_select = "SELECT * FROM account WHERE id = :id"
 QG__account_update = """
     UPDATE
@@ -794,6 +880,17 @@ def account__select(
     )
 
 
+def account__select_all(
+    connection: DBInterface, encryption_key: bytes
+):
+    return execute_supplied_statement(
+        connection, QG__account_select_all, encryption_key=encryption_key, decrypt_columns=[
+            KG__account__username
+        ],
+        as_objects=True
+    )
+
+
 def account__insert(
     connection: DBInterface, encryption_key: bytes,
     id, username,
@@ -826,6 +923,7 @@ QG__account_password_insert = """
     VALUES (:account, :hash)
     RETURNING uuid, creation_timestamp
 """
+QG__account_password_select_all = "SELECT * FROM account_password"
 QG__account_password_select = "SELECT * FROM account_password WHERE uuid = :uuid"
 QG__account_password_update = """
     UPDATE
@@ -892,6 +990,17 @@ def account_password__select(
     )
 
 
+def account_password__select_all(
+    connection: DBInterface, encryption_key: bytes
+):
+    return execute_supplied_statement(
+        connection, QG__account_password_select_all, encryption_key=encryption_key, decrypt_columns=[
+            KG__account_password__hash
+        ],
+        as_objects=True
+    )
+
+
 def account_password__insert(
     connection: DBInterface, encryption_key: bytes,
     account, hash,
@@ -922,6 +1031,7 @@ QG__validated_ip_address_insert = """
     VALUES (:account, :encrypted_salted_ip_address, :last_authentication_timestamp)
     RETURNING uuid, first_authentication_timestamp
 """
+QG__validated_ip_address_select_all = "SELECT * FROM validated_ip_address"
 QG__validated_ip_address_select = "SELECT * FROM validated_ip_address WHERE uuid = :uuid"
 QG__validated_ip_address_update = """
     UPDATE
@@ -991,6 +1101,17 @@ def validated_ip_address__select(
     )
 
 
+def validated_ip_address__select_all(
+    connection: DBInterface, encryption_key: bytes
+):
+    return execute_supplied_statement(
+        connection, QG__validated_ip_address_select_all, encryption_key=encryption_key, decrypt_columns=[
+            KG__validated_ip_address__encrypted_salted_ip_address
+        ],
+        as_objects=True
+    )
+
+
 def validated_ip_address__insert(
     connection: DBInterface, encryption_key: bytes,
     account, encrypted_salted_ip_address, last_authentication_timestamp,
@@ -1013,21 +1134,35 @@ KG__security_event__application = "application"
 KG__security_event__event_lock = "event_lock"
 KG__security_event__creation_timestamp = "creation_timestamp"
 KG__security_event__wrong_key_attempt_count = "wrong_key_attempt_count"
+KG__security_event__email_template = "email_template"
+KG__security_event__account = "account"
+KG__security_event__unlock_key = "unlock_key"
+KG__security_event__unlock_code = "unlock_code"
+KG__security_event__unlock_timestamp = "unlock_timestamp"
 
 # Generated queries for table 'security_event'
 QG__security_event_delete = "DELETE FROM security_event WHERE application = :application AND event_lock = :event_lock"
 QG__security_event_insert = """
-    INSERT INTO security_event (application)
-    VALUES (:application)
-    RETURNING event_lock, creation_timestamp, wrong_key_attempt_count
+    INSERT INTO security_event (application, email_template, account,
+        unlock_code, unlock_timestamp)
+    VALUES (:application, :email_template, :account,
+        :unlock_code, :unlock_timestamp)
+    RETURNING event_lock, creation_timestamp, wrong_key_attempt_count,
+        unlock_key
 """
+QG__security_event_select_all = "SELECT * FROM security_event"
 QG__security_event_select = "SELECT * FROM security_event WHERE application = :application AND event_lock = :event_lock"
 QG__security_event_update = """
     UPDATE
         security_event
     SET
         creation_timestamp = COALESCE(:creation_timestamp, creation_timestamp),
-        wrong_key_attempt_count = COALESCE(:wrong_key_attempt_count, wrong_key_attempt_count)
+        wrong_key_attempt_count = COALESCE(:wrong_key_attempt_count, wrong_key_attempt_count),
+        email_template = COALESCE(:email_template, email_template),
+        account = COALESCE(:account, account),
+        unlock_key = COALESCE(:unlock_key, unlock_key),
+        unlock_code = COALESCE(:unlock_code, unlock_code),
+        unlock_timestamp = COALESCE(:unlock_timestamp, unlock_timestamp)
     WHERE
         application = :application AND event_lock = :event_lock
 """
@@ -1051,7 +1186,9 @@ def security_event__delete(
 def security_event__update(
     connection: DBInterface,
     application, event_lock,
-    creation_timestamp=None, wrong_key_attempt_count=None
+    creation_timestamp=None, wrong_key_attempt_count=None, email_template=None,
+    account=None, unlock_key=None, unlock_code=None,
+    unlock_timestamp=None
 ):
     execute_supplied_statement(
         connection, QG__security_event_update,
@@ -1062,7 +1199,12 @@ def security_event__update(
 
             # None Key Fields
             KG__security_event__creation_timestamp: creation_timestamp,
-            KG__security_event__wrong_key_attempt_count: wrong_key_attempt_count
+            KG__security_event__wrong_key_attempt_count: wrong_key_attempt_count,
+            KG__security_event__email_template: email_template,
+            KG__security_event__account: account,
+            KG__security_event__unlock_key: unlock_key,
+            KG__security_event__unlock_code: unlock_code,
+            KG__security_event__unlock_timestamp: unlock_timestamp
         }
     )
 
@@ -1083,231 +1225,28 @@ def security_event__select(
     )
 
 
+def security_event__select_all(
+    connection: DBInterface
+):
+    return execute_supplied_statement(
+        connection, QG__security_event_select_all,
+        as_objects=True
+    )
+
+
 def security_event__insert(
     connection: DBInterface,
-    application
+    application, email_template, account,
+    unlock_code,
+    unlock_timestamp=None
 ):
     return execute_supplied_statement_singleton(
         connection, QG__security_event_insert,
         {
-            KG__security_event__application: application
-        }, as_objects=True
-    )
-
-
-# Generated keys for table 'unregistered_account_security_event'
-KG__unregistered_account_security_event__application = "application"
-KG__unregistered_account_security_event__event_lock = "event_lock"
-KG__unregistered_account_security_event__email_template = "email_template"
-KG__unregistered_account_security_event__email_address = "email_address"
-
-# Generated queries for table 'unregistered_account_security_event'
-QG__unregistered_account_security_event_delete = "DELETE FROM unregistered_account_security_event WHERE application = :application AND event_lock = :event_lock"
-QG__unregistered_account_security_event_insert = """
-    INSERT INTO unregistered_account_security_event (application, event_lock, email_template,
-        email_address)
-    VALUES (:application, :event_lock, :email_template,
-        :email_address)
-"""
-QG__unregistered_account_security_event_select = "SELECT * FROM unregistered_account_security_event WHERE application = :application AND event_lock = :event_lock"
-QG__unregistered_account_security_event_update = """
-    UPDATE
-        unregistered_account_security_event
-    SET
-        email_template = COALESCE(:email_template, email_template),
-        email_address = COALESCE(:email_address, email_address)
-    WHERE
-        application = :application AND event_lock = :event_lock
-"""
-
-
-# Generated methods for table 'unregistered_account_security_event'
-def unregistered_account_security_event__delete(
-    connection: DBInterface,
-    application, event_lock
-):
-    execute_supplied_statement(
-        connection, QG__unregistered_account_security_event_delete,
-        {
-            # Key Fields
-            KG__unregistered_account_security_event__application: application,
-            KG__unregistered_account_security_event__event_lock: event_lock
-        }
-    )
-
-
-def unregistered_account_security_event__update(
-    connection: DBInterface, encryption_key: bytes,
-    application, event_lock,
-    email_template=None, email_address=None,
-    encryption_salts=None
-):
-    execute_supplied_statement(
-        connection, QG__unregistered_account_security_event_update,
-        {
-            # Key Fields
-            KG__unregistered_account_security_event__application: application,
-            KG__unregistered_account_security_event__event_lock: event_lock,
-
-            # None Key Fields
-            KG__unregistered_account_security_event__email_template: email_template,
-            KG__unregistered_account_security_event__email_address: email_address
-        }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
-            KG__unregistered_account_security_event__email_address
-        ]
-    )
-
-
-def unregistered_account_security_event__select(
-    connection: DBInterface, encryption_key: bytes,
-    application, event_lock,
-    singleton_code: int = None, singleton_message: str = None
-):
-    return execute_supplied_statement_singleton(
-        connection, QG__unregistered_account_security_event_select, 
-        {
-            # Key Fields
-            KG__unregistered_account_security_event__application: application,
-            KG__unregistered_account_security_event__event_lock: event_lock
-        }, encryption_key=encryption_key, decrypt_columns=[
-            KG__unregistered_account_security_event__email_address
-        ],
-        as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
-    )
-
-
-def unregistered_account_security_event__insert(
-    connection: DBInterface, encryption_key: bytes,
-    application, event_lock, email_template,
-    email_address,
-    encryption_salts=None
-):
-    execute_supplied_statement(
-        connection, QG__unregistered_account_security_event_insert,
-        {
-            KG__unregistered_account_security_event__application: application,
-            KG__unregistered_account_security_event__event_lock: event_lock,
-            KG__unregistered_account_security_event__email_template: email_template,
-            KG__unregistered_account_security_event__email_address: email_address
-        }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
-            KG__unregistered_account_security_event__email_address
-        ]
-    )
-
-
-# Generated keys for table 'registered_account_security_event'
-KG__registered_account_security_event__application = "application"
-KG__registered_account_security_event__event_lock = "event_lock"
-KG__registered_account_security_event__email_template = "email_template"
-KG__registered_account_security_event__account = "account"
-KG__registered_account_security_event__unlock_key = "unlock_key"
-KG__registered_account_security_event__unlock_code = "unlock_code"
-KG__registered_account_security_event__unlock_timestamp = "unlock_timestamp"
-KG__registered_account_security_event__event_completion_timestamp = "event_completion_timestamp"
-KG__registered_account_security_event__jaaql_validation_reference = "jaaql_validation_reference"
-
-# Generated queries for table 'registered_account_security_event'
-QG__registered_account_security_event_delete = "DELETE FROM registered_account_security_event WHERE application = :application AND event_lock = :event_lock"
-QG__registered_account_security_event_insert = """
-    INSERT INTO registered_account_security_event (application, event_lock, email_template,
-        account, unlock_code, unlock_timestamp,
-        event_completion_timestamp, jaaql_validation_reference)
-    VALUES (:application, :event_lock, :email_template,
-        :account, :unlock_code, :unlock_timestamp,
-        :event_completion_timestamp, :jaaql_validation_reference)
-    RETURNING unlock_key
-"""
-QG__registered_account_security_event_select = "SELECT * FROM registered_account_security_event WHERE application = :application AND event_lock = :event_lock"
-QG__registered_account_security_event_update = """
-    UPDATE
-        registered_account_security_event
-    SET
-        email_template = COALESCE(:email_template, email_template),
-        account = COALESCE(:account, account),
-        unlock_key = COALESCE(:unlock_key, unlock_key),
-        unlock_code = COALESCE(:unlock_code, unlock_code),
-        unlock_timestamp = COALESCE(:unlock_timestamp, unlock_timestamp),
-        event_completion_timestamp = COALESCE(:event_completion_timestamp, event_completion_timestamp),
-        jaaql_validation_reference = COALESCE(:jaaql_validation_reference, jaaql_validation_reference)
-    WHERE
-        application = :application AND event_lock = :event_lock
-"""
-
-
-# Generated methods for table 'registered_account_security_event'
-def registered_account_security_event__delete(
-    connection: DBInterface,
-    application, event_lock
-):
-    execute_supplied_statement(
-        connection, QG__registered_account_security_event_delete,
-        {
-            # Key Fields
-            KG__registered_account_security_event__application: application,
-            KG__registered_account_security_event__event_lock: event_lock
-        }
-    )
-
-
-def registered_account_security_event__update(
-    connection: DBInterface,
-    application, event_lock,
-    email_template=None, account=None, unlock_key=None,
-    unlock_code=None, unlock_timestamp=None, event_completion_timestamp=None,
-    jaaql_validation_reference=None
-):
-    execute_supplied_statement(
-        connection, QG__registered_account_security_event_update,
-        {
-            # Key Fields
-            KG__registered_account_security_event__application: application,
-            KG__registered_account_security_event__event_lock: event_lock,
-
-            # None Key Fields
-            KG__registered_account_security_event__email_template: email_template,
-            KG__registered_account_security_event__account: account,
-            KG__registered_account_security_event__unlock_key: unlock_key,
-            KG__registered_account_security_event__unlock_code: unlock_code,
-            KG__registered_account_security_event__unlock_timestamp: unlock_timestamp,
-            KG__registered_account_security_event__event_completion_timestamp: event_completion_timestamp,
-            KG__registered_account_security_event__jaaql_validation_reference: jaaql_validation_reference
-        }
-    )
-
-
-def registered_account_security_event__select(
-    connection: DBInterface,
-    application, event_lock,
-    singleton_code: int = None, singleton_message: str = None
-):
-    return execute_supplied_statement_singleton(
-        connection, QG__registered_account_security_event_select, 
-        {
-            # Key Fields
-            KG__registered_account_security_event__application: application,
-            KG__registered_account_security_event__event_lock: event_lock
-        },
-        as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
-    )
-
-
-def registered_account_security_event__insert(
-    connection: DBInterface,
-    application, event_lock, account,
-    unlock_code,
-    email_template=None, unlock_timestamp=None, event_completion_timestamp=None,
-    jaaql_validation_reference=None
-):
-    return execute_supplied_statement_singleton(
-        connection, QG__registered_account_security_event_insert,
-        {
-            KG__registered_account_security_event__application: application,
-            KG__registered_account_security_event__event_lock: event_lock,
-            KG__registered_account_security_event__email_template: email_template,
-            KG__registered_account_security_event__account: account,
-            KG__registered_account_security_event__unlock_code: unlock_code,
-            KG__registered_account_security_event__unlock_timestamp: unlock_timestamp,
-            KG__registered_account_security_event__event_completion_timestamp: event_completion_timestamp,
-            KG__registered_account_security_event__jaaql_validation_reference: jaaql_validation_reference
+            KG__security_event__application: application,
+            KG__security_event__email_template: email_template,
+            KG__security_event__account: account,
+            KG__security_event__unlock_code: unlock_code,
+            KG__security_event__unlock_timestamp: unlock_timestamp
         }, as_objects=True
     )

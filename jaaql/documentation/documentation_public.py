@@ -109,3 +109,47 @@ DOCUMENTATION__sign_up_request_invite = SwaggerDocumentation(
         ]
     )
 )
+
+DOCUMENTATION__security_event = SwaggerDocumentation(
+    tags="Security Event",
+    security=False,
+    methods=SwaggerMethod(
+        name="Check Event and Key",
+        description="Checks a security event is unused and that the key is valid",
+        method=REST__POST,
+        body=[
+            ARG_RES__event_lock,
+            SwaggerArgumentResponse(
+                name=KG__security_event__unlock_key,
+                description="The unlock key",
+                required=False,
+                condition="Are you using a key to unlock or a code",
+                arg_type=str,
+                example="c9a941d5-2aea-4b96-967b-32a01e889d03"
+            ),
+            SwaggerArgumentResponse(
+                name=KG__security_event__unlock_code,
+                description="The unlock code",
+                required=False,
+                condition="Are you using a key to unlock or a code",
+                arg_type=str,
+                example="ABC123"
+            )
+        ],
+        response=[
+            SwaggerFlatResponse(
+                description="The key fits the lock"
+            ),
+            SwaggerFlatResponse(
+                description=ERR__invalid_lock,
+                code=HTTPStatus.GONE,
+                body=ERR__invalid_lock
+            ),
+            SwaggerFlatResponse(
+                description=ERR__invalid_unlock_code,
+                code=HTTPStatus.LOCKED,
+                body=ERR__invalid_unlock_code
+            )
+        ]
+    )
+)

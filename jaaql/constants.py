@@ -46,6 +46,7 @@ KEY__sign_up_template = "sign_up"
 KEY__already_signed_up_template = "already_signed_up"
 KEY__parameters = "parameters"
 KEY__security_key = "security_key"
+KEY__id = "id"
 
 SEPARATOR__comma_space = ", "
 SEPARATOR__comma = ","
@@ -80,17 +81,14 @@ VAULT_KEY__super_db_password = "super_db_password"
 ENVIRON__vault_key = "JAAQL_VAULT_PASSWORD"
 ENVIRON__local_install = "JAAQL_LOCAL_INSTALL"
 ENVIRON__jaaql_profiling = "JAAQL_PROFILING"
-ENVIRON__email_accounts = "JAAQL_EMAIL_ACCOUNTS"
 ENVIRON__install_path = "INSTALL_PATH"
 ENVIRON__sentinel_url = "SENTINEL_URL"
 ENVIRON__canned_queries = "CANNED_QUERIES"
 
-EMAIL_PARAM__signup_key = "JAAQL_INVITE_KEY"
-EMAIL_PARAM__invite_code = "JAAQL_INVITE_SHORT_CODE"
-EMAIL_PARAM__app_url = "APP_URL"
-
-EMAIL_PARAM__reset_key = "JAAQL_RESET_KEY"
-EMAIL_PARAM__reset_code = "JAAQL_RESET_SHORT_CODE"
+EMAIL_PARAM__unlock_key = "JAAQL__UNLOCK_KEY"
+EMAIL_PARAM__unlock_code = "JAAQL__UNLOCK_CODE"
+EMAIL_PARAM__app_url = "JAAQL__APP_URL"
+EMAIL_PARAM__email_address = "JAAQL__EMAIL_ADDRESS"
 
 CONFIG_KEY__server = "SERVER"
 CONFIG_KEY_SERVER__port = "port"
@@ -107,6 +105,8 @@ ERR__too_many_reset_requests = "Too many reset requests"
 ERR__too_many_code_attempts = "Code disabled due to too many incorrect attempts. Please use the link in the email"
 ERR__document_still_rendering = "Document still rendering"
 ERR__document_id_not_found = "Document id not found"
+ERR__invalid_unlock_code = "Invalid unlock code"
+ERR__invalid_lock = "Either security event does not exist, has already been used, has expired or unlock is invalid"
 
 PG_ENV__password = "POSTGRES_PASSWORD"
 
@@ -119,7 +119,6 @@ DB__postgres = "postgres"
 
 PORT__ems = 6061
 
-ENDPOINT__reload_accounts = "/reload-accounts"
 ENDPOINT__send_email = "/send-email"
 ENDPOINT__internal_applications = "/internal/applications"
 ENDPOINT__internal_templates = "/internal/emails/templates"
@@ -134,6 +133,8 @@ CONFIG__default_desc = "Default config description"
 DATASET__default = "Default dataset"
 DATASET__default_desc = "Default dataset description"
 
+ARTIFACTS_DEFAULT_DIRECTORY = "artifacts"
+
 USERNAME__jaaql = "jaaql"
 USERNAME__super_db = "super_db"
 USERNAME__anonymous = "anonymous"
@@ -143,5 +144,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.5.2"
+VERSION = "4.6.0"
 

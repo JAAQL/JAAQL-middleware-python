@@ -19,11 +19,11 @@ create table application (
     default_r_et object_name,
     default_u_et object_name,
     unlock_key_validity_period validity_period not null default 1209600,
-    unlock_code_validity_period validity_period not null default 900,
+    unlock_code_validity_period short_validity_period not null default 900,
     is_live bool not null default false,
     primary key (name),
     check (unlock_key_validity_period between 15 and 9999999),
-    check (unlock_code_validity_period between 15 and 9999999) );
+    check (unlock_code_validity_period between 15 and 86400) );
 -- application_schema...
 create table application_schema (
     application internet_name not null,
@@ -56,6 +56,8 @@ create table email_template (
     type email_template_type not null,
     content_url safe_path not null,
     validation_schema object_name,
+    data_validation_table object_name,
+    data_validation_view object_name,
     primary key (application, name) );
 -- document_template...
 create table document_template (
@@ -105,27 +107,13 @@ create table security_event (
     event_lock uuid not null default gen_random_uuid(),
     creation_timestamp timestamp not null default current_timestamp,
     wrong_key_attempt_count current_attempt_count not null default 0,
-    primary key (application, event_lock),
-    check (wrong_key_attempt_count between 0 and 3) );
--- unregistered_account_security_event...
-create table unregistered_account_security_event (
-    application internet_name not null,
-    event_lock uuid not null,
     email_template object_name not null,
-    email_address character varying(254) not null,
-    primary key (application, event_lock) );
--- registered_account_security_event...
-create table registered_account_security_event (
-    application internet_name not null,
-    event_lock uuid not null,
-    email_template object_name,
     account postgres_role not null,
     unlock_key uuid not null default gen_random_uuid(),
     unlock_code unlock_code not null,
     unlock_timestamp timestamp,
-    event_completion_timestamp timestamp,
-    jaaql_validation_reference text,
-    primary key (application, event_lock) );
+    primary key (application, event_lock),
+    check (wrong_key_attempt_count between 0 and 3) );
 
 -- (2) References
 
@@ -191,23 +179,12 @@ alter table validated_ip_address add constraint validated_ip_address__account
 alter table security_event add constraint security_event__application
     foreign key (application)
         references application (name);
--- unregistered_account_security_event...
-alter table unregistered_account_security_event add constraint unregistered_account_security_event__email_template
+alter table security_event add constraint security_event__email_template
     foreign key (application, email_template)
         references email_template (application, name);
-alter table unregistered_account_security_event add constraint unregistered_account_security_event__security_event
-    foreign key (application, event_lock)
-        references security_event (application, event_lock);
--- registered_account_security_event...
-alter table registered_account_security_event add constraint registered_account_security_event__email_template
-    foreign key (application, email_template)
-        references email_template (application, name);
-alter table registered_account_security_event add constraint registered_account_security_event__account
+alter table security_event add constraint security_event__account
     foreign key (account)
         references account (id);
-alter table registered_account_security_event add constraint registered_account_security_event__security_event
-    foreign key (application, event_lock)
-        references security_event (application, event_lock);
 
 -- (3) Triggers
 

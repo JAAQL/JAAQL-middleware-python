@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.exceptions.fxls at 19/02/2023, 03:29:20
+This script was generated from jaaql.exceptions.fxls at 05/03/2023, 02:10:34
 """
 
 from jaaql.utilities.crypt_utils import get_repeatable_salt
@@ -141,18 +141,46 @@ QUERY___add_or_update_validated_ip_address = "INSERT INTO validated_ip_address (
 QUERY__fetch_application_schemas = "SELECT S.name, S.database, (A.default_schema = S.name) as is_default, A.is_live FROM application_schema S INNER JOIN application A ON A.name = S.application WHERE S.application = :application"
 KEY__is_default = "is_default"
 
-QUERY__count_registered_account_security_events_of_type_in_24hr_window = """
+QUERY__count_security_events_of_type_in_24hr_window = """
     SELECT
         COUNT(*)
-    FROM registered_account_security_event R
-    INNER JOIN security_event S on R.application = S.application AND R.event_lock = S.event_lock
-    INNER JOIN email_template E ON E.name = R.email_template AND E.application = R.application
-    WHERE E.type IN (:type_one, :type_two) AND account = :account AND (creation_timestamp + interval '24 hour') > current_timestamp
+    FROM security_event S
+    INNER JOIN email_template E ON E.name = S.email_template AND E.application = S.application
+    WHERE E.type IN (:type_one, :type_two, :type_three) AND account = :account AND (creation_timestamp + interval '24 hour') > current_timestamp
 """
+
 KEY__type_one = "type_one"
 KEY__type_two = "type_two"
+KEY__type_three = "type_three"
+
 EMAIL_TYPE__signup = "S"
 EMAIL_TYPE__already_signed_up = "A"
 EMAIL_TYPE__reset_password = "R"
 EMAIL_TYPE__unregistered_password_reset = "U"
 EMAIL_TYPE__general = "G"
+
+QUERY__check_security_event_unlock = """
+    SELECT
+        S.*,
+        A.unlock_code_validity_period
+    FROM security_event S
+    INNER JOIN application A ON S.application = A.name
+    WHERE
+        S.event_lock = :event_lock AND
+        (S.unlock_code = :unlock_code OR S.unlock_key = :unlock_key) AND
+        S.creation_timestamp + (A.unlock_key_validity_period || ' seconds')::interval > current_timestamp AND
+        S.unlock_timestamp is null;
+"""
+
+
+def check_security_event_unlock(
+    connection: DBInterface, event_lock, unlock_code,
+    unlock_key, singleton_code: int = None, singleton_message: str = None
+):
+    return execute_supplied_statement_singleton(
+        connection, QUERY__check_security_event_unlock, {
+            KG__security_event__event_lock: event_lock,
+            KG__security_event__unlock_code: unlock_code,
+            KG__security_event__unlock_key: unlock_key
+        }, as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+    )

@@ -70,22 +70,9 @@ Additional lines can be used
     -e FORCE_MFA=FALSE \
     -e LOG_TO_OUTPUT=TRUE \
     -e OUTPUT_QUERY_EXCEPTIONS=TRUE \
-    -e JAAQL_EMAIL_ACCOUNTS=base64encodedaccountinformation \
     -e JEQL_VERSION=3.0.6 \
     -e SENTINEL_URL=jaaql.io:8443
     --mount type=bind,source="$(pwd)"/install_scripts,target=/JAAQL-middleware-python/install_scripts \
-
-JAAQL_EMAIL_ACCOUNTS provides email config into the JAAQL server. Multiple accounts can be supplied. Base64 encoded json dict of the format
-    
-    {
-        "my_account_name": {
-            "send_name": "...",
-            "username": "...",
-            "password": "...",
-            "host": "...",
-            "port": ...
-        }
-    }
 
 JEQL_VERSION specifies the version of JEQL to use  
 You can specify jaaql specific install scripts which will call the various endpoints with input data, after jaaql has been installed

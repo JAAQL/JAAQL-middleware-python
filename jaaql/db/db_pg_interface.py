@@ -1,7 +1,7 @@
 import uuid
 
 from psycopg import OperationalError
-from psycopg_pool import ConnectionPool
+from psycopg_pool import ConnectionPool, PoolClosed
 import queue
 from psycopg.errors import ProgrammingError, InvalidParameterValue, UndefinedFunction, InternalError
 import threading
@@ -111,10 +111,8 @@ class DBPGInterface(DBInterface):
                 else:
                     raise HttpStatusException(str(ex))
 
-        self.pg_pool = user_pool[self.db_name]
-
     def _get_conn(self, allow_operational: bool = True):
-        conn = self.pg_pool.getconn(timeout=TIMEOUT)
+        conn = DBPGInterface.HOST_POOLS[self.username][self.db_name].getconn(timeout=TIMEOUT)
         conn.jaaql_reset_key = str(uuid.uuid4())
         if self.role is not None or self.sub_role is not None:
             try:
@@ -136,12 +134,11 @@ class DBPGInterface(DBInterface):
                 raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
             except OperationalError as ex:
                 if allow_operational:
-                    self.pg_pool.close()
+                    DBPGInterface.HOST_POOLS[self.username][self.db_name].close()
                     DBPGInterface.HOST_POOLS[self.username][self.db_name] = ConnectionPool(self.conn_str, min_size=PGCONN__min_conns,
                                                                                            max_size=PGCONN__max_conns, max_lifetime=60 * 30)
-                    self.pg_pool = DBPGInterface.HOST_POOLS[self.username][self.db_name]
                     try:
-                        self.pg_pool.getconn(timeout=TIMEOUT)
+                        DBPGInterface.HOST_POOLS[self.username][self.db_name].getconn(timeout=TIMEOUT)
                     except OperationalError:
                         self.close()
                         raise HttpStatusException("Database \"" + self.db_name + "\" does not exist",
@@ -153,9 +150,19 @@ class DBPGInterface(DBInterface):
 
         return conn
 
-    def get_conn(self):
+    def get_conn(self, retry_closed_pool: bool = True):
         try:
             conn = self._get_conn()
+        except PoolClosed as ex:
+            # Jaaql has likely been reinstalled, this pool has been forcibly closed
+            if retry_closed_pool:
+                DBPGInterface.HOST_POOLS[self.username][self.db_name] = ConnectionPool(self.conn_str, min_size=PGCONN__min_conns,
+                                                                                       max_size=PGCONN__max_conns, max_lifetime=60 * 30)
+                conn = self.get_conn(retry_closed_pool=False)
+                if not conn:
+                    raise ex
+            else:
+                return False
         except HttpStatusException as ex:
             raise ex
         except Exception:
@@ -168,9 +175,8 @@ class DBPGInterface(DBInterface):
         DBPGInterface.HOST_POOLS_QUEUES[self.username][self.db_name].put((conn, self.role is not None))
 
     def close(self):
-        DBPGInterface.HOST_POOLS[self.username].pop(self.db_name)
+        DBPGInterface.HOST_POOLS[self.username].pop(self.db_name).close()
         DBPGInterface.HOST_POOLS_QUEUES[self.username].pop(self.db_name)
-        self.pg_pool.close()
 
     def check_dba(self, conn, wait_hook: queue.Queue = None):
         columns, rows = self.execute_query(conn, QUERY__dba_query, parameters={KEY__database: self.db_name}, wait_hook=wait_hook)
@@ -203,8 +209,8 @@ class DBPGInterface(DBInterface):
                         return [desc[0] for desc in cursor.description], cursor.fetchall()
             except OperationalError as ex:
                 if ex.sqlstate is None or ex.sqlstate.startswith("08"):
-                    self.pg_pool.putconn(conn)
-                    self.pg_pool.check()
+                    DBPGInterface.HOST_POOLS[self.username][self.db_name].putconn(conn)
+                    DBPGInterface.HOST_POOLS[self.username][self.db_name].check()
                     conn = self.get_conn()
                     err = ex
                 else:

@@ -8,6 +8,7 @@ from jaaql.db.db_utils import execute_supplied_statement, create_interface
 from jaaql.constants import *
 from jaaql.utilities.options import OPT_KEY__canned_queries
 from jaaql.config_constants import *
+from jaaql.email.email_manager import EmailManager
 from os.path import dirname
 from jaaql.services.cached_canned_query_service import CachedCannedQueryService
 import threading
@@ -208,7 +209,7 @@ class BaseJAAQLModel:
 
         self.vault = Vault(vault_key, DIR__vault)
         self.jaaql_lookup_connection = None
-        self.email_manager = None
+        self.email_manager = EmailManager(self.is_container)
 
         self.options = options
 
@@ -234,7 +235,7 @@ class BaseJAAQLModel:
             if self.vault.has_obj(VAULT_KEY__allow_jaaql_uninstall):
                 self.uninstall_key = str(uuid.uuid4())
                 print(WARNING__uninstall_allowed, file=sys.stderr)
-                print("UNINSTALL KEY: " + self.uninstall_key)
+                print("UNINSTALL KEY: " + self.uninstall_key, file=sys.stderr)  # Print to stderr as unbuffered
             else:
                 self.install_key = None
             self.has_installed = True
@@ -259,7 +260,7 @@ class BaseJAAQLModel:
             self.install_key = str(uuid.uuid4())
             with open(os.path.join(dirname(dirname(dirname(__file__))), "install_key"), "w") as install_key_file:
                 install_key_file.write(self.install_key)
-            print("INSTALL KEY: " + self.install_key)
+            print("INSTALL KEY: " + self.install_key, file=sys.stderr)  # Print to stderr as unbuffered
 
         if not self.vault.has_obj(VAULT_KEY__jaaql_local_access_key):
             self.vault.insert_obj(VAULT_KEY__jaaql_local_access_key, str(uuid.uuid4()))

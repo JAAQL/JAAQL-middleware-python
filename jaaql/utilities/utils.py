@@ -45,7 +45,7 @@ def load_root_config(is_gunicorn):
 
     config = configparser.ConfigParser()
     config.sections()
-    config_path = join(config_root, DIR__config, FILE__config)
+    config_path = join(config_root, DIR__config, FILE__config).replace("\\", "/")
     if not exists(config_path):
         raise Exception("Could not find config. Please check working directory has access to '" + config_path + "'")
     config.read(config_path)

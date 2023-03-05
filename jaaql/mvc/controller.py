@@ -57,4 +57,8 @@ class JAAQLController(BaseJAAQLController):
 
         @self.cors_route('/sign-up', DOCUMENTATION__sign_up_request_invite)
         def sign_up(http_inputs: dict):
-            self.model.sign_up()
+            return self.model.sign_up(http_inputs)
+
+        @self.cors_route('/security-event', DOCUMENTATION__security_event)
+        def security_event(http_inputs: dict):
+            return self.model.check_security_event_key_and_security_event_is_unlocked(http_inputs)

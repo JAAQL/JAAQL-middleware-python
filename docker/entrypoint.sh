@@ -178,7 +178,6 @@ fi
 
 cd $INSTALL_PATH
 export PYTHONPATH=.
-export PYTHONUNBUFFERED=TRUE
 
 $PY_PATH /JAAQL-middleware-python/jaaql/email/patch_ems.py &> $LOG_FILE_EMAILS &
 $PY_PATH /JAAQL-middleware-python/jaaql/services/patch_script_install.py &> $LOG_FILE_SCRIPT_INSTALL &
