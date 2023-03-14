@@ -275,15 +275,12 @@ class EmailManagerService:
     def update_dispatchers(self):
         new_dispatchers = self.fetch_dispatchers_from_db()
         potentially_require_threads = {key: val for key, val in new_dispatchers.items() if not self.parameterised_lock.check_lock_held(key)}
+        self.dispatchers = new_dispatchers
         for dispatcher_key, dispatcher_info in potentially_require_threads.items():
             threading.Thread(target=self.dispatcher_thread, args=[dispatcher_key, dispatcher_info]).start()
-        self.dispatchers = new_dispatchers
 
-    def get_dispatcher_queue_from_key(self, dispatcher_key: str, no_default: bool = False):
-        default = None
-        if not no_default:
-            default = self.threadsafe_queue_initialiser.fetch_queue(dispatcher_key)
-        return self.dispatchers.get(dispatcher_key, (None, default))[1]
+    def get_dispatcher_queue_from_key(self, dispatcher_key: str):
+        return self.dispatchers.get(dispatcher_key, (None, self.threadsafe_queue_initialiser.fetch_queue(dispatcher_key)))[1]
 
     def get_dispatcher_info_from_key(self, dispatcher_key: str):
         return self.dispatchers.get(dispatcher_key, (None, None))[0]
@@ -303,7 +300,6 @@ class EmailManagerService:
                 printed = True
 
             time.sleep(15)
-
 
     def send_email_with_connection(self, conn: SMTP, email: Email, dispatcher_key: str, dispatcher_info: dict):
         send_to = email.to
@@ -412,13 +408,11 @@ class EmailManagerService:
 
     def send_email(self, email: Email):
         dispatcher_key = self.form_dispatcher_key(email.application, email.dispatcher)
-        queue = self.get_dispatcher_queue_from_key(dispatcher_key, no_default=True)
-        if queue is None:
+        if dispatcher_key not in self.dispatchers:
             self.update_dispatchers()
-            queue = self.get_dispatcher_queue_from_key(dispatcher_key, no_default=True)
-            if queue is None:
+            if dispatcher_key not in self.dispatchers:
                 raise Exception("Unable to find dispatcher with key '" + dispatcher_key + "'")
-        queue.put(email)
+        self.get_dispatcher_queue_from_key(dispatcher_key).put(email)
 
 
 def create_app(ems: EmailManagerService):

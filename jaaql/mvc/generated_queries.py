@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.fxli at 05/03/2023, 02:10:34
+This script was generated from jaaql.fxli at 12/03/2023, 15:27:49
 """
 
 from jaaql.db.db_interface import DBInterface
@@ -97,7 +97,7 @@ def application__update(
 def application__select(
     connection: DBInterface,
     name,
-    singleton_code: int = None, singleton_message: str = None
+    singleton_code: int = None, singleton_message: str = "application does not exist"
 ):
     return execute_supplied_statement_singleton(
         connection, QG__application_select, 
@@ -198,7 +198,7 @@ def application_schema__update(
 def application_schema__select(
     connection: DBInterface,
     application, name,
-    singleton_code: int = None, singleton_message: str = None
+    singleton_code: int = None, singleton_message: str = "application_schema does not exist"
 ):
     return execute_supplied_statement_singleton(
         connection, QG__application_schema_select, 
@@ -320,7 +320,7 @@ def email_dispatcher__update(
 def email_dispatcher__select(
     connection: DBInterface, encryption_key: bytes,
     application, name,
-    singleton_code: int = None, singleton_message: str = None
+    singleton_code: int = None, singleton_message: str = "email_dispatcher does not exist"
 ):
     return execute_supplied_statement_singleton(
         connection, QG__email_dispatcher_select, 
@@ -416,7 +416,7 @@ def jaaql__update(
 
 def jaaql__select(
     connection: DBInterface,
-    singleton_code: int = None, singleton_message: str = None
+    singleton_code: int = None, singleton_message: str = "jaaql does not exist"
 ):
     return execute_supplied_statement_singleton(
         connection, QG__jaaql_select,
@@ -525,7 +525,7 @@ def email_template__update(
 def email_template__select(
     connection: DBInterface,
     application, name,
-    singleton_code: int = None, singleton_message: str = None
+    singleton_code: int = None, singleton_message: str = "email_template does not exist"
 ):
     return execute_supplied_statement_singleton(
         connection, QG__email_template_select, 
@@ -632,7 +632,7 @@ def document_template__update(
 def document_template__select(
     connection: DBInterface,
     application, name,
-    singleton_code: int = None, singleton_message: str = None
+    singleton_code: int = None, singleton_message: str = "document_template does not exist"
 ):
     return execute_supplied_statement_singleton(
         connection, QG__document_template_select, 
@@ -749,7 +749,7 @@ def document_request__update(
 def document_request__select(
     connection: DBInterface, encryption_key: bytes,
     uuid,
-    singleton_code: int = None, singleton_message: str = None
+    singleton_code: int = None, singleton_message: str = "document_request does not exist"
 ):
     return execute_supplied_statement_singleton(
         connection, QG__document_request_select, 
@@ -866,7 +866,7 @@ def account__update(
 def account__select(
     connection: DBInterface, encryption_key: bytes,
     id,
-    singleton_code: int = None, singleton_message: str = None
+    singleton_code: int = None, singleton_message: str = "account does not exist"
 ):
     return execute_supplied_statement_singleton(
         connection, QG__account_select, 
@@ -976,7 +976,7 @@ def account_password__update(
 def account_password__select(
     connection: DBInterface, encryption_key: bytes,
     uuid,
-    singleton_code: int = None, singleton_message: str = None
+    singleton_code: int = None, singleton_message: str = "account_password does not exist"
 ):
     return execute_supplied_statement_singleton(
         connection, QG__account_password_select, 
@@ -1087,7 +1087,7 @@ def validated_ip_address__update(
 def validated_ip_address__select(
     connection: DBInterface, encryption_key: bytes,
     uuid,
-    singleton_code: int = None, singleton_message: str = None
+    singleton_code: int = None, singleton_message: str = "validated_ip_address does not exist"
 ):
     return execute_supplied_statement_singleton(
         connection, QG__validated_ip_address_select, 
@@ -1212,7 +1212,7 @@ def security_event__update(
 def security_event__select(
     connection: DBInterface,
     application, event_lock,
-    singleton_code: int = None, singleton_message: str = None
+    singleton_code: int = None, singleton_message: str = "security_event does not exist"
 ):
     return execute_supplied_statement_singleton(
         connection, QG__security_event_select, 

@@ -71,16 +71,16 @@ create table document_request (
     application internet_name not null,
     template object_name not null,
     uuid uuid not null,
-    request_timestamp timestamp not null default current_timestamp,
+    request_timestamp timestamptz not null default current_timestamp,
     encrypted_access_token encrypted__access_token not null,
     encrypted_parameters text,
-    render_timestamp timestamp,
+    render_timestamp timestamptz,
     primary key (uuid) );
 -- account...
 create table account (
     id postgres_role not null,
     username encrypted__jaaql_username not null,
-    deletion_timestamp timestamp,
+    deletion_timestamp timestamptz,
     most_recent_password uuid,
     primary key (id),
     unique (username) );
@@ -89,7 +89,7 @@ create table account_password (
     account postgres_role not null,
     uuid uuid not null default gen_random_uuid(),
     hash encrypted__hash not null,
-    creation_timestamp timestamp not null default current_timestamp,
+    creation_timestamp timestamptz not null default current_timestamp,
     primary key (uuid),
     unique (hash) );
 -- validated_ip_address...
@@ -97,21 +97,21 @@ create table validated_ip_address (
     account postgres_role not null,
     uuid uuid not null default gen_random_uuid(),
     encrypted_salted_ip_address encrypted__salted_ip not null,
-    first_authentication_timestamp timestamp not null default current_timestamp,
-    last_authentication_timestamp timestamp not null,
+    first_authentication_timestamp timestamptz not null default current_timestamp,
+    last_authentication_timestamp timestamptz not null,
     primary key (uuid),
     unique (encrypted_salted_ip_address) );
 -- security_event...
 create table security_event (
     application internet_name not null,
     event_lock uuid not null default gen_random_uuid(),
-    creation_timestamp timestamp not null default current_timestamp,
+    creation_timestamp timestamptz not null default current_timestamp,
     wrong_key_attempt_count current_attempt_count not null default 0,
     email_template object_name not null,
     account postgres_role not null,
     unlock_key uuid not null default gen_random_uuid(),
     unlock_code unlock_code not null,
-    unlock_timestamp timestamp,
+    unlock_timestamp timestamptz,
     primary key (application, event_lock),
     check (wrong_key_attempt_count between 0 and 3) );
 

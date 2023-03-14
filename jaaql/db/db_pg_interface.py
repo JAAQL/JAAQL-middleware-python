@@ -150,6 +150,12 @@ class DBPGInterface(DBInterface):
 
         return conn
 
+    def get_pool(self):
+        if self.db_name not in DBPGInterface.HOST_POOLS[self.username]:
+            DBPGInterface.HOST_POOLS[self.username][self.db_name] = ConnectionPool(self.conn_str, min_size=PGCONN__min_conns,
+                                                                                   max_size=PGCONN__max_conns, max_lifetime=60 * 30)
+        return DBPGInterface.HOST_POOLS[self.username][self.db_name]
+
     def get_conn(self, retry_closed_pool: bool = True):
         try:
             conn = self._get_conn()

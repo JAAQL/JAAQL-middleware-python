@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.exceptions.fxls at 05/03/2023, 02:10:34
+This script was generated from jaaql.exceptions.fxls at 12/03/2023, 15:27:49
 """
 
 from jaaql.utilities.crypt_utils import get_repeatable_salt
@@ -146,12 +146,11 @@ QUERY__count_security_events_of_type_in_24hr_window = """
         COUNT(*)
     FROM security_event S
     INNER JOIN email_template E ON E.name = S.email_template AND E.application = S.application
-    WHERE E.type IN (:type_one, :type_two, :type_three) AND account = :account AND (creation_timestamp + interval '24 hour') > current_timestamp
+    WHERE E.type IN (:type_one, :type_two) AND account = :account AND (creation_timestamp + interval '24 hour') > current_timestamp
 """
 
 KEY__type_one = "type_one"
 KEY__type_two = "type_two"
-KEY__type_three = "type_three"
 
 EMAIL_TYPE__signup = "S"
 EMAIL_TYPE__already_signed_up = "A"
@@ -159,17 +158,18 @@ EMAIL_TYPE__reset_password = "R"
 EMAIL_TYPE__unregistered_password_reset = "U"
 EMAIL_TYPE__general = "G"
 
+KEY__key_fits = "key_fits"
 QUERY__check_security_event_unlock = """
-    SELECT
-        S.*,
-        A.unlock_code_validity_period
-    FROM security_event S
-    INNER JOIN application A ON S.application = A.name
+    UPDATE
+        security_event S
+    SET
+        wrong_key_attempt_count = S.wrong_key_attempt_count + (case when (S.unlock_code = :unlock_code OR S.unlock_key = :unlock_key OR S.wrong_key_attempt_count >= 3) then 0 else 1 end)
+    FROM application A
     WHERE
-        S.event_lock = :event_lock AND
-        (S.unlock_code = :unlock_code OR S.unlock_key = :unlock_key) AND
-        S.creation_timestamp + (A.unlock_key_validity_period || ' seconds')::interval > current_timestamp AND
-        S.unlock_timestamp is null;
+        S.application = A.name AND
+        S.event_lock = :event_lock AND S.unlock_timestamp is null AND
+        S.creation_timestamp + (A.unlock_code_validity_period || ' seconds')::interval > current_timestamp
+    RETURNING S.*, A.unlock_code_validity_period, (S.unlock_code = :unlock_code OR S.unlock_key = :unlock_key) as key_fits
 """
 
 

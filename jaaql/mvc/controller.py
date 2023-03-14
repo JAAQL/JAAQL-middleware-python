@@ -55,10 +55,17 @@ class JAAQLController(BaseJAAQLController):
         def dispatchers(connection: DBInterface, http_inputs: dict):
             self.model.attach_dispatcher_credentials(connection, http_inputs)
 
-        @self.cors_route('/sign-up', DOCUMENTATION__sign_up_request_invite)
+        @self.cors_route('/sign-up', DOCUMENTATION__sign_up)
         def sign_up(http_inputs: dict):
             return self.model.sign_up(http_inputs)
 
+        @self.cors_route('/account/reset-password', DOCUMENTATION__reset_password)
+        def reset_password(http_inputs: dict):
+            return self.model.reset_password(http_inputs)
+
         @self.cors_route('/security-event', DOCUMENTATION__security_event)
-        def security_event(http_inputs: dict):
-            return self.model.check_security_event_key_and_security_event_is_unlocked(http_inputs)
+        def security_event(http_inputs: dict, ip_address: str):
+            if self.is_post():
+                return self.model.check_security_event_key_and_security_event_is_unlocked(http_inputs)
+            else:
+                return self.model.finish_security_event(http_inputs, ip_address)
