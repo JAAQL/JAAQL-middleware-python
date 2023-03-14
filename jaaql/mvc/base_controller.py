@@ -322,10 +322,14 @@ class BaseJAAQLController:
             if len(request.data.decode(request.charset)) != 0:
                 raise HttpStatusException(ERR__unexpected_request_body, HTTPStatus.BAD_REQUEST)
 
-        combined_data = {**request.form, **request.args, **data}
-
-        if len(combined_data) != len(request.form) + len(request.args) + len(data):
-            raise HttpStatusException(ERR__duplicated_field, HTTPStatus.BAD_REQUEST)
+        if not was_allow_all or not isinstance(data, list):
+            if isinstance(data, list) and not was_allow_all:
+                raise HttpStatusException("Did not expect list type for input", HTTPStatus.BAD_REQUEST)
+            combined_data = {**request.form, **request.args, **data}
+            if len(combined_data) != len(request.form) + len(request.args) + len(data):
+                raise HttpStatusException(ERR__duplicated_field, HTTPStatus.BAD_REQUEST)
+        else:
+            combined_data = data
 
         if not was_allow_all:
             BaseJAAQLController.validate_data(method, combined_data, is_prod, fill_missing)

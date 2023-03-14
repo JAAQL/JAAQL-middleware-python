@@ -1729,6 +1729,9 @@ class JAAQLModel(BaseJAAQLModel):
         return ret
 
     def obtain_connection(self, inputs: dict, jaaql_connection: DBInterface):
+        if isinstance(inputs, list):
+            return jaaql_connection, True
+
         was_connection_none = inputs.get(KEY__connection, None) is None
         connection = inputs.get(KEY__connection, None)
 

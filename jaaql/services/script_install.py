@@ -10,17 +10,23 @@ import time
 
 DIR__install_scripts = "install_scripts"
 
+SUBMIT_METHOD = "POST"
+SUBMIT_ENDPOINT = "/submit"
+
 
 def process_script(script: str, base_url: str, bypass_header: dict):
     script = script.replace("\r\n", "\n")
     commands = script.split("\n\n")
     if len(commands[0]) == 0:
         print("Script is empty")
+
+    cur_submits = []
+
     for command in commands:
         try:
             action = command.split("\n")[0].strip()
-            method = action.split(" ")[0]
-            endpoint = action.split(" ")[1]
+            method = action.split(" ")[0].strip()
+            endpoint = action.split(" ")[1].strip()
 
             loaded_json = None
             if len(command.split("\n")) > 1:
@@ -29,7 +35,13 @@ def process_script(script: str, base_url: str, bypass_header: dict):
             print("command {0} is unprocessable - skipping script {1}".format(command, script))
             return
         else:
-            requests.request(method, base_url + endpoint, headers=bypass_header, json=loaded_json)
+            if method == SUBMIT_METHOD and endpoint == SUBMIT_ENDPOINT:
+                cur_submits.append(loaded_json)
+            else:
+                requests.request(method, base_url + endpoint, headers=bypass_header, json=loaded_json)
+
+    if len(cur_submits) != 0:
+        requests.request(SUBMIT_METHOD, base_url + SUBMIT_ENDPOINT, headers=bypass_header, json=cur_submits)
 
 
 def bootup(vault_key, is_gunicorn: bool = False, install_on_bootup: bool = False):
