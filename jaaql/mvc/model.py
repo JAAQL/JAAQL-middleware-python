@@ -296,8 +296,8 @@ class JAAQLModel(BaseJAAQLModel):
             encrypted_salted_ip_address = jaaql__encrypt(ip_address, self.get_db_crypt_key(), salt_user)  # An optimisation, it is used later twice
 
             if password is not None:
-                incorrect_credentials = crypt_utils.verify_password_hash(account[KG__account_password__hash], password,
-                                                                         salt=self.get_repeatable_salt(account[KG__account__id]))
+                incorrect_credentials = not crypt_utils.verify_password_hash(account[KG__account_password__hash], password,
+                                                                             salt=self.get_repeatable_salt(account[KG__account__id]))
             else:
                 incorrect_credentials = not exists_matching_validated_ip_address(self.jaaql_lookup_connection, encrypted_salted_ip_address)
 

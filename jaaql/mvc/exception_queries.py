@@ -63,7 +63,8 @@ def fetch_most_recent_password_from_username(
         connection, QUERY__fetch_most_recent_password_from_username, {KG__account__username: account__username},
         encryption_key=encryption_key, encrypt_parameters=[KG__account__username], encryption_salts={
             KG__account__username: get_repeatable_salt(vault_repeatable_salt)
-        }, as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+        },
+        decrypt_columns=[KG__account_password__hash], as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
     )
 
 
