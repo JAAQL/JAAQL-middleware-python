@@ -4,6 +4,7 @@ worker_connections = 100
 enable_stdio_inheritance = True
 proc_name = "jaaql-middleware-python"
 preload_app = True
+timeout = 5400  # 90 minutes
 
 has_checked_for_install = False
 
