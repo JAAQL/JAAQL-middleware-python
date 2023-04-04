@@ -82,7 +82,7 @@ DOCUMENTATION__oauth_token = SwaggerDocumentation(
 
 DOCUMENTATION__oauth_refresh = SwaggerDocumentation(
     tags="OAuth",
-    security=True,
+    security=False,
     methods=SwaggerMethod(
         name="OAuth Refresh Token",
         description="Refresh your token",
