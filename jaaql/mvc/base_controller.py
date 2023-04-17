@@ -30,6 +30,7 @@ ARG__response = "response"
 ARG__username = "username"
 ARG__profiler = "profiler"
 ARG__auth_token = "auth_token"
+ARG__auth_token_for_refresh = "auth_token_for_refresh"
 ARG__connection = "connection"
 ARG__is_the_anonymous_user = "is_the_anonymous_user"
 ARG__verification_hook = "verification_hook"
@@ -483,6 +484,9 @@ class BaseJAAQLController:
                             if not swagger_documentation.security:
                                 raise Exception(ERR__method_required_token)
                             supply_dict[ARG__auth_token] = request.headers.get(HEADER__security)
+
+                        if ARG__auth_token_for_refresh in inspect.getfullargspec(view_func_local).args:
+                            supply_dict[ARG__auth_token_for_refresh] = request.headers.get(HEADER__security)
 
                         if ARG__connection in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:

@@ -20,8 +20,8 @@ class JAAQLController(BaseJAAQLController):
             return self.model.get_auth_token(**http_inputs, ip_address=ip_address, response=response)
 
         @self.cors_route(ENDPOINT__refresh, DOCUMENTATION__oauth_refresh)
-        def refresh_oauth_token(auth_token: str, ip_address: str):
-            return self.model.refresh_auth_token(auth_token, ip_address)
+        def refresh_oauth_token(auth_token_for_refresh: str, ip_address: str):
+            return self.model.refresh_auth_token(auth_token_for_refresh, ip_address)
 
         @self.cors_route(ENDPOINT__install, DOCUMENTATION__install)
         def install(http_inputs: dict):
@@ -41,7 +41,8 @@ class JAAQLController(BaseJAAQLController):
 
         @self.cors_route('/prepare', DOCUMENTATION__prepare)
         def prepare(connection: DBInterface, account_id: str, http_inputs: dict):
-            self.model.prepare_queries(connection, account_id, http_inputs)
+            raise HttpStatusException("Not yet implemented", HTTPStatus.NOT_IMPLEMENTED)
+            # self.model.prepare_queries(connection, account_id, http_inputs)
 
         @self.cors_route('/account/password', DOCUMENTATION__password)
         def password(account_id: str, username: str, ip_address: str, http_inputs: dict):

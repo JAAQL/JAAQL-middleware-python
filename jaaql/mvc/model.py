@@ -226,7 +226,6 @@ WHERE
                         if isinstance(query, list):
                             self.validate_query(found_singletons, query)
 
-
     def is_super_admin(self, connection: DBInterface):
         res = execute_supplied_statement_singleton(connection, "select usesuper from pg_user where usename = CURRENT_USER",
                                                    as_objects=True)["usesuper"]
