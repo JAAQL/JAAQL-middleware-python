@@ -109,6 +109,124 @@ class JAAQLModel(BaseJAAQLModel):
 
         return account_id
 
+    def validate_query(self, queries: list, query, allow_list=True):
+        if isinstance(query, list) and allow_list:
+            for sub_query in query:
+                self.validate_query(queries, sub_query, allow_list=False)
+            return
+
+        if not isinstance(query, dict):
+            raise HttpStatusException("Expected query to be dict")
+
+        if "line_number" not in query:
+            raise HttpStatusException("Expected line number in query")
+        if not isinstance(query["line_number"], int):
+            raise HttpStatusException("Expected integer as line number for query")
+
+        if "position" not in query:
+            raise HttpStatusException("Expected position in query")
+        if not isinstance(query["position"], int):
+            raise HttpStatusException("Expected integer as position for query")
+
+        if "name" not in query:
+            raise HttpStatusException("Expected name in query")
+        if not isinstance(query["name"], str):
+            raise HttpStatusException("Expected string as name for query")
+
+        not_allowed = [key for key in query.keys() if key not in ["name", "position", "line_number"]]
+        if len(not_allowed):
+            raise HttpStatusException("Unexpected keys in query: " + ", ".join(not_allowed))
+
+        queries.append(query)
+
+    def prepare_queries(self, connection: DBInterface, account_id: str, inputs: dict):
+        # Important! Permission check by checking that the user can in insert into the application table. This is equivalent of checking if the user
+        # owns the application. We currently have no concept of application ownership
+        res = execute_supplied_statement_singleton(connection, """SELECT
+    *
+FROM information_schema.role_table_grants
+WHERE
+    table_schema = quote_ident('public')
+    AND table_catalog = 'jaaql'
+    AND table_name = quote_ident('application')
+    AND grantee = :grantee
+    AND privilege_type = 'INSERT'
+        """, parameters={"grantee": account_id}, as_objects=True, singleton_message="You do not have permissions to prepare queries!")
+
+        if KEY__application not in inputs:
+            raise HttpStatusException("Missing application from request")
+
+        if not isinstance(inputs[KEY__application], str):
+            raise HttpStatusException("Application must be a string")
+
+        application = application__select(connection, inputs[KEY__application])
+
+        for frame, requests in inputs.items():
+            if frame == KEY__application:
+                continue  # This is not a frame but the application name
+
+            if not isinstance(requests, list):
+                raise HttpStatusException("Requests must be a list type")
+
+            found_singletons = []
+            found_queries = []
+
+            for found_request in requests:
+                if not isinstance(found_request, dict):
+                    raise HttpStatusException("Request must be a dictionary type")
+
+                if "singletons" not in found_request and "queries" not in found_request:
+                    raise HttpStatusException("Request must have either singletons or queries")
+
+                if "parameters" in found_request:
+                    parameters = found_request["parameters"]
+                    if not isinstance(parameters, list):
+                        raise HttpStatusException("Expected parameters to be list type")
+                    for parameter in parameters:
+                        if not isinstance(parameter, dict):
+                            raise HttpStatusException("Parameter must be of dict type")
+
+                        if "line_number" not in parameter:
+                            raise HttpStatusException("Parameter must have line number")
+                        if "position" not in parameter:
+                            raise HttpStatusException("Parameter must have position")
+                        if "name" not in parameter:
+                            raise HttpStatusException("Parameter must have name")
+                        line_number = parameter["line_number"]
+                        position = parameter["position"]
+                        name = parameter["name"]
+                        if not isinstance(line_number, int):
+                            raise HttpStatusException("Parameter line number must be an integer")
+                        if not isinstance(position, int):
+                            raise HttpStatusException("Parameter position must be an integer")
+                        if not isinstance(name, str):
+                            raise HttpStatusException("Parameter name must be a string")
+
+                        disallowed_keys = [key for key in parameter.keys() if key not in ["line_number", "position", "name"]]
+                        if len(disallowed_keys) != 0:
+                            raise HttpStatusException("Unrecognised keys found in parameter: " + ", ".join(disallowed_keys))
+
+                if "singletons" in found_request:
+                    singletons = found_request["singletons"]
+                    if not isinstance(singletons, dict):
+                        raise HttpStatusException("Expected singletons to be dictionary type")
+                    for query in singletons:
+                        self.validate_query(found_singletons, query)
+
+                if "queries" in found_request:
+                    queries = found_request["queries"]
+                    if not isinstance(queries, dict):
+                        raise HttpStatusException("Expected queries to be dictionary type")
+                    for query in queries:
+                        if isinstance(query, dict):
+                            if "line_number" in query:
+                                self.validate_query(found_singletons, query)
+                            else:
+                                pass  # We are dealing with a store type query
+                        if isinstance(query, list):
+                            self.validate_query(found_singletons, query)
+
+
     def is_super_admin(self, connection: DBInterface):
         res = execute_supplied_statement_singleton(connection, "select usesuper from pg_user where usename = CURRENT_USER",
                                                    as_objects=True)["usesuper"]

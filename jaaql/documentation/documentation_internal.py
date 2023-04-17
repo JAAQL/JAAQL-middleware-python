@@ -155,3 +155,14 @@ DOCUMENTATION__dispatchers = SwaggerDocumentation(
         ]
     )
 )
+
+DOCUMENTATION__prepare = SwaggerDocumentation(
+    tags="Prepare",
+    methods=SwaggerMethod(
+        name="Prepares queries",
+        description="Prepares a set of queries for an application",
+        method=REST__POST,
+        arguments=ARG_RESP__allow_all,
+        response=RES__allow_all
+    )
+)

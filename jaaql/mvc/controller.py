@@ -39,6 +39,10 @@ class JAAQLController(BaseJAAQLController):
         def accounts(connection: DBInterface, http_inputs: dict):
             self.model.create_account_with_potential_password(connection, **http_inputs)
 
+        @self.cors_route('/prepare', DOCUMENTATION__prepare)
+        def prepare(connection: DBInterface, account_id: str, http_inputs: dict):
+            self.model.prepare_queries(connection, account_id, http_inputs)
+
         @self.cors_route('/account/password', DOCUMENTATION__password)
         def password(account_id: str, username: str, ip_address: str, http_inputs: dict):
             return self.model.add_my_account_password(account_id, username, ip_address, **http_inputs)
