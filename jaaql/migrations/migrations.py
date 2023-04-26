@@ -25,7 +25,7 @@ ATTR_CHECKSUM = "checksum"
 ATTR_EXECUTION_TIME = "execution_time"
 PATH_MIGRATIONS = "migrations"
 SCRIPT_MIGRATION_HISTORY = "migration_history.sql"
-EXTENSION_SQL = ".sql"
+EXTENSION_JAAQL = ".jaaql"
 
 VERSION_SPLIT = "__"
 WORD_SPLIT = "_"
@@ -149,11 +149,9 @@ def replace_options_environment_variables(query: str, parsed_options: dict, cryp
 
 
 def run_migrations(db_interface: DBInterface, is_deployed: bool, project_name: str = None, migration_folder: str = None, config=None,
-                   super_credentials: str = None, options: dict = None, key: bytes = None):
+                   options: dict = None, key: bytes = None):
     if migration_folder is None:
         migration_folder = join(get_jaaql_root(), PATH_MIGRATIONS)
-
-    base_override_role, base_override_databases = load_config_file(join(migration_folder, "config"))
 
     if project_name is None:
         project_name = PROJECT_JAAQL
@@ -164,8 +162,6 @@ def run_migrations(db_interface: DBInterface, is_deployed: bool, project_name: s
     conn = db_interface.get_conn()
 
     statement_load_table = {"query": QUERY_LOAD_TABLE, "parameters": {ATTR_PROJECT_NAME: project_name}}
-
-    dbs = {}
 
     try:
         migration_history = db_interface.objectify(ij.transform(statement_load_table, conn=conn))
@@ -180,41 +176,27 @@ def run_migrations(db_interface: DBInterface, is_deployed: bool, project_name: s
     version_folders = sorted([version_folder for version_folder in listdir(migration_folder) if
                               isdir(join(migration_folder, version_folder)) and '.' in version_folder])
     for version_folder in version_folders:
-        folder_override_role, folder_override_databases = load_config_file(join(migration_folder, version_folder, "config"))
-
         script_files = sorted([script_file for script_file in listdir(join(migration_folder, version_folder)) if
-                               script_file.endswith(EXTENSION_SQL)])
+                               script_file.endswith(EXTENSION_JAAQL)])
         for script_file in script_files:
-            config_file_name = join(migration_folder, version_folder, script_file.split(EXTENSION_SQL)[0] + ".config")
-            script_override_role, script_override_databases = load_config_file(config_file_name)
             full_name = version_folder + "/" + script_file
             content = open(join(migration_folder, version_folder, script_file), "r").read()
-            cur_role, cur_databases = get_config(base_override_role, folder_override_role, script_override_role,
-                                                             base_override_databases, folder_override_databases, script_override_databases)
             content_for_hash = replace_options_environment_variables(content, options, key, is_deployed, config,
                                                                      fixed_salt=True)
             content = replace_options_environment_variables(content, options, key, is_deployed, config,
                                                             fixed_salt=False)
 
-            hash_content = content_for_hash + cur_role + str(cur_databases)
+            hash_content = content_for_hash
             checksum = hashlib.md5(hash_content.encode("UTF-8")).digest()
             checksum = int.from_bytes(checksum[0:3], byteorder="little")
             if full_name not in installed_scripts:
                 start_time = datetime.now()
 
-                for db in cur_databases:
-                    if db not in dbs:
-                        dbs[db] = create_interface_for_db(config, super_credentials, db, cur_role)
-                    update_db_interface = dbs[db]
-                    if not hasattr(update_db_interface, "attached_conns"):
-                        update_db_interface.attached_conns = {}
-                    update_db_interface.sub_role = cur_role
-                    if cur_role not in update_db_interface.attached_conns:
-                        update_db_interface.attached_conns[cur_role] = update_db_interface.get_conn()
-                    update_db_interface.execute_script_file(update_db_interface.attached_conns[cur_role], as_content=content)
+                # TODO call the jaaql file
+
                 execution_time = time_delta_ms(start_time, datetime.now())
                 version = script_file.split("__")[0][1:]
-                description = " ".join(script_file.split(VERSION_SPLIT)[1].split(EXTENSION_SQL)[0].split(WORD_SPLIT))
+                description = " ".join(script_file.split(VERSION_SPLIT)[1].split(EXTENSION_JAAQL)[0].split(WORD_SPLIT))
                 ij.transform({
                     "query": QUERY_INS_TABLE,
                     "parameters": {
@@ -234,10 +216,5 @@ def run_migrations(db_interface: DBInterface, is_deployed: bool, project_name: s
                 if checksum != existing_checksum:
                     raise Exception("Migration mismatch for " + script_file + ". Locally calculated checksum " + str(
                         checksum) + " yet in db table found " + str(existing_checksum))
-
-    for cur_db in dbs.values():
-        for cur_conn in cur_db.attached_conns.values():
-            cur_db.put_conn(cur_conn)
-        cur_db.close()
 
     db_interface.put_conn(conn)

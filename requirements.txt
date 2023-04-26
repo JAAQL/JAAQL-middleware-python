@@ -17,3 +17,4 @@ pyzbar==0.1.9
 requests-unixsocket==0.3.0
 selenium==4.7.2
 twine==4.0.2
+jaaql-monitor=1.2.11

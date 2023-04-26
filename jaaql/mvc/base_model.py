@@ -249,7 +249,7 @@ class BaseJAAQLModel:
 
             if migration_project_name is not None:
                 run_migrations(self.jaaql_lookup_connection, self.is_container, migration_project_name, migration_folder=migration_folder,
-                               config=self.config, super_credentials=self.vault.get_obj(VAULT_KEY__super_db_credentials), options=options,
+                               config=self.config, options=options,
                                key=self.get_db_crypt_key())
 
             if self.is_container:
