@@ -202,19 +202,22 @@ class BaseJAAQLModel:
             db_crypt_key = os.environ.get("JAAQL_DB_CRYPT_KEY")
             if not db_crypt_key:
                 _, db_crypt_key = crypt_utils.key_stretcher(str(uuid.uuid4()), length=crypt_utils.AES__key_length)
-            self.vault.insert_obj(VAULT_KEY__db_crypt_key, db_crypt_key.decode(crypt_utils.ENCODING__ascii))
+                db_crypt_key = db_crypt_key.decode(crypt_utils.ENCODING__ascii)
+            self.vault.insert_obj(VAULT_KEY__db_crypt_key, db_crypt_key)
 
         if not self.vault.has_obj(VAULT_KEY__jwt_crypt_key):
             jwt_crypt_key = os.environ.get("JAAQL_JWT_CRYPT_KEY")
             if not jwt_crypt_key:
                 _, jwt_crypt_key = crypt_utils.key_stretcher(str(uuid.uuid4()))
-            self.vault.insert_obj(VAULT_KEY__jwt_crypt_key, jwt_crypt_key.decode(crypt_utils.ENCODING__ascii))
+                jwt_crypt_key = jwt_crypt_key.decode(crypt_utils.ENCODING__ascii)
+            self.vault.insert_obj(VAULT_KEY__jwt_crypt_key, jwt_crypt_key)
 
         if not self.vault.has_obj(VAULT_KEY__jwt_obj_crypt_key):
-            jwt_obj_crypt_key = os.environ.get("JAAQL_JWT_CRYPT_KEY")
+            jwt_obj_crypt_key = os.environ.get("JAAQL_JWT_OBJ_CRYPT_KEY")
             if not jwt_obj_crypt_key:
                 _, jwt_obj_crypt_key = crypt_utils.key_stretcher(str(uuid.uuid4()))
-            self.vault.insert_obj(VAULT_KEY__jwt_obj_crypt_key, jwt_obj_crypt_key.decode(crypt_utils.ENCODING__ascii))
+                jwt_obj_crypt_key = jwt_obj_crypt_key.decode(crypt_utils.ENCODING__ascii)
+            self.vault.insert_obj(VAULT_KEY__jwt_obj_crypt_key, jwt_obj_crypt_key)
 
         if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):
             if self.vault.has_obj(VAULT_KEY__allow_jaaql_uninstall):

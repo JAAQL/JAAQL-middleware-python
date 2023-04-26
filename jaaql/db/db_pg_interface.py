@@ -40,6 +40,7 @@ class DBPGInterface(DBInterface):
                 conn_str += " host=" + host
             else:
                 self.is_host_pool = True
+            self.is_host_pool = True
             if str(port) != "5432":
                 conn_str += " port=" + str(port)
 
@@ -96,10 +97,10 @@ class DBPGInterface(DBInterface):
             try:
                 with conn.cursor() as cursor:
                     do_prepare = False
-                    if DBPGInterface.HOST_USER != self.username and self.username != USERNAME__jaaql:
-                        do_prepare = True
-                        if not any([query.upper().startswith(ok_command) for ok_command in ALLOWABLE_COMMANDS]):
-                            raise HttpStatusException(ERR__command_not_allowed)
+                    # if DBPGInterface.HOST_USER != self.username and self.username != USERNAME__jaaql:
+                    #     do_prepare = True
+                    #     if not any([query.upper().startswith(ok_command) for ok_command in ALLOWABLE_COMMANDS]):
+                    #         raise HttpStatusException(ERR__command_not_allowed)
 
                     if parameters is None or len(parameters.keys()) == 0:
                         cursor.execute(query, prepare=do_prepare)
