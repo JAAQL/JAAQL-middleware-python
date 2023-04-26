@@ -195,18 +195,25 @@ class BaseJAAQLModel:
         self.refresh_expiry_ms = int(config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__token_refresh_expiry_ms])
 
         if not self.vault.has_obj(VAULT_KEY__db_repeatable_salt):
-            self.vault.insert_obj(VAULT_KEY__db_repeatable_salt, crypt_utils.fetch_random_readable_salt().decode(crypt_utils.ENCODING__ascii))
+            salt = os.environ.get("JAAQL_VAULT_SALT", crypt_utils.fetch_random_readable_salt().decode(crypt_utils.ENCODING__ascii))
+            self.vault.insert_obj(VAULT_KEY__db_repeatable_salt, salt)
 
         if not self.vault.has_obj(VAULT_KEY__db_crypt_key):
-            _, db_crypt_key = crypt_utils.key_stretcher(str(uuid.uuid4()), length=crypt_utils.AES__key_length)
+            db_crypt_key = os.environ.get("JAAQL_DB_CRYPT_KEY")
+            if not db_crypt_key:
+                _, db_crypt_key = crypt_utils.key_stretcher(str(uuid.uuid4()), length=crypt_utils.AES__key_length)
             self.vault.insert_obj(VAULT_KEY__db_crypt_key, db_crypt_key.decode(crypt_utils.ENCODING__ascii))
 
         if not self.vault.has_obj(VAULT_KEY__jwt_crypt_key):
-            _, jwt_crypt_key = crypt_utils.key_stretcher(str(uuid.uuid4()))
+            jwt_crypt_key = os.environ.get("JAAQL_JWT_CRYPT_KEY")
+            if not jwt_crypt_key:
+                _, jwt_crypt_key = crypt_utils.key_stretcher(str(uuid.uuid4()))
             self.vault.insert_obj(VAULT_KEY__jwt_crypt_key, jwt_crypt_key.decode(crypt_utils.ENCODING__ascii))
 
         if not self.vault.has_obj(VAULT_KEY__jwt_obj_crypt_key):
-            _, jwt_obj_crypt_key = crypt_utils.key_stretcher(str(uuid.uuid4()))
+            jwt_obj_crypt_key = os.environ.get("JAAQL_JWT_CRYPT_KEY")
+            if not jwt_obj_crypt_key:
+                _, jwt_obj_crypt_key = crypt_utils.key_stretcher(str(uuid.uuid4()))
             self.vault.insert_obj(VAULT_KEY__jwt_obj_crypt_key, jwt_obj_crypt_key.decode(crypt_utils.ENCODING__ascii))
 
         if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):

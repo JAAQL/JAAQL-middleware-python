@@ -467,9 +467,10 @@ class JAAQLModel(BaseJAAQLModel):
         threading.Thread(target=self.exit_jaaql).start()
 
     def install(self, db_connection_string: str, superjaaql_password: str, password: str, install_key: str,
-                use_mfa: bool, allow_uninstall: bool, ip_address: str, response: JAAQLResponse):
+                use_mfa: bool, allow_uninstall: bool, ip_address: str, response: JAAQLResponse, allow_persistence: bool = False):
         if not use_mfa and self.force_mfa:
             raise HttpStatusException(ERR__mfa_must_be_enabled)
+
         if self.jaaql_lookup_connection is None:
             if allow_uninstall:
                 self.vault.insert_obj(VAULT_KEY__allow_jaaql_uninstall, True)
@@ -482,101 +483,123 @@ class JAAQLModel(BaseJAAQLModel):
 
             address, port, db, username, db_password = DBInterface.fracture_uri(db_connection_string)
 
-            db_interface = create_interface(self.config, address, port, db, username, db_password)
-            conn = db_interface.get_conn()
-            db_interface.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "install_1.sql"))
-            resp = db_interface.execute_query(conn, QUERY__setup_jaaql_role)
-            jaaql_password = resp[1][0][0]
-            db_interface.commit(conn)
-            db_interface.put_conn(conn)
-            db_interface.close()
-            self.jaaql_lookup_connection = create_interface(self.config, address, port, db, USERNAME__jaaql, jaaql_password)
+            jaaql_password = None
 
-            conn = self.jaaql_lookup_connection.get_conn()
-            self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "install_2.sql"))
-            self.jaaql_lookup_connection.put_conn(conn)
+            try:
+                db_interface = create_interface(self.config, address, port, db, username, db_password)
+                conn = db_interface.get_conn()
+                db_interface.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "install_1.sql"))
+                resp = db_interface.execute_query(conn, QUERY__setup_jaaql_role)
+                jaaql_password = resp[1][0][0]
+                db_interface.commit(conn)
+                db_interface.put_conn(conn)
+                db_interface.close()
+                self.jaaql_lookup_connection = create_interface(self.config, address, port, db, USERNAME__jaaql, jaaql_password)
 
-            self.add_node({
-                KEY__node_name: NODE__host_node,
-                KEY__description: None,
-                KEY__port: port,
-                KEY__address: address,
-            }, self.jaaql_lookup_connection)
+                conn = self.jaaql_lookup_connection.get_conn()
+                self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "install_2.sql"))
+                self.jaaql_lookup_connection.put_conn(conn)
+            except Exception as ex:
+                if not allow_persistence:
+                    raise ex
+
             self.vault.insert_obj(VAULT_KEY__jaaql_lookup_connection, db_connection_string)
-            self.add_database({KEY__node: NODE__host_node, KEY__database_name: DB__jaaql}, self.jaaql_lookup_connection)
 
-            user_id = self.create_user(self.jaaql_lookup_connection, USERNAME__jaaql, jaaql_password)
-            mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__jaaql, password, user_id, ip_address, use_mfa=use_mfa, response=response)
+            try:
+                self.add_node({
+                    KEY__node_name: NODE__host_node,
+                    KEY__description: None,
+                    KEY__port: port,
+                    KEY__address: address,
+                }, self.jaaql_lookup_connection)
+                self.add_database({KEY__node: NODE__host_node, KEY__database_name: DB__jaaql}, self.jaaql_lookup_connection)
 
-            self.add_configuration_authorization({
-                KEY__application: APPLICATION__manager,
-                KEY__configuration: CONFIGURATION__host,
-                KEY__role: USERNAME__jaaql
-            }, self.jaaql_lookup_connection)
-            self.add_configuration_authorization({
-                KEY__application: APPLICATION__console,
-                KEY__configuration: CONFIGURATION__host,
-                KEY__role: USERNAME__jaaql
-            }, self.jaaql_lookup_connection)
-            self.add_configuration_authorization({
-                KEY__application: APPLICATION__playground,
-                KEY__configuration: CONFIGURATION__host,
-                KEY__role: USERNAME__jaaql
-            }, self.jaaql_lookup_connection)
+                if jaaql_password is None:
+                    jaaql_password = db_password
 
-            superjaaql_db_password = db_password
-            super_otp_uri = None
-            super_otp_qr = None
-            if superjaaql_password is not None:
-                # Because we are setting this user up as postgres, it has a role of every user. Therefore we set this
-                # precedence as higher to override them
-                super_user_id = self.create_user(self.jaaql_lookup_connection, USERNAME__superjaaql,
-                                                 superjaaql_db_password, attach_as=USERNAME__postgres,
-                                                 precedence=PRECEDENCE__super_user)
-                super_mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__superjaaql, superjaaql_password,
-                                              super_user_id, ip_address, use_mfa=use_mfa)
-                super_otp_uri = super_mfa[KEY__otp_uri]
-                super_otp_qr = super_mfa[KEY__otp_qr]
+                user_id = self.create_user(self.jaaql_lookup_connection, USERNAME__jaaql, jaaql_password)
+                mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__jaaql, password, user_id, ip_address, use_mfa=use_mfa,
+                                        response=response)
+
                 self.add_configuration_authorization({
                     KEY__application: APPLICATION__manager,
                     KEY__configuration: CONFIGURATION__host,
-                    KEY__role: USERNAME__postgres
+                    KEY__role: USERNAME__jaaql
                 }, self.jaaql_lookup_connection)
                 self.add_configuration_authorization({
                     KEY__application: APPLICATION__console,
                     KEY__configuration: CONFIGURATION__host,
-                    KEY__role: USERNAME__postgres
+                    KEY__role: USERNAME__jaaql
                 }, self.jaaql_lookup_connection)
                 self.add_configuration_authorization({
                     KEY__application: APPLICATION__playground,
                     KEY__configuration: CONFIGURATION__host,
-                    KEY__role: USERNAME__postgres
+                    KEY__role: USERNAME__jaaql
                 }, self.jaaql_lookup_connection)
 
-            base_url = self.url + SEPARATOR__dir + DIR__apps + SEPARATOR__dir
-            execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_set_url,
-                                       {KEY__application_url: base_url + DIR__console,
-                                        KEY__application_name: APPLICATION__console})
-            execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_set_url,
-                                       {KEY__application_url: base_url + DIR__manager,
-                                        KEY__application_name: APPLICATION__manager})
-            execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_setup_host,
-                                       {KEY__application: APPLICATION__manager})
-            execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_set_url,
-                                       {KEY__application_url: base_url + DIR__playground,
-                                        KEY__application_name: APPLICATION__playground})
-            execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_setup_host,
-                                       {KEY__application: APPLICATION__playground})
+                superjaaql_db_password = db_password
+                super_otp_uri = None
+                super_otp_qr = None
+                if superjaaql_password is not None:
+                    # Because we are setting this user up as postgres, it has a role of every user. Therefore we set this
+                    # precedence as higher to override them
+                    super_user_id = self.create_user(self.jaaql_lookup_connection, USERNAME__superjaaql,
+                                                     superjaaql_db_password, attach_as=USERNAME__postgres,
+                                                     precedence=PRECEDENCE__super_user)
+                    super_mfa = self.sign_up_user(self.jaaql_lookup_connection, USERNAME__superjaaql, superjaaql_password,
+                                                  super_user_id, ip_address, use_mfa=use_mfa)
+                    super_otp_uri = super_mfa[KEY__otp_uri]
+                    super_otp_qr = super_mfa[KEY__otp_qr]
+                    self.add_configuration_authorization({
+                        KEY__application: APPLICATION__manager,
+                        KEY__configuration: CONFIGURATION__host,
+                        KEY__role: USERNAME__postgres
+                    }, self.jaaql_lookup_connection)
+                    self.add_configuration_authorization({
+                        KEY__application: APPLICATION__console,
+                        KEY__configuration: CONFIGURATION__host,
+                        KEY__role: USERNAME__postgres
+                    }, self.jaaql_lookup_connection)
+                    self.add_configuration_authorization({
+                        KEY__application: APPLICATION__playground,
+                        KEY__configuration: CONFIGURATION__host,
+                        KEY__role: USERNAME__postgres
+                    }, self.jaaql_lookup_connection)
 
-            print("Rebooting to allow JAAQL config to be shared among workers")
-            print("Executing with platform: " + platform.python_implementation())
-            threading.Thread(target=self.exit_jaaql).start()
+                base_url = self.url + SEPARATOR__dir + DIR__apps + SEPARATOR__dir
+                execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_set_url,
+                                           {KEY__application_url: base_url + DIR__console,
+                                            KEY__application_name: APPLICATION__console})
+                execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_set_url,
+                                           {KEY__application_url: base_url + DIR__manager,
+                                            KEY__application_name: APPLICATION__manager})
+                execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_setup_host,
+                                           {KEY__application: APPLICATION__manager})
+                execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_set_url,
+                                           {KEY__application_url: base_url + DIR__playground,
+                                            KEY__application_name: APPLICATION__playground})
+                execute_supplied_statement(self.jaaql_lookup_connection, QUERY__application_setup_host,
+                                           {KEY__application: APPLICATION__playground})
+
+                print("Rebooting to allow JAAQL config to be shared among workers")
+                print("Executing with platform: " + platform.python_implementation())
+                threading.Thread(target=self.exit_jaaql).start()
+
+                return {
+                    KEY__jaaql_otp_uri: mfa[KEY__otp_uri],
+                    KEY__jaaql_otp_qr: mfa[KEY__otp_qr],
+                    KEY__superjaaql_otp_uri: super_otp_uri,
+                    KEY__superjaaql_otp_qr: super_otp_qr
+                }
+            except Exception as ex:
+                if not allow_persistence:
+                    raise ex
 
             return {
-                KEY__jaaql_otp_uri: mfa[KEY__otp_uri],
-                KEY__jaaql_otp_qr: mfa[KEY__otp_qr],
-                KEY__superjaaql_otp_uri: super_otp_uri,
-                KEY__superjaaql_otp_qr: super_otp_qr
+                KEY__jaaql_otp_uri: "",
+                KEY__jaaql_otp_qr: "",
+                KEY__superjaaql_otp_uri: "",
+                KEY__superjaaql_otp_qr: ""
             }
         else:
             raise HttpStatusException(ERR__already_installed)

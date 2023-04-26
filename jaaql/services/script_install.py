@@ -63,7 +63,7 @@ def bootup(vault_key, is_gunicorn: bool = False, install_on_bootup: bool = False
             "superjaaql_password": "passw0rd",
             "allow_uninstall": False
         }
-        if not is_gunicorn:
+        if not is_gunicorn or os.environ.get("DB_CONNECTION_STRING"):
             json_data["db_connection_string"] = os.environ.get("DB_CONNECTION_STRING", "postgresql://postgres:123456@localhost:5432/jaaql")
         requests.post(base_url + ENDPOINT__install, json=json_data)
 
