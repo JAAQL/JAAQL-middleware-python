@@ -36,13 +36,13 @@ cp -r /JAAQL-middleware-python/jaaql/apps $INSTALL_PATH/www
 
 LOG_FILE=$INSTALL_PATH/log/gunicorn.log
 LOG_FILE_EMAILS=$INSTALL_PATH/log/mail_service.log
-LOG_FILE_SCRIPT_INSTALL=$INSTALL_PATH/log/script_install.log
+LOG_FILE_MIGRATIONS=$INSTALL_PATH/log/migration_service.log
 ACCESS_LOG_FILE=$INSTALL_PATH/log/gunicorn_access.log
 
 if [ "$LOG_TO_OUTPUT" = "TRUE" ] ; then
   LOG_FILE='-'
   LOG_FILE_EMAILS=/dev/stdout
-  LOG_FILE_SCRIPT_INSTALL=/dev/stdout
+  LOG_FILE_MIGRATIONS=/dev/stdout
   ln -sf /dev/stdout /var/log/nginx/access.log && ln -sf /dev/stderr /var/log/nginx/error.log
 fi
 
@@ -180,7 +180,7 @@ cd $INSTALL_PATH
 export PYTHONPATH=.
 
 $PY_PATH /JAAQL-middleware-python/jaaql/email/patch_ems.py &> $LOG_FILE_EMAILS &
-$PY_PATH /JAAQL-middleware-python/jaaql/services/patch_script_install.py &> $LOG_FILE_SCRIPT_INSTALL &
+$PY_PATH /JAAQL-middleware-python/jaaql/services/patch_mms.py &> $LOG_FILE_MIGRATIONS &
 
 echo "from jaaql.patch import monkey_patch" >> wsgi_patch.py
 echo "monkey_patch()" >> wsgi_patch.py

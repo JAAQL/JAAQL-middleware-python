@@ -27,6 +27,10 @@ class JAAQLController(BaseJAAQLController):
         def install(http_inputs: dict):
             return self.model.install(**http_inputs)
 
+        @self.cors_route(ENDPOINT__execute_migrations, DOCUMENTATION__migrations)
+        def execute_migrations(connection: DBInterface):
+            return self.model.execute_migrations(connection)
+
         @self.cors_route('/internal/is_installed', DOCUMENTATION__is_installed)
         def is_installed(response: JAAQLResponse):
             return self.model.is_installed(response)

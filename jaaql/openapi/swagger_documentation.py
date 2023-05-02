@@ -1,7 +1,8 @@
 from typing import List, Optional, Union, Any, TypeVar
 from types import ModuleType
 from jaaql.exceptions.http_status_exception import *
-from jaaql.constants import EXAMPLE__jwt, HEADER__security
+from jaaql.constants import EXAMPLE__jwt
+from monitor.main import HEADER__security
 import os
 import shutil
 import yaml as yaml_utils

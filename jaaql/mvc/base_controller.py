@@ -17,6 +17,7 @@ from jaaql.constants import *
 from jaaql.mvc.model import JAAQLModel
 from jaaql.mvc.response import JAAQLResponse
 from typing import Union
+from monitor.main import HEADER__security, HEADER__security_bypass_jaaql, HEADER__security_bypass
 
 from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, TYPE__response, \
     SwaggerFlatResponse, REST__DELETE, REST__GET, REST__OPTIONS, REST__POST, REST__PUT, SwaggerList, SwaggerResponse, \
@@ -81,6 +82,9 @@ BOOL__allowed = {
     "false": False
 }
 
+IPS__local = [
+    "127.0.0.1", "localhost"
+]
 
 class BaseJAAQLController:
 
@@ -430,7 +434,24 @@ class BaseJAAQLController:
                     ip_addr = request.headers.get(HEADER__real_ip, request.remote_addr).split(",")[0]
 
                     if swagger_documentation.security:
-                        if verification_hook:
+                        bypass_super = request.headers.get(HEADER__security_bypass)
+                        bypass_jaaql = request.headers.get(HEADER__security_bypass_jaaql)
+                        if bypass_super or bypass_jaaql:
+                            if ip_addr not in IPS__local:
+                                raise HttpStatusException("Bypass used in none local context", HTTPStatus.UNAUTHORIZED)
+                            miss_super_bypass = bypass_super and bypass_super != self.model.local_super_access_key
+                            miss_jaaql_bypass = bypass_jaaql and bypass_jaaql != self.model.local_super_access_key
+                            if miss_super_bypass or miss_jaaql_bypass:
+                                raise HttpStatusException("Invalid bypass key", HTTPStatus.UNAUTHORIZED)
+
+                            is_public = False
+                            username = USERNAME__super_db if bypass_super else USERNAME__jaaql
+                            account_id, ip_id = self.model.get_bypass_user(username, ip_addr)
+
+                            if verification_hook:
+                                verification_hook.put((True, None, None))
+
+                        elif verification_hook:
                             account_id, username, ip_id, is_public = self.model.verify_auth_token_threaded(request.headers.get(HEADER__security),
                                                                                                            ip_addr, verification_hook)
                             self.perform_profile(request_id, "Verify JWT Threaded")

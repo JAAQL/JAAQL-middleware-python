@@ -1,3 +1,5 @@
+import os
+
 from jaaql.db.db_interface import DBInterface
 from jaaql.utilities.utils import time_delta_ms, get_jaaql_root, loc, get_base_url, get_external_url
 from datetime import datetime
@@ -10,6 +12,9 @@ from jaaql.db.db_utils import create_interface
 from jaaql.utilities.crypt_utils import encrypt_raw
 import re
 from jaaql.utilities.crypt_utils import AES__iv_length
+from monitor.main import initialise, MARKER__bypass, MARKER__jaaql_bypass
+from jaaql.constants import USERNAME__jaaql, USERNAME__super_db, DB__jaaql, DB__postgres
+
 
 MIGRATION_HISTORY = "migration_history"
 
@@ -34,44 +39,6 @@ PROJECT_JAAQL = "JAAQL"
 
 REGEX__migration_replacement = r'{{JAAQL__[A-Z_]+}}'
 REGEX__migration_replacement_and_encrypt = r'#{{JAAQL__[A-Z_]+}}'
-
-
-def load_config_file(location: str) -> (str, str, str):
-    ret_role = None
-    ret_databases = None
-    try:
-        the_content = open(location, "r").read()
-
-        if "ROLE=" in the_content:
-            ret_role = the_content.split("ROLE=")[1].split("\r")[0].split("\n")[0].strip()
-        if "DATABASES=" in the_content:
-            ret_databases = the_content.split("DATABASES=")[1].split("\r")[0].split("\n")[0].strip()
-    except:
-        pass
-
-    return ret_role, ret_databases
-
-
-def get_config(role: str, folder_role: str, file_role: str, databases: str,
-               folder_databases: str, file_databases: str):
-    ret_role = "jaaql"
-    ret_databases = ["jaaql"]
-
-    if role is not None:
-        ret_role = role
-    if folder_role is not None:
-        ret_role = folder_role
-    if file_role is not None:
-        ret_role = file_role
-
-    if databases is not None:
-        ret_databases = databases.split(",")
-    if folder_databases is not None:
-        ret_databases = folder_databases.split(",")
-    if file_databases is not None:
-        ret_databases = file_databases.split(",")
-
-    return ret_role, ret_databases
 
 
 def create_interface_for_db(config, super_credentials: str, database: str, sub_role: str):
@@ -148,8 +115,8 @@ def replace_options_environment_variables(query: str, parsed_options: dict, cryp
     return prepared
 
 
-def run_migrations(db_interface: DBInterface, is_deployed: bool, project_name: str = None, migration_folder: str = None, config=None,
-                   options: dict = None, key: bytes = None):
+def run_migrations(host: str, bypass_super: str, bypass_jaaql: str, db_interface: DBInterface, is_deployed: bool, project_name: str = None,
+                   migration_folder: str = None, config=None, options: dict = None, key: bytes = None):
     if migration_folder is None:
         migration_folder = join(get_jaaql_root(), PATH_MIGRATIONS)
 
@@ -180,7 +147,8 @@ def run_migrations(db_interface: DBInterface, is_deployed: bool, project_name: s
                                script_file.endswith(EXTENSION_JAAQL)])
         for script_file in script_files:
             full_name = version_folder + "/" + script_file
-            content = open(join(migration_folder, version_folder, script_file), "r").read()
+            actual_file_name = join(migration_folder, version_folder, script_file)
+            content = open(actual_file_name, "r").read()
             content_for_hash = replace_options_environment_variables(content, options, key, is_deployed, config,
                                                                      fixed_salt=True)
             content = replace_options_environment_variables(content, options, key, is_deployed, config,
@@ -190,9 +158,18 @@ def run_migrations(db_interface: DBInterface, is_deployed: bool, project_name: s
             checksum = hashlib.md5(hash_content.encode("UTF-8")).digest()
             checksum = int.from_bytes(checksum[0:3], byteorder="little")
             if full_name not in installed_scripts:
+                config_loc = os.environ.get("JAAQL_CONFIG_LOC", "monitor_config")
+                configs = []
+                for fname in os.listdir(config_loc):
+                    config_name = ".".join(fname.split(".")[0:-1])
+                    configs.append([config_name, fname])
+
+                encoded_configs = [[USERNAME__jaaql, host, USERNAME__jaaql, MARKER__bypass + bypass_super, DB__jaaql],
+                                   [USERNAME__super_db, host, USERNAME__super_db, MARKER__jaaql_bypass + bypass_jaaql, DB__postgres]]
+
                 start_time = datetime.now()
 
-                # TODO call the jaaql file
+                initialise(actual_file_name, content, configs, encoded_configs)
 
                 execution_time = time_delta_ms(start_time, datetime.now())
                 version = script_file.split("__")[0][1:]

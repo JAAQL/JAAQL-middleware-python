@@ -9,7 +9,7 @@ from os.path import join
 from jaaql.constants import *
 from jaaql.mvc.response import JAAQLResponse
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL, ASSERT_one, KEY_assert, KEY_query, KEY_parameters
-from jaaql.utilities.utils import get_jaaql_root
+from jaaql.utilities.utils import get_jaaql_root, get_base_url
 from jaaql.db.db_utils import create_interface, jaaql__encrypt
 from jaaql.utilities import crypt_utils
 import threading
@@ -22,6 +22,8 @@ from queue import Queue
 import subprocess
 import time
 import random
+
+from jaaql.migrations.migrations import run_migrations
 
 REGEX__object_name = r'^[0-9a-zA-Z_]{1,63}$'
 
@@ -277,6 +279,14 @@ WHERE
         self.add_account_password(account_id, password)
         return self.get_auth_token(password=password, ip_address=ip_address, username=username)
 
+    def execute_migrations(self, connection: DBInterface):
+        self.is_super_admin(connection)
+
+        base_url = get_base_url(self.config, self.is_container)
+        run_migrations(base_url, self.local_super_access_key, self.local_jaaql_access_key, self.jaaql_lookup_connection, self.is_container,
+                       self.migration_project_name, migration_folder=self.migration_folder, config=self.config, options=self.options,
+                       key=self.get_db_crypt_key())
+
     def is_installed(self, response: JAAQLResponse):
         if not self.has_installed:
             response.response_code = HTTPStatus.UNPROCESSABLE_ENTITY
@@ -392,6 +402,19 @@ WHERE
             raise HttpStatusException(ERR__refresh_expired, HTTPStatus.UNAUTHORIZED)
 
         return self.get_auth_token(decoded[KEY__username], ip_address)
+
+    def get_bypass_user(self, username: str, ip_address: str):
+        account = fetch_most_recent_password_from_username(self.jaaql_lookup_connection, self.get_db_crypt_key(),
+                                                           self.get_vault_repeatable_salt(), username, singleton_code=HTTPStatus.UNAUTHORIZED)
+        salt_user = self.get_repeatable_salt(account[KG__account__id])
+        encrypted_salted_ip_address = jaaql__encrypt(ip_address, self.get_db_crypt_key(), salt_user)
+        address = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
+                                                       QUERY___add_or_update_validated_ip_address,
+                                                       {KG__validated_ip_address__account: account[KG__account__id],
+                                                        KG__validated_ip_address__encrypted_salted_ip_address: encrypted_salted_ip_address},
+                                                       as_objects=True)[KG__validated_ip_address__uuid]
+
+        return account[KG__account__id], address
 
     def get_auth_token(self, username: str, ip_address: str, password: str = None, response: JAAQLResponse = None):
         incorrect_credentials = False

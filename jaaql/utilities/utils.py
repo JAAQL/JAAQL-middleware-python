@@ -3,7 +3,7 @@ from os.path import join, exists, dirname
 from datetime import datetime
 import os
 import glob
-from jaaql.constants import DIR__config, FILE__config, CONFIG_KEY__server, CONFIG_KEY_SERVER__port, ENVIRON__install_path, PORT__ems
+from jaaql.constants import DIR__config, FILE__config, CONFIG_KEY__server, CONFIG_KEY_SERVER__port, ENVIRON__install_path, PORT__ems, PORT__mms
 from jaaql.config_constants import *
 from jaaql.db.db_interface import DBInterface
 from jaaql.db.db_utils import create_interface
@@ -127,10 +127,21 @@ def await_ems_startup():
         time.sleep(5)
 
 
+def await_migrations_finished():
+    while True:
+        try:
+            if requests.get("http://127.0.0.1:" + str(PORT__mms) + "/").status_code == 200:
+                break
+        except:
+            pass
+        time.sleep(5)
+
+
 def get_jaaql_connection(config, vault):
     jaaql_uri = vault.get_obj(VAULT_KEY__jaaql_lookup_connection)
     address, port, db, username, password = DBInterface.fracture_uri(jaaql_uri)
     return create_interface(config, address, port, db, username, password)
+
 
 def get_db_connection_as_jaaql(config, vault, db: str):
     jaaql_uri = vault.get_obj(VAULT_KEY__jaaql_lookup_connection)

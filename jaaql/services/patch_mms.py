@@ -2,7 +2,7 @@ from jaaql.patch import monkey_patch
 
 monkey_patch()
 
-from jaaql.services.script_install import bootup
+from jaaql.services.migrations_manager_service import bootup
 import os
 from jaaql.constants import ENVIRON__vault_key, ENVIRON__local_install
 

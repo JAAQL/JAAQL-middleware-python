@@ -29,7 +29,6 @@ class Option:
 
 
 OPT_KEY__vault_key = "vault-key"
-OPT_KEY__email_credentials = "email-credentials"
 OPT_KEY__help = "help"
 OPT_KEY__profiling = "profiling"
 OPT_KEY__local_install = "local_install"
@@ -48,13 +47,6 @@ DEFAULT_OPTIONS: List[Option] = [
         long=OPT_KEY__vault_key,
         required=False,
         description="Encrypts the jaaql vault which stores internal sensitive information",
-        is_flag=False
-    ),
-    Option(
-        short="e",
-        long=OPT_KEY__email_credentials,
-        required=False,
-        description="Provides email credentials into the JAAQL server",
         is_flag=False
     ),
     Option(

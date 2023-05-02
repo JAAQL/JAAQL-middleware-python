@@ -69,6 +69,16 @@ DOCUMENTATION__install = SwaggerDocumentation(
     )
 )
 
+DOCUMENTATION__migrations = SwaggerDocumentation(
+    tags="Migrations",
+    security=True,
+    methods=SwaggerMethod(
+        name="Execute migrations",
+        description="Executes the migrations. Can only be done by the super user",
+        method=REST__POST
+    )
+)
+
 DOCUMENTATION__is_installed = SwaggerDocumentation(
     tags="Installation",
     security=False,

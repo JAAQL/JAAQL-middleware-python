@@ -1,6 +1,3 @@
-HEADER__security = "Authentication-Token"
-HEADER__security_bypass = "Authentication-Token-Bypass"
-
 SQL__where = "WHERE"
 SQL__order_by = "ORDER BY"
 SQL__limit = "LIMIT"
@@ -69,6 +66,7 @@ EXAMPLE__jwt = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.e30.yXvILkvUUCBqAFlAv6wQ1Q-
 
 VAULT_KEY__db_crypt_key = "db_crypt_key"
 VAULT_KEY__db_repeatable_salt = "repeatable_salt"
+VAULT_KEY__super_local_access_key = "super_access_key"
 VAULT_KEY__jaaql_local_access_key = "jaaql_access_key"
 VAULT_KEY__super_db_credentials = "super_db_credentials"
 VAULT_KEY__jaaql_lookup_connection = "jaaql_lookup_connection"
@@ -121,8 +119,10 @@ DB__jaaql = "jaaql"
 DB__postgres = "postgres"
 
 PORT__ems = 6061
+PORT__mms = 6062
 
 ENDPOINT__send_email = "/send-email"
+ENDPOINT__execute_migrations = "/internal/migrations"
 ENDPOINT__internal_applications = "/internal/applications"
 ENDPOINT__internal_templates = "/internal/emails/templates"
 ENDPOINT__internal_accounts = "/internal/emails/accounts"
@@ -147,5 +147,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.6.6"
+VERSION = "4.7.0"
 
