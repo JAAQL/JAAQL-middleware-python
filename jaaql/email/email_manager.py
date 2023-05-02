@@ -1,7 +1,7 @@
 import re
 
 from typing import Callable
-from jaaql.email.email_manager_service import Email, TYPE__email_attachments
+from jaaql.email.email_manager_service import Email
 import requests
 from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.constants import *

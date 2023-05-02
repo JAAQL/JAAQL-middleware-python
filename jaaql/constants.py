@@ -109,7 +109,6 @@ ENDPOINT__internal_applications = "/internal/applications"
 ENDPOINT__internal_templates = "/internal/emails/templates"
 ENDPOINT__internal_accounts = "/internal/emails/accounts"
 ENDPOINT__is_alive = "/internal/is-alive"
-ENDPOINT__jaaql_emails = "/emails"
 ENDPOINT__report_sentinel_error = "/sentinel/reporting/error"
 ENDPOINT__install = "/internal/install"
 
