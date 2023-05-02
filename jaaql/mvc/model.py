@@ -1,4 +1,3 @@
-import re
 import uuid
 
 from jaaql.db.db_pg_interface import DBPGInterface
@@ -8,9 +7,9 @@ from jaaql.exceptions.http_status_exception import HttpStatusException, HTTPStat
 from os.path import join
 from jaaql.constants import *
 from jaaql.mvc.response import JAAQLResponse
-from jaaql.interpreter.interpret_jaaql import InterpretJAAQL, ASSERT_one, KEY_assert, KEY_query, KEY_parameters
 from jaaql.utilities.utils import get_jaaql_root, get_base_url
 from jaaql.db.db_utils import create_interface, jaaql__encrypt
+from jaaql.db.db_utils_no_circ import submit
 from jaaql.utilities import crypt_utils
 import threading
 from datetime import datetime, timedelta
@@ -25,24 +24,18 @@ import random
 
 from jaaql.migrations.migrations import run_migrations
 
-REGEX__object_name = r'^[0-9a-zA-Z_]{1,63}$'
-
-ERR__invalid_object_name = "Object name '%s' is invalid. Must match regex: " + REGEX__object_name
 ERR__refresh_expired = "Token too old to be used for refresh. Please authenticate again"
 ERR__incorrect_install_key = "Incorrect install key!"
 ERR__invalid_level = "Invalid level!"
 ERR__incorrect_credentials = "Incorrect credentials!"
 ERR__email_template_not_installed = "Either email template does not exist"
 ERR__lacking_permissions = "Only an administrator can perform this action!"
-ERR__schema_invalid = "Schema invalid!"
 ERR__cant_send_attachments = "Cannot send attachments to other people"
 ERR__keep_alive_failed = "Keep alive failed"
 ERR__template_not_signup = "Sign up template does not have the correct type"
 ERR__template_not_already = "Already signed up template does not have the correct type"
 ERR__template_not_reset = "Reset template does not have the correct type"
 ERR__template_not_unregistered = "Unregistered template does not have the correct type"
-ERR__unexpected_parameters = "Email parameters were not expected"
-ERR__expected_parameters = "Email parameters were expected"
 ERR__unexpected_validation_column = "Unexpected column in the input parameters '%s'"
 ERR__data_validation_table_no_primary = "Data validation table has no primary key"
 ERR__cant_find_sign_up = "Cannot locate sign up with key. The key is either incorrect, has expired or has not been activated with the emailed code"
@@ -466,75 +459,8 @@ WHERE
 
         return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data, JWT_PURPOSE__oauth, expiry_ms=self.token_expiry_ms)
 
-    def create_interface_for_db(self, user_id: str, database: str, sub_role: str = None):
-        jaaql_uri = self.vault.get_obj(VAULT_KEY__super_db_credentials)
-        address, port, _, username, password = DBInterface.fracture_uri(jaaql_uri)
-        return create_interface(self.config, address, port, database, username, password=password, role=user_id, sub_role=sub_role)
-
     def attach_dispatcher_credentials(self, connection: DBInterface, inputs: dict):
         email_dispatcher__update(connection, self.get_db_crypt_key(), **inputs)
-
-    def send_email(self, application: str, template: str, application_artifacts_source: str, application_base_url: str, account_id: str,
-                   parameters: dict = None, parameter_id: str = None, none_sanitized_parameters: dict = None):
-        if none_sanitized_parameters is None:
-            none_sanitized_parameters = {}
-
-        account = account__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), account_id)
-        template = email_template__select(self.jaaql_lookup_connection, application, template)
-
-        if parameters is not None and len(parameters) == 0:
-            parameters = None
-
-        if template[KG__email_template__validation_schema] is None and parameters is not None:
-            raise HttpStatusException(ERR__unexpected_parameters)
-        if template[KG__email_template__validation_schema] is not None and parameters is None:
-            raise HttpStatusException(ERR__expected_parameters)
-
-        if parameters is not None:
-            ins_query = "INSERT INTO %s (%s) VALUES (%s) RETURNING id"
-
-            if parameter_id is not None:
-                parameters[KEY__id] = parameter_id
-
-            for col, _ in parameters.items():
-                if not re.match(REGEX__object_name, col):
-                    raise HttpStatusException(ERR__invalid_object_name % col)
-
-            cols = ", ".join(['"' + key + '"' for key in parameters.keys()])
-            vals = ", ".join([':' + key for key in parameters.keys()])
-
-            ins_query = ins_query % (template[KG__email_template__data_validation_table], cols, vals)
-            self.submit({
-                KEY__application: application,
-                KEY__schema: template[KG__email_template__validation_schema],
-                KEY_query: ins_query,
-                KEY_parameters: parameters,
-                KEY_assert: ASSERT_one
-            }, account_id)
-            parameter_id = execute_supplied_statement_singleton(self.jaaql_lookup_connection, ins_query, parameters, as_objects=True)[KEY__id]
-
-            sel_table = \
-                template[KG__email_template__data_validation_table] if template[KG__email_template__data_validation_view] is None \
-                else template[KG__email_template__data_validation_view]
-
-            sel_query = "SELECT * FROM %s WHERE id = :id" % sel_table
-            self.submit({
-                KEY__application: application,
-                KEY__schema: template[KG__email_template__validation_schema],
-                KEY_query: sel_query,
-                KEY_parameters: parameters,
-                KEY_assert: ASSERT_one
-            }, account_id)
-            parameters = execute_supplied_statement_singleton(self.jaaql_lookup_connection, sel_query, {KEY__id: parameter_id}, as_objects=True)
-        else:
-            parameters = {}
-
-        none_sanitized_parameters[EMAIL_PARAM__app_url] = application_base_url
-        none_sanitized_parameters[EMAIL_PARAM__email_address] = account[KG__account__username]
-        parameters = {**parameters, **none_sanitized_parameters}
-
-        self.email_manager.construct_and_send_email(application_artifacts_source, template[KG__email_template__dispatcher], template,
-                                                    account[KG__account__username], parameters)
 
     def gen_security_event_unlock_code(self, codeset: str, length: int):
         return "".join([codeset[random.randint(0, len(codeset) - 1)] for _ in range(length)])
@@ -659,9 +585,11 @@ WHERE
         reg_env_ins = security_event__insert(self.jaaql_lookup_connection, inputs[KG__security_event__application], template, account_id,
                                              unlock_code)
 
-        self.send_email(inputs[KG__security_event__application], template, app[KG__application__artifacts_source],
-                        app[KG__application__base_url], account_id, inputs[KEY__parameters],
-                        parameter_id=reg_env_ins[KG__security_event__event_lock], none_sanitized_parameters={
+        self.email_manager.send_email(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, self.get_db_crypt_key(),
+                                      inputs[KG__security_event__application], template,
+                                      app[KG__application__artifacts_source],
+                                      app[KG__application__base_url], account_id, inputs[KEY__parameters],
+                                      parameter_id=reg_env_ins[KG__security_event__event_lock], none_sanitized_parameters={
                 EMAIL_PARAM__unlock_key: reg_env_ins[KG__security_event__unlock_key],
                 EMAIL_PARAM__unlock_code: unlock_code
             })
@@ -727,9 +655,10 @@ WHERE
         reg_env_ins = security_event__insert(self.jaaql_lookup_connection, inputs[KG__security_event__application], template, account_id,
                                              unlock_code)
 
-        self.send_email(inputs[KG__security_event__application], template, app[KG__application__artifacts_source],
-                        app[KG__application__base_url], account_id, inputs[KEY__parameters],
-                        parameter_id=reg_env_ins[KG__security_event__event_lock], none_sanitized_parameters={
+        self.email_manager.send_email(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, self.get_db_crypt_key(),
+                                      inputs[KG__security_event__application], template,
+                                      app[KG__application__artifacts_source], app[KG__application__base_url], account_id, inputs[KEY__parameters],
+                                      parameter_id=reg_env_ins[KG__security_event__event_lock], none_sanitized_parameters={
                 EMAIL_PARAM__unlock_key: reg_env_ins[KG__security_event__unlock_key],
                 EMAIL_PARAM__unlock_code: unlock_code
             })
@@ -739,42 +668,5 @@ WHERE
         }
 
     def submit(self, inputs: dict, account_id: str, verification_hook: Queue = None):
-        if not isinstance(inputs, dict):
-            raise HttpStatusException("Expected object or string input")
-
-        if KEY__application in inputs:
-            schemas = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_application_schemas, {
-                KG__application_schema__application: inputs[KEY__application]
-            }, as_objects=True)
-            if len(schemas) == 0:
-                raise HttpStatusException("Application has no schemas!")
-            if not schemas[0][KG__application__is_live]:
-                raise HttpStatusException("Application is currently being deployed. Please wait a few minutes until deployment is complete")
-            schemas = {itm[KG__application_schema__name]: itm for itm in schemas}
-
-            found_db = None
-            if KEY__schema in inputs:
-                found_db = schemas[inputs[KEY__schema]][KEY__database]
-                inputs.pop(KEY__schema)
-            else:
-                if len(schemas) == 1:
-                    found_db = schemas[list(schemas.keys())[0]][KEY__database]
-                else:
-                    found_dbs = [val[KEY__database] for _, val in schemas.items() if val[KEY__is_default]]
-                    if len(found_dbs) == 1:
-                        found_db = found_dbs[0]
-
-            if not found_db:
-                raise HttpStatusException(ERR__schema_invalid)
-
-            inputs[KEY__database] = found_db
-
-        if KEY__database not in inputs:
-            inputs[KEY__database] = DB__jaaql
-
-        sub_role = inputs.pop(KEY__role) if KEY__role in inputs else None
-        required_db = self.create_interface_for_db(account_id, inputs[KEY__database], sub_role)
-
-        return InterpretJAAQL(required_db).transform(inputs, skip_commit=inputs.get(KEY__read_only), wait_hook=verification_hook,
-                                                     encryption_key=self.get_db_crypt_key(),
-                                                     canned_query_service=self.cached_canned_query_service)
+        return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
+                      self.cached_canned_query_service)

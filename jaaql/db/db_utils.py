@@ -1,9 +1,10 @@
 from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
-from jaaql.constants import ENCODING__utf
+from jaaql.constants import ENCODING__utf, VAULT_KEY__super_db_credentials
 from typing import Union
 import jaaql.utilities.crypt_utils as crypt_utils
 from jaaql.db.db_pg_interface import DBPGInterface
+from jaaql.db.db_interface import DBInterface
 
 ERR__encryption_key_required = "Encryption key required. Check internal function calls"
 ERR__duplicated_encrypt_parameter = "Duplicated value in encrypt_parameters list"
@@ -12,7 +13,7 @@ ERR__missing_encrypt_parameter = "Encrypted parameter is not found '%s'"
 ERR__duplicated_encryption_salt = "Duplicated value in encryption_salts list"
 ERR__expected_single_row = "Expected single row response but received '%d' rows"
 ERR__unsupported_interface = "Unsupported interface '%s'. We only support %s"
-
+ERR__schema_invalid = "Schema invalid!"
 
 KEY_CONFIG__db = "DATABASE"
 KEY_CONFIG__interface = "interface"
@@ -163,3 +164,9 @@ def execute_supplied_statements(db_interface, queries: Union[str, list],
         data = [db_interface.objectify(obj) for obj in data]
 
     return data
+
+
+def create_interface_for_db(vault, config, user_id: str, database: str, sub_role: str = None):
+    jaaql_uri = vault.get_obj(VAULT_KEY__super_db_credentials)
+    address, port, _, username, password = DBInterface.fracture_uri(jaaql_uri)
+    return create_interface(config, address, port, database, username, password=password, role=user_id, sub_role=sub_role)

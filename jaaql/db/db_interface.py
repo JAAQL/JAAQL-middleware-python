@@ -2,7 +2,6 @@ import traceback
 from abc import ABC, abstractmethod
 from datetime import datetime
 import logging
-from jaaql.utilities.utils_no_project_imports import time_delta_ms
 from jaaql.exceptions.http_status_exception import *
 from typing import Optional
 import queue

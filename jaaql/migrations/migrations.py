@@ -8,7 +8,6 @@ from os.path import join, isdir
 from os import listdir, environ
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
 from jaaql.exceptions.http_status_exception import HttpStatusException
-from jaaql.db.db_utils import create_interface
 from jaaql.utilities.crypt_utils import encrypt_raw
 import re
 from jaaql.utilities.crypt_utils import AES__iv_length
@@ -39,12 +38,6 @@ PROJECT_JAAQL = "JAAQL"
 
 REGEX__migration_replacement = r'{{JAAQL__[A-Z_]+}}'
 REGEX__migration_replacement_and_encrypt = r'#{{JAAQL__[A-Z_]+}}'
-
-
-def create_interface_for_db(config, super_credentials: str, database: str, sub_role: str):
-    address, port, _, username, password = DBInterface.fracture_uri(super_credentials)
-
-    return create_interface(config, address, port, database, username, password=password, sub_role=sub_role)
 
 
 def replace_options_environment_variables(query: str, parsed_options: dict, crypt_key: bytes, is_deployed: bool, config, fixed_salt: bool):

@@ -3,11 +3,13 @@ from os.path import join, exists, dirname
 from datetime import datetime
 import os
 import glob
-from jaaql.constants import DIR__config, FILE__config, CONFIG_KEY__server, CONFIG_KEY_SERVER__port, ENVIRON__install_path, PORT__ems, PORT__mms
+from jaaql.constants import DIR__config, FILE__config, CONFIG_KEY__server, CONFIG_KEY_SERVER__port, ENVIRON__install_path, PORT__ems, PORT__mms, \
+    VAULT_KEY__db_crypt_key
 from jaaql.config_constants import *
 from jaaql.db.db_interface import DBInterface
 from jaaql.db.db_utils import create_interface
 from jaaql.constants import VAULT_KEY__jaaql_lookup_connection
+from jaaql.utilities.crypt_utils import ENCODING__ascii
 import configparser
 import time
 import urllib.parse
@@ -147,3 +149,7 @@ def get_db_connection_as_jaaql(config, vault, db: str):
     jaaql_uri = vault.get_obj(VAULT_KEY__jaaql_lookup_connection)
     address, port, _, username, password = DBInterface.fracture_uri(jaaql_uri)
     return create_interface(config, address, port, db, username, password)
+
+
+def get_db_crypt_key(vault):
+    return vault.get_obj(VAULT_KEY__db_crypt_key).encode(ENCODING__ascii)

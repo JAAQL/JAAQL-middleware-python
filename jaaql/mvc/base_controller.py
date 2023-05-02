@@ -17,6 +17,7 @@ from jaaql.constants import *
 from jaaql.mvc.model import JAAQLModel
 from jaaql.mvc.response import JAAQLResponse
 from typing import Union
+from jaaql.db.db_utils import create_interface_for_db
 from monitor.main import HEADER__security, HEADER__security_bypass_jaaql, HEADER__security_bypass
 
 from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, TYPE__response, \
@@ -483,12 +484,14 @@ class BaseJAAQLController:
                                 if not swagger_documentation.security:
                                     raise Exception(ERR__method_required_user_connection)
                                 connect_db = arg.split(ARG_START__connection)[1]
-                                supply_dict[arg] = self.model.create_interface_for_db(account_id, connect_db, sub_role=account_id)
+                                supply_dict[arg] = create_interface_for_db(self.model.vault, self.model.config, account_id, connect_db,
+                                                                           sub_role=account_id)
 
                         for arg in inspect.getfullargspec(view_func_local).args:
                             if arg.startswith(ARG_START__jaaql_connection):
                                 connect_db = arg.split(ARG_START__jaaql_connection)[1]
-                                supply_dict[arg] = self.model.create_interface_for_db(account_id, connect_db, sub_role=ROLE__jaaql)
+                                supply_dict[arg] = create_interface_for_db(self.model.vault, self.model.config, account_id, connect_db,
+                                                                           sub_role=ROLE__jaaql)
 
                         if ARG__username in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:
@@ -512,7 +515,7 @@ class BaseJAAQLController:
                         if ARG__connection in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:
                                 raise Exception(ERR__method_required_connection)
-                            supply_dict[ARG__connection] = self.model.create_interface_for_db(account_id, DB__jaaql)
+                            supply_dict[ARG__connection] = create_interface_for_db(self.model.vault, self.model.config, account_id, DB__jaaql)
 
                         if ARG__is_the_anonymous_user in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:
