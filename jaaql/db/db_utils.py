@@ -5,6 +5,7 @@ from typing import Union
 import jaaql.utilities.crypt_utils as crypt_utils
 from jaaql.db.db_pg_interface import DBPGInterface
 from jaaql.db.db_interface import DBInterface
+from jaaql.utilities.utils_no_project_imports import objectify
 
 ERR__encryption_key_required = "Encryption key required. Check internal function calls"
 ERR__duplicated_encrypt_parameter = "Duplicated value in encrypt_parameters list"
@@ -104,7 +105,7 @@ def execute_supplied_statement(db_interface, query: str, parameters: dict = None
     data = InterpretJAAQL(db_interface).transform(statement, skip_commit=skip_commit, encryption_key=encryption_key, autocommit=autocommit)
 
     if as_objects:
-        data = db_interface.objectify(data)
+        data = objectify(data)
 
     return data
 
@@ -161,7 +162,7 @@ def execute_supplied_statements(db_interface, queries: Union[str, list],
     data = InterpretJAAQL(db_interface).transform(statement)
 
     if as_objects:
-        data = [db_interface.objectify(obj) for obj in data]
+        data = [objectify(obj) for obj in data]
 
     return data
 

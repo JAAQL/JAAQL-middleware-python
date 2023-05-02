@@ -45,7 +45,8 @@ class EmailManager:
         return quote(str(val))
 
     def send_email(self, vault, config, db_crypt_key, jaaql_connection, application: str, template: str, application_artifacts_source: str,
-                   application_base_url: str, account_id: str, parameters: dict = None, parameter_id: str = None, none_sanitized_parameters: dict = None):
+                   application_base_url: str, account_id: str, parameters: dict = None, parameter_id: str = None,
+                   none_sanitized_parameters: dict = None, recipient: str = None):
         if none_sanitized_parameters is None:
             none_sanitized_parameters = {}
 
@@ -104,7 +105,7 @@ class EmailManager:
         parameters = {**parameters, **none_sanitized_parameters}
 
         self.construct_and_send_email(application_artifacts_source, template[KG__email_template__dispatcher], template,
-                                      account[KG__account__username], parameters)
+                                      recipient if recipient else account[KG__account__username], parameters)
 
     def construct_and_send_email(self, application_artifacts_source: Optional[str], dispatcher: str, template: dict, to_email: str,
                                  parameters: Optional[dict], attachments=None, attachment_access_token: str = None):

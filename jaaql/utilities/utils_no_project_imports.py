@@ -10,6 +10,13 @@ import re
 ALLOWABLE_FILE_PATH = r'^[a-z0-9_\-\/]+(\.[a-zA-Z0-9]+)?$'
 
 
+def objectify(data, singleton: bool = False):
+    if singleton:
+        return dict(zip(data['columns'], data['rows'][0]))
+    else:
+        return [dict(zip(data['columns'], row)) for row in data['rows']]
+
+
 def time_delta_ms(start_time: datetime, end_time: datetime) -> int:
     return int(round((end_time - start_time).total_seconds() * 1000))
 

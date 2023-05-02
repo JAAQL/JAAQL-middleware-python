@@ -7,10 +7,11 @@ from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
 from jaaql.constants import KEY__application, KEY__database, KEY__schema, KEY__role, DB__jaaql, \
     KEY__read_only
 from jaaql.db.db_interface import DBInterface
+from jaaql.utilities.utils_no_project_imports import objectify
 
 
 def submit(vault, config, db_crypt_key, jaaql_connection: DBInterface, inputs: dict, account_id: str, verification_hook: Queue = None,
-           cached_canned_query_service = None):
+           cached_canned_query_service = None, as_objects: bool = False, singleton: bool = False):
     if not isinstance(inputs, dict):
         raise HttpStatusException("Expected object or string input")
 
@@ -47,6 +48,11 @@ def submit(vault, config, db_crypt_key, jaaql_connection: DBInterface, inputs: d
     sub_role = inputs.pop(KEY__role) if KEY__role in inputs else None
     required_db = create_interface_for_db(vault, config, account_id, inputs[KEY__database], sub_role)
 
-    return InterpretJAAQL(required_db).transform(inputs, skip_commit=inputs.get(KEY__read_only), wait_hook=verification_hook,
-                                                 encryption_key=db_crypt_key,
-                                                 canned_query_service=cached_canned_query_service)
+    ret = InterpretJAAQL(required_db).transform(inputs, skip_commit=inputs.get(KEY__read_only), wait_hook=verification_hook,
+                                                encryption_key=db_crypt_key,
+                                                canned_query_service=cached_canned_query_service)
+
+    if as_objects:
+        ret = objectify(ret, singleton=singleton)
+
+    return ret

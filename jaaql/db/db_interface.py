@@ -4,6 +4,7 @@ from datetime import datetime
 import logging
 from jaaql.exceptions.http_status_exception import *
 from typing import Optional
+from jaaql.utilities.utils_no_project_imports import objectify
 import queue
 
 ERR__unknown_echo = "Unknown echo type '%s'. Please use either %s"
@@ -158,12 +159,9 @@ class DBInterface(ABC):
             ret[RET__echo] = query
 
         if as_objects:
-            return self.objectify(ret)
+            return objectify(ret)
         else:
             return ret
-
-    def objectify(self, data):
-        return [dict(zip(data['columns'], row)) for row in data['rows']]
 
     def execute_script_file(self, conn, file_loc: str = None, as_content: str = None, as_individual=False, commit=True):
         ret = None

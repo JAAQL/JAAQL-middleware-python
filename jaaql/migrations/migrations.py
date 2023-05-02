@@ -8,9 +8,9 @@ from os.path import join, isdir
 from os import listdir, environ
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
 from jaaql.exceptions.http_status_exception import HttpStatusException
-from jaaql.utilities.crypt_utils import encrypt_raw
+from jaaql.utilities.crypt_utils import encrypt_raw, AES__iv_length
+from jaaql.utilities.utils_no_project_imports import objectify
 import re
-from jaaql.utilities.crypt_utils import AES__iv_length
 from monitor.main import initialise, MARKER__bypass, MARKER__jaaql_bypass
 from jaaql.constants import USERNAME__jaaql, USERNAME__super_db, DB__jaaql, DB__postgres
 
@@ -124,11 +124,11 @@ def run_migrations(host: str, bypass_super: str, bypass_jaaql: str, db_interface
     statement_load_table = {"query": QUERY_LOAD_TABLE, "parameters": {ATTR_PROJECT_NAME: project_name}}
 
     try:
-        migration_history = db_interface.objectify(ij.transform(statement_load_table, conn=conn))
+        migration_history = objectify(ij.transform(statement_load_table, conn=conn))
     except HttpStatusException:
         print("Migration history table does not exist. Creating")
         db_interface.execute_script_file(conn, join(get_jaaql_root(), PATH_MIGRATIONS, SCRIPT_MIGRATION_HISTORY))
-        migration_history = db_interface.objectify(ij.transform(statement_load_table, conn=conn))
+        migration_history = objectify(ij.transform(statement_load_table, conn=conn))
 
     installed_scripts = [cur[ATTR_SCRIPT] for cur in migration_history]
     cur_installed_rank = ([-1] + sorted([cur[ATTR_INSTALLED_RANK] for cur in migration_history]))[-1]
