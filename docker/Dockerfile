@@ -13,6 +13,10 @@ ENV JAAQL_CONFIG_LOC /JAAQL-config
 ENV JAAQL_DEPLOYED true
 ENV PIGGYBACK_LETSENCRYPT FALSE
 
+ENV LANG en_GB.UTF-8
+ENV LANGUAGE en_GB:en
+ENV LC_ALL en_GB.UTF-8
+
 ARG CHROME_VERSION="109.0.5414.74-1"
 ARG PYTHON_MAJOR_VERSION="3.11"
 ARG PYTHON_VERSION="${PYTHON_MAJOR_VERSION}.3"
@@ -20,7 +24,6 @@ ARG PYTHON_VERSION="${PYTHON_MAJOR_VERSION}.3"
 VOLUME /etc/letsencrypt
 VOLUME $INSTALL_PATH/vault
 COPY docker/jaaql.service /lib/systemd/system/jaaql.service
-COPY requirements.txt $INSTALL_PATH/requirements.txt
 VOLUME /etc/nginx/sites-available/
 COPY ./pgextension /pgextension
 
@@ -63,7 +66,6 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     DEBIAN_FRONTEND=noninteractive apt-get -y install xorg xvfb gtk2-engines-pixbuf && \
     apt-get -y install dbus-x11 xfonts-base xfonts-100dpi xfonts-75dpi xfonts-cyrillic xfonts-scalable && \
     apt-get -y install imagemagick x11-apps && \
-    $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt && \
     /bin/mkdir -p '/usr/share/postgresql/15/extension' && \
     /bin/mkdir -p '/usr/lib/postgresql/15/lib' && \
     /usr/bin/install -c -m 644 /pgextension/jaaql.control '/usr/share/postgresql/15/extension/' && \
@@ -81,10 +83,8 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     locale-gen && \
     apt-get autoremove --purge -y
 
-ENV LANG en_GB.UTF-8
-ENV LANGUAGE en_GB:en
-ENV LC_ALL en_GB.UTF-8
-
+COPY requirements.txt $INSTALL_PATH/requirements.txt
+RUN $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt
 COPY . $INSTALL_PATH
 
 RUN git clone https://github.com/JAAQL/JEQL.git && \

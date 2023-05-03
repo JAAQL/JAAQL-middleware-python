@@ -441,7 +441,7 @@ class BaseJAAQLController:
                             if ip_addr not in IPS__local:
                                 raise HttpStatusException("Bypass used in none local context", HTTPStatus.UNAUTHORIZED)
                             miss_super_bypass = bypass_super and bypass_super != self.model.local_super_access_key
-                            miss_jaaql_bypass = bypass_jaaql and bypass_jaaql != self.model.local_super_access_key
+                            miss_jaaql_bypass = bypass_jaaql and bypass_jaaql != self.model.local_jaaql_access_key
                             if miss_super_bypass or miss_jaaql_bypass:
                                 raise HttpStatusException("Invalid bypass key", HTTPStatus.UNAUTHORIZED)
 
@@ -619,6 +619,7 @@ class BaseJAAQLController:
                 source_file = source_file.replace("\\", "/")
 
                 BaseJAAQLController.sentinel_errors.put({
+                    "application": "jaaql-middleware",
                     "error_condensed": str(orig),
                     "version": VERSION,
                     "source_system": "Sentinel" if BaseJAAQLController.internal_sentinel else "JAAQL",

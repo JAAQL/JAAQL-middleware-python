@@ -121,6 +121,7 @@ ARTIFACTS_DEFAULT_DIRECTORY = "artifacts"
 
 USERNAME__jaaql = "jaaql"
 USERNAME__super_db = "super_db"
+USERNAME__superuser = "superuser"
 USERNAME__anonymous = "anonymous"
 PASSWORD__anonymous = "jaaql_public_password"
 ROLE__jaaql = "jaaql"
@@ -128,5 +129,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.8.5"
+VERSION = "4.8.15"
 

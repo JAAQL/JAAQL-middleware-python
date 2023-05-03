@@ -12,7 +12,7 @@ from jaaql.utilities.crypt_utils import encrypt_raw, AES__iv_length
 from jaaql.utilities.utils_no_project_imports import objectify
 import re
 from monitor.main import initialise, MARKER__bypass, MARKER__jaaql_bypass
-from jaaql.constants import USERNAME__jaaql, USERNAME__super_db, DB__jaaql, DB__postgres
+from jaaql.constants import USERNAME__jaaql, USERNAME__super_db, DB__jaaql, DB__postgres, USERNAME__superuser
 
 
 MIGRATION_HISTORY = "migration_history"
@@ -155,10 +155,10 @@ def run_migrations(host: str, bypass_super: str, bypass_jaaql: str, db_interface
                 configs = []
                 for fname in os.listdir(config_loc):
                     config_name = ".".join(fname.split(".")[0:-1])
-                    configs.append([config_name, fname])
+                    configs.append([config_name, join(config_loc, fname)])
 
-                encoded_configs = [[USERNAME__jaaql, host, USERNAME__jaaql, MARKER__bypass + bypass_super, DB__jaaql],
-                                   [USERNAME__super_db, host, USERNAME__super_db, MARKER__jaaql_bypass + bypass_jaaql, DB__postgres]]
+                encoded_configs = [[USERNAME__jaaql, host, USERNAME__jaaql, MARKER__jaaql_bypass + bypass_jaaql, DB__jaaql],
+                                   [USERNAME__superuser, host, USERNAME__super_db, MARKER__bypass + bypass_super, DB__postgres]]
 
                 start_time = datetime.now()
 

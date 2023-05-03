@@ -75,28 +75,26 @@ class EmailManager:
             vals = ", ".join([':' + key for key in parameters.keys()])
 
             ins_query = ins_query % (template[KG__email_template__data_validation_table], cols, vals)
-            submit(vault, config, db_crypt_key, jaaql_connection, {
+            parameter_id = submit(vault, config, db_crypt_key, jaaql_connection, {
                 KEY__application: application,
                 KEY__schema: template[KG__email_template__validation_schema],
                 KEY_query: ins_query,
                 KEY_parameters: parameters,
                 KEY_assert: ASSERT_one
-            }, account_id)
-            parameter_id = execute_supplied_statement_singleton(jaaql_connection, ins_query, parameters, as_objects=True)[KEY__id]
+            }, account_id, as_objects=True, singleton=True)[KEY__id]
 
             sel_table = \
                 template[KG__email_template__data_validation_table] if template[KG__email_template__data_validation_view] is None \
-                else template[KG__email_template__data_validation_view]
+                    else template[KG__email_template__data_validation_view]
 
             sel_query = "SELECT * FROM %s WHERE id = :id" % sel_table
-            submit(vault, config, db_crypt_key, jaaql_connection, {
+            parameters = submit(vault, config, db_crypt_key, jaaql_connection, {
                 KEY__application: application,
                 KEY__schema: template[KG__email_template__validation_schema],
                 KEY_query: sel_query,
-                KEY_parameters: parameters,
+                KEY_parameters: {KEY__id: parameter_id},
                 KEY_assert: ASSERT_one
-            }, account_id)
-            parameters = execute_supplied_statement_singleton(jaaql_connection, sel_query, {KEY__id: parameter_id}, as_objects=True)
+            }, account_id, as_objects=True, singleton=True)
         else:
             parameters = {}
 

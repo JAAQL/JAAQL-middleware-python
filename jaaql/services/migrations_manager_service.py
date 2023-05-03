@@ -46,8 +46,9 @@ def bootup(vault_key, is_gunicorn: bool = False, install_on_bootup: bool = False
     vault = Vault(vault_key, DIR__vault)
 
     bypass_header = {HEADER__security_bypass: vault.get_obj(VAULT_KEY__super_local_access_key)}
-    requests.post(base_url + ENDPOINT__execute_migrations, headers=bypass_header)
+    res = requests.post(base_url + ENDPOINT__execute_migrations, headers=bypass_header)
 
-    flask_app = create_app()
-    print("Created migration manager app host, running flask", file=sys.stderr)
-    flask_app.run(port=PORT__mms, host="0.0.0.0", threaded=True)
+    if res.status_code == 200:
+        flask_app = create_app()
+        print("Created migration manager app host, running flask", file=sys.stderr)
+        flask_app.run(port=PORT__mms, host="0.0.0.0", threaded=True)
