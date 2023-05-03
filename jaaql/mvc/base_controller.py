@@ -434,12 +434,15 @@ class BaseJAAQLController:
 
                     ip_addr = request.headers.get(HEADER__real_ip, request.remote_addr).split(",")[0]
 
+                    if ip_addr is None or ip_addr == "":
+                        ip_addr = "127.0.0.1"
+
                     if swagger_documentation.security:
                         bypass_super = request.headers.get(HEADER__security_bypass)
                         bypass_jaaql = request.headers.get(HEADER__security_bypass_jaaql)
                         if bypass_super or bypass_jaaql:
                             if ip_addr not in IPS__local:
-                                raise HttpStatusException("Bypass used in none local context", HTTPStatus.UNAUTHORIZED)
+                                raise HttpStatusException("Bypass used in none local context: " + ip_addr, HTTPStatus.UNAUTHORIZED)
                             miss_super_bypass = bypass_super and bypass_super != self.model.local_super_access_key
                             miss_jaaql_bypass = bypass_jaaql and bypass_jaaql != self.model.local_jaaql_access_key
                             if miss_super_bypass or miss_jaaql_bypass:

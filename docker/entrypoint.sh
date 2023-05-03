@@ -179,6 +179,10 @@ fi
 cd $INSTALL_PATH
 export PYTHONPATH=.
 
+if [ "$JAAQL_DEBUGGING" = "TRUE" ] ; then
+  export PYTHONUNBUFFERED=TRUE
+fi
+
 $PY_PATH /JAAQL-middleware-python/jaaql/email/patch_ems.py &> $LOG_FILE_EMAILS &
 $PY_PATH /JAAQL-middleware-python/jaaql/services/patch_mms.py &> $LOG_FILE_MIGRATIONS &
 

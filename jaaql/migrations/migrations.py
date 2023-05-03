@@ -162,7 +162,7 @@ def run_migrations(host: str, bypass_super: str, bypass_jaaql: str, db_interface
 
                 start_time = datetime.now()
 
-                initialise(actual_file_name, content, configs, encoded_configs)
+                initialise(actual_file_name, content, configs, encoded_configs, host)
 
                 execution_time = time_delta_ms(start_time, datetime.now())
                 version = script_file.split("__")[0][1:]
