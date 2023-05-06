@@ -87,13 +87,16 @@ IPS__local = [
     "127.0.0.1", "localhost"
 ]
 
+
 class BaseJAAQLController:
 
     sentinel_errors = None
     internal_sentinel = False
+    base_url = None
 
     def __init__(self, model: JAAQLModel, is_prod: bool, base_url: str, do_profiling: bool = False):
         super().__init__()
+        BaseJAAQLController.base_url = base_url
         self.app = Flask(__name__, instance_relative_config=True)
         self.app.config[FLASK__json_sort_keys] = False
         self.app.config[FLASK__max_content_length] = 1024 * 1024 * 2  # 2 MB
@@ -622,7 +625,7 @@ class BaseJAAQLController:
                 source_file = source_file.replace("\\", "/")
 
                 BaseJAAQLController.sentinel_errors.put({
-                    "application": "jaaql-middleware",
+                    "location": BaseJAAQLController.base_url,
                     "error_condensed": str(orig),
                     "version": VERSION,
                     "source_system": "Sentinel" if BaseJAAQLController.internal_sentinel else "JAAQL",
