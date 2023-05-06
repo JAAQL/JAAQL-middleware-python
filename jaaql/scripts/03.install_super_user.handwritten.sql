@@ -1,6 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS dblink;
 CREATE EXTENSION IF NOT EXISTS jaaql;
+CREATE EXTENSION IF NOT EXISTS plpgsql_check;
 
 create or replace function does_user_own_this_database(_user name, database object_name) returns boolean as
 $$
@@ -17,6 +18,7 @@ $$
 BEGIN
     if does_user_own_this_database(session_user, database) then
         PERFORM dblink_exec('dbname=' || database, 'CREATE EXTENSION IF NOT EXISTS pgcrypto;');
+        PERFORM dblink_exec('dbname=' || database, 'CREATE EXTENSION IF NOT EXISTS plpgsql_check;');
         PERFORM dblink_exec('dbname=' || database, 'CREATE EXTENSION IF NOT EXISTS jaaql;');
     else
         raise notice 'You do not own this database'

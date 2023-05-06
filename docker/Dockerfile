@@ -26,6 +26,7 @@ VOLUME $INSTALL_PATH/vault
 COPY docker/jaaql.service /lib/systemd/system/jaaql.service
 VOLUME /etc/nginx/sites-available/
 COPY ./pgextension /pgextension
+COPY ./plpgsql_check /plpgsql_check
 
 RUN apt-get update && apt-get install -y build-essential && apt update && \
     apt install -y libpq-dev && \
@@ -75,6 +76,29 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     /bin/mkdir -p '/usr/lib/postgresql/15/lib/bitcode'/jaaql/ && \
     /usr/bin/install -c -m 644 /pgextension/bin/jaaql.bc '/usr/lib/postgresql/15/lib/bitcode'/jaaql/./ && \
     mv /pgextension/bin/jaaql.index.bc '/usr/lib/postgresql/15/lib/bitcode' && \
+    cd /plpgsql_check && \
+    /usr/bin/install -c -m 755  plpgsql_check.so '/usr/lib/postgresql/15/lib/plpgsql_check.so' && \
+    /usr/bin/install -c -m 644 .//plpgsql_check.control '/usr/share/postgresql/15/extension/' && \
+    /usr/bin/install -c -m 644 .//plpgsql_check--2.4.sql  '/usr/share/postgresql/15/extension/' && \
+    /bin/mkdir -p '/usr/lib/postgresql/15/lib/bitcode/plpgsql_check' && \
+    /bin/mkdir -p '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/assign.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/catalog.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/check_expr.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/check_function.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/expr_walk.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/format.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/parser.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/plpgsql_check.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/pragma.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/profiler.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/report.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/stmtwalk.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/tablefunc.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/tracer.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/typdesc.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 plpgsql_check.index.bc '/usr/lib/postgresql/15/lib/bitcode' && \
+    cd ../ && \
     rm -rf /usr/local/lib/python${PYTHON_MAJOR_VERSION}/test && \
     rm -rf /Python-${PYTHON_VERSION} && \
     rm -rf /Python-${PYTHON_VERSION}.tar.xz && \
