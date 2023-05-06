@@ -138,6 +138,7 @@ log
 install_key
 
 /apps
+/plpgsql_check
 wsgi_patch.py
 
 node_modules/
