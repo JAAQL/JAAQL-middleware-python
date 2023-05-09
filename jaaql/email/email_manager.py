@@ -128,7 +128,7 @@ class EmailManager:
         subject = first_line.split(SUBJECT_MARKER)[1].strip()
         body = "\n".join(loaded_template.split("\n")[1:]).strip()
 
-        if template[KG__email_template__content_url].lower().endswith(".htmlbody"):
+        if template[KG__email_template__content_url].lower().endswith(".emailbody"):
             body = EMAIL_HTML__start + body + EMAIL_HTML__end
 
         if attachments is not None:

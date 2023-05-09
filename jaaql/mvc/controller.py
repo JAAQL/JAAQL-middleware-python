@@ -69,8 +69,8 @@ class JAAQLController(BaseJAAQLController):
             return self.model.sign_up(http_inputs)
 
         @self.cors_route('/email', DOCUMENTATION__emails)
-        def send_email(is_the_anonymous_user: bool, account_id: str, inputs: dict):
-            return self.model.send_email(is_the_anonymous_user, account_id, inputs)
+        def send_email(is_the_anonymous_user: bool, account_id: str, http_inputs: dict):
+            return self.model.send_email(is_the_anonymous_user, account_id, http_inputs)
 
         @self.cors_route('/account/reset-password', DOCUMENTATION__reset_password)
         def reset_password(http_inputs: dict):

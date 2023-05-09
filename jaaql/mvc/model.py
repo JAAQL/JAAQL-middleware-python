@@ -548,12 +548,12 @@ WHERE
             if not fetched_template[KG__email_template__dispatcher_domain_recipient]:
                 raise HttpStatusException("Must specify dispatcher domain recipient if sending anonymous emails!")
 
-        recipient = inputs[KG__email_template__dispatcher_domain_recipient].split("@")[0]
+        recipient = fetched_template[KG__email_template__dispatcher_domain_recipient].split("@")[0]
         domain = email_dispatcher__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), inputs[KEY__application],
                                           fetched_template[KG__email_template__dispatcher])[KG__email_dispatcher__username].split("@")[1]
-        recipient = recipient + domain
+        recipient = recipient + "@" + domain
 
-        self.email_manager.send_email(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, self.get_db_crypt_key(),
+        self.email_manager.send_email(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection,
                                       inputs[KG__security_event__application], inputs[KEY__template],
                                       app[KG__application__artifacts_source],
                                       app[KG__application__base_url], account_id, parameters,
@@ -616,7 +616,7 @@ WHERE
         reg_env_ins = security_event__insert(self.jaaql_lookup_connection, inputs[KG__security_event__application], template, account_id,
                                              unlock_code)
 
-        self.email_manager.send_email(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, self.get_db_crypt_key(),
+        self.email_manager.send_email(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection,
                                       inputs[KG__security_event__application], template,
                                       app[KG__application__artifacts_source],
                                       app[KG__application__base_url], account_id, inputs[KEY__parameters],
@@ -686,7 +686,7 @@ WHERE
         reg_env_ins = security_event__insert(self.jaaql_lookup_connection, inputs[KG__security_event__application], template, account_id,
                                              unlock_code)
 
-        self.email_manager.send_email(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, self.get_db_crypt_key(),
+        self.email_manager.send_email(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection,
                                       inputs[KG__security_event__application], template,
                                       app[KG__application__artifacts_source], app[KG__application__base_url], account_id, inputs[KEY__parameters],
                                       parameter_id=reg_env_ins[KG__security_event__event_lock], none_sanitized_parameters={
