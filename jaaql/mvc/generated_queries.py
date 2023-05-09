@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.fxli at 12/03/2023, 15:27:49
+This script was generated from jaaql.fxli at 09/05/2023, 23:01:02
 """
 
 from jaaql.db.db_interface import DBInterface
@@ -455,16 +455,20 @@ KG__email_template__content_url = "content_url"
 KG__email_template__validation_schema = "validation_schema"
 KG__email_template__data_validation_table = "data_validation_table"
 KG__email_template__data_validation_view = "data_validation_view"
+KG__email_template__dispatcher_domain_recipient = "dispatcher_domain_recipient"
+KG__email_template__can_be_sent_anonymously = "can_be_sent_anonymously"
 
 # Generated queries for table 'email_template'
 QG__email_template_delete = "DELETE FROM email_template WHERE application = :application AND name = :name"
 QG__email_template_insert = """
     INSERT INTO email_template (application, dispatcher, name,
         type, content_url, validation_schema,
-        data_validation_table, data_validation_view)
+        data_validation_table, data_validation_view, dispatcher_domain_recipient,
+        can_be_sent_anonymously)
     VALUES (:application, :dispatcher, :name,
         :type, :content_url, :validation_schema,
-        :data_validation_table, :data_validation_view)
+        :data_validation_table, :data_validation_view, :dispatcher_domain_recipient,
+        :can_be_sent_anonymously)
 """
 QG__email_template_select_all = "SELECT * FROM email_template"
 QG__email_template_select = "SELECT * FROM email_template WHERE application = :application AND name = :name"
@@ -477,7 +481,9 @@ QG__email_template_update = """
         content_url = COALESCE(:content_url, content_url),
         validation_schema = COALESCE(:validation_schema, validation_schema),
         data_validation_table = COALESCE(:data_validation_table, data_validation_table),
-        data_validation_view = COALESCE(:data_validation_view, data_validation_view)
+        data_validation_view = COALESCE(:data_validation_view, data_validation_view),
+        dispatcher_domain_recipient = COALESCE(:dispatcher_domain_recipient, dispatcher_domain_recipient),
+        can_be_sent_anonymously = COALESCE(:can_be_sent_anonymously, can_be_sent_anonymously)
     WHERE
         application = :application AND name = :name
 """
@@ -502,7 +508,8 @@ def email_template__update(
     connection: DBInterface,
     application, name,
     dispatcher=None, type=None, content_url=None,
-    validation_schema=None, data_validation_table=None, data_validation_view=None
+    validation_schema=None, data_validation_table=None, data_validation_view=None,
+    dispatcher_domain_recipient=None, can_be_sent_anonymously=None
 ):
     execute_supplied_statement(
         connection, QG__email_template_update,
@@ -517,7 +524,9 @@ def email_template__update(
             KG__email_template__content_url: content_url,
             KG__email_template__validation_schema: validation_schema,
             KG__email_template__data_validation_table: data_validation_table,
-            KG__email_template__data_validation_view: data_validation_view
+            KG__email_template__data_validation_view: data_validation_view,
+            KG__email_template__dispatcher_domain_recipient: dispatcher_domain_recipient,
+            KG__email_template__can_be_sent_anonymously: can_be_sent_anonymously
         }
     )
 
@@ -551,7 +560,8 @@ def email_template__insert(
     connection: DBInterface,
     application, dispatcher, name,
     type, content_url,
-    validation_schema=None, data_validation_table=None, data_validation_view=None
+    validation_schema=None, data_validation_table=None, data_validation_view=None,
+    dispatcher_domain_recipient=None, can_be_sent_anonymously=None
 ):
     execute_supplied_statement(
         connection, QG__email_template_insert,
@@ -563,7 +573,9 @@ def email_template__insert(
             KG__email_template__content_url: content_url,
             KG__email_template__validation_schema: validation_schema,
             KG__email_template__data_validation_table: data_validation_table,
-            KG__email_template__data_validation_view: data_validation_view
+            KG__email_template__data_validation_view: data_validation_view,
+            KG__email_template__dispatcher_domain_recipient: dispatcher_domain_recipient,
+            KG__email_template__can_be_sent_anonymously: can_be_sent_anonymously
         }
     )
 

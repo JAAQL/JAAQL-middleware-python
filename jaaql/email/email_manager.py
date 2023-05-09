@@ -12,6 +12,7 @@ from jaaql.mvc.handmade_queries import *
 from jaaql.db.db_utils_no_circ import submit
 from jaaql.interpreter.interpret_jaaql import KEY_query, KEY_parameters, KEY_assert, ASSERT_one
 
+REGEX__html_entities = r'<.*?>'
 REGEX__object_name = r'^[0-9a-zA-Z_]{1,63}$'
 
 ERR__invalid_object_name = "Object name '%s' is invalid. Must match regex: " + REGEX__object_name
@@ -43,6 +44,14 @@ class EmailManager:
     @staticmethod
     def uri_encode_replace(val):
         return quote(str(val))
+
+    @staticmethod
+    def replace_html_tags(val):
+        return re.sub(REGEX__html_entities, "", val)
+
+    @staticmethod
+    def replace_tags_then_encode(val):
+        return EmailManager.uri_encode_replace(EmailManager.replace_html_tags(val))
 
     def send_email(self, vault, config, db_crypt_key, jaaql_connection, application: str, template: str, application_artifacts_source: str,
                    application_base_url: str, account_id: str, parameters: dict = None, parameter_id: str = None,
@@ -109,8 +118,8 @@ class EmailManager:
                                  parameters: Optional[dict], attachments=None, attachment_access_token: str = None):
         loaded_template = load_artifact(self.is_container, application_artifacts_source, template[KG__email_template__content_url])
 
-        loaded_template = self.perform_replacements(loaded_template, REPLACE__str, str, REGEX__email_parameter, parameters)
-        loaded_template = self.perform_replacements(loaded_template, REPLACE__uri_encoded_str, EmailManager.uri_encode_replace,
+        loaded_template = self.perform_replacements(loaded_template, REPLACE__str, EmailManager.replace_html_tags, REGEX__email_parameter, parameters)
+        loaded_template = self.perform_replacements(loaded_template, REPLACE__uri_encoded_str, EmailManager.replace_tags_then_encode,
                                                     REGEX__email_uri_encoded_parameter, parameters)
 
         first_line = loaded_template.split("\n")[0].strip()

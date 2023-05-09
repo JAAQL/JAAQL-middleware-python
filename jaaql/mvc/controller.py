@@ -49,8 +49,8 @@ class JAAQLController(BaseJAAQLController):
             # self.model.prepare_queries(connection, account_id, http_inputs)
 
         @self.cors_route('/account/password', DOCUMENTATION__password)
-        def password(account_id: str, username: str, ip_address: str, http_inputs: dict):
-            return self.model.add_my_account_password(account_id, username, ip_address, **http_inputs)
+        def password(account_id: str, username: str, ip_address: str, is_the_anonymous_user: bool, http_inputs: dict):
+            return self.model.add_my_account_password(account_id, username, ip_address, is_the_anonymous_user, **http_inputs)
 
         @self.cors_route('/submit', DOCUMENTATION__submit)
         def submit(http_inputs: dict, account_id: str, verification_hook: queue.Queue):
@@ -67,6 +67,10 @@ class JAAQLController(BaseJAAQLController):
         @self.cors_route('/sign-up', DOCUMENTATION__sign_up)
         def sign_up(http_inputs: dict):
             return self.model.sign_up(http_inputs)
+
+        @self.cors_route('/email', DOCUMENTATION__emails)
+        def send_email(is_the_anonymous_user: bool, account_id: str, inputs: dict):
+            return self.model.send_email(is_the_anonymous_user, account_id, inputs)
 
         @self.cors_route('/account/reset-password', DOCUMENTATION__reset_password)
         def reset_password(http_inputs: dict):

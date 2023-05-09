@@ -58,6 +58,8 @@ create table email_template (
     validation_schema object_name,
     data_validation_table object_name,
     data_validation_view object_name,
+    dispatcher_domain_recipient email_account_username,
+    can_be_sent_anonymously bool,
     primary key (application, name) );
 -- document_template...
 create table document_template (

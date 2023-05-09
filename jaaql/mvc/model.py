@@ -267,7 +267,9 @@ WHERE
         if not crypt_utils.verify_password_hash(most_recent_password, password, salt=self.get_repeatable_salt(account_id)):
             raise HttpStatusException(ERR__incorrect_credentials)
 
-    def add_my_account_password(self, account_id: str, username: str, ip_address: str, old_password: str, password: str):
+    def add_my_account_password(self, account_id: str, username: str, ip_address: str, is_the_anonymous_user: bool, old_password: str, password: str):
+        if is_the_anonymous_user:
+            raise HttpStatusException("Cannot change this user's password")
         self.verify_current_password(account_id, old_password)
         self.add_account_password(account_id, password)
         return self.get_auth_token(password=password, ip_address=ip_address, username=username)
@@ -527,6 +529,35 @@ WHERE
             KEY__oauth_token: auth_token,
             KEY__parameters: parameters
         }
+
+    def send_email(self, is_the_anonymous_user: bool, account_id: str, inputs: dict):
+        app = application__select(self.jaaql_lookup_connection, inputs[KEY__application])
+
+        fetched_template = email_template__select(self.jaaql_lookup_connection, inputs[KEY__application], inputs[KEY__template])
+        if is_the_anonymous_user and not fetched_template[KG__email_template__can_be_sent_anonymously]:
+            raise HttpStatusException("Cannot send this template anonymously")
+
+        parameters = inputs[KEY__parameters]
+        non_sanitized_parameters = None
+
+        # Anonymous email templates are sent with a lower level of scrutiny but must be sent to the domain recipient
+        if fetched_template[KG__email_template__can_be_sent_anonymously]:
+            non_sanitized_parameters = parameters
+            parameters = None
+
+            if not fetched_template[KG__email_template__dispatcher_domain_recipient]:
+                raise HttpStatusException("Must specify dispatcher domain recipient if sending anonymous emails!")
+
+        recipient = inputs[KG__email_template__dispatcher_domain_recipient].split("@")[0]
+        domain = email_dispatcher__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), inputs[KEY__application],
+                                          fetched_template[KG__email_template__dispatcher])[KG__email_dispatcher__username].split("@")[1]
+        recipient = recipient + domain
+
+        self.email_manager.send_email(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, self.get_db_crypt_key(),
+                                      inputs[KG__security_event__application], inputs[KEY__template],
+                                      app[KG__application__artifacts_source],
+                                      app[KG__application__base_url], account_id, parameters,
+                                      none_sanitized_parameters=non_sanitized_parameters, recipient=recipient)
 
     def reset_password(self, inputs: dict):
         app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])

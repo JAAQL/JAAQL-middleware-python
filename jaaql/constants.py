@@ -22,6 +22,7 @@ KEY__error_query = "query"
 KEY__error_set = "set"
 KEY__allow_uninstall = "allow_uninstall"
 KEY__sign_up_template = "sign_up"
+KEY__template = "template"
 KEY__already_signed_up_template = "already_signed_up"
 KEY__reset_password_template = "reset_password"
 KEY__unregistered_user_reset_password_template = "unregistered_user_reset_password"
@@ -129,5 +130,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.9.1"
+VERSION = "4.10.1"
 

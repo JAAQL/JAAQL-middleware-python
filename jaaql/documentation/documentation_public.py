@@ -139,6 +139,26 @@ DOCUMENTATION__reset_password = SwaggerDocumentation(
     ]
 )
 
+DOCUMENTATION__emails = SwaggerDocumentation(
+    tags="Emails",
+    security=True,
+    methods=SwaggerMethod(
+        name="Send email",
+        description="Sends an email",
+        method=REST__POST,
+        body=[
+            SwaggerArgumentResponse(
+                name=KEY__template,
+                description="The template to send",
+                arg_type=str,
+                example="my_template"
+            ),
+            ARG_RES__event_application,
+            ARG_RES__parameters
+        ]
+    )
+)
+
 DOCUMENTATION__sign_up = SwaggerDocumentation(
     tags="Signup",
     security=False,
