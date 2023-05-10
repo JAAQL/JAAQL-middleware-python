@@ -64,8 +64,8 @@ def run_migrations(db_interface: DBInterface, project_name: str = None, migratio
                                script_file.endswith(EXTENSION_SQL)])
         for script_file in script_files:
             full_name = version_folder + "/" + script_file
-            content = open(join(migration_folder, version_folder, script_file), "r").read()
-            checksum = hashlib.md5(content.encode("UTF-8")).digest()
+            content_for_checksum = open(join(migration_folder, version_folder, script_file), "rb").read()
+            checksum = hashlib.md5(content_for_checksum).digest()
             checksum = int.from_bytes(checksum[0:3], byteorder="little")
             if full_name not in installed_scripts:
                 start_time = datetime.now()
