@@ -651,7 +651,7 @@ class JAAQLModel(BaseJAAQLModel):
         username = None
 
         if bypass is not None and bypass == self.local_access_key:
-            username = USERNAME__jaaql
+            username = USERNAME__superjaaql if not os.environ.get("DB_CONNECTION_STRING") else USERNAME__jaaql
             user, _, ip_id, last_totp = self.verify_user(username, ip_address)
         else:
             decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_token, JWT_PURPOSE__oauth, was_refresh)
