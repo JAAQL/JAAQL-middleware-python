@@ -1,4 +1,4 @@
-from jaaql.utilities.utils import load_config, await_ems_startup, get_base_url, await_jaaql_bootup
+from jaaql.utilities.utils import load_config, await_jaaql_installation, get_base_url, await_jaaql_bootup
 from jaaql.constants import HEADER__security_bypass, VAULT_KEY__jaaql_local_access_key, ENDPOINT__install
 from jaaql.utilities.vault import Vault, DIR__vault
 import os
@@ -67,7 +67,7 @@ def bootup(vault_key, is_gunicorn: bool = False, install_on_bootup: bool = False
             json_data["db_connection_string"] = os.environ.get("DB_CONNECTION_STRING", "postgresql://postgres:123456@localhost:5432/jaaql")
         requests.post(base_url + ENDPOINT__install, json=json_data)
 
-    await_ems_startup()
+    await_jaaql_installation(config, is_gunicorn)
     vault = Vault(vault_key, DIR__vault)
 
     bypass_header = {HEADER__security_bypass: vault.get_obj(VAULT_KEY__jaaql_local_access_key)}
