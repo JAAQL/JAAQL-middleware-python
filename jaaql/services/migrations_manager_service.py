@@ -1,3 +1,5 @@
+import os
+
 from jaaql.utilities.utils import load_config, get_base_url, await_jaaql_installation, await_jaaql_bootup
 from jaaql.constants import ENDPOINT__install, VAULT_KEY__super_local_access_key, ENDPOINT__execute_migrations, \
     PORT__mms
@@ -33,8 +35,8 @@ def bootup(vault_key, is_gunicorn: bool = False, install_on_bootup: bool = False
         with open(install_key_file, "r") as install_key_file:
             install_key = install_key_file.read().strip()
         json_data = {
-            "super_db_password": "passw0rd",
-            "jaaql_password": "pa55word",
+            "super_db_password": os.environ.get("SUPER_PASSWORD", "passw0rd"),
+            "jaaql_password": os.environ.get("JAAQL_PASSWORD", "pa55word"),
             "install_key": install_key,
             "allow_uninstall": True
         }
