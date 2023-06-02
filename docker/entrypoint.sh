@@ -6,6 +6,16 @@ export DISPLAY=:99
 
 service cron start
 
+# We expect a backup here
+if [[ $IS_FROZEN ]]; then
+  echo "Waiting for restore"
+  while [ ! -f $INSTALL_PATH/vault/vault ]
+  do
+    sleep 10
+  done
+  echo "Detected restore"
+fi
+
 if [ -z "${JEQL_VERSION}" ]; then
   echo "Using default JEQL version"
 else
