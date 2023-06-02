@@ -18,11 +18,17 @@ from jwt.utils import base64url_decode
 import json
 import os
 from queue import Queue
+from jaaql.services.shared_var_service import ARG__value, ARG__variable, SHARED_VAR__frozen
 import subprocess
 import time
 import random
+import requests
 
 from jaaql.migrations.migrations import run_migrations
+
+NGINX_MARKER__first = "limit_req_status 429;\n    "
+NGINX_MARKER__second = "proxy_set_header X-Real-IP $remote_addr;\n    "
+NGINX_INSERT__frozen = "    return 503;\n    "
 
 ERR__refresh_expired = "Token too old to be used for refresh. Please authenticate again"
 ERR__incorrect_install_key = "Incorrect install key!"
@@ -226,6 +232,57 @@ WHERE
                                                    as_objects=True)["usesuper"]
         if not res:
             raise HttpStatusException("You do not have super user privileges")
+
+    def freeze(self, connection: DBInterface):
+        self.is_super_admin(connection)
+
+        if self.is_container:
+            if self.is_frozen():
+                raise HttpStatusException("JAAQL is already frozen")
+
+            nginx_content = None
+            with open("/etc/nginx/sites-available/jaaql", "r") as site_file:
+                nginx_content = site_file.read()
+            if nginx_content is None:
+                raise HttpStatusException("Failed to open file for freezing")
+            insert_index = nginx_content.index(NGINX_MARKER__first) + len(NGINX_MARKER__first)
+            nginx_content = nginx_content[:insert_index] + NGINX_INSERT__frozen + nginx_content[insert_index:]
+            insert_index = nginx_content.index(NGINX_MARKER__second) + len(NGINX_MARKER__second)
+            nginx_content = nginx_content[:insert_index] + NGINX_INSERT__frozen + nginx_content[insert_index:]
+            with open("/etc/nginx/sites-available/jaaql", "w") as site_file:
+                site_file.write(nginx_content)
+            subprocess.call("service nginx restart", shell=True)
+
+            requests.post("http://127.0.0.1:" + str(PORT__shared_var_service) + ENDPOINT__set_shared_var,
+                          json={ARG__variable: SHARED_VAR__frozen, ARG__value: True})
+        else:
+            raise HttpStatusException("Cannot freeze JAAQL running outside a container")
+
+    def defrost(self, connection: DBInterface):
+        self.is_super_admin(connection)
+
+        if self.is_container:
+            if not self.is_frozen():
+                raise HttpStatusException("JAAQL is already defrosted")
+
+            nginx_content = None
+            with open("/etc/nginx/sites-available/jaaql", "r") as site_file:
+                nginx_content = site_file.read()
+            if nginx_content is None:
+                raise HttpStatusException("Failed to open file for defrosting")
+            nginx_content = nginx_content.replace("\n        return 503;", "")
+            with open("/etc/nginx/sites-available/jaaql", "w") as site_file:
+                site_file.write(nginx_content)
+            subprocess.call("service nginx restart", shell=True)
+
+            requests.post("http://127.0.0.1:" + str(PORT__shared_var_service) + ENDPOINT__set_shared_var,
+                          json={ARG__variable: SHARED_VAR__frozen, ARG__value: False})
+        else:
+            raise HttpStatusException("Cannot defrost JAAQL running outside a container")
+
+    def is_frozen(self):
+        return requests.post("http://127.0.0.1:" + str(PORT__shared_var_service) + ENDPOINT__get_shared_var,
+                             json={ARG__variable: SHARED_VAR__frozen}).json()[ARG__value]
 
     def clean(self, connection: DBInterface):
         self.is_super_admin(connection)

@@ -29,20 +29,20 @@ cp -r JEQL /JAAQL-middleware-python/jaaql/apps/JEQL
 
 JEQL_REPLACE="    <script src=\"../JEQL/JEQL.js\"></script>"
 sed -ri '9s@^.*$@'"$JEQL_REPLACE"'@' /JAAQL-middleware-python/jaaql/apps/console/index.html
-# sed -ri '1s@^.*$@'"$JEQL_REPLACE"'@' /JAAQL-middleware-python/jaaql/apps/manager/scripts/site.js
-# sed -ri '1s@^.*$@'"$JEQL_REPLACE"'@' /JAAQL-middleware-python/jaaql/apps/playground/scripts/site.js
 
 cp -r /JAAQL-middleware-python/jaaql/apps $INSTALL_PATH/www
 
 LOG_FILE=$INSTALL_PATH/log/gunicorn.log
 LOG_FILE_EMAILS=$INSTALL_PATH/log/mail_service.log
 LOG_FILE_MIGRATIONS=$INSTALL_PATH/log/migration_service.log
+LOG_FILE_SHARED_VAR_SERVICE=$INSTALL_PATH/log/shared_var_service.log
 ACCESS_LOG_FILE=$INSTALL_PATH/log/gunicorn_access.log
 
 if [ "$LOG_TO_OUTPUT" = "TRUE" ] ; then
   LOG_FILE='-'
   LOG_FILE_EMAILS=/dev/stdout
   LOG_FILE_MIGRATIONS=/dev/stdout
+  LOG_FILE_SHARED_VAR_SERVICE=/dev/stdout
   ln -sf /dev/stdout /var/log/nginx/access.log && ln -sf /dev/stderr /var/log/nginx/error.log
 fi
 
@@ -84,6 +84,9 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   echo "    location / {" >> /etc/nginx/sites-available/jaaql
   echo "        limit_req zone=httplimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
   echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
+  if [ "$IS_FROZEN" = "TRUE" ] ; then
+    echo "        return 503;"
+  fi
   echo "    }" >> /etc/nginx/sites-available/jaaql
   echo "    location /api {" >> /etc/nginx/sites-available/jaaql
   echo "        limit_req zone=jaaqllimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
@@ -91,6 +94,9 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   echo "        include proxy_params;" >> /etc/nginx/sites-available/jaaql
   echo "        proxy_pass http://unix:$INSTALL_PATH/jaaql.sock:/;" >> /etc/nginx/sites-available/jaaql
   echo "        proxy_set_header X-Real-IP \$remote_addr;" >> /etc/nginx/sites-available/jaaql
+  if [ "$IS_FROZEN" = "TRUE" ] ; then
+    echo "        return 503;"
+  fi
   echo "    }" >> /etc/nginx/sites-available/jaaql
   echo "}" >> /etc/nginx/sites-available/jaaql
   echo "" >> /etc/nginx/sites-available/jaaql
@@ -185,6 +191,7 @@ fi
 
 $PY_PATH /JAAQL-middleware-python/jaaql/email/patch_ems.py &> $LOG_FILE_EMAILS &
 $PY_PATH /JAAQL-middleware-python/jaaql/services/patch_mms.py &> $LOG_FILE_MIGRATIONS &
+$PY_PATH /JAAQL-middleware-python/jaaql/services/patch_shared_var_service.py &> $LOG_FILE_SHARED_VAR_SERVICE &
 
 echo "from jaaql.patch import monkey_patch" >> wsgi_patch.py
 echo "monkey_patch()" >> wsgi_patch.py

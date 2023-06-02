@@ -116,6 +116,36 @@ DOCUMENTATION__clean = SwaggerDocumentation(
     )
 )
 
+DOCUMENTATION__freeze = SwaggerDocumentation(
+    tags="Freeze",
+    methods=[
+        SwaggerMethod(
+            name="Freeze JAAQL",
+            description="Allows only requests from local IP addresses or super user",
+            method=REST__POST
+        )
+    ]
+)
+
+DOCUMENTATION__defrost = SwaggerDocumentation(
+    tags="Freeze",
+    methods=SwaggerMethod(
+        name="Defrost JAAQL",
+        description="Allows all requests again",
+        method=REST__POST
+    )
+)
+
+DOCUMENTATION__check_frozen = SwaggerDocumentation(
+    tags="Freeze",
+    security=False,
+    methods=SwaggerMethod(
+        name="Check Frozen",
+        description="Allows only requests from local IP addresses or super user",
+        method=REST__GET
+    )
+)
+
 # Not unused. Used to generate html files
 from jaaql.documentation.documentation_shared import DOCUMENTATION__oauth_token, DOCUMENTATION__oauth_refresh
 

@@ -19,6 +19,18 @@ class JAAQLController(BaseJAAQLController):
         def fetch_oauth_token(http_inputs: dict, ip_address: str, response: JAAQLResponse):
             return self.model.get_auth_token(**http_inputs, ip_address=ip_address, response=response)
 
+        @self.cors_route("/internal/freeze", DOCUMENTATION__freeze)
+        def refresh_oauth_token(connection: DBInterface):
+            self.model.freeze(connection)
+
+        @self.cors_route("/internal/defrost", DOCUMENTATION__defrost)
+        def refresh_oauth_token(connection: DBInterface):
+            self.model.defrost(connection)
+
+        @self.cors_route("/internal/frozen", DOCUMENTATION__check_frozen)
+        def refresh_oauth_token():
+            return self.model.is_frozen()
+
         @self.cors_route(ENDPOINT__refresh, DOCUMENTATION__oauth_refresh)
         def refresh_oauth_token(auth_token_for_refresh: str, ip_address: str):
             return self.model.refresh_auth_token(auth_token_for_refresh, ip_address)

@@ -103,6 +103,7 @@ DB__postgres = "postgres"
 
 PORT__ems = 6061
 PORT__mms = 6062
+PORT__shared_var_service = 6063
 
 ENDPOINT__send_email = "/send-email"
 ENDPOINT__execute_migrations = "/internal/migrations"
@@ -112,6 +113,8 @@ ENDPOINT__internal_accounts = "/internal/emails/accounts"
 ENDPOINT__is_alive = "/internal/is-alive"
 ENDPOINT__report_sentinel_error = "/sentinel/reporting/error"
 ENDPOINT__install = "/internal/install"
+ENDPOINT__set_shared_var = "/set-shared-var"
+ENDPOINT__get_shared_var = "/get-shared-var"
 
 CONFIG__default = "Default config"
 CONFIG__default_desc = "Default config description"
@@ -130,5 +133,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.10.3"
+VERSION = "4.11.0"
 
