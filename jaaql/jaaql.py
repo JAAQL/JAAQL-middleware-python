@@ -8,7 +8,7 @@ from jaaql.email.email_manager_service import create_flask_app as create_email_s
 from jaaql.services.migrations_manager_service import bootup
 from jaaql.services.shared_var_service import bootup as shared_var_bootup
 from typing import List
-from jaaql.utilities.options import parse_options, OPT_KEY__vault_key, Option, OPT_KEY__profiling, OPT_KEY__local_install
+from jaaql.utilities.options import parse_options, Option, OPT_KEY__profiling
 import sys
 import threading
 import os
@@ -24,9 +24,7 @@ from os.path import join, dirname, basename
 
 
 DEFAULT__mfa_label = "test"
-
-WARNING__vault_key_stdin = "MAJOR SECURITY ISSUE! Passing vault key via program arguments is insecure as other progra" \
-                           "ms can see the arguments. Please provide via stdin instead!"
+DEFAULT_VAULT_KEY = "default_vault_key"
 
 WARNING__audit_off = "Audit trail is off. Logs will still be kept by the internal postgres instance"
 
@@ -81,17 +79,17 @@ def create_app(override_config_path: str = None, controllers: [JAAQLControllerIn
         options = {}
 
     if not is_gunicorn:
-        threading.Thread(target=create_email_service_app, args=[options.get(OPT_KEY__vault_key)], daemon=True).start()
-        threading.Thread(target=bootup, args=[options.get(OPT_KEY__vault_key), False, OPT_KEY__local_install in options], daemon=True).start()
+        threading.Thread(target=create_email_service_app, args=[DEFAULT_VAULT_KEY], daemon=True).start()
+        threading.Thread(target=bootup, args=[DEFAULT_VAULT_KEY, False], daemon=True).start()
         threading.Thread(target=shared_var_bootup, daemon=True).start()
 
-    if OPT_KEY__vault_key in options:
-        print(WARNING__vault_key_stdin, file=sys.stderr)
-        vault_key = options[OPT_KEY__vault_key]
-    elif is_gunicorn:
+    if is_gunicorn:
         vault_key = os.environ.get(ENVIRON__vault_key)
+        if not vault_key:
+            print("Could not find vault key. Set with environment variable: '" + ENVIRON__vault_key + "'")
+            exit(1)
     else:
-        vault_key = input("Input vault key: ")
+        vault_key = DEFAULT_VAULT_KEY
 
     logging.getLogger("werkzeug").handlers.append(SensitiveHandler())
 

@@ -28,10 +28,8 @@ class Option:
         self.is_flag = is_flag
 
 
-OPT_KEY__vault_key = "vault-key"
 OPT_KEY__help = "help"
 OPT_KEY__profiling = "profiling"
-OPT_KEY__local_install = "local_install"
 OPT_KEY__canned_queries = "canned_queries"
 
 DEFAULT_OPTIONS: List[Option] = [
@@ -43,24 +41,10 @@ DEFAULT_OPTIONS: List[Option] = [
         is_flag=True
     ),
     Option(
-        short="v",
-        long=OPT_KEY__vault_key,
-        required=False,
-        description="Encrypts the jaaql vault which stores internal sensitive information",
-        is_flag=False
-    ),
-    Option(
         short="p",
         long=OPT_KEY__profiling,
         required=False,
         description="Will now output profiling information about the request",
-        is_flag=True
-    ),
-    Option(
-        short="i",
-        long=OPT_KEY__local_install,
-        required=False,
-        description="Will now install on startup",
         is_flag=True
     ),
     Option(

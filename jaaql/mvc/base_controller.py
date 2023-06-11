@@ -2,17 +2,22 @@ import threading
 import traceback
 import uuid
 from functools import wraps
+
+import typing as t
 from werkzeug.exceptions import HTTPException, InternalServerError
 import inspect
 import json
 import requests
-from datetime import datetime
+from datetime import datetime, date
 from jaaql.exceptions.custom_http_status import CustomHTTPStatus
 import sys
 import os
+import dataclasses
+import decimal
 from queue import Queue
 from jaaql.utilities.utils import time_delta_ms, Profiler
 from flask import Response, Flask, request, jsonify, current_app
+from flask.json.provider import DefaultJSONProvider
 from jaaql.constants import *
 from jaaql.mvc.model import JAAQLModel
 from jaaql.mvc.response import JAAQLResponse
@@ -88,6 +93,32 @@ IPS__local = [
 ]
 
 
+def json_serial(obj):
+    """JSON serializer for objects not serializable by default json code"""
+    if isinstance(obj, date):
+        return obj.isoformat()
+
+    if isinstance(obj, datetime):
+        return obj.isoformat().split(".")[0]
+
+    if isinstance(obj, (decimal.Decimal, uuid.UUID)):
+        return str(obj)
+
+    if dataclasses and dataclasses.is_dataclass(obj):
+        return dataclasses.asdict(obj)
+
+    if hasattr(obj, "__html__"):
+        return str(obj.__html__())
+
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
+class JAAQLJSONProvider(DefaultJSONProvider):
+    default: t.Callable[[t.Any], t.Any] = staticmethod(
+        json_serial
+    )  # type: ignore[assignment]
+
+
 class BaseJAAQLController:
 
     sentinel_errors = None
@@ -98,6 +129,7 @@ class BaseJAAQLController:
         super().__init__()
         BaseJAAQLController.base_url = base_url
         self.app = Flask(__name__, instance_relative_config=True)
+        self.json_serializer = JAAQLJSONProvider(self.app)
         self.app.config[FLASK__json_sort_keys] = False
         self.app.config[FLASK__max_content_length] = 1024 * 1024 * 2  # 2 MB
         self._init_error_handlers(self.app)
@@ -591,7 +623,7 @@ class BaseJAAQLController:
 
                 if jaaql_resp.response_type == resp_type:
                     if not isinstance(resp, Response):
-                        resp = jsonify(resp)
+                        resp = self.json_serializer.response(resp)
                     resp.status = jaaql_resp.response_code
                 else:
                     resp = Response(resp, mimetype=jaaql_resp.response_type, status=jaaql_resp.response_code)

@@ -23,7 +23,7 @@ def create_app():
     return app
 
 
-def bootup(vault_key, is_gunicorn: bool = False, install_on_bootup: bool = False):
+def bootup(vault_key, is_gunicorn: bool = False, install_on_bootup: bool = True):
     config = load_config(is_gunicorn)
     install_status = await_jaaql_bootup(config, is_gunicorn)
     base_url = get_base_url(config, is_gunicorn)
