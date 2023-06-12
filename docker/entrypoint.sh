@@ -7,7 +7,9 @@ export DISPLAY=:99
 service cron start
 
 # We expect a backup here
-if [[ $IS_FROZEN ]]; then
+if [ -z "${IS_FROZEN}" ]; then
+  echo "Creating JAAQL from scratch"
+else
   echo "Waiting for restore"
   while [ ! -f $INSTALL_PATH/vault/vault ]
   do
