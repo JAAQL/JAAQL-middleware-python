@@ -15,6 +15,7 @@ KEY_CONFIG__logging = "logging"
 
 RET__echo = "echo"
 RET__columns = "columns"
+RET__type_codes = "type_codes"
 RET__rows = "rows"
 
 DIVIDER__protocol = "://"
@@ -148,11 +149,12 @@ class DBInterface(ABC):
                 if wait_hook:
                     wait_hook = None
 
-            columns, rows = self.execute_query(conn, query, new_parameters, wait_hook)
+            columns, type_codes, rows = self.execute_query(conn, query, new_parameters, wait_hook)
 
             ret = {
                 RET__columns: columns,
-                RET__rows: rows
+                RET__rows: rows,
+                RET__type_codes: type_codes
             }
 
         if echo != ECHO__none:

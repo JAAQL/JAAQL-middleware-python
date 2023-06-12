@@ -375,7 +375,7 @@ WHERE
                 super_interface.execute_query(conn, QUERY__setup_jaaql_role_with_password, {KEY__password: jaaql_db_password})
             else:
                 resp = super_interface.execute_query(conn, QUERY__setup_jaaql_role)
-                jaaql_db_password = resp[1][0][0]
+                jaaql_db_password = resp[2][0][0]
             if allow_uninstall or not self.is_container:
                 self.vault.insert_obj(VAULT_KEY__jaaql_db_password, jaaql_db_password)
             super_interface.commit(conn)

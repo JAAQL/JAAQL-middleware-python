@@ -185,7 +185,7 @@ class DBPGInterface(DBInterface):
         DBPGInterface.HOST_POOLS_QUEUES[self.username].pop(self.db_name)
 
     def check_dba(self, conn, wait_hook: queue.Queue = None):
-        columns, rows = self.execute_query(conn, QUERY__dba_query, parameters={KEY__database: self.db_name}, wait_hook=wait_hook)
+        columns, _, rows = self.execute_query(conn, QUERY__dba_query, parameters={KEY__database: self.db_name}, wait_hook=wait_hook)
         if not rows[0]:
             raise HttpStatusException(ERR__must_use_canned_query)
 
@@ -210,9 +210,9 @@ class DBPGInterface(DBInterface):
                     else:
                         cursor.execute(query, parameters, prepare=do_prepare)
                     if cursor.description is None:
-                        return [], []
+                        return [], [], []
                     else:
-                        return [desc[0] for desc in cursor.description], cursor.fetchall()
+                        return [desc[0] for desc in cursor.description], [desc.type_code for desc in cursor.description], cursor.fetchall()
             except OperationalError as ex:
                 if ex.sqlstate is None or ex.sqlstate.startswith("08"):
                     DBPGInterface.HOST_POOLS[self.username][self.db_name].putconn(conn)
