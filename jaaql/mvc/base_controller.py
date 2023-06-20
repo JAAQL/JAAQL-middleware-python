@@ -451,7 +451,7 @@ class BaseJAAQLController:
                 request_id = uuid.uuid4()
                 self.perform_profile(request_id, route=route, method=request.method)
                 resp = None
-                resp_type = current_app.config["JSONIFY_MIMETYPE"]
+                resp_type = current_app.json.mimetype
                 jaaql_resp = JAAQLResponse()
                 jaaql_resp.response_type = resp_type
 

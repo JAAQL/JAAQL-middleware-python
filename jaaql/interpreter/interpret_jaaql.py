@@ -103,7 +103,7 @@ class InterpretJAAQL:
         self.db_interface = db_interface
 
     def transform(self, operation: Union[dict, str], conn=None, skip_commit: bool = False, wait_hook: queue.Queue = None,
-                  encryption_key: bytes = None, autocommit: bool = False, canned_query_service=None):
+                  encryption_key: bytes = None, autocommit: bool = False, canned_query_service=None, prevent_unused_parameters: bool = True):
         if (not isinstance(operation, dict)) and (not isinstance(operation, str)):
             raise HttpStatusException(ERR_malformed_operation_type, HTTPStatus.BAD_REQUEST)
 
@@ -214,6 +214,24 @@ class InterpretJAAQL:
                 if was_store:
                     ret[query_key] = []
 
+                if prevent_unused_parameters:
+                    check_unused = unused_orig_parameters.copy()
+                    for cur_query, cur_parameters, cur_row_idx, cur_state in zip(to_exec, replacement_parameters, range(len(to_exec)), states):
+                        last_query, found_parameter_dictionary = self.pre_prepare_statement(cur_query, cur_parameters, require_presence=False)
+                        enc_parameter_dictionary = {}
+                        encrypt_parameters = {key: val for key, val in cur_parameters.items() if key not in found_parameter_dictionary}
+                        if len(encrypt_parameters) != 0:
+                            last_query, enc_parameter_dictionary = self.pre_prepare_statement(last_query, encrypt_parameters,
+                                                                                              match_regex=REGEX_enc_query_argument,
+                                                                                              encryption_key=encryption_key,
+                                                                                              require_presence=False)
+
+                        found_params = {**found_parameter_dictionary, **enc_parameter_dictionary}
+                        check_unused -= set(found_params.keys())
+
+                    if len(check_unused):
+                        raise HttpStatusException(ERR_unused_parameter % list(check_unused)[0], HTTPStatus.BAD_REQUEST)
+
                 for cur_query, cur_parameters, cur_row_idx, cur_state in zip(to_exec, replacement_parameters, range(len(to_exec)), states):
                     exc_query = cur_query
                     exc_state = cur_state
@@ -233,7 +251,6 @@ class InterpretJAAQL:
 
                     last_query = self.encrypt_literals(last_query, encryption_key)
                     found_params = {**found_parameter_dictionary, **enc_parameter_dictionary}
-                    unused_orig_parameters -= set(found_params.keys())
 
                     res = self.db_interface.execute_query_fetching_results(conn, last_query, found_params, wait_hook=wait_hook,
                                                                            requires_dba_check=check_required and canned_query_service is not None)
@@ -270,9 +287,6 @@ class InterpretJAAQL:
                             res["rows"] = [
                                 [decrypt_raw_ex(encryption_key, val) if col in query_obj[KEY_decrypt] and val is not None else val for val, col in
                                  zip(row, res["columns"])] for row in res["rows"]]
-
-            if len(unused_orig_parameters):
-                raise HttpStatusException(ERR_unused_parameter % list(unused_orig_parameters)[0], HTTPStatus.BAD_REQUEST)
         except Exception as ex:
             if is_dict_query:
                 new_ex = HttpStatusException(str(ex))
@@ -467,7 +481,8 @@ class InterpretJAAQL:
 
         return new_query + query[last_end_match:]
 
-    def pre_prepare_statement(self, query, parameters, match_regex: str = REGEX_query_argument, encryption_key: bytes = None):
+    def pre_prepare_statement(self, query, parameters, match_regex: str = REGEX_query_argument, encryption_key: bytes = None,
+                              require_presence: bool = True):
         prepared = ""
         last_index = 0
         found_parameters = []
@@ -487,7 +502,8 @@ class InterpretJAAQL:
 
             if match_str not in found_parameters:
                 if match_str not in parameters and match_str not in MARKERS:
-                    raise HttpStatusException(ERR_missing_parameter % match_str, HTTPStatus.BAD_REQUEST)
+                    if require_presence:
+                        raise HttpStatusException(ERR_missing_parameter % match_str, HTTPStatus.BAD_REQUEST)
                 elif match_str not in parameters and match_str in MARKERS:
                     is_skipped_default = True
                 else:

@@ -5,7 +5,7 @@ from jaaql.db.db_utils import execute_supplied_statement, create_interface_for_d
 from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
 from jaaql.constants import KEY__application, KEY__database, KEY__schema, KEY__role, DB__jaaql, \
-    KEY__read_only
+    KEY__read_only, KEY__prevent_unused_parameters
 from jaaql.db.db_interface import DBInterface
 from jaaql.utilities.utils_no_project_imports import objectify
 
@@ -48,9 +48,11 @@ def submit(vault, config, db_crypt_key, jaaql_connection: DBInterface, inputs: d
     sub_role = inputs.pop(KEY__role) if KEY__role in inputs else None
     required_db = create_interface_for_db(vault, config, account_id, inputs[KEY__database], sub_role)
 
+    prevent_unused = inputs.pop(KEY__prevent_unused_parameters) if KEY__prevent_unused_parameters in inputs else True
+
     ret = InterpretJAAQL(required_db).transform(inputs, skip_commit=inputs.get(KEY__read_only), wait_hook=verification_hook,
                                                 encryption_key=db_crypt_key,
-                                                canned_query_service=cached_canned_query_service)
+                                                canned_query_service=cached_canned_query_service, prevent_unused_parameters=prevent_unused)
 
     if as_objects:
         ret = objectify(ret, singleton=singleton)

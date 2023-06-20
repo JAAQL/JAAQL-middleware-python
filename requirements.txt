@@ -1,9 +1,9 @@
-psycopg[binary]==3.1.8
+psycopg[binary]==3.1.9
 Pillow==9.4.0
-cryptography==38.0.4
+cryptography==41.0.1
 flask==2.3.2
 coverage==7.0.5
-psycopg-pool==3.1.6
+psycopg-pool==3.1.7
 pyjwt==2.6.0
 pyyaml==6.0
 werkzeug==2.3.6

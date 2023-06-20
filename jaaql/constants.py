@@ -9,6 +9,7 @@ KEY__schema = "schema"
 KEY__database = "database"
 KEY__role = "role"
 KEY__read_only = "read_only"
+KEY__prevent_unused_parameters = "prevent_unused_parameters"
 KEY__install_key = "install_key"
 KEY__jaaql_password = "jaaql_password"
 KEY__super_db_password = "super_db_password"
@@ -133,5 +134,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.11.7"
+VERSION = "4.11.10"
 
