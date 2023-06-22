@@ -1,3 +1,5 @@
+import traceback
+
 from jaaql.exceptions.http_status_exception import *
 from datetime import datetime
 import re
@@ -188,6 +190,31 @@ class InterpretJAAQL:
         exc_state = None
 
         try:
+            if prevent_unused_parameters:
+                check_unused = unused_orig_parameters.copy()
+
+                for query_key, query_obj in query.items():
+                    was_store = is_dict_query and KEY_store in query_obj
+                    if was_store:
+                        check_unused -= {query_obj[KEY_store]}
+                    else:
+                        cur_query = query_obj[KEY_query]
+
+                        last_query, found_parameter_dictionary = self.pre_prepare_statement(cur_query, parameters, require_presence=False)
+                        enc_parameter_dictionary = {}
+                        encrypt_parameters = {key: val for key, val in parameters.items() if key not in found_parameter_dictionary}
+                        if len(encrypt_parameters) != 0:
+                            last_query, enc_parameter_dictionary = self.pre_prepare_statement(last_query, encrypt_parameters,
+                                                                                              match_regex=REGEX_enc_query_argument,
+                                                                                              encryption_key=encryption_key,
+                                                                                              require_presence=False)
+
+                        found_params = {**found_parameter_dictionary, **enc_parameter_dictionary}
+                        check_unused -= set(found_params.keys())
+
+                if len(check_unused):
+                    raise HttpStatusException(ERR_unused_parameter % list(check_unused)[0], HTTPStatus.BAD_REQUEST)
+
             for query_key, query_obj in query.items():
                 exc_query_key = query_key
                 replacement_parameters = {**past_parameters, **parameters, **query_obj[KEY_parameters]}
@@ -213,24 +240,6 @@ class InterpretJAAQL:
 
                 if was_store:
                     ret[query_key] = []
-
-                if prevent_unused_parameters:
-                    check_unused = unused_orig_parameters.copy()
-                    for cur_query, cur_parameters, cur_row_idx, cur_state in zip(to_exec, replacement_parameters, range(len(to_exec)), states):
-                        last_query, found_parameter_dictionary = self.pre_prepare_statement(cur_query, cur_parameters, require_presence=False)
-                        enc_parameter_dictionary = {}
-                        encrypt_parameters = {key: val for key, val in cur_parameters.items() if key not in found_parameter_dictionary}
-                        if len(encrypt_parameters) != 0:
-                            last_query, enc_parameter_dictionary = self.pre_prepare_statement(last_query, encrypt_parameters,
-                                                                                              match_regex=REGEX_enc_query_argument,
-                                                                                              encryption_key=encryption_key,
-                                                                                              require_presence=False)
-
-                        found_params = {**found_parameter_dictionary, **enc_parameter_dictionary}
-                        check_unused -= set(found_params.keys())
-
-                    if len(check_unused):
-                        raise HttpStatusException(ERR_unused_parameter % list(check_unused)[0], HTTPStatus.BAD_REQUEST)
 
                 for cur_query, cur_parameters, cur_row_idx, cur_state in zip(to_exec, replacement_parameters, range(len(to_exec)), states):
                     exc_query = cur_query
@@ -288,6 +297,7 @@ class InterpretJAAQL:
                                 [decrypt_raw_ex(encryption_key, val) if col in query_obj[KEY_decrypt] and val is not None else val for val, col in
                                  zip(row, res["columns"])] for row in res["rows"]]
         except Exception as ex:
+            traceback.print_exc()
             if is_dict_query:
                 new_ex = HttpStatusException(str(ex))
                 if isinstance(ex, HttpStatusException):
@@ -504,6 +514,8 @@ class InterpretJAAQL:
                 if match_str not in parameters and match_str not in MARKERS:
                     if require_presence:
                         raise HttpStatusException(ERR_missing_parameter % match_str, HTTPStatus.BAD_REQUEST)
+                    else:
+                        continue
                 elif match_str not in parameters and match_str in MARKERS:
                     is_skipped_default = True
                 else:
