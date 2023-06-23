@@ -151,18 +151,13 @@ def run_migrations(host: str, bypass_super: str, bypass_jaaql: str, db_interface
             checksum = hashlib.md5(hash_content.encode("UTF-8")).digest()
             checksum = int.from_bytes(checksum[0:3], byteorder="little")
             if full_name not in installed_scripts:
-                config_loc = os.environ.get("JAAQL_CONFIG_LOC", "monitor_config")
-                configs = []
-                for fname in os.listdir(config_loc):
-                    config_name = ".".join(fname.split(".")[0:-1])
-                    configs.append([config_name, join(config_loc, fname)])
-
                 encoded_configs = [[USERNAME__jaaql, host, USERNAME__jaaql, MARKER__jaaql_bypass + bypass_jaaql, DB__jaaql],
                                    [USERNAME__superuser, host, USERNAME__super_db, MARKER__bypass + bypass_super, DB__postgres]]
 
                 start_time = datetime.now()
 
-                initialise(actual_file_name, content, configs, encoded_configs, host)
+                config_loc = os.environ.get("JAAQL_CONFIG_LOC", "monitor_config")
+                initialise(actual_file_name, content, [], encoded_configs, host, folder_name=config_loc)
 
                 execution_time = time_delta_ms(start_time, datetime.now())
                 version = script_file.split("__")[0][1:]
