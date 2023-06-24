@@ -77,16 +77,25 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   echo "limit_req_zone \$binary_remote_addr zone=jaaqllimit:10m rate=5r/s;" >> /etc/nginx/sites-available/jaaql
   echo "limit_req_zone \$binary_remote_addr zone=httplimit:10m rate=10r/s;" >> /etc/nginx/sites-available/jaaql
   if [ "$IS_HTTPS" = "TRUE" ] ; then
-    echo "server {" >> /etc/nginx/sites-available/jaaql
-    echo "    listen 80;" >> /etc/nginx/sites-available/jaaql
-    echo "    server_name $SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
-    echo "    return 301 http://www.$SERVER_ADDRESS\$request_uri;" >> /etc/nginx/sites-available/jaaql
-    echo "}" >> /etc/nginx/sites-available/jaaql
-    echo "" >> /etc/nginx/sites-available/jaaql
+    if [ "$HTTPS_WWW" = "TRUE" ] ; then
+      echo "server {" >> /etc/nginx/sites-available/jaaql
+      echo "    listen 80;" >> /etc/nginx/sites-available/jaaql
+      echo "    server_name $SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+      echo "    return 301 http://www.$SERVER_ADDRESS\$request_uri;" >> /etc/nginx/sites-available/jaaql
+      echo "}" >> /etc/nginx/sites-available/jaaql
+      echo "" >> /etc/nginx/sites-available/jaaql
+    else
+      echo "server {" >> /etc/nginx/sites-available/jaaql
+      echo "    listen 80;" >> /etc/nginx/sites-available/jaaql
+      echo "    server_name www.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+      echo "    return 301 http://$SERVER_ADDRESS\$request_uri;" >> /etc/nginx/sites-available/jaaql
+      echo "}" >> /etc/nginx/sites-available/jaaql
+      echo "" >> /etc/nginx/sites-available/jaaql
+    fi
   fi
   echo "server {" >> /etc/nginx/sites-available/jaaql
   echo "    listen 80;" >> /etc/nginx/sites-available/jaaql
-  if [ "$IS_HTTPS" = "TRUE" ] ; then
+  if [ "$IS_HTTPS" = "TRUE" ] && [ "$HTTPS_WWW" = "TRUE" ] ; then
     echo "    server_name www.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
   else
     echo "    server_name $SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
@@ -135,7 +144,11 @@ ln -s $SITE_FILE /etc/nginx/sites-enabled
 
 SERVER_PROTOCOL="http:\/\/"
 if [ "$IS_HTTPS" = "TRUE" ] ; then
-  SERVER_PROTOCOL="https:\/\/www."
+  if [ "$HTTPS_WWW" = "TRUE" ] ; then
+    SERVER_PROTOCOL="https:\/\/www."
+  else
+    SERVER_PROTOCOL="https:\/\/"
+  fi
 fi
 
 replace_config() {
@@ -175,11 +188,19 @@ service nginx restart
 CERT_DIR=/etc/letsencrypt/live/$SERVER_ADDRESS
 if [ "$IS_HTTPS" = "TRUE" ] && [ ! -d "$CERT_DIR" ] ; then
   echo "Initialising certbot"
-  $CERTBOT_PATH --nginx -d $SERVER_ADDRESS -d www.$SERVER_ADDRESS --redirect --noninteractive --no-eff-email --email $HTTPS_EMAIL --agree-tos -w $INSTALL_PATH/www
+  APPLY_URL="-d $SERVER_ADDRESS"
+  if [ "$HTTPS_WWW" = "TRUE" ] ; then
+    APPLY_URL="$APPLY_URL -d www.$SERVER_ADDRESS"
+  fi
+  $CERTBOT_PATH --nginx $APPLY_URL --redirect --noninteractive --no-eff-email --email $HTTPS_EMAIL --agree-tos -w $INSTALL_PATH/www
   service nginx restart
 elif [ "$IS_HTTPS" = "TRUE" ] && [ -d "$CERT_DIR" ] ; then
   echo "Found existing certificates. Installing"
-  printf "1,2\n1\n" | $CERTBOT_PATH --nginx
+  if [ "$HTTPS_WWW" = "TRUE" ] ; then
+    printf "1,2\n1\n" | $CERTBOT_PATH --nginx
+  else
+    printf "1\n1\n" | $CERTBOT_PATH --nginx
+  fi
   service nginx restart
 fi
 

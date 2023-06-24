@@ -51,7 +51,7 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     cd ../ && \
     $PY_PATH -m ensurepip --default-pip && \
     $PY_PATH -mpip install -U pip wheel && \
-    $PY_PATH -mpip install certbot-nginx==1.2.0 && \
+    $PY_PATH -mpip install certbot-nginx==2.6.0 && \
     apt-get purge --auto-remove build-essential -y && \
     wget --no-verbose -O /tmp/chrome.deb https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb && \
     apt install -y /tmp/chrome.deb && \
