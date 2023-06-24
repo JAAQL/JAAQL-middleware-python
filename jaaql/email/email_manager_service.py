@@ -276,8 +276,8 @@ class EmailManagerService:
         new_dispatchers = self.fetch_dispatchers_from_db()
         potentially_require_threads = {key: val for key, val in new_dispatchers.items() if not self.parameterised_lock.check_lock_held(key)}
         self.dispatchers = new_dispatchers
-        for dispatcher_key, dispatcher_info in potentially_require_threads.items():
-            threading.Thread(target=self.dispatcher_thread, args=[dispatcher_key, dispatcher_info]).start()
+        for dispatcher_key, dispatcher_tuple in potentially_require_threads.items():
+            threading.Thread(target=self.dispatcher_thread, args=[dispatcher_key, dispatcher_tuple[0]]).start()
 
     def get_dispatcher_queue_from_key(self, dispatcher_key: str):
         return self.dispatchers.get(dispatcher_key, (None, self.threadsafe_queue_initialiser.fetch_queue(dispatcher_key)))[1]

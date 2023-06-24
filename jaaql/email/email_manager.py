@@ -146,7 +146,8 @@ class EmailManager:
             args = {}
 
         for key, val in args.items():
-            html_template = html_template.replace(replace_str % key.upper(), replace_func(val))
+            replace_val = str(val)
+            html_template = html_template.replace(replace_str % key.upper(), replace_func(replace_val))
 
         matched = re.findall(replace_regex, html_template)
         if len(matched) != 0:
