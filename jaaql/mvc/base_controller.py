@@ -20,7 +20,7 @@ from flask import Response, Flask, request, jsonify, current_app
 from flask.json.provider import DefaultJSONProvider
 from jaaql.constants import *
 from jaaql.mvc.model import JAAQLModel
-from jaaql.mvc.response import JAAQLResponse
+from jaaql.mvc.response import *
 from typing import Union
 from jaaql.db.db_utils import create_interface_for_db
 from monitor.main import HEADER__security, HEADER__security_bypass_jaaql, HEADER__security_bypass
@@ -81,6 +81,8 @@ HEADER__allow_origin = "Access-Control-Allow-Origin"
 HEADER__allow_methods = "Access-Control-Allow-Methods"
 HEADER__real_ip = "X-Real-IP"
 
+ENV__allow_cors = "ALLOW_CORS"
+
 BOOL__allowed = {
     "True": True,
     "False": False,
@@ -125,10 +127,13 @@ class BaseJAAQLController:
     internal_sentinel = False
     base_url = None
 
+    allow_cors = False
+
     def __init__(self, model: JAAQLModel, is_prod: bool, base_url: str, do_profiling: bool = False):
         super().__init__()
         BaseJAAQLController.base_url = base_url
         self.app = Flask(__name__, instance_relative_config=True)
+        BaseJAAQLController.allow_cors = os.environ.get(ENV__allow_cors, str(False)).lower().strip() == "true"
         self.json_serializer = JAAQLJSONProvider(self.app)
         self.app.config[FLASK__json_sort_keys] = False
         self.app.config[FLASK__max_content_length] = 1024 * 1024 * 2  # 2 MB
@@ -379,9 +384,10 @@ class BaseJAAQLController:
 
     @staticmethod
     def _cors(resp):
-        resp.headers.add(HEADER__allow_origin, CORS__WILDCARD)
-        resp.headers.add(HEADER__allow_headers, CORS__WILDCARD)
-        resp.headers.add(HEADER__allow_methods, CORS__WILDCARD)
+        if BaseJAAQLController.allow_cors:
+            resp.headers.add(HEADER__allow_origin, CORS__WILDCARD)
+            resp.headers.add(HEADER__allow_headers, CORS__WILDCARD)
+            resp.headers.add(HEADER__allow_methods, CORS__WILDCARD)
         return resp
 
     def log_safe_dump_recursive(self, data):
@@ -437,8 +443,9 @@ class BaseJAAQLController:
             for method in cur_documentation.methods:
                 methods.append(method.method)
 
-        methods.append(REST__OPTIONS)
-        swagger_documentation = documentation_as_lists[0]
+        if BaseJAAQLController.allow_cors:
+            methods.append(REST__OPTIONS)
+            swagger_documentation = documentation_as_lists[0]
 
         def wrap_func(view_func):
             @wraps(view_func)
@@ -628,11 +635,21 @@ class BaseJAAQLController:
                 else:
                     resp = Response(resp, mimetype=jaaql_resp.response_type, status=jaaql_resp.response_code)
 
-                self._cors(resp)
-                self.perform_profile(request_id, "Jsonify")
+                if request.cookies.get(COOKIE_JAAQL_AUTH) is not None and COOKIE_JAAQL_AUTH not in jaaql_resp.cookies:
+                    auth_cookie = COOKIE_JAAQL_AUTH + "=" + request.cookies.get(COOKIE_JAAQL_AUTH)
+                    auth_cookie_fields = [field for field in auth_cookie.split(";") if not field.strip().startswith(COOKIE_ATTR_MAX_AGE)]
 
-                # if not BaseJAAQLController.is_options():
-                #     print("Total time taken: " + str(time_delta_ms(start_time, datetime.now())) + "ms")
+                    if self.model.vigilant_sessions:
+                        auth_cookie_fields.append(COOKIE_ATTR_MAX_AGE + "=" + COOKIE_VAL_INACTIVITY_15_MINUTES)
+
+                    resp.headers.add("Set-Cookie", "; ".join(auth_cookie_fields))
+
+                for _, cookie in jaaql_resp.cookies.items():
+                    resp.headers.add("Set-Cookie", cookie)
+
+                self._cors(resp)
+
+                self.perform_profile(request_id, "Jsonify")
 
                 return resp
 

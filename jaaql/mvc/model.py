@@ -1,18 +1,20 @@
 import uuid
 
+from wsgiref.handlers import format_date_time
 from jaaql.db.db_pg_interface import DBPGInterface
 from jaaql.documentation.documentation_public import KEY__oauth_token
 from jaaql.mvc.base_model import BaseJAAQLModel, VAULT_KEY__jwt_crypt_key
-from jaaql.exceptions.http_status_exception import HttpStatusException, HTTPStatus, ERR__already_installed
+from jaaql.exceptions.http_status_exception import HttpStatusException, ERR__already_installed
 from os.path import join
 from jaaql.constants import *
-from jaaql.mvc.response import JAAQLResponse
 from jaaql.utilities.utils import get_jaaql_root, get_base_url
 from jaaql.db.db_utils import create_interface, jaaql__encrypt
 from jaaql.db.db_utils_no_circ import submit
 from jaaql.utilities import crypt_utils
+from jaaql.mvc.response import *
 import threading
 from datetime import datetime, timedelta
+from time import mktime
 from jaaql.mvc.handmade_queries import *
 from jwt.utils import base64url_decode
 import json
@@ -468,7 +470,11 @@ WHERE
 
         return account[KG__account__id], address
 
-    def get_auth_token(self, username: str, ip_address: str, password: str = None, response: JAAQLResponse = None):
+    def logout_cookie(self, response: JAAQLResponse):
+        response.set_cookie(COOKIE_JAAQL_AUTH, "", attributes={COOKIE_ATTR_EXPIRES: format_date_time(mktime(datetime(1970, 1, 1).timetuple()))})
+
+    def get_auth_token(self, username: str, ip_address: str, password: str = None, response: JAAQLResponse = None, cookie: bool = False,
+                       remember_me: bool = False):
         incorrect_credentials = False
         account = None
         encrypted_salted_ip_address = None
@@ -516,7 +522,18 @@ WHERE
             response.account_id = str(account[KG__account__id]),
             response.ip_id = str(address)
 
-        return crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data, JWT_PURPOSE__oauth, expiry_ms=self.token_expiry_ms)
+        jwt_token = crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data, JWT_PURPOSE__oauth, expiry_ms=self.token_expiry_ms)
+
+        if cookie:
+            cookie_attrs = { COOKIE_ATTR_SAME_SITE: COOKIE_VAL_STRICT }
+            if self.vigilant_sessions:
+                cookie_attrs = {COOKIE_ATTR_MAX_AGE: COOKIE_VAL_INACTIVITY_15_MINUTES}
+            elif remember_me:
+                cookie_attrs = {COOKIE_ATTR_EXPIRES: format_date_time(mktime((datetime.now() + timedelta(days=COOKIE_EXPIRY_90_DAYS)).timetuple()))}
+
+            response.set_cookie(COOKIE_JAAQL_AUTH, value=jwt_token, attributes=cookie_attrs)
+        else:
+            return jwt_token
 
     def attach_dispatcher_credentials(self, connection: DBInterface, inputs: dict):
         email_dispatcher__update(connection, self.get_db_crypt_key(), **inputs)

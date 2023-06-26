@@ -80,6 +80,23 @@ DOCUMENTATION__oauth_token = SwaggerDocumentation(
     )
 )
 
+DOCUMENTATION__oauth_cookie = SwaggerDocumentation(
+    tags="OAuth",
+    security=False,  # This _is_ the security method, therefore it is not expecting a jwt token
+    methods=SwaggerMethod(
+        name="OAuth Fetch Token",
+        description="Authenticate with the server. Send username and password and server will respond with 200 and a "
+                    "token which can be used to access the service. The server may also respond with a 202 and a "
+                    "token, this indicates that an mfa key is expected. Send the token back to the service along with "
+                    "an MFA key and you will returned the aforementioned 200 response",
+        method=REST__POST,
+        body=[
+            ARG_RES__username,
+            ARG_RES__password
+        ]
+    )
+)
+
 DOCUMENTATION__oauth_refresh = SwaggerDocumentation(
     tags="OAuth",
     security=False,

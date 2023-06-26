@@ -18,6 +18,35 @@ else
   echo "Detected restore"
 fi
 
+
+CSP_CONNECT_SRC=""
+if [ -z "${SENTINEL_URL}" ] || [ "$SENTINEL_URL" = "_" ] ; then
+  echo "Setting up CSP to not allow remote sentinel calls from webapp"
+else
+  CSP_CONNECT_SRC=" connect-src 'self' $SENTINEL_URL;"
+fi
+
+SCRIPT_SRC_ATTR=""
+if [ "$ALLOW_UNSAFE_INLINE_SCRIPTS" = "TRUE" ] ; then
+  SCRIPT_SRC_ATTR=" script-src-attr 'unsafe-inline';"
+fi
+
+CSP_HEADER="default-src 'self'; child-src 'none';$SCRIPT_SRC_ATTR$CSP_CONNECT_SRC frame-src 'none'; object-src 'none'; worker-src 'none'; form-action 'self'; frame-ancestors 'none'; navigate-to 'self'; upgrade-insecure-requests; style-src-attr 'unsafe-inline';"
+
+SECURITY_HEADERS="    charset UTF-8;\n"
+SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "X-Frame-Options" "DENY";\n'
+SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "X-Content-Type-Options" "nosniff";\n'
+SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Referrer-Policy" "strict-origin-when-cross-origin";\n'
+SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Cross-Origin-Opener-Policy" "same-site";\n'
+SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Cross-Origin-Embedder-Policy" "require-corp";\n'
+SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Cross-Origin-Resource-Policy" "same-site";\n'
+SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Permissions-Policy" "camera=() display-capture=() fullscreen=() geolocation=() microphone=() web-share=() interest-cohort=()";\n'
+SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Content-Security-Policy" "'$CSP_HEADER'";\n'
+HSTS_HEADER=""
+if [ "$HSTS_PRELOAD" = "TRUE" ] && [ "$IS_HTTPS" = "TRUE" ]; then
+  HSTS_HEADER='    add_header "Strict-Transport-Security" "max-age=63072000; includeSubDomains; preload";\n'
+fi
+
 if [ -z "${JEQL_VERSION}" ]; then
   echo "Using default JEQL version"
 else
@@ -100,6 +129,7 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   else
     echo "    server_name $SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
   fi
+  echo "$SECURITY_HEADERS$HSTS_HEADER" >> /etc/nginx/sites-available/jaaql
   echo "    root $INSTALL_PATH/www;" >> /etc/nginx/sites-available/jaaql
   echo "    index index.html;" >> /etc/nginx/sites-available/jaaql
   echo "    location / {" >> /etc/nginx/sites-available/jaaql
@@ -121,8 +151,10 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   echo "    }" >> /etc/nginx/sites-available/jaaql
   echo "}" >> /etc/nginx/sites-available/jaaql
   echo "" >> /etc/nginx/sites-available/jaaql
+  # The following is needed to allow https-less access via 127.0.0.1 address
   echo "server {" >> /etc/nginx/sites-available/jaaql
-  echo "    server_name 127.0.0.1;" >> /etc/nginx/sites-available/jaaql
+  echo "    server_name localhost;" >> /etc/nginx/sites-available/jaaql
+  echo "$SECURITY_HEADERS" >> /etc/nginx/sites-available/jaaql
   echo "    location /api {" >> /etc/nginx/sites-available/jaaql
   echo "        limit_req zone=jaaqllimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
   echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
@@ -130,7 +162,7 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   echo "        proxy_pass http://unix:$INSTALL_PATH/jaaql.sock:/;" >> /etc/nginx/sites-available/jaaql
   echo "        proxy_set_header X-Real-IP \$remote_addr;" >> /etc/nginx/sites-available/jaaql
   echo "    }" >> /etc/nginx/sites-available/jaaql
-  echo "    root /JAAQL-sentinel-middleware/www;" >> /etc/nginx/sites-available/jaaql
+  echo "    root $INSTALL_PATH/www;" >> /etc/nginx/sites-available/jaaql
   echo "    index index.html;" >> /etc/nginx/sites-available/jaaql
   echo "    location / {" >> /etc/nginx/sites-available/jaaql
   echo "        limit_req zone=httplimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
