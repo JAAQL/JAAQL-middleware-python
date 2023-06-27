@@ -40,7 +40,7 @@ SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Referrer-Policy" "strict-orig
 SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Cross-Origin-Opener-Policy" "same-site";\n'
 SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Cross-Origin-Embedder-Policy" "require-corp";\n'
 SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Cross-Origin-Resource-Policy" "same-site";\n'
-SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Permissions-Policy" "camera=() display-capture=() fullscreen=() geolocation=() microphone=() web-share=() interest-cohort=()";\n'
+SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Permissions-Policy" "camera=(), display-capture=(), fullscreen=(), geolocation=(), microphone=(), web-share=(), interest-cohort=()";\n'
 SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Content-Security-Policy" "'$CSP_HEADER'";\n'
 HSTS_HEADER=""
 if [ "$HSTS_PRELOAD" = "TRUE" ] && [ "$IS_HTTPS" = "TRUE" ]; then
