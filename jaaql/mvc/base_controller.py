@@ -40,6 +40,7 @@ ARG__auth_token = "auth_token"
 ARG__auth_token_for_refresh = "auth_token_for_refresh"
 ARG__connection = "connection"
 ARG__is_the_anonymous_user = "is_the_anonymous_user"
+ARG__auth_cookie = "auth_cookie"
 ARG__verification_hook = "verification_hook"
 ARG_START__connection = "connection__"
 ARG_START__jaaql_connection = "jaaql_" + ARG_START__connection
@@ -479,6 +480,11 @@ class BaseJAAQLController:
                     if ip_addr is None or ip_addr == "":
                         ip_addr = "127.0.0.1"
 
+                    security_key = request.headers.get(HEADER__security)
+                    auth_cookie = request.cookies.get(COOKIE_JAAQL_AUTH)
+                    if auth_cookie is not None:
+                        security_key = auth_cookie.split("=")[1].split(";")[0].strip()
+
                     if swagger_documentation.security:
                         bypass_super = request.headers.get(HEADER__security_bypass)
                         bypass_jaaql = request.headers.get(HEADER__security_bypass_jaaql)
@@ -498,27 +504,28 @@ class BaseJAAQLController:
                                 verification_hook.put((True, None, None))
 
                         elif verification_hook:
-                            account_id, username, ip_id, is_public = self.model.verify_auth_token_threaded(request.headers.get(HEADER__security),
+                            account_id, username, ip_id, is_public = self.model.verify_auth_token_threaded(security_key,
                                                                                                            ip_addr, verification_hook)
                             self.perform_profile(request_id, "Verify JWT Threaded")
                         else:
-                            account_id, username, ip_id, is_public = self.model.verify_auth_token(request.headers.get(HEADER__security), ip_addr)
+                            account_id, username, ip_id, is_public = self.model.verify_auth_token(security_key, ip_addr)
                             self.perform_profile(request_id, "Verify JWT")
 
                     supply_dict = {}
 
                     throw_ex = None
                     ex_msg = None
-                    method_input = None
                     try:
                         if ARG__http_inputs in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__http_inputs] = BaseJAAQLController.get_input_as_dictionary(the_method, self.is_prod)
-                            method_input = self.log_safe_dump(supply_dict[ARG__http_inputs])
 
                         if ARG__account_id in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:
                                 raise Exception(ERR__method_required_account_id)
                             supply_dict[ARG__account_id] = account_id
+
+                        if ARG__auth_cookie in inspect.getfullargspec(view_func_local).args:
+                            supply_dict[ARG__auth_cookie] = auth_cookie
 
                         if method.parallel_verification:
                             supply_dict[ARG__verification_hook] = verification_hook

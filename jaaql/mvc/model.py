@@ -447,7 +447,7 @@ WHERE
 
         return decoded[KEY__account_id], decoded[KEY__username], decoded[KEY__ip_address], decoded[KEY__is_the_anonymous_user]
 
-    def refresh_auth_token(self, auth_token: str, ip_address: str):
+    def refresh_auth_token(self, auth_token: str, ip_address: str, cookie: bool = False, auth_cookie: str = None):
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), auth_token, JWT_PURPOSE__oauth, allow_expired=True)
         if not decoded:
             raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
@@ -455,7 +455,11 @@ WHERE
         if datetime.fromisoformat(decoded[KEY__created]) + timedelta(milliseconds=self.refresh_expiry_ms) < datetime.now():
             raise HttpStatusException(ERR__refresh_expired, HTTPStatus.UNAUTHORIZED)
 
-        return self.get_auth_token(decoded[KEY__username], ip_address)
+        remember_me = False
+        if auth_cookie is not None:
+            remember_me = any(section.strip().startswith("Expires=") for section in auth_cookie.split(";"))
+
+        return self.get_auth_token(decoded[KEY__username], ip_address, cookie=cookie, remember_me=remember_me)
 
     def get_bypass_user(self, username: str, ip_address: str):
         account = fetch_most_recent_password_from_username(self.jaaql_lookup_connection, self.get_db_crypt_key(),

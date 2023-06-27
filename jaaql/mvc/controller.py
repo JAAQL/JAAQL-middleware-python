@@ -21,15 +21,15 @@ class JAAQLController(BaseJAAQLController):
 
         @self.cors_route('/oauth/cookie', DOCUMENTATION__oauth_cookie)
         def fetch_oauth_cookie(http_inputs: dict, ip_address: str, response: JAAQLResponse):
-            return self.model.get_auth_token(**http_inputs, ip_address=ip_address, response=response, cookie=True)
+            self.model.get_auth_token(**http_inputs, ip_address=ip_address, response=response, cookie=True)
 
         @self.cors_route('/logout-cookie', DOCUMENTATION__logout_cookie)
         def fetch_oauth_cookie(response: JAAQLResponse):
             self.model.logout_cookie(response)
 
         @self.cors_route('/oauth/refresh-cookie', DOCUMENTATION__oauth_refresh)
-        def refresh_oauth_cookie(auth_token_for_refresh: str, ip_address: str):
-            return self.model.refresh_auth_token(auth_token_for_refresh, ip_address)
+        def refresh_oauth_cookie(auth_token_for_refresh: str, ip_address: str, auth_cookie: str):
+            self.model.refresh_auth_token(auth_token_for_refresh, ip_address, cookie=True, auth_cookie=auth_cookie)
 
         @self.cors_route("/internal/freeze", DOCUMENTATION__freeze)
         def refresh_oauth_token(connection: DBInterface):
