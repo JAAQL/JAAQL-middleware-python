@@ -15,6 +15,7 @@ import os
 import dataclasses
 import decimal
 from queue import Queue
+from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, format_cookie, COOKIE_JAAQL_AUTH
 from jaaql.utilities.utils import time_delta_ms, Profiler
 from flask import Response, Flask, request, jsonify, current_app
 from flask.json.provider import DefaultJSONProvider
@@ -40,7 +41,7 @@ ARG__auth_token = "auth_token"
 ARG__auth_token_for_refresh = "auth_token_for_refresh"
 ARG__connection = "connection"
 ARG__is_the_anonymous_user = "is_the_anonymous_user"
-ARG__auth_cookie = "auth_cookie"
+ARG__remember_me = "remember_me"
 ARG__verification_hook = "verification_hook"
 ARG_START__connection = "connection__"
 ARG_START__jaaql_connection = "jaaql_" + ARG_START__connection
@@ -462,6 +463,7 @@ class BaseJAAQLController:
                 resp_type = current_app.json.mimetype
                 jaaql_resp = JAAQLResponse()
                 jaaql_resp.response_type = resp_type
+                remember_me = False
 
                 if not BaseJAAQLController.is_options():
                     the_method = BaseJAAQLController.get_method(swagger_documentation)
@@ -483,7 +485,7 @@ class BaseJAAQLController:
                     security_key = request.headers.get(HEADER__security)
                     auth_cookie = request.cookies.get(COOKIE_JAAQL_AUTH)
                     if auth_cookie is not None:
-                        security_key = auth_cookie.split("=")[1].split(";")[0].strip()
+                        security_key = auth_cookie
 
                     if swagger_documentation.security:
                         bypass_super = request.headers.get(HEADER__security_bypass)
@@ -504,11 +506,11 @@ class BaseJAAQLController:
                                 verification_hook.put((True, None, None))
 
                         elif verification_hook:
-                            account_id, username, ip_id, is_public = self.model.verify_auth_token_threaded(security_key,
-                                                                                                           ip_addr, verification_hook)
+                            account_id, username, ip_id, is_public, remember_me = self.model.verify_auth_token_threaded(security_key,
+                                                                                                                        ip_addr, verification_hook)
                             self.perform_profile(request_id, "Verify JWT Threaded")
                         else:
-                            account_id, username, ip_id, is_public = self.model.verify_auth_token(security_key, ip_addr)
+                            account_id, username, ip_id, is_public, remember_me = self.model.verify_auth_token(security_key, ip_addr)
                             self.perform_profile(request_id, "Verify JWT")
 
                     supply_dict = {}
@@ -524,8 +526,8 @@ class BaseJAAQLController:
                                 raise Exception(ERR__method_required_account_id)
                             supply_dict[ARG__account_id] = account_id
 
-                        if ARG__auth_cookie in inspect.getfullargspec(view_func_local).args:
-                            supply_dict[ARG__auth_cookie] = auth_cookie
+                        if ARG__remember_me in inspect.getfullargspec(view_func_local).args:
+                            supply_dict[ARG__remember_me] = auth_cookie
 
                         if method.parallel_verification:
                             supply_dict[ARG__verification_hook] = verification_hook
@@ -582,10 +584,6 @@ class BaseJAAQLController:
 
                         self.perform_profile(request_id, "Perform work")
 
-                        if not swagger_documentation.security:
-                            account_id = jaaql_resp.account_id
-                            ip_id = jaaql_resp.ip_id
-
                         status = jaaql_resp.response_code
                         method_response = BaseJAAQLController.get_response(the_method, status)
                         do_allow_all = False
@@ -594,7 +592,6 @@ class BaseJAAQLController:
                                 do_allow_all = True
                         if not do_allow_all:
                             resp = BaseJAAQLController.validate_output(method_response, resp)
-                        ret_status = status
 
                         self.perform_profile(request_id, "Validate output")
                     except Exception as ex:
@@ -643,13 +640,9 @@ class BaseJAAQLController:
                     resp = Response(resp, mimetype=jaaql_resp.response_type, status=jaaql_resp.response_code)
 
                 if request.cookies.get(COOKIE_JAAQL_AUTH) is not None and COOKIE_JAAQL_AUTH not in jaaql_resp.cookies:
-                    auth_cookie = COOKIE_JAAQL_AUTH + "=" + request.cookies.get(COOKIE_JAAQL_AUTH)
-                    auth_cookie_fields = [field for field in auth_cookie.split(";") if not field.strip().startswith(COOKIE_ATTR_MAX_AGE)]
-
-                    if self.model.vigilant_sessions:
-                        auth_cookie_fields.append(COOKIE_ATTR_MAX_AGE + "=" + COOKIE_VAL_INACTIVITY_15_MINUTES)
-
-                    resp.headers.add("Set-Cookie", "; ".join(auth_cookie_fields))
+                    resp.headers.add("Set-Cookie", format_cookie(COOKIE_JAAQL_AUTH, request.cookies.get(COOKIE_JAAQL_AUTH),
+                                                                 get_cookie_attrs(self.model.vigilant_sessions, remember_me, self.model.is_container),
+                                                                 self.model.is_https))
 
                 for _, cookie in jaaql_resp.cookies.items():
                     resp.headers.add("Set-Cookie", cookie)

@@ -189,6 +189,7 @@ class BaseJAAQLModel:
         self.migration_folder = migration_folder
         self.is_container = is_container
 
+        self.is_https = os.environ.get("IS_HTTPS", "false").lower().strip() == "true"
         self.vigilant_sessions = os.environ.get("VIGILANT_SESSIONS", "false").lower().strip() == "true"
 
         self.cached_canned_query_service = None

@@ -94,24 +94,26 @@ DOCUMENTATION__oauth_cookie = SwaggerDocumentation(
             ARG_RES__username,
             ARG_RES__password,
             SwaggerArgumentResponse(
-                name="remember_me",
+                name=KEY__remember_me,
                 arg_type=bool,
                 description="Whether or not the returned cookie will act as a remember me cookie"
             )
-        ]
+        ],
+        response=SwaggerFlatResponse()
     )
 )
 
 DOCUMENTATION__logout_cookie = SwaggerDocumentation(
     tags="OAuth",
-    security=True,
+    security=False,
     methods=SwaggerMethod(
         name="OAuth Fetch Token",
         description="Authenticate with the server. Send username and password and server will respond with 200 and a "
                     "token which can be used to access the service. The server may also respond with a 202 and a "
                     "token, this indicates that an mfa key is expected. Send the token back to the service along with "
                     "an MFA key and you will returned the aforementioned 200 response",
-        method=REST__POST
+        method=REST__POST,
+        response=SwaggerFlatResponse()
     )
 )
 
@@ -123,6 +125,17 @@ DOCUMENTATION__oauth_refresh = SwaggerDocumentation(
         description="Refresh your token",
         method=REST__POST,
         response=RES__oauth_token
+    )
+)
+
+DOCUMENTATION__oauth_refresh_cookie = SwaggerDocumentation(
+    tags="OAuth",
+    security=False,
+    methods=SwaggerMethod(
+        name="OAuth Refresh Cookie",
+        description="Refresh your Cookie",
+        method=REST__POST,
+        response=SwaggerFlatResponse()
     )
 )
 

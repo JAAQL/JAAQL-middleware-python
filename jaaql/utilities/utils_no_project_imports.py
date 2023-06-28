@@ -62,3 +62,39 @@ def pull_from_dict(self, inputs: dict, keys: Union[list, str, dict]):
         return {key: inputs[key] for key in keys}
     else:
         return {map_to: inputs[map_from if map_from is not None else map_to] for map_from, map_to in keys.items()}
+
+
+COOKIE_JAAQL_AUTH = "jaaql_auth"
+COOKIE_FLAG_HTTP_ONLY = "HttpOnly"
+COOKIE_FLAG_SECURE = "Secure"
+COOKIE_ATTR_SAME_SITE = "SameSite"
+COOKIE_ATTR_EXPIRES = "Expires"
+COOKIE_ATTR_MAX_AGE = "Max-Age"
+COOKIE_VAL_STRICT = "Strict"
+COOKIE_VAL_INACTIVITY_15_MINUTES = "900"
+COOKIE_EXPIRY_90_DAYS = 90
+COOKIE_ATTR_PATH = "Path"
+
+from wsgiref.handlers import format_date_time
+from time import mktime
+from datetime import timedelta
+
+
+def get_cookie_attrs(vigilant_sessions: bool, remember_me: bool, is_gunicorn: bool):
+    cookie_attrs = {COOKIE_ATTR_SAME_SITE: COOKIE_VAL_STRICT}
+    cookie_attrs[COOKIE_ATTR_PATH] = "/api" if is_gunicorn else "/"
+
+    if vigilant_sessions:
+        cookie_attrs[COOKIE_ATTR_MAX_AGE] = COOKIE_VAL_INACTIVITY_15_MINUTES
+    elif remember_me:
+        cookie_attrs[COOKIE_ATTR_EXPIRES] = format_date_time(mktime((datetime.now() + timedelta(days=COOKIE_EXPIRY_90_DAYS)).timetuple()))
+
+    return cookie_attrs
+
+
+def format_cookie(name, value, attributes, is_https: bool):
+    cookie_flags = [COOKIE_FLAG_HTTP_ONLY]
+    if is_https:
+        cookie_flags.append(COOKIE_FLAG_SECURE)
+
+    return "; ".join([name + "=" + value] + cookie_flags + [key + "=" + val for key, val in attributes.items()])

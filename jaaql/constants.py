@@ -1,5 +1,6 @@
 KEY__username = "username"
 KEY__password = "password"
+KEY__remember_me = "remember_me"
 KEY__attach_as = "attach_as"
 KEY__ip_address = "ip_address"
 KEY__created = "created"
@@ -134,5 +135,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.11.26"
+VERSION = "4.11.28"
 

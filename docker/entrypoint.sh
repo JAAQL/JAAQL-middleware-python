@@ -215,6 +215,7 @@ replace_config() {
 replace_config
 
 rm -rf /etc/nginx/sites-enabled/default
+sed -i 's/http {/http {\n        server_tokens off;\n/g' /etc/nginx/nginx.conf
 service nginx restart
 
 CERT_DIR=/etc/letsencrypt/live/$SERVER_ADDRESS

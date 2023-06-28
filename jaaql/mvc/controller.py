@@ -28,8 +28,8 @@ class JAAQLController(BaseJAAQLController):
             self.model.logout_cookie(response)
 
         @self.cors_route('/oauth/refresh-cookie', DOCUMENTATION__oauth_refresh)
-        def refresh_oauth_cookie(auth_token_for_refresh: str, ip_address: str, auth_cookie: str):
-            self.model.refresh_auth_token(auth_token_for_refresh, ip_address, cookie=True, auth_cookie=auth_cookie)
+        def refresh_oauth_cookie(auth_token_for_refresh: str, ip_address: str, remember_me: bool):
+            self.model.refresh_auth_token(auth_token_for_refresh, ip_address, cookie=True, remember_me=remember_me)
 
         @self.cors_route("/internal/freeze", DOCUMENTATION__freeze)
         def refresh_oauth_token(connection: DBInterface):

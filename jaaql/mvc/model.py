@@ -11,6 +11,7 @@ from jaaql.utilities.utils import get_jaaql_root, get_base_url
 from jaaql.db.db_utils import create_interface, jaaql__encrypt
 from jaaql.db.db_utils_no_circ import submit
 from jaaql.utilities import crypt_utils
+from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_ATTR_EXPIRES
 from jaaql.mvc.response import *
 import threading
 from datetime import datetime, timedelta
@@ -433,7 +434,8 @@ WHERE
                 threading.Thread(target=self.verification_thread, args=[JAAQLModel.VERIFICATION_QUEUE], daemon=True).start()
             JAAQLModel.VERIFICATION_QUEUE.put((auth_token, ip_address, complete))
             payload = json.loads(base64url_decode(auth_token.split(".")[1].encode("UTF-8")).decode())
-            return payload[KEY__account_id], payload[KEY__username], payload[KEY__ip_address], payload[KEY__is_the_anonymous_user]
+            return payload[KEY__account_id], payload[KEY__username], payload[KEY__ip_address], payload[KEY__is_the_anonymous_user],\
+                payload[KEY__remember_me]
         except Exception:
             raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
@@ -445,19 +447,16 @@ WHERE
         validate_is_most_recent_password(self.jaaql_lookup_connection, decoded[KEY__account_id], decoded[KEY__password],
                                          singleton_message=ERR__invalid_token, singleton_code=HTTPStatus.UNAUTHORIZED)
 
-        return decoded[KEY__account_id], decoded[KEY__username], decoded[KEY__ip_address], decoded[KEY__is_the_anonymous_user]
+        return decoded[KEY__account_id], decoded[KEY__username], decoded[KEY__ip_address], decoded[KEY__is_the_anonymous_user],\
+            decoded[KEY__remember_me]
 
-    def refresh_auth_token(self, auth_token: str, ip_address: str, cookie: bool = False, auth_cookie: str = None):
+    def refresh_auth_token(self, auth_token: str, ip_address: str, cookie: bool = False, remember_me: bool = False):
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), auth_token, JWT_PURPOSE__oauth, allow_expired=True)
         if not decoded:
             raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
         if datetime.fromisoformat(decoded[KEY__created]) + timedelta(milliseconds=self.refresh_expiry_ms) < datetime.now():
             raise HttpStatusException(ERR__refresh_expired, HTTPStatus.UNAUTHORIZED)
-
-        remember_me = False
-        if auth_cookie is not None:
-            remember_me = any(section.strip().startswith("Expires=") for section in auth_cookie.split(";"))
 
         return self.get_auth_token(decoded[KEY__username], ip_address, cookie=cookie, remember_me=remember_me)
 
@@ -475,7 +474,8 @@ WHERE
         return account[KG__account__id], address
 
     def logout_cookie(self, response: JAAQLResponse):
-        response.set_cookie(COOKIE_JAAQL_AUTH, "", attributes={COOKIE_ATTR_EXPIRES: format_date_time(mktime(datetime(1970, 1, 1).timetuple()))})
+        response.set_cookie(COOKIE_JAAQL_AUTH, "", attributes={COOKIE_ATTR_EXPIRES: format_date_time(mktime(datetime(1970, 1, 1).timetuple()))},
+                            is_https=self.is_https)
 
     def get_auth_token(self, username: str, ip_address: str, password: str = None, response: JAAQLResponse = None, cookie: bool = False,
                        remember_me: bool = False):
@@ -519,7 +519,8 @@ WHERE
             KEY__ip_address: ip_address,
             KEY__ip_id: str(address),
             KEY__created: datetime.now().isoformat(),
-            KEY__is_the_anonymous_user: username == USERNAME__anonymous
+            KEY__is_the_anonymous_user: username == USERNAME__anonymous,
+            KEY__remember_me: remember_me
         }
 
         if response is not None:
@@ -529,13 +530,9 @@ WHERE
         jwt_token = crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data, JWT_PURPOSE__oauth, expiry_ms=self.token_expiry_ms)
 
         if cookie:
-            cookie_attrs = { COOKIE_ATTR_SAME_SITE: COOKIE_VAL_STRICT }
-            if self.vigilant_sessions:
-                cookie_attrs = {COOKIE_ATTR_MAX_AGE: COOKIE_VAL_INACTIVITY_15_MINUTES}
-            elif remember_me:
-                cookie_attrs = {COOKIE_ATTR_EXPIRES: format_date_time(mktime((datetime.now() + timedelta(days=COOKIE_EXPIRY_90_DAYS)).timetuple()))}
-
-            response.set_cookie(COOKIE_JAAQL_AUTH, value=jwt_token, attributes=cookie_attrs)
+            response.set_cookie(COOKIE_JAAQL_AUTH, value=jwt_token,
+                                attributes=get_cookie_attrs(self.vigilant_sessions, remember_me, self.is_container),
+                                is_https=self.is_https)
         else:
             return jwt_token
 
