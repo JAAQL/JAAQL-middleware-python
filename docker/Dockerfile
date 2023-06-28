@@ -66,7 +66,7 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     apt-get install -y gstreamer1.0-libav libnss3-tools libatk-bridge2.0-0 libcups2-dev libxkbcommon-x11-0 libxcomposite-dev libxrandr2 libgbm-dev libgtk-3-0 && \
     apt-get install -y xvfb && \
     DEBIAN_FRONTEND=noninteractive apt-get -y install xorg xvfb gtk2-engines-pixbuf && \
-    apt-get -y install dbus-x11 xfonts-base xfonts-100dpi xfonts-75dpi xfonts-cyrillic xfonts-scalable && \
+    apt-get -y install dbus-x11 xfonts-base xfonts-100dpi xfonts-75dpi xfonts-scalable && \
     apt-get -y install imagemagick x11-apps && \
     /bin/mkdir -p '/usr/share/postgresql/15/extension' && \
     /bin/mkdir -p '/usr/lib/postgresql/15/lib' && \
