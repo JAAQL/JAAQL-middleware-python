@@ -385,6 +385,7 @@ class BaseJAAQLController:
             resp.headers.add(HEADER__allow_origin, CORS__WILDCARD)
             resp.headers.add(HEADER__allow_headers, CORS__WILDCARD)
             resp.headers.add(HEADER__allow_methods, CORS__WILDCARD)
+        return resp
 
     def log_safe_dump_recursive(self, data):
         if isinstance(data, list):
@@ -438,6 +439,9 @@ class BaseJAAQLController:
             cur_documentation.path = route
             for method in cur_documentation.methods:
                 methods.append(method.method)
+
+        if not self.model.is_container:
+            use_cors = True
 
         if use_cors:
             methods.append(REST__OPTIONS)
@@ -674,7 +678,7 @@ class BaseJAAQLController:
                     "source_system": "Sentinel" if BaseJAAQLController.internal_sentinel else "JAAQL",
                     "source_file": source_file,
                     "file_line_number": tb_frame.tb_lineno,
-                    "stacktrace": ''.join(traceback.format_exception(etype=type(orig), value=orig, tb=orig.__traceback__))
+                    "stacktrace": ''.join(traceback.format_exception(type(orig), value=orig, tb=orig.__traceback__))
                 })
 
             traceback.print_tb(error.__traceback__)

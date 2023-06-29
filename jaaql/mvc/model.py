@@ -15,7 +15,6 @@ from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JA
 from jaaql.mvc.response import *
 import threading
 from datetime import datetime, timedelta
-from time import mktime
 from jaaql.mvc.handmade_queries import *
 from jwt.utils import base64url_decode
 import json
@@ -474,8 +473,7 @@ WHERE
         return account[KG__account__id], address
 
     def logout_cookie(self, response: JAAQLResponse):
-        response.set_cookie(COOKIE_JAAQL_AUTH, "", attributes={COOKIE_ATTR_EXPIRES: format_date_time(mktime(datetime(1970, 1, 1).timetuple()))},
-                            is_https=self.is_https)
+        response.set_cookie(COOKIE_JAAQL_AUTH, "", attributes={COOKIE_ATTR_EXPIRES: format_date_time(0)}, is_https=self.is_https)
 
     def get_auth_token(self, username: str, ip_address: str, password: str = None, response: JAAQLResponse = None, cookie: bool = False,
                        remember_me: bool = False):
