@@ -83,8 +83,6 @@ HEADER__allow_origin = "Access-Control-Allow-Origin"
 HEADER__allow_methods = "Access-Control-Allow-Methods"
 HEADER__real_ip = "X-Real-IP"
 
-ENV__allow_cors = "ALLOW_CORS"
-
 BOOL__allowed = {
     "True": True,
     "False": False,
@@ -129,13 +127,10 @@ class BaseJAAQLController:
     internal_sentinel = False
     base_url = None
 
-    allow_cors = False
-
     def __init__(self, model: JAAQLModel, is_prod: bool, base_url: str, do_profiling: bool = False):
         super().__init__()
         BaseJAAQLController.base_url = base_url
         self.app = Flask(__name__, instance_relative_config=True)
-        BaseJAAQLController.allow_cors = os.environ.get(ENV__allow_cors, str(False)).lower().strip() == "true"
         self.json_serializer = JAAQLJSONProvider(self.app)
         self.app.config[FLASK__json_sort_keys] = False
         self.app.config[FLASK__max_content_length] = 1024 * 1024 * 2  # 2 MB
@@ -385,12 +380,11 @@ class BaseJAAQLController:
         return combined_data
 
     @staticmethod
-    def _cors(resp):
-        if BaseJAAQLController.allow_cors:
+    def _cors(resp, use_cors: bool = False):
+        if use_cors:
             resp.headers.add(HEADER__allow_origin, CORS__WILDCARD)
             resp.headers.add(HEADER__allow_headers, CORS__WILDCARD)
             resp.headers.add(HEADER__allow_methods, CORS__WILDCARD)
-        return resp
 
     def log_safe_dump_recursive(self, data):
         if isinstance(data, list):
@@ -434,7 +428,7 @@ class BaseJAAQLController:
         """
         return json.dumps(self.log_safe_dump_recursive(data))
 
-    def cors_route(self, route: str, swagger_documentation: Union[list, SwaggerDocumentation]):
+    def publish_route(self, route: str, swagger_documentation: Union[list, SwaggerDocumentation], use_cors: bool = False):
         documentation_as_lists = swagger_documentation
         if not isinstance(documentation_as_lists, list):
             documentation_as_lists = [documentation_as_lists]
@@ -445,7 +439,7 @@ class BaseJAAQLController:
             for method in cur_documentation.methods:
                 methods.append(method.method)
 
-        if BaseJAAQLController.allow_cors:
+        if use_cors:
             methods.append(REST__OPTIONS)
             swagger_documentation = documentation_as_lists[0]
 
@@ -454,7 +448,7 @@ class BaseJAAQLController:
             def routed_function(view_func_local):
                 if not self.model.has_installed and not route.startswith('/internal'):
                     resp = Response("Still installing. Be patient", status=HTTPStatus.SERVICE_UNAVAILABLE)
-                    self._cors(resp)
+                    self._cors(resp, use_cors)
                     return resp
                 start_time = datetime.now()
                 request_id = uuid.uuid4()
@@ -647,7 +641,7 @@ class BaseJAAQLController:
                 for _, cookie in jaaql_resp.cookies.items():
                     resp.headers.add("Set-Cookie", cookie)
 
-                self._cors(resp)
+                self._cors(resp, use_cors)
 
                 self.perform_profile(request_id, "Jsonify")
 

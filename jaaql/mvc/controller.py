@@ -15,92 +15,92 @@ class JAAQLController(BaseJAAQLController):
 
     def create_app(self):
 
-        @self.cors_route('/oauth/token', DOCUMENTATION__oauth_token)
+        @self.publish_route('/oauth/token', DOCUMENTATION__oauth_token)
         def fetch_oauth_token(http_inputs: dict, ip_address: str, response: JAAQLResponse):
             return self.model.get_auth_token(**http_inputs, ip_address=ip_address, response=response)
 
-        @self.cors_route('/oauth/cookie', DOCUMENTATION__oauth_cookie)
+        @self.publish_route('/oauth/cookie', DOCUMENTATION__oauth_cookie)
         def fetch_oauth_cookie(http_inputs: dict, ip_address: str, response: JAAQLResponse):
             self.model.get_auth_token(**http_inputs, ip_address=ip_address, response=response, cookie=True)
 
-        @self.cors_route('/logout-cookie', DOCUMENTATION__logout_cookie)
+        @self.publish_route('/logout-cookie', DOCUMENTATION__logout_cookie)
         def fetch_oauth_cookie(response: JAAQLResponse):
             self.model.logout_cookie(response)
 
-        @self.cors_route('/oauth/refresh-cookie', DOCUMENTATION__oauth_refresh)
+        @self.publish_route('/oauth/refresh-cookie', DOCUMENTATION__oauth_refresh)
         def refresh_oauth_cookie(auth_token_for_refresh: str, ip_address: str, remember_me: bool):
             self.model.refresh_auth_token(auth_token_for_refresh, ip_address, cookie=True, remember_me=remember_me)
 
-        @self.cors_route("/internal/freeze", DOCUMENTATION__freeze)
+        @self.publish_route("/internal/freeze", DOCUMENTATION__freeze)
         def refresh_oauth_token(connection: DBInterface):
             self.model.freeze(connection)
 
-        @self.cors_route("/internal/defrost", DOCUMENTATION__defrost)
+        @self.publish_route("/internal/defrost", DOCUMENTATION__defrost)
         def refresh_oauth_token(connection: DBInterface):
             self.model.defrost(connection)
 
-        @self.cors_route("/internal/frozen", DOCUMENTATION__check_frozen)
+        @self.publish_route("/internal/frozen", DOCUMENTATION__check_frozen)
         def refresh_oauth_token():
             return self.model.is_frozen()
 
-        @self.cors_route(ENDPOINT__refresh, DOCUMENTATION__oauth_refresh)
+        @self.publish_route(ENDPOINT__refresh, DOCUMENTATION__oauth_refresh)
         def refresh_oauth_token(auth_token_for_refresh: str, ip_address: str):
             return self.model.refresh_auth_token(auth_token_for_refresh, ip_address)
 
-        @self.cors_route(ENDPOINT__install, DOCUMENTATION__install)
+        @self.publish_route(ENDPOINT__install, DOCUMENTATION__install)
         def install(http_inputs: dict):
             return self.model.install(**http_inputs)
 
-        @self.cors_route(ENDPOINT__execute_migrations, DOCUMENTATION__migrations)
+        @self.publish_route(ENDPOINT__execute_migrations, DOCUMENTATION__migrations)
         def execute_migrations(connection: DBInterface):
             return self.model.execute_migrations(connection)
 
-        @self.cors_route('/internal/is_installed', DOCUMENTATION__is_installed)
+        @self.publish_route('/internal/is_installed', DOCUMENTATION__is_installed)
         def is_installed(response: JAAQLResponse):
             return self.model.is_installed(response)
 
-        @self.cors_route(ENDPOINT__is_alive, DOCUMENTATION__is_alive)
+        @self.publish_route(ENDPOINT__is_alive, DOCUMENTATION__is_alive)
         def is_alive():
             self.model.is_alive()
 
-        @self.cors_route('/accounts', DOCUMENTATION__create_account)
+        @self.publish_route('/accounts', DOCUMENTATION__create_account)
         def accounts(connection: DBInterface, http_inputs: dict):
             self.model.create_account_with_potential_password(connection, **http_inputs)
 
-        @self.cors_route('/prepare', DOCUMENTATION__prepare)
+        @self.publish_route('/prepare', DOCUMENTATION__prepare)
         def prepare(connection: DBInterface, account_id: str, http_inputs: dict):
             raise HttpStatusException("Not yet implemented", HTTPStatus.NOT_IMPLEMENTED)
             # self.model.prepare_queries(connection, account_id, http_inputs)
 
-        @self.cors_route('/account/password', DOCUMENTATION__password)
+        @self.publish_route('/account/password', DOCUMENTATION__password)
         def password(account_id: str, username: str, ip_address: str, is_the_anonymous_user: bool, http_inputs: dict):
             return self.model.add_my_account_password(account_id, username, ip_address, is_the_anonymous_user, **http_inputs)
 
-        @self.cors_route('/submit', DOCUMENTATION__submit)
+        @self.publish_route('/submit', DOCUMENTATION__submit)
         def submit(http_inputs: dict, account_id: str, verification_hook: queue.Queue):
             return self.model.submit(http_inputs, account_id, verification_hook=verification_hook)
 
-        @self.cors_route('/internal/clean', DOCUMENTATION__clean)
+        @self.publish_route('/internal/clean', DOCUMENTATION__clean)
         def clean(connection: DBInterface):
             self.model.clean(connection)
 
-        @self.cors_route('/internal/dispatchers', DOCUMENTATION__dispatchers)
+        @self.publish_route('/internal/dispatchers', DOCUMENTATION__dispatchers)
         def dispatchers(connection: DBInterface, http_inputs: dict):
             self.model.attach_dispatcher_credentials(connection, http_inputs)
 
-        @self.cors_route('/sign-up', DOCUMENTATION__sign_up)
+        @self.publish_route('/sign-up', DOCUMENTATION__sign_up)
         def sign_up(http_inputs: dict):
             return self.model.sign_up(http_inputs)
 
-        @self.cors_route('/email', DOCUMENTATION__emails)
+        @self.publish_route('/email', DOCUMENTATION__emails)
         def send_email(is_the_anonymous_user: bool, account_id: str, http_inputs: dict):
             return self.model.send_email(is_the_anonymous_user, account_id, http_inputs)
 
-        @self.cors_route('/account/reset-password', DOCUMENTATION__reset_password)
+        @self.publish_route('/account/reset-password', DOCUMENTATION__reset_password)
         def reset_password(http_inputs: dict):
             return self.model.reset_password(http_inputs)
 
-        @self.cors_route('/security-event', DOCUMENTATION__security_event)
+        @self.publish_route('/security-event', DOCUMENTATION__security_event)
         def security_event(http_inputs: dict, ip_address: str):
             if self.is_post():
                 return self.model.check_security_event_key_and_security_event_is_unlocked(http_inputs)
