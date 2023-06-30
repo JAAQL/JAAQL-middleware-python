@@ -469,6 +469,7 @@ class BaseJAAQLController:
                     ip_id = None
                     username = None
                     is_public = None
+                    remember_me = False
                     verification_hook = None
                     if method.parallel_verification:
                         verification_hook = Queue()
@@ -502,11 +503,11 @@ class BaseJAAQLController:
                                 verification_hook.put((True, None, None))
 
                         elif verification_hook:
-                            account_id, username, ip_id, is_public = self.model.verify_auth_token_threaded(security_key,
-                                                                                                           ip_addr, verification_hook)
+                            account_id, username, ip_id, is_public, remember_me = self.model.verify_auth_token_threaded(security_key,
+                                                                                                                        ip_addr, verification_hook)
                             self.perform_profile(request_id, "Verify JWT Threaded")
                         else:
-                            account_id, username, ip_id, is_public = self.model.verify_auth_token(security_key, ip_addr)
+                            account_id, username, ip_id, is_public, remember_me = self.model.verify_auth_token(security_key, ip_addr)
                             self.perform_profile(request_id, "Verify JWT")
 
                     supply_dict = {}

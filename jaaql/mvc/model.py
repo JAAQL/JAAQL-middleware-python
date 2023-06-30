@@ -433,7 +433,8 @@ WHERE
                 threading.Thread(target=self.verification_thread, args=[JAAQLModel.VERIFICATION_QUEUE], daemon=True).start()
             JAAQLModel.VERIFICATION_QUEUE.put((auth_token, ip_address, complete))
             payload = json.loads(base64url_decode(auth_token.split(".")[1].encode("UTF-8")).decode())
-            return payload[KEY__account_id], payload[KEY__username], payload[KEY__ip_address], payload[KEY__is_the_anonymous_user]
+            return payload[KEY__account_id], payload[KEY__username], payload[KEY__ip_address], payload[KEY__is_the_anonymous_user],\
+                payload[KEY__remember_me]
         except Exception:
             raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
@@ -445,7 +446,8 @@ WHERE
         validate_is_most_recent_password(self.jaaql_lookup_connection, decoded[KEY__account_id], decoded[KEY__password],
                                          singleton_message=ERR__invalid_token, singleton_code=HTTPStatus.UNAUTHORIZED)
 
-        return decoded[KEY__account_id], decoded[KEY__username], decoded[KEY__ip_address], decoded[KEY__is_the_anonymous_user]
+        return decoded[KEY__account_id], decoded[KEY__username], decoded[KEY__ip_address], decoded[KEY__is_the_anonymous_user],\
+            decoded[KEY__remember_me]
 
     def refresh_auth_token(self, auth_token: str, ip_address: str, cookie: bool = False, response: JAAQLResponse = None):
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), auth_token, JWT_PURPOSE__oauth, allow_expired=True)
