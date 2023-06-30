@@ -31,7 +31,12 @@ if [ "$ALLOW_UNSAFE_INLINE_SCRIPTS" = "TRUE" ] ; then
   SCRIPT_SRC_ATTR=" script-src-attr 'unsafe-inline';"
 fi
 
-CSP_HEADER="default-src 'self'; child-src 'none';$SCRIPT_SRC_ATTR$CSP_CONNECT_SRC frame-src 'none'; object-src 'none'; worker-src 'none'; form-action 'self'; frame-ancestors 'none'; navigate-to 'self'; upgrade-insecure-requests; style-src-attr 'unsafe-inline';"
+UPGRADE_INSECURE_REQUESTS=""
+if [ "$IS_HTTPS" = "TRUE" ]; then
+  UPGRADE_INSECURE_REQUESTS=" upgrade-insecure-requests;"
+fi
+
+CSP_HEADER="default-src 'self'; child-src 'none';$SCRIPT_SRC_ATTR$CSP_CONNECT_SRC frame-src 'none'; object-src 'none'; worker-src 'none'; form-action 'self'; frame-ancestors 'none'; navigate-to 'self'; style-src-attr 'unsafe-inline';$UPGRADE_INSECURE_REQUESTS"
 
 SECURITY_HEADERS="    charset UTF-8;\n"
 SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "X-Frame-Options" "DENY";\n'

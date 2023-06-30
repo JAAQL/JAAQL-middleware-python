@@ -433,8 +433,7 @@ WHERE
                 threading.Thread(target=self.verification_thread, args=[JAAQLModel.VERIFICATION_QUEUE], daemon=True).start()
             JAAQLModel.VERIFICATION_QUEUE.put((auth_token, ip_address, complete))
             payload = json.loads(base64url_decode(auth_token.split(".")[1].encode("UTF-8")).decode())
-            return payload[KEY__account_id], payload[KEY__username], payload[KEY__ip_address], payload[KEY__is_the_anonymous_user],\
-                payload[KEY__remember_me]
+            return payload[KEY__account_id], payload[KEY__username], payload[KEY__ip_address], payload[KEY__is_the_anonymous_user]
         except Exception:
             raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
@@ -446,18 +445,20 @@ WHERE
         validate_is_most_recent_password(self.jaaql_lookup_connection, decoded[KEY__account_id], decoded[KEY__password],
                                          singleton_message=ERR__invalid_token, singleton_code=HTTPStatus.UNAUTHORIZED)
 
-        return decoded[KEY__account_id], decoded[KEY__username], decoded[KEY__ip_address], decoded[KEY__is_the_anonymous_user],\
-            decoded[KEY__remember_me]
+        return decoded[KEY__account_id], decoded[KEY__username], decoded[KEY__ip_address], decoded[KEY__is_the_anonymous_user]
 
-    def refresh_auth_token(self, auth_token: str, ip_address: str, cookie: bool = False, remember_me: bool = False):
+    def refresh_auth_token(self, auth_token: str, ip_address: str, cookie: bool = False, response: JAAQLResponse = None):
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), auth_token, JWT_PURPOSE__oauth, allow_expired=True)
+        remember_me = False
         if not decoded:
             raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
+        if decoded.get(KEY__remember_me):
+            remember_me = decoded[KEY__remember_me]
 
         if datetime.fromisoformat(decoded[KEY__created]) + timedelta(milliseconds=self.refresh_expiry_ms) < datetime.now():
             raise HttpStatusException(ERR__refresh_expired, HTTPStatus.UNAUTHORIZED)
 
-        return self.get_auth_token(decoded[KEY__username], ip_address, cookie=cookie, remember_me=remember_me)
+        return self.get_auth_token(decoded[KEY__username], ip_address, cookie=cookie, remember_me=remember_me, response=response)
 
     def get_bypass_user(self, username: str, ip_address: str):
         account = fetch_most_recent_password_from_username(self.jaaql_lookup_connection, self.get_db_crypt_key(),

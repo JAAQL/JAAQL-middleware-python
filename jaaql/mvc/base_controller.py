@@ -41,7 +41,6 @@ ARG__auth_token = "auth_token"
 ARG__auth_token_for_refresh = "auth_token_for_refresh"
 ARG__connection = "connection"
 ARG__is_the_anonymous_user = "is_the_anonymous_user"
-ARG__remember_me = "remember_me"
 ARG__verification_hook = "verification_hook"
 ARG_START__connection = "connection__"
 ARG_START__jaaql_connection = "jaaql_" + ARG_START__connection
@@ -461,7 +460,6 @@ class BaseJAAQLController:
                 resp_type = current_app.json.mimetype
                 jaaql_resp = JAAQLResponse()
                 jaaql_resp.response_type = resp_type
-                remember_me = False
 
                 if not BaseJAAQLController.is_options():
                     the_method = BaseJAAQLController.get_method(swagger_documentation)
@@ -504,11 +502,11 @@ class BaseJAAQLController:
                                 verification_hook.put((True, None, None))
 
                         elif verification_hook:
-                            account_id, username, ip_id, is_public, remember_me = self.model.verify_auth_token_threaded(security_key,
-                                                                                                                        ip_addr, verification_hook)
+                            account_id, username, ip_id, is_public = self.model.verify_auth_token_threaded(security_key,
+                                                                                                           ip_addr, verification_hook)
                             self.perform_profile(request_id, "Verify JWT Threaded")
                         else:
-                            account_id, username, ip_id, is_public, remember_me = self.model.verify_auth_token(security_key, ip_addr)
+                            account_id, username, ip_id, is_public = self.model.verify_auth_token(security_key, ip_addr)
                             self.perform_profile(request_id, "Verify JWT")
 
                     supply_dict = {}
@@ -523,9 +521,6 @@ class BaseJAAQLController:
                             if not swagger_documentation.security:
                                 raise Exception(ERR__method_required_account_id)
                             supply_dict[ARG__account_id] = account_id
-
-                        if ARG__remember_me in inspect.getfullargspec(view_func_local).args:
-                            supply_dict[ARG__remember_me] = auth_cookie
 
                         if method.parallel_verification:
                             supply_dict[ARG__verification_hook] = verification_hook
@@ -563,6 +558,8 @@ class BaseJAAQLController:
 
                         if ARG__auth_token_for_refresh in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__auth_token_for_refresh] = request.headers.get(HEADER__security)
+                            if supply_dict[ARG__auth_token_for_refresh] is None:
+                                supply_dict[ARG__auth_token_for_refresh] = auth_cookie
 
                         if ARG__connection in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:

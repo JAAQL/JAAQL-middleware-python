@@ -28,8 +28,8 @@ class JAAQLController(BaseJAAQLController):
             self.model.logout_cookie(response)
 
         @self.publish_route('/oauth/refresh-cookie', DOCUMENTATION__oauth_refresh)
-        def refresh_oauth_cookie(auth_token_for_refresh: str, ip_address: str, remember_me: bool):
-            self.model.refresh_auth_token(auth_token_for_refresh, ip_address, cookie=True, remember_me=remember_me)
+        def refresh_oauth_cookie(auth_token_for_refresh: str, ip_address: str, response: JAAQLResponse):
+            self.model.refresh_auth_token(auth_token_for_refresh, ip_address, cookie=True, response=response)
 
         @self.publish_route("/internal/freeze", DOCUMENTATION__freeze)
         def refresh_oauth_token(connection: DBInterface):
