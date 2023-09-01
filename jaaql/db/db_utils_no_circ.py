@@ -1,3 +1,5 @@
+import os
+
 from jaaql.mvc.exception_queries import QUERY__fetch_application_schemas, KG__application_schema__application, KG__application__is_live, \
     KG__application_schema__name, KEY__is_default
 from queue import Queue
@@ -5,7 +7,7 @@ from jaaql.db.db_utils import execute_supplied_statement, create_interface_for_d
 from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
 from jaaql.constants import KEY__application, KEY__database, KEY__schema, KEY__role, DB__jaaql, \
-    KEY__read_only, KEY__prevent_unused_parameters
+    KEY__read_only, KEY__prevent_unused_parameters, KEY__debugging_account_id, ENVIRON__allow_debugging_users
 from jaaql.db.db_interface import DBInterface
 from jaaql.utilities.utils_no_project_imports import objectify
 
@@ -46,6 +48,10 @@ def submit(vault, config, db_crypt_key, jaaql_connection: DBInterface, inputs: d
         inputs[KEY__database] = DB__jaaql
 
     sub_role = inputs.pop(KEY__role) if KEY__role in inputs else None
+
+    if os.environ.get(ENVIRON__allow_debugging_users) == "TRUE" and inputs.get(KEY__debugging_account_id) is not None:
+        account_id = inputs.pop(KEY__debugging_account_id)
+
     required_db = create_interface_for_db(vault, config, account_id, inputs[KEY__database], sub_role)
 
     prevent_unused = inputs.pop(KEY__prevent_unused_parameters) if KEY__prevent_unused_parameters in inputs else True

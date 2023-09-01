@@ -6,6 +6,7 @@ KEY__ip_address = "ip_address"
 KEY__created = "created"
 KEY__ip_id = "ip_id"
 KEY__application = "application"
+KEY__debugging_account_id = "debugging_account_id"
 KEY__schema = "schema"
 KEY__database = "database"
 KEY__role = "role"
@@ -69,6 +70,7 @@ ENVIRON__jaaql_profiling = "JAAQL_PROFILING"
 ENVIRON__install_path = "INSTALL_PATH"
 ENVIRON__sentinel_url = "SENTINEL_URL"
 ENVIRON__canned_queries = "CANNED_QUERIES"
+ENVIRON__allow_debugging_users = "YOUR_APP_HAS_NO_SECURITY_IF_THIS_IS_TRUE__ALLOW_DEBUGGING_USERS"
 
 EMAIL_PARAM__unlock_key = "JAAQL__UNLOCK_KEY"
 EMAIL_PARAM__unlock_code = "JAAQL__UNLOCK_CODE"
@@ -135,5 +137,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.12.8"
+VERSION = "4.12.9"
 
