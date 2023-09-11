@@ -138,7 +138,6 @@ log
 install_key
 
 /apps
-/plpgsql_check/*
 plpgsql_check
 wsgi_patch.py
 
