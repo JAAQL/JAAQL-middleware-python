@@ -46,7 +46,7 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     libncurses5-dev libgdbm-dev libnss3-dev -y \
     libssl-dev libreadline-dev libffi-dev libbz2-dev curl -y && \
     cd /Python-${PYTHON_VERSION} && \
-    ./configure --enable-optimizations --disable-test-modules --without-doc-strings --prefix=/usr/local --with-ensurepip=install && \
+    ./configure --enable-optimizations --with-lto --disable-test-modules --without-doc-strings --prefix=/usr/local --with-ensurepip=install && \
     make install && \
     cd ../ && \
     $PY_PATH -m ensurepip --default-pip && \
