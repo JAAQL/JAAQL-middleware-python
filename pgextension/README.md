@@ -2,7 +2,7 @@ To build you need to do the following only once to setup
 
     sudo apt install postgresql-common
     sudo sh /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
-    sudo apt-get install postgresql-server-dev-15
+    sudo apt-get install postgresql-server-dev-16
 
 Make a folder called pgextension and place everything but the bin folder in there and run
     
@@ -14,12 +14,12 @@ Then copy generated files to the /bin directory
     jaaql.so
     jaaql.bc
     jaaql.o
-    /usr/lib/postgresql/15/lib/bitcode/jaaql.index.bc
+    /usr/lib/postgresql/16/lib/bitcode/jaaql.index.bc
 
 Some commands to copy stuff off the box
 
     pscp -r ubuntu@JAAQL:/home/ubuntu/package/* compiled_package/
-    pscp -r ubuntu@JAAQL:/usr/lib/postgresql/15/lib/bitcode/* compiled_package/
+    pscp -r ubuntu@JAAQL:/usr/lib/postgresql/16/lib/bitcode/* compiled_package/
 
 Building and pushing to hub
     

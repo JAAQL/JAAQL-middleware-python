@@ -1,5 +1,7 @@
-FROM postgres:15.3
+FROM postgres:16.0
 LABEL maintainer="jaaql.io"
+
+ARG POSTGRES_VERSION="16"
 
 EXPOSE 80
 EXPOSE 443
@@ -18,9 +20,9 @@ ENV LANG en_GB.UTF-8
 ENV LANGUAGE en_GB:en
 ENV LC_ALL en_GB.UTF-8
 
-ARG CHROME_VERSION="109.0.5414.74-1"
-ARG PYTHON_MAJOR_VERSION="3.11"
-ARG PYTHON_VERSION="${PYTHON_MAJOR_VERSION}.4"
+ARG CHROME_VERSION="109.0.5414.74"
+ARG PYTHON_MAJOR_VERSION="3.12"
+ARG PYTHON_VERSION="${PYTHON_MAJOR_VERSION}.0"
 
 VOLUME /etc/letsencrypt
 VOLUME $INSTALL_PATH/vault
@@ -53,11 +55,11 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     $PY_PATH -mpip install -U pip wheel && \
     $PY_PATH -mpip install certbot-nginx==2.6.0 && \
     apt-get purge --auto-remove build-essential -y && \
-    wget --no-verbose -O /tmp/chrome.deb https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb && \
+    wget --no-verbose -O /tmp/chrome.deb https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}-1_amd64.deb && \
     apt install -y /tmp/chrome.deb && \
     rm /tmp/chrome.deb && \
     apt-get install unzip && \
-    wget -N https://chromedriver.storage.googleapis.com/109.0.5414.74/chromedriver_linux64.zip -P ~/ && \
+    wget -N https://chromedriver.storage.googleapis.com/${CHROME_VERSION}/chromedriver_linux64.zip -P ~/ && \
     unzip ~/chromedriver_linux64.zip -d ~/ && \
     rm ~/chromedriver_linux64.zip && \
     mv -f ~/chromedriver /usr/local/bin/chromedriver && \
@@ -68,37 +70,38 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     DEBIAN_FRONTEND=noninteractive apt-get -y install xorg xvfb gtk2-engines-pixbuf && \
     apt-get -y install dbus-x11 xfonts-base xfonts-100dpi xfonts-75dpi xfonts-scalable && \
     apt-get -y install imagemagick x11-apps && \
-    /bin/mkdir -p '/usr/share/postgresql/15/extension' && \
-    /bin/mkdir -p '/usr/lib/postgresql/15/lib' && \
-    /usr/bin/install -c -m 644 /pgextension/jaaql.control '/usr/share/postgresql/15/extension/' && \
-    /usr/bin/install -c -m 644 /pgextension/jaaql--1.0.0.sql  '/usr/share/postgresql/15/extension/' && \
-    /usr/bin/install -c -m 755 /pgextension/bin/jaaql.so '/usr/lib/postgresql/15/lib/' && \
-    /bin/mkdir -p '/usr/lib/postgresql/15/lib/bitcode/jaaql' && \
-    /bin/mkdir -p '/usr/lib/postgresql/15/lib/bitcode'/jaaql/ && \
-    /usr/bin/install -c -m 644 /pgextension/bin/jaaql.bc '/usr/lib/postgresql/15/lib/bitcode'/jaaql/./ && \
-    mv /pgextension/bin/jaaql.index.bc '/usr/lib/postgresql/15/lib/bitcode' && \
+    /bin/mkdir -p '/usr/share/postgresql/'${POSTGRES_VERSION}'/extension' && \
+    /bin/mkdir -p '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib' && \
+    /usr/bin/install -c -m 644 /pgextension/jaaql.control '/usr/share/postgresql/'${POSTGRES_VERSION}'/extension/' && \
+    /usr/bin/install -c -m 644 /pgextension/jaaql--1.0.0.sql  '/usr/share/postgresql/'${POSTGRES_VERSION}'/extension/' && \
+    /usr/bin/install -c -m 755 /pgextension/bin/jaaql.so '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/' && \
+    /bin/mkdir -p '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode/jaaql' && \
+    /bin/mkdir -p '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/jaaql/ && \
+    /usr/bin/install -c -m 644 /pgextension/bin/jaaql.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/jaaql/./ && \
+    mv /pgextension/bin/jaaql.index.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode' && \
     cd /plpgsql_check && \
-    /usr/bin/install -c -m 755  plpgsql_check.so '/usr/lib/postgresql/15/lib/plpgsql_check.so' && \
-    /usr/bin/install -c -m 644 .//plpgsql_check.control '/usr/share/postgresql/15/extension/' && \
-    /usr/bin/install -c -m 644 .//plpgsql_check--2.4.sql  '/usr/share/postgresql/15/extension/' && \
-    /bin/mkdir -p '/usr/lib/postgresql/15/lib/bitcode/plpgsql_check' && \
-    /bin/mkdir -p '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/assign.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/catalog.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/check_expr.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/check_function.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/expr_walk.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/format.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/parser.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/plpgsql_check.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/pragma.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/profiler.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/report.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/stmtwalk.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/tablefunc.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/tracer.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/typdesc.bc '/usr/lib/postgresql/15/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 plpgsql_check.index.bc '/usr/lib/postgresql/15/lib/bitcode' && \
+    /usr/bin/install -c -m 755  plpgsql_check.so '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/plpgsql_check.so' && \
+    /usr/bin/install -c -m 644 .//plpgsql_check.control '/usr/share/postgresql/'${POSTGRES_VERSION}'/extension/' && \
+    /usr/bin/install -c -m 644 .//plpgsql_check--2.5.sql  '/usr/share/postgresql/'${POSTGRES_VERSION}'/extension/' && \
+    /bin/mkdir -p '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode/plpgsql_check' && \
+    /bin/mkdir -p '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/assign.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/catalog.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/check_expr.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/check_function.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/expr_walk.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/format.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/parser.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/pldbgapi2.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/plpgsql_check.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/pragma.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/profiler.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/report.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/stmtwalk.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/tablefunc.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/tracer.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/typdesc.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 plpgsql_check.index.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode' && \
     cd ../ && \
     rm -rf /usr/local/lib/python${PYTHON_MAJOR_VERSION}/test && \
     rm -rf /Python-${PYTHON_VERSION} && \

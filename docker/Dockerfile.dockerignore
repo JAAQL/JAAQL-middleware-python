@@ -13,3 +13,5 @@ install_key
 install_scripts
 
 www/*
+
+venv/*

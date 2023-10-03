@@ -10,3 +10,5 @@ Dockerfile
 
 chromedriver.exe
 install_key
+
+venv/*
