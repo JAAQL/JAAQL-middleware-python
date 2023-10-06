@@ -56,7 +56,7 @@ def execute_supplied_statement(db_interface, query: str, parameters: dict = None
                                as_objects: bool = False, encrypt_parameters: list = None,
                                decrypt_columns: list = None, encryption_key: bytes = None,
                                encryption_salts: dict = None, skip_commit: bool = False,
-                               autocommit: bool = False):
+                               autocommit: bool = False, do_prepare_only: bool = False):
     if parameters is None:
         parameters = {}
 
@@ -102,7 +102,8 @@ def execute_supplied_statement(db_interface, query: str, parameters: dict = None
         "decrypt": decrypt_columns
     }
 
-    data = InterpretJAAQL(db_interface).transform(statement, skip_commit=skip_commit, encryption_key=encryption_key, autocommit=autocommit)
+    data = InterpretJAAQL(db_interface).transform(statement, skip_commit=skip_commit, encryption_key=encryption_key, autocommit=autocommit,
+                                                  do_prepare_only=do_prepare_only)
 
     if as_objects:
         data = objectify(data)
@@ -134,9 +135,11 @@ def execute_supplied_statement_singleton(db_interface, query, parameters: dict =
                                          as_objects: bool = False, encrypt_parameters: list = None,
                                          decrypt_columns: list = None, encryption_key: bytes = None,
                                          encryption_salts: dict = None, singleton_code: int = None,
-                                         singleton_message: str = None, skip_commit: bool = False):
+                                         singleton_message: str = None, skip_commit: bool = False,
+                                         do_prepare_only: bool = False):
     data = execute_supplied_statement(db_interface, query, parameters, as_objects, encrypt_parameters,
-                                      decrypt_columns, encryption_key, encryption_salts, skip_commit=skip_commit)
+                                      decrypt_columns, encryption_key, encryption_salts, skip_commit=skip_commit,
+                                      do_prepare_only=do_prepare_only)
 
     return force_singleton(data, as_objects, singleton_code, singleton_message)
 

@@ -24,6 +24,7 @@ ERR__invalid_role = "Role not allowed, invalid format!"
 ERR__must_use_canned_query = "Must use canned query as you are not an admin!"
 
 QUERY__dba_query = "SELECT pg_has_role(datdba::regrole, 'MEMBER') FROM pg_database WHERE datname = %(database)s;"
+QUERY__dba_query_external = "SELECT pg_has_role(datdba::regrole, 'MEMBER') FROM pg_database WHERE datname = current_database();"
 
 
 class DBPGInterface(DBInterface):

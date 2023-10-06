@@ -1,14 +1,14 @@
 import uuid
 
 from wsgiref.handlers import format_date_time
-from jaaql.db.db_pg_interface import DBPGInterface
+from jaaql.db.db_pg_interface import DBPGInterface, QUERY__dba_query_external
 from jaaql.documentation.documentation_public import KEY__oauth_token
 from jaaql.mvc.base_model import BaseJAAQLModel, VAULT_KEY__jwt_crypt_key
 from jaaql.exceptions.http_status_exception import HttpStatusException, ERR__already_installed
 from os.path import join
 from jaaql.constants import *
 from jaaql.utilities.utils import get_jaaql_root, get_base_url
-from jaaql.db.db_utils import create_interface, jaaql__encrypt
+from jaaql.db.db_utils import create_interface, jaaql__encrypt, create_interface_for_db
 from jaaql.db.db_utils_no_circ import submit
 from jaaql.utilities import crypt_utils
 from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_ATTR_EXPIRES
@@ -142,7 +142,34 @@ class JAAQLModel(BaseJAAQLModel):
 
         queries.append(query)
 
-    def prepare_queries(self, connection: DBInterface, account_id: str, inputs: dict):
+    def prepare_queries(self, connection: DBInterface, inputs: dict, account_id: str):
+        db_connection = create_interface_for_db(self.vault, self.config, account_id, inputs[KEY__database], None)
+
+        self.is_dba(db_connection)
+
+        res = []
+
+        for query in inputs["queries"]:
+            my_uuid = str(uuid.uuid4()).replace("-", "_")
+            try:
+                execute_supplied_statement(db_connection, "PREPARE _jaaql_query_check_" + my_uuid + " as " + query["query"].strip(), do_prepare_only=True)
+            except Exception as ex:
+                res.append({
+                    "file": query["file"],
+                    "line_number": query["line_number"],
+                    "name": query["name"],
+                    "exception": str(ex).replace("PREPARE _jaaql_query_check_" + my_uuid + " as ", "").replace(
+                        " ... _jaaql_query_check_" + my_uuid + " as ", "")
+                })
+
+            try:
+                execute_supplied_statement(db_connection, "DEALLOCATE _jaaql_query_check_" + my_uuid, do_prepare_only=True)
+            except:
+                pass
+
+        return res
+
+    def prepare_queries__old(self, connection: DBInterface, account_id: str, inputs: dict):
         # Important! Permission check by checking that the user can in insert into the application table. This is equivalent of checking if the user
         # owns the application. We currently have no concept of application ownership
         res = execute_supplied_statement_singleton(connection, """SELECT
@@ -234,6 +261,11 @@ WHERE
                                                    as_objects=True)["usesuper"]
         if not res:
             raise HttpStatusException("You do not have super user privileges")
+
+    def is_dba(self, connection: DBInterface):
+        res = execute_supplied_statement_singleton(connection, QUERY__dba_query_external, as_objects=True)["pg_has_role"]
+        if not res:
+            raise HttpStatusException("You do not have dba privileges")
 
     def freeze(self, connection: DBInterface):
         self.is_super_admin(connection)

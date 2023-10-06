@@ -105,7 +105,8 @@ class InterpretJAAQL:
         self.db_interface = db_interface
 
     def transform(self, operation: Union[dict, str], conn=None, skip_commit: bool = False, wait_hook: queue.Queue = None,
-                  encryption_key: bytes = None, autocommit: bool = False, canned_query_service=None, prevent_unused_parameters: bool = True):
+                  encryption_key: bytes = None, autocommit: bool = False, canned_query_service=None, prevent_unused_parameters: bool = True,
+                  do_prepare_only: bool = False):
         if (not isinstance(operation, dict)) and (not isinstance(operation, str)):
             raise HttpStatusException(ERR_malformed_operation_type, HTTPStatus.BAD_REQUEST)
 
@@ -247,7 +248,9 @@ class InterpretJAAQL:
                     exc_row_idx = cur_row_idx
                     exc_parameters = cur_parameters
                     exc_row_number = cur_parameters.get(KEY__row_number)
-                    last_query, found_parameter_dictionary = self.pre_prepare_statement(cur_query, cur_parameters)
+                    last_query, found_parameter_dictionary = self.pre_prepare_statement(cur_query, cur_parameters, for_prepare=do_prepare_only)
+                    if do_prepare_only:
+                        found_parameter_dictionary = {}
 
                     enc_parameter_dictionary = {}
 
@@ -256,7 +259,10 @@ class InterpretJAAQL:
                     if len(encrypt_parameters) != 0:
                         last_query, enc_parameter_dictionary = self.pre_prepare_statement(last_query, encrypt_parameters,
                                                                                           match_regex=REGEX_enc_query_argument,
-                                                                                          encryption_key=encryption_key)
+                                                                                          encryption_key=encryption_key,
+                                                                                          for_prepare=do_prepare_only)
+                        if do_prepare_only:
+                            enc_parameter_dictionary = {}
 
                     last_query = self.encrypt_literals(last_query, encryption_key)
                     found_params = {**found_parameter_dictionary, **enc_parameter_dictionary}
@@ -494,7 +500,7 @@ class InterpretJAAQL:
         return new_query + query[last_end_match:]
 
     def pre_prepare_statement(self, query, parameters, match_regex: str = REGEX_query_argument, encryption_key: bytes = None,
-                              require_presence: bool = True):
+                              require_presence: bool = True, for_prepare: bool = False):
         prepared = ""
         last_index = 0
         found_parameters = []
@@ -511,6 +517,9 @@ class InterpretJAAQL:
 
             prepared += query[last_index:start_pos]
             last_index = end_pos
+
+            if match_str not in parameters and for_prepare:
+                parameters[match_str] = None
 
             if match_str not in found_parameters:
                 if match_str not in parameters and match_str not in MARKERS:

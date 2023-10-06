@@ -13,7 +13,7 @@ from jaaql.utilities.utils_no_project_imports import objectify
 
 
 def submit(vault, config, db_crypt_key, jaaql_connection: DBInterface, inputs: dict, account_id: str, verification_hook: Queue = None,
-           cached_canned_query_service = None, as_objects: bool = False, singleton: bool = False):
+           cached_canned_query_service=None, as_objects: bool = False, singleton: bool = False):
     if not isinstance(inputs, dict):
         raise HttpStatusException("Expected object or string input")
 
