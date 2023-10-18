@@ -142,7 +142,7 @@ class JAAQLModel(BaseJAAQLModel):
 
         queries.append(query)
 
-    def prepare_queries(self, connection: DBInterface, inputs: dict, account_id: str):
+    def prepare_queries(self, inputs: dict, account_id: str):
         db_connection = create_interface_for_db(self.vault, self.config, account_id, inputs[KEY__database], None)
 
         self.is_dba(db_connection)
@@ -151,23 +151,23 @@ class JAAQLModel(BaseJAAQLModel):
 
         for query in inputs["queries"]:
             my_uuid = str(uuid.uuid4()).replace("-", "_")
+            exc = None
+            cost = None
             try:
-                execute_supplied_statement(db_connection, "PREPARE _jaaql_query_check_" + my_uuid + " as " + query["query"].strip(), do_prepare_only=True)
+                results = execute_supplied_statement(db_connection, query["query"].strip(), do_prepare_only=my_uuid)
+                cost = float(results["rows"][0][0].split("..")[1].split(" ")[0])
             except Exception as ex:
-                res.append({
-                    "file": query["file"],
-                    "line_number": query["line_number"],
-                    "name": query["name"],
-                    "exception": str(ex).replace("PREPARE _jaaql_query_check_" + my_uuid + " as ", "").replace(
+                exc = str(ex).replace("PREPARE _jaaql_query_check_" + my_uuid + " as ", "").replace(
                         " ... _jaaql_query_check_" + my_uuid + " as ", "")
-                })
 
-            try:
-                execute_supplied_statement(db_connection, "DEALLOCATE _jaaql_query_check_" + my_uuid, do_prepare_only=True)
-            except:
-                pass
+            res.append({
+                "location": query["file"] + ":" + str(query["line_number"]),
+                "name": query["name"],
+                "cost": cost,
+                "exception": exc,
+            })
 
-        return res
+        return sorted(res, key=lambda x: (x["exception"] if x["exception"] is not None else '', float('-inf') if x["cost"] is None else -x["cost"]))
 
     def prepare_queries__old(self, connection: DBInterface, account_id: str, inputs: dict):
         # Important! Permission check by checking that the user can in insert into the application table. This is equivalent of checking if the user

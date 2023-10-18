@@ -56,7 +56,7 @@ def execute_supplied_statement(db_interface, query: str, parameters: dict = None
                                as_objects: bool = False, encrypt_parameters: list = None,
                                decrypt_columns: list = None, encryption_key: bytes = None,
                                encryption_salts: dict = None, skip_commit: bool = False,
-                               autocommit: bool = False, do_prepare_only: bool = False):
+                               autocommit: bool = False, do_prepare_only: str = None):
     if parameters is None:
         parameters = {}
 

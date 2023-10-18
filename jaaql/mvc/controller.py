@@ -68,8 +68,8 @@ class JAAQLController(BaseJAAQLController):
             self.model.create_account_with_potential_password(connection, **http_inputs)
 
         @self.publish_route('/prepare', DOCUMENTATION__prepare)
-        def prepare(connection: DBInterface, http_inputs: dict, account_id: str):
-            return self.model.prepare_queries(connection, http_inputs, account_id)
+        def prepare(http_inputs: dict, account_id: str):
+            return self.model.prepare_queries(http_inputs, account_id)
 
         @self.publish_route('/account/password', DOCUMENTATION__password)
         def password(account_id: str, username: str, ip_address: str, is_the_anonymous_user: bool, http_inputs: dict):

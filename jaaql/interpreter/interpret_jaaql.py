@@ -99,6 +99,11 @@ MARKER_DEFAULT = "default"
 MARKERS = [MARKER_DEFAULT]
 
 
+class MarkerPrepare:
+    def __init__(self, count):
+        self.count = count
+
+
 class InterpretJAAQL:
 
     def __init__(self, db_interface: DBInterface):
@@ -106,7 +111,7 @@ class InterpretJAAQL:
 
     def transform(self, operation: Union[dict, str], conn=None, skip_commit: bool = False, wait_hook: queue.Queue = None,
                   encryption_key: bytes = None, autocommit: bool = False, canned_query_service=None, prevent_unused_parameters: bool = True,
-                  do_prepare_only: bool = False):
+                  do_prepare_only: str = False):
         if (not isinstance(operation, dict)) and (not isinstance(operation, str)):
             raise HttpStatusException(ERR_malformed_operation_type, HTTPStatus.BAD_REQUEST)
 
@@ -248,9 +253,7 @@ class InterpretJAAQL:
                     exc_row_idx = cur_row_idx
                     exc_parameters = cur_parameters
                     exc_row_number = cur_parameters.get(KEY__row_number)
-                    last_query, found_parameter_dictionary = self.pre_prepare_statement(cur_query, cur_parameters, for_prepare=do_prepare_only)
-                    if do_prepare_only:
-                        found_parameter_dictionary = {}
+                    last_query, found_parameter_dictionary = self.pre_prepare_statement(cur_query, cur_parameters, for_prepare=do_prepare_only is not None)
 
                     enc_parameter_dictionary = {}
 
@@ -260,15 +263,31 @@ class InterpretJAAQL:
                         last_query, enc_parameter_dictionary = self.pre_prepare_statement(last_query, encrypt_parameters,
                                                                                           match_regex=REGEX_enc_query_argument,
                                                                                           encryption_key=encryption_key,
-                                                                                          for_prepare=do_prepare_only)
-                        if do_prepare_only:
-                            enc_parameter_dictionary = {}
+                                                                                          for_prepare=do_prepare_only is not None)
 
                     last_query = self.encrypt_literals(last_query, encryption_key)
                     found_params = {**found_parameter_dictionary, **enc_parameter_dictionary}
 
+                    if do_prepare_only:
+                        arg_open = "(" if len(found_params) != 0 else ""
+                        arg_close = ")" if len(found_params) != 0 else ""
+                        last_query = "PREPARE _jaaql_query_check_" + do_prepare_only + arg_open + ", ".join(
+                            ["unknown" for _ in found_params.keys()]) + arg_close + " as " + last_query
+                        last_query = last_query + "; SET plan_cache_mode = force_generic_plan; "
+                        self.db_interface.execute_query_fetching_results(conn, last_query, found_params, wait_hook=wait_hook,
+                                                                         requires_dba_check=check_required and canned_query_service is not None)
+                        last_query = "EXPLAIN EXECUTE _jaaql_query_check_" + do_prepare_only + arg_open + ", ".join(
+                            ["NULL" for _ in found_params.keys()]) + arg_close
+                        found_params = {}
+
                     res = self.db_interface.execute_query_fetching_results(conn, last_query, found_params, wait_hook=wait_hook,
                                                                            requires_dba_check=check_required and canned_query_service is not None)
+
+                    if do_prepare_only:
+                        self.db_interface.execute_query_fetching_results(conn, "DEALLOCATE _jaaql_query_check_" + do_prepare_only, found_params,
+                                                                         wait_hook=wait_hook,
+                                                                         requires_dba_check=check_required and canned_query_service is not None)
+
                     wait_hook = None  # We've already checked authentication, we don't need to do it again
                     check_required = False  # We've done the first check, if we have reached here without an exception, user does not need a DBA check
 
@@ -519,7 +538,7 @@ class InterpretJAAQL:
             last_index = end_pos
 
             if match_str not in parameters and for_prepare:
-                parameters[match_str] = None
+                parameters[match_str] = MarkerPrepare(len(parameters))
 
             if match_str not in found_parameters:
                 if match_str not in parameters and match_str not in MARKERS:
@@ -536,14 +555,17 @@ class InterpretJAAQL:
                         param = encrypt_raw(encryption_key, param)
                     found_parameter_dictionary[match_str] = param
 
-            if parameters[match_str] is None:
+            if parameters[match_str] is None and not isinstance(parameters[match_str], MarkerPrepare):
                 prepared += STATEMENT_null
             else:
-                type = self.get_format_type(match_str, parameters[match_str])
-                if is_skipped_default:
-                    prepared += MARKER_DEFAULT
+                if isinstance(parameters[match_str], MarkerPrepare):
+                    prepared += "$" + str(int(parameters[match_str].count) + 1)
                 else:
-                    prepared += STATEMENT_argument_begin + STATEMENT_paren_open + match_str + STATEMENT_paren_close + type
+                    the_type = self.get_format_type(match_str, parameters[match_str])
+                    if is_skipped_default:
+                        prepared += MARKER_DEFAULT
+                    else:
+                        prepared += STATEMENT_argument_begin + STATEMENT_paren_open + match_str + STATEMENT_paren_close + the_type
 
         prepared += query[last_index:]
 
