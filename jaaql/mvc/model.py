@@ -720,7 +720,7 @@ WHERE
         elif not account_existed and inputs[KEY__unregistered_user_reset_password_template] is not None:
             template = inputs[KEY__unregistered_user_reset_password_template]
 
-        unlock_code = self.gen_security_event_unlock_code(CODE__letters, CODE__invite_length)
+        unlock_code = self.gen_security_event_unlock_code(CODE__letters, CODE__reset_length)
         reg_env_ins = security_event__insert(self.jaaql_lookup_connection, inputs[KG__security_event__application], template, account_id,
                                              unlock_code)
 
