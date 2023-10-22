@@ -168,7 +168,7 @@ QUERY__check_security_event_unlock = """
     FROM application A
     WHERE
         S.application = A.name AND
-        S.event_lock = :event_lock AND S.unlock_timestamp is null AND
+        (S.event_lock = :event_lock OR S.unlock_key = :unlock_key) AND S.unlock_timestamp is null AND
         S.creation_timestamp + (A.unlock_code_validity_period || ' seconds')::interval > current_timestamp
     RETURNING S.*, A.unlock_code_validity_period, (S.unlock_code = :unlock_code OR S.unlock_key = :unlock_key) as key_fits
 """

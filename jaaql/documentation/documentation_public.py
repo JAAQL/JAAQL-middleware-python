@@ -225,7 +225,7 @@ DOCUMENTATION__security_event = SwaggerDocumentation(
             description="Checks a security event is unused and that the key is valid",
             method=REST__POST,
             body=[
-                ARG_RES__event_lock,
+                set_nullable(ARG_RES__event_lock, "Just the unlock key can be provided"),
                 ARG_RES__security_event_unlock_key,
                 ARG_RES__security_event_unlock_code
             ],
@@ -240,7 +240,7 @@ DOCUMENTATION__security_event = SwaggerDocumentation(
             "already signed up flow",
             method=REST__PUT,
             body=[
-                ARG_RES__event_lock,
+                set_nullable(ARG_RES__event_lock, "Just the unlock key can be provided"),
                 ARG_RES__security_event_unlock_key,
                 ARG_RES__security_event_unlock_code,
                 ARG_RES__password
