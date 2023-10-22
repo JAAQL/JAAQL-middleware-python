@@ -1,15 +1,17 @@
 import uuid
 
+import re
 from wsgiref.handlers import format_date_time
 from jaaql.db.db_pg_interface import DBPGInterface, QUERY__dba_query_external
 from jaaql.documentation.documentation_public import KEY__oauth_token
 from jaaql.mvc.base_model import BaseJAAQLModel, VAULT_KEY__jwt_crypt_key
 from jaaql.exceptions.http_status_exception import HttpStatusException, ERR__already_installed
 from os.path import join
+from jaaql.interpreter.interpret_jaaql import KEY_query, KEY_parameters
 from jaaql.constants import *
 from jaaql.utilities.utils import get_jaaql_root, get_base_url
 from jaaql.db.db_utils import create_interface, jaaql__encrypt, create_interface_for_db
-from jaaql.db.db_utils_no_circ import submit
+from jaaql.db.db_utils_no_circ import submit, get_required_db, objectify
 from jaaql.utilities import crypt_utils
 from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_ATTR_EXPIRES
 from jaaql.mvc.response import *
@@ -91,6 +93,8 @@ SIGNUP__started = 1
 SIGNUP__already_registered = 2
 SIGNUP__completed = 3
 
+SPECIAL_COLUMN_DBMS_USER = "dbms_user"
+
 
 class JAAQLModel(BaseJAAQLModel):
     VERIFICATION_QUEUE = None
@@ -158,7 +162,7 @@ class JAAQLModel(BaseJAAQLModel):
                 cost = float(results["rows"][0][0].split("..")[1].split(" ")[0])
             except Exception as ex:
                 exc = str(ex).replace("PREPARE _jaaql_query_check_" + my_uuid + " as ", "").replace(
-                        " ... _jaaql_query_check_" + my_uuid + " as ", "")
+                    " ... _jaaql_query_check_" + my_uuid + " as ", "")
 
             res.append({
                 "location": query["file"] + ":" + str(query["line_number"]),
@@ -329,7 +333,7 @@ WHERE
         else:
             subprocess.call("docker kill jaaql_pg")
             subprocess.call("docker rm jaaql_pg")
-            subprocess.Popen("docker run --name jaaql_pg -p 5434:5432 jaaql/jaaql_pg", start_new_session=True)
+            subprocess.Popen("docker run --name jaaql_pg -p 5434:5432 jaaql/jaaql_pg", start_new_session=True, creationflags=0x00000008)
             time.sleep(7.5)
 
         DBPGInterface.close_all_pools()
@@ -465,7 +469,7 @@ WHERE
                 threading.Thread(target=self.verification_thread, args=[JAAQLModel.VERIFICATION_QUEUE], daemon=True).start()
             JAAQLModel.VERIFICATION_QUEUE.put((auth_token, ip_address, complete))
             payload = json.loads(base64url_decode(auth_token.split(".")[1].encode("UTF-8")).decode())
-            return payload[KEY__account_id], payload[KEY__username], payload[KEY__ip_address], payload[KEY__is_the_anonymous_user],\
+            return payload[KEY__account_id], payload[KEY__username], payload[KEY__ip_address], payload[KEY__is_the_anonymous_user], \
                 payload[KEY__remember_me]
         except Exception:
             raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
@@ -478,7 +482,7 @@ WHERE
         validate_is_most_recent_password(self.jaaql_lookup_connection, decoded[KEY__account_id], decoded[KEY__password],
                                          singleton_message=ERR__invalid_token, singleton_code=HTTPStatus.UNAUTHORIZED)
 
-        return decoded[KEY__account_id], decoded[KEY__username], decoded[KEY__ip_address], decoded[KEY__is_the_anonymous_user],\
+        return decoded[KEY__account_id], decoded[KEY__username], decoded[KEY__ip_address], decoded[KEY__is_the_anonymous_user], \
             decoded[KEY__remember_me]
 
     def refresh_auth_token(self, auth_token: str, ip_address: str, cookie: bool = False, response: JAAQLResponse = None):
@@ -608,7 +612,7 @@ WHERE
         security_event__update(self.jaaql_lookup_connection, sec_evt[KG__security_event__application], sec_evt[KG__security_event__event_lock],
                                unlock_timestamp=datetime.now())
 
-    def finish_security_event(self, inputs: dict, ip_address: str):
+    def finish_security_event(self, inputs: dict):
         sec_evt = self.check_security_event_key_and_security_event_is_unlocked({
             KG__security_event__event_lock: inputs[KG__security_event__event_lock],
             KG__security_event__unlock_code: inputs[KG__security_event__unlock_code],
@@ -621,20 +625,16 @@ WHERE
         parameters = None
 
         if template[KG__email_template__data_validation_table]:
-            app = application__select(self.jaaql_lookup_connection, sec_evt[KG__security_event__application])  # TODO try select parameters
+            # app = application__select(self.jaaql_lookup_connection, sec_evt[KG__security_event__application])  # TODO try select parameters
             parameters = {}
             # TODO possibly load parameters
 
         if template[KG__email_template__type] in [EMAIL_TYPE__signup, EMAIL_TYPE__reset_password, EMAIL_TYPE__unregistered_password_reset]:
             self.add_account_password(sec_evt[KG__security_event__account], inputs[KEY__password])
 
-        account = account__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), sec_evt[KG__security_event__account])
-        auth_token = self.get_auth_token(account[KG__account__username], ip_address, inputs[KEY__password])
-
         self.mark_security_event_unlocked(sec_evt)
 
         return {
-            KEY__oauth_token: auth_token,
             KEY__parameters: parameters
         }
 
@@ -737,7 +737,7 @@ WHERE
             KG__security_event__event_lock: reg_env_ins[KG__security_event__event_lock]
         }
 
-    def sign_up(self, inputs: dict):
+    def sign_up(self, inputs: dict, account_id: str):
         app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
         if inputs[KEY__sign_up_template] is None:
             inputs[KEY__sign_up_template] = app[KG__application__default_s_et]
@@ -760,51 +760,107 @@ WHERE
         if already_signed_up_template[KG__email_template__type] != EMAIL_TYPE__already_signed_up:
             raise HttpStatusException(ERR__template_not_already)
 
-        account_existed = False
+        conn = None
+        account_db_interface = None
+
         try:
-            account_id = self.create_account_with_potential_password(self.jaaql_lookup_connection, inputs[KEY__username])
-        except HttpStatusException as hs:
-            if not hs.message.startswith(SQL__err_duplicate):
-                raise hs  # Unrelated exception, raise it
+            submit_data = {
+                KEY__application: inputs[KG__security_event__application],
+                KEY__parameters: inputs[KEY__parameters],
+                KEY_query: inputs[KEY_query],
+                KEY__schema: sign_up_template[KG__email_template__validation_schema]
+            }
 
-            account = fetch_account_from_username(self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
-                                                  inputs[KEY__username])
-            account_id = account[KG__account__id]
-            if account[KG__account__most_recent_password] is not None:
-                account_existed = True
+            account_db_interface = get_required_db(self.vault, self.config, self.jaaql_lookup_connection, submit_data, account_id)
+            conn = account_db_interface.get_conn()
 
-        count = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
-                                                     QUERY__count_security_events_of_type_in_24hr_window,
-                                                     {
-                                                         KEY__type_one: EMAIL_TYPE__signup,
-                                                         KEY__type_two: EMAIL_TYPE__already_signed_up,
-                                                         KG__security_event__account: account_id
-                                                     }, as_objects=True)[ATTR__count]
+            ret = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, account_id, None,
+                         self.cached_canned_query_service, as_objects=False, singleton=True, keep_alive_conn=True)
+            ret = objectify(ret[list(ret.keys())[-1]], singleton=True)
 
-        if count >= RESEND__invite_max:
-            raise HttpStatusException(ERR__too_many_signup_attempts, HTTPStatus.TOO_MANY_REQUESTS)
+            # This is the permissions check. It is an update that returns something that is ignored
+            # An exception will be triggered here if the user does not have permissions
+            where_clause = " AND ".join(['"' + key + '" = :' + key for key in ret.keys() if re.match(REGEX__dmbs_object_name, key) is not None])
+            if len(where_clause) != 0:
+                where_clause = " AND " + where_clause
+            sign_up_table = sign_up_template[KG__email_template__data_validation_table]
+            upt_query = f'UPDATE "{sign_up_table}" SET dbms_user = :dbms_user WHERE dbms_user is null{where_clause}'  # Ignore pycharm pep issue
+            submit_data[KEY_query] = upt_query
+            submit_data[KEY_parameters] = ret
+            submit_data[KEY_parameters][SPECIAL_COLUMN_DBMS_USER] = None
+            submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, account_id,
+                   None, self.cached_canned_query_service, keep_alive_conn=True, conn=conn, interface=account_db_interface)
 
-        template = None
-        if account_existed and inputs[KEY__already_signed_up_template] is not None:
-            template = inputs[KEY__already_signed_up_template]
-        elif not account_existed and inputs[KEY__sign_up_template] is not None:
-            template = inputs[KEY__sign_up_template]
+            # We now create the user if the user doesn't exist
+            account_existed = False
+            try:
+                new_account_id = self.create_account_with_potential_password(self.jaaql_lookup_connection, inputs[KEY__username])
+            except HttpStatusException as hs:
+                if not hs.message.startswith(SQL__err_duplicate):
+                    raise hs  # Unrelated exception, raise it
 
-        unlock_code = self.gen_security_event_unlock_code(CODE__letters, CODE__invite_length)
-        reg_env_ins = security_event__insert(self.jaaql_lookup_connection, inputs[KG__security_event__application], template, account_id,
-                                             unlock_code)
+                account = fetch_account_from_username(self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
+                                                      inputs[KEY__username])
+                new_account_id = account[KG__account__id]
+                if account[KG__account__most_recent_password] is not None:
+                    account_existed = True
 
-        self.email_manager.send_email(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection,
-                                      inputs[KG__security_event__application], template,
-                                      app[KG__application__artifacts_source], app[KG__application__base_url], account_id, inputs[KEY__parameters],
-                                      parameter_id=reg_env_ins[KG__security_event__event_lock], none_sanitized_parameters={
-                EMAIL_PARAM__unlock_key: reg_env_ins[KG__security_event__unlock_key],
-                EMAIL_PARAM__unlock_code: unlock_code
-            })
+            # We set the dbms user in the application. This can potentially cause an index clash due to a unique index on the dbms_user column
+            # This is desirable in many situations but will allow username enumeration
+            submit_data[KEY__parameters][SPECIAL_COLUMN_DBMS_USER] = new_account_id
+            submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, account_id,
+                   None, self.cached_canned_query_service, keep_alive_conn=True, conn=conn, interface=account_db_interface)
 
-        return {
-            KG__security_event__event_lock: reg_env_ins[KG__security_event__event_lock]
-        }
+            # We abort if there have been too many requests. Everything is rolled back
+            count = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
+                                                         QUERY__count_security_events_of_type_in_24hr_window,
+                                                         {
+                                                             KEY__type_one: EMAIL_TYPE__signup,
+                                                             KEY__type_two: EMAIL_TYPE__already_signed_up,
+                                                             KG__security_event__account: new_account_id
+                                                         }, as_objects=True)[ATTR__count]
+            if count >= RESEND__invite_max:
+                raise HttpStatusException(ERR__too_many_signup_attempts, HTTPStatus.TOO_MANY_REQUESTS)
+
+            # Now for the only leap of faith in this algorithm. We have to commit as otherwise the jaaql user cannot access the data
+            # If this fails we are unfortunately up shit creek without a paddle but this can't fail if the application is designed correctly
+            account_db_interface.put_conn_handle_error(conn, None)  # No errors. This will commit
+
+            # Choose the relation. We are deliberately going from the sign-up template ONLY to reduce the scope of what can go wrong security wise
+            # This is because a user can mix and match sign up and already signed up, potentially leaking data
+            # We will change the model in the future when time allows that we have a single sign up and reset template with alternatives attached
+            data_relation = sign_up_template[KG__email_template__data_validation_view]
+            if data_relation is None:
+                data_relation = sign_up_template[KG__email_template__data_validation_table]
+            if re.match(REGEX__dmbs_object_name, data_relation) is None:
+                raise HttpStatusException("Unsafe data relation specified for sign up")
+            submit_data[KEY_query] = f'SELECT * FROM {data_relation} WHERE dbms_user = :dbms_user{where_clause}'  # Ignore dbms issue
+            # We now get the data that can be shown in the email
+            email_replacement_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data,
+                                            self.jaaql_lookup_connection.role, None, self.cached_canned_query_service, as_objects=True,
+                                            singleton=True)
+
+            template = already_signed_up_template if account_existed else sign_up_template
+            unlock_code = self.gen_security_event_unlock_code(CODE__letters, CODE__invite_length)
+            reg_event = security_event__insert(self.jaaql_lookup_connection, inputs[KG__security_event__application], template[KG__email_template__name],
+                                               new_account_id, unlock_code)
+
+            email_replacement_data[EMAIL_PARAM__app_url] = app[KG__application__base_url]
+            email_replacement_data[EMAIL_PARAM__email_address] = inputs[KEY__username]
+            email_replacement_data[EMAIL_PARAM__unlock_key] = reg_event[KG__security_event__unlock_key]
+            email_replacement_data[EMAIL_PARAM__unlock_code] = unlock_code
+
+            self.email_manager.construct_and_send_email(app[KG__application__artifacts_source], template[KG__email_template__dispatcher], template,
+                                                        inputs[KEY__username], email_replacement_data)
+
+            return {
+                KG__security_event__event_lock: reg_event[KG__security_event__event_lock]
+            }
+        except Exception as err:
+            if conn is not None:
+                account_db_interface.put_conn_handle_error(conn, err)
+
+            raise err
 
     def submit(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
         return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,

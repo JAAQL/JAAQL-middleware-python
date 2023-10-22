@@ -111,7 +111,7 @@ class InterpretJAAQL:
 
     def transform(self, operation: Union[dict, str], conn=None, skip_commit: bool = False, wait_hook: queue.Queue = None,
                   encryption_key: bytes = None, autocommit: bool = False, canned_query_service=None, prevent_unused_parameters: bool = True,
-                  do_prepare_only: str = False):
+                  do_prepare_only: str = False, and_return_connection_mid_transaction: bool = False):
         if (not isinstance(operation, dict)) and (not isinstance(operation, str)):
             raise HttpStatusException(ERR_malformed_operation_type, HTTPStatus.BAD_REQUEST)
 
@@ -342,10 +342,16 @@ class InterpretJAAQL:
 
             err = ex
 
+        #
+        # and_return_connection_mid_transaction
+        # err
+
         if was_conn_none:
-            self.db_interface.put_conn_handle_error(conn, err, STATEMENT_empty, skip_rollback_commit=skip_commit)
-        else:
-            self.db_interface.handle_error(conn, err, STATEMENT_empty)
+            self.db_interface.put_conn_handle_error(conn, err, skip_rollback_commit=skip_commit)
+        elif not and_return_connection_mid_transaction:
+            self.db_interface.handle_error(conn, err)
+        elif err is not None:
+            raise err
 
         return ret
 

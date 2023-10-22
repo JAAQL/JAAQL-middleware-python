@@ -1,4 +1,4 @@
-from jaaql.exceptions.http_status_exception import HttpStatusException
+from jaaql.exceptions.http_status_exception import HttpStatusException, HttpSingletonStatusException
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
 from jaaql.constants import ENCODING__utf, VAULT_KEY__super_db_credentials
 from typing import Union
@@ -126,7 +126,7 @@ def force_singleton(data, as_objects: bool = False, singleton_code: int = None, 
         err = ERR__expected_single_row % len(data)
         if singleton_message is not None:
             err = singleton_message
-        raise HttpStatusException(err, singleton_code)
+        raise HttpSingletonStatusException(err, singleton_code)
 
     return data[0] if as_objects else data
 

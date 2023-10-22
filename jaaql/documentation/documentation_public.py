@@ -60,6 +60,13 @@ ARG_RES__parameters = SwaggerArgumentResponse(
     condition="Is signup data provided"
 )
 
+ARG_RES__query = SwaggerArgumentResponse(
+    name=KEY__query,
+    description="Nonspecific query which is supplied as an object either for sign up emails",
+    arg_type=ARG_RESP__allow_all,
+    required=True
+)
+
 ARG_RES__event_lock = SwaggerArgumentResponse(
     name=KG__security_event__event_lock,
     description="A key that is used to reference a security event",
@@ -161,7 +168,9 @@ DOCUMENTATION__emails = SwaggerDocumentation(
 
 DOCUMENTATION__sign_up = SwaggerDocumentation(
     tags="Signup",
-    security=False,
+    # Explicitly set sign up to true to enforce design decision. We use the attempted insert of the current user (which can be the public user) as security
+    # If the insert fails then the user cannot sign up
+    security=True,
     methods=[
         SwaggerMethod(
             name="Request an invitation",
@@ -171,6 +180,7 @@ DOCUMENTATION__sign_up = SwaggerDocumentation(
             body=[
                 ARG_RES__username,
                 ARG_RES__parameters,
+                ARG_RES__query,
                 ARG_RES__event_application,
                 SwaggerArgumentResponse(
                     name=KEY__sign_up_template,
@@ -239,7 +249,6 @@ DOCUMENTATION__security_event = SwaggerDocumentation(
                 description="Signup parameters",
                 response=[
                     ARG_RES__parameters,
-                    ARG_RES__oauth_token
                 ]
             )
         )

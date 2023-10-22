@@ -24,3 +24,8 @@ class HttpStatusException(Exception):
 
         self.message = message
         self.response_code = response_code
+
+
+class HttpSingletonStatusException(HttpStatusException):
+    def __init__(self, message: str, response_code: int = HTTPStatus.UNPROCESSABLE_ENTITY):
+        super().__init__(message, response_code)

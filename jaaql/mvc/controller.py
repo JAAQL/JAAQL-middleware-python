@@ -88,8 +88,8 @@ class JAAQLController(BaseJAAQLController):
             self.model.attach_dispatcher_credentials(connection, http_inputs)
 
         @self.publish_route('/sign-up', DOCUMENTATION__sign_up)
-        def sign_up(http_inputs: dict):
-            return self.model.sign_up(http_inputs)
+        def sign_up(http_inputs: dict, account_id: str):
+            return self.model.sign_up(http_inputs, account_id)
 
         @self.publish_route('/email', DOCUMENTATION__emails)
         def send_email(is_the_anonymous_user: bool, account_id: str, http_inputs: dict):
@@ -100,8 +100,8 @@ class JAAQLController(BaseJAAQLController):
             return self.model.reset_password(http_inputs)
 
         @self.publish_route('/security-event', DOCUMENTATION__security_event)
-        def security_event(http_inputs: dict, ip_address: str):
+        def security_event(http_inputs: dict):
             if self.is_post():
                 return self.model.check_security_event_key_and_security_event_is_unlocked(http_inputs)
             else:
-                return self.model.finish_security_event(http_inputs, ip_address)
+                return self.model.finish_security_event(http_inputs)

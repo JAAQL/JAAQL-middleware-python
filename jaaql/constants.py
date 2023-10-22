@@ -30,8 +30,11 @@ KEY__already_signed_up_template = "already_signed_up"
 KEY__reset_password_template = "reset_password"
 KEY__unregistered_user_reset_password_template = "unregistered_user_reset_password"
 KEY__parameters = "parameters"
+KEY__query = "query"
 KEY__security_key = "security_key"
 KEY__id = "id"
+
+REGEX__dmbs_object_name = r'^[0-9a-zA-Z_]{1,32}$'
 
 SEPARATOR__comma_space = ", "
 SEPARATOR__comma = ","
@@ -137,5 +140,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.15.0"
+VERSION = "4.17.0"
 
