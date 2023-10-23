@@ -249,6 +249,7 @@ DOCUMENTATION__security_event = SwaggerDocumentation(
                 description="Signup parameters",
                 response=[
                     ARG_RES__parameters,
+                    ARG_RES__username
                 ]
             )
         )

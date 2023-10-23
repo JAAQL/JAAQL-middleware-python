@@ -621,6 +621,7 @@ WHERE
 
         template = email_template__select(self.jaaql_lookup_connection, sec_evt[KG__security_event__application],
                                           sec_evt[KG__security_event__email_template])
+        account = account__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), sec_evt[KG__security_event__account])
 
         parameters = None
 
@@ -635,7 +636,8 @@ WHERE
         self.mark_security_event_unlocked(sec_evt)
 
         return {
-            KEY__parameters: parameters
+            KEY__parameters: parameters,
+            KEY__username: account[KG__account__username]
         }
 
     def send_email(self, is_the_anonymous_user: bool, account_id: str, inputs: dict):
