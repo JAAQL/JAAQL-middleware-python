@@ -253,7 +253,7 @@ class InterpretJAAQL:
                     exc_row_idx = cur_row_idx
                     exc_parameters = cur_parameters
                     exc_row_number = cur_parameters.get(KEY__row_number)
-                    last_query, found_parameter_dictionary = self.pre_prepare_statement(cur_query, cur_parameters, for_prepare=do_prepare_only is not None)
+                    last_query, found_parameter_dictionary = self.pre_prepare_statement(cur_query, cur_parameters, for_prepare=do_prepare_only is True)
 
                     enc_parameter_dictionary = {}
 
@@ -263,7 +263,7 @@ class InterpretJAAQL:
                         last_query, enc_parameter_dictionary = self.pre_prepare_statement(last_query, encrypt_parameters,
                                                                                           match_regex=REGEX_enc_query_argument,
                                                                                           encryption_key=encryption_key,
-                                                                                          for_prepare=do_prepare_only is not None)
+                                                                                          for_prepare=do_prepare_only is True)
 
                     last_query = self.encrypt_literals(last_query, encryption_key)
                     found_params = {**found_parameter_dictionary, **enc_parameter_dictionary}

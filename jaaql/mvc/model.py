@@ -635,6 +635,21 @@ WHERE
 
         self.mark_security_event_unlocked(sec_evt)
 
+        if template[KG__email_template__type] == EMAIL_TYPE__signup:
+            data_relation = template[KG__email_template__data_validation_view]
+            submit_data = {
+                KEY__schema: template[KG__email_template__validation_schema],
+                KEY__application: template[KEY__application],
+                KEY_parameters: {
+                    "signed_up_at": datetime.now(),
+                    "dbms_user": sec_evt[KG__security_event__account]
+                },
+                KEY_query: f'UPDATE {data_relation} SET signed_up_at = :signed_up_at WHERE dbms_user = :dbms_user AND signed_up_at is null'  # Ignore pycharm PEP issue
+            }
+            # We now get the data that can be shown in the email
+            submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data,
+                   self.jaaql_lookup_connection.role, None, self.cached_canned_query_service)
+
         return {
             KEY__parameters: parameters,
             KEY__username: account[KG__account__username]
@@ -836,7 +851,7 @@ WHERE
                 data_relation = sign_up_template[KG__email_template__data_validation_table]
             if re.match(REGEX__dmbs_object_name, data_relation) is None:
                 raise HttpStatusException("Unsafe data relation specified for sign up")
-            submit_data[KEY_query] = f'SELECT * FROM {data_relation} WHERE dbms_user = :dbms_user{where_clause}'  # Ignore dbms issue
+            submit_data[KEY_query] = f'SELECT * FROM {data_relation} WHERE dbms_user = :dbms_user{where_clause}'  # Ignore pycharm PEP issue
             # We now get the data that can be shown in the email
             email_replacement_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data,
                                             self.jaaql_lookup_connection.role, None, self.cached_canned_query_service, as_objects=True,
