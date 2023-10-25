@@ -3,9 +3,8 @@ import uuid
 import re
 from wsgiref.handlers import format_date_time
 from jaaql.db.db_pg_interface import DBPGInterface, QUERY__dba_query_external
-from jaaql.documentation.documentation_public import KEY__oauth_token
 from jaaql.mvc.base_model import BaseJAAQLModel, VAULT_KEY__jwt_crypt_key
-from jaaql.exceptions.http_status_exception import HttpStatusException, ERR__already_installed
+from jaaql.exceptions.http_status_exception import HttpStatusException, ERR__already_installed, HttpSingletonStatusException
 from os.path import join
 from jaaql.interpreter.interpret_jaaql import KEY_query, KEY_parameters
 from jaaql.constants import *
@@ -808,6 +807,30 @@ WHERE
             submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, account_id,
                    None, self.cached_canned_query_service, keep_alive_conn=True, conn=conn, interface=account_db_interface)
 
+            data_relation = sign_up_template[KG__email_template__data_validation_view]
+            if data_relation is None:
+                data_relation = sign_up_template[KG__email_template__data_validation_table]
+
+            if inputs.get(KEY__username) is None:
+                get_user_data = {
+                    KEY__application: inputs[KG__security_event__application],
+                    KEY__schema: sign_up_template[KG__email_template__validation_schema],
+                    KEY_parameters: inputs[KEY__parameters],
+                    KEY_query: f'SELECT dbms_user FROM {data_relation} WHERE {where_clause[5:]}'  # Ignore pycharm PEP issue
+                }
+
+                try:
+                    dbms_user = submit(self.vault, self.config, self.get_db_crypt_key(),
+                                       self.jaaql_lookup_connection, get_user_data,
+                                       self.jaaql_lookup_connection.role, None,
+                                       self.cached_canned_query_service, as_objects=True,
+                                       singleton=True)["dbms_user"]
+
+                    account = account__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), dbms_user)
+                    inputs[KEY__username] = account[KG__account__username]
+                except HttpSingletonStatusException:
+                    raise HttpSingletonStatusException("User with specified parameters could not be found!")
+
             # We now create the user if the user doesn't exist
             account_existed = False
             try:
@@ -846,9 +869,6 @@ WHERE
             # Choose the relation. We are deliberately going from the sign-up template ONLY to reduce the scope of what can go wrong security wise
             # This is because a user can mix and match sign up and already signed up, potentially leaking data
             # We will change the model in the future when time allows that we have a single sign up and reset template with alternatives attached
-            data_relation = sign_up_template[KG__email_template__data_validation_view]
-            if data_relation is None:
-                data_relation = sign_up_template[KG__email_template__data_validation_table]
             if re.match(REGEX__dmbs_object_name, data_relation) is None:
                 raise HttpStatusException("Unsafe data relation specified for sign up")
             submit_data[KEY_query] = f'SELECT * FROM {data_relation} WHERE dbms_user = :dbms_user{where_clause}'  # Ignore pycharm PEP issue

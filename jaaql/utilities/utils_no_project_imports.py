@@ -2,7 +2,7 @@ from datetime import datetime
 import os
 from jaaql.constants import ENVIRON__install_path, ARTIFACTS_DEFAULT_DIRECTORY
 from os.path import join
-from jaaql.exceptions.http_status_exception import HttpStatusException
+from jaaql.exceptions.http_status_exception import HttpStatusException, HttpSingletonStatusException
 import requests
 from typing import Union
 import re
@@ -12,6 +12,8 @@ ALLOWABLE_FILE_PATH = r'^[a-z0-9_\-\/]+(\.[a-zA-Z0-9]+)?$'
 
 def objectify(data, singleton: bool = False):
     if singleton:
+        if len(data['rows']) != 1:
+            raise HttpSingletonStatusException("Did not return singleton!")
         return dict(zip(data['columns'], data['rows'][0]))
     else:
         return [dict(zip(data['columns'], row)) for row in data['rows']]

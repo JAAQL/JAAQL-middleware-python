@@ -1,3 +1,5 @@
+import uuid
+
 from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
 from jaaql.mvc.generated_queries import *
@@ -166,6 +168,15 @@ DOCUMENTATION__emails = SwaggerDocumentation(
     )
 )
 
+ARG_RES__dbms_user = SwaggerArgumentResponse(
+    name=KEY__dbms_user,
+    description="The id of the dmbs user",
+    arg_type=str,
+    lower=True,
+    strip=True,
+    example=[str(uuid.uuid4()), str(uuid.uuid4())]
+)
+
 DOCUMENTATION__sign_up = SwaggerDocumentation(
     tags="Signup",
     # Explicitly set sign up to true to enforce design decision. We use the attempted insert of the current user (which can be the public user) as security
@@ -178,7 +189,7 @@ DOCUMENTATION__sign_up = SwaggerDocumentation(
             "the unlock code, they will then need to be approved by an admin).",
             method=REST__POST,
             body=[
-                ARG_RES__username,
+                set_nullable(ARG_RES__username, "Potentially if the user is not known"),
                 ARG_RES__parameters,
                 ARG_RES__query,
                 ARG_RES__event_application,
