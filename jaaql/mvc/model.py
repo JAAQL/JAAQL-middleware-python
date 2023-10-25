@@ -654,34 +654,49 @@ WHERE
             KEY__username: account[KG__account__username]
         }
 
-    def send_email(self, is_the_anonymous_user: bool, account_id: str, inputs: dict):
+    def send_email(self, is_the_anonymous_user: bool, account_id: str, inputs: dict, username: str):
         app = application__select(self.jaaql_lookup_connection, inputs[KEY__application])
 
         fetched_template = email_template__select(self.jaaql_lookup_connection, inputs[KEY__application], inputs[KEY__template])
         if is_the_anonymous_user and not fetched_template[KG__email_template__can_be_sent_anonymously]:
             raise HttpStatusException("Cannot send this template anonymously")
 
-        parameters = inputs[KEY__parameters]
-        non_sanitized_parameters = None
+        # [25/10/23] The below code is disabled as send email allows only for sending to the current email
+        # Anonymous email templates must be sent to the domain recipient
+        # if fetched_template[KG__email_template__can_be_sent_anonymously]:
+        #     if not fetched_template[KG__email_template__dispatcher_domain_recipient]:
+        #         raise HttpStatusException("Must specify dispatcher domain recipient if sending anonymous emails!")
 
-        # Anonymous email templates are sent with a lower level of scrutiny but must be sent to the domain recipient
-        if fetched_template[KG__email_template__can_be_sent_anonymously]:
-            non_sanitized_parameters = parameters
-            parameters = None
+        # recipient = fetched_template[KG__email_template__dispatcher_domain_recipient].split("@")[0]
+        # domain = email_dispatcher__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), inputs[KEY__application],
+        #                                   fetched_template[KG__email_template__dispatcher])[KG__email_dispatcher__username].split("@")[1]
+        # recipient = recipient + "@" + domain
 
-            if not fetched_template[KG__email_template__dispatcher_domain_recipient]:
-                raise HttpStatusException("Must specify dispatcher domain recipient if sending anonymous emails!")
+        submit_data = {
+            KEY__application: inputs[KG__security_event__application],
+            KEY__parameters: inputs[KEY__parameters],
+            KEY_query: inputs[KEY_query],
+            KEY__schema: fetched_template[KG__email_template__validation_schema]
+        }
 
-        recipient = fetched_template[KG__email_template__dispatcher_domain_recipient].split("@")[0]
-        domain = email_dispatcher__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), inputs[KEY__application],
-                                          fetched_template[KG__email_template__dispatcher])[KG__email_dispatcher__username].split("@")[1]
-        recipient = recipient + "@" + domain
+        data_relation = fetched_template[KG__email_template__data_validation_view]
+        if re.match(REGEX__dmbs_object_name, data_relation) is None:
+            raise HttpStatusException("Unsafe data relation specified for email template")
+        safe_parameters = []
+        for key, val in inputs[KEY__parameters].items():
+            if re.match(REGEX__dmbs_object_name, key) is None:
+                raise HttpStatusException("Unsafe parameter specified for email template")
+            safe_parameters.append(f'{key} = :key')  # Ignore pycharm PEP issue
+        where_clause = " AND ".join(safe_parameters)
+        submit_data[KEY_query] = f'SELECT * FROM {data_relation} WHERE {where_clause}'  # Ignore pycharm PEP issue
+        # We now get the data that can be shown in the email
+        email_replacement_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection,
+                                        submit_data, account_id, None, self.cached_canned_query_service,
+                                        as_objects=True, singleton=True)
 
-        self.email_manager.send_email(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection,
-                                      inputs[KG__security_event__application], inputs[KEY__template],
-                                      app[KG__application__artifacts_source],
-                                      app[KG__application__base_url], account_id, parameters,
-                                      none_sanitized_parameters=non_sanitized_parameters, recipient=recipient)
+        self.email_manager.construct_and_send_email(app[KG__application__artifacts_source],
+                                                    fetched_template[KG__email_template__dispatcher], fetched_template,
+                                                    username, email_replacement_data)
 
     def reset_password(self, inputs: dict):
         app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
@@ -791,7 +806,7 @@ WHERE
             conn = account_db_interface.get_conn()
 
             ret = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, account_id, None,
-                         self.cached_canned_query_service, as_objects=False, singleton=True, keep_alive_conn=True)
+                         self.cached_canned_query_service, as_objects=False, singleton=True, keep_alive_conn=True, conn=conn, interface=account_db_interface)
             ret = objectify(ret[list(ret.keys())[-1]], singleton=True)
 
             # This is the permissions check. It is an update that returns something that is ignored
