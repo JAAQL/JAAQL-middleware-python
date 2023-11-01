@@ -34,6 +34,7 @@ KEY__parameters = "parameters"
 KEY__query = "query"
 KEY__security_key = "security_key"
 KEY__id = "id"
+KEY__oauth_token = "oauth_token"
 
 REGEX__dmbs_object_name = r'^[0-9a-zA-Z_]{1,32}$'
 

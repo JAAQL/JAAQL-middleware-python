@@ -675,7 +675,6 @@ WHERE
         submit_data = {
             KEY__application: inputs[KG__security_event__application],
             KEY__parameters: inputs[KEY__parameters],
-            KEY_query: inputs[KEY_query],
             KEY__schema: fetched_template[KG__email_template__validation_schema]
         }
 
@@ -686,7 +685,7 @@ WHERE
         for key, val in inputs[KEY__parameters].items():
             if re.match(REGEX__dmbs_object_name, key) is None:
                 raise HttpStatusException("Unsafe parameter specified for email template")
-            safe_parameters.append(f'{key} = :key')  # Ignore pycharm PEP issue
+            safe_parameters.append(f'{key} = :{key}')  # Ignore pycharm PEP issue
         where_clause = " AND ".join(safe_parameters)
         submit_data[KEY_query] = f'SELECT * FROM {data_relation} WHERE {where_clause}'  # Ignore pycharm PEP issue
         # We now get the data that can be shown in the email

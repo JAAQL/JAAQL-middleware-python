@@ -3,16 +3,25 @@ import traceback
 import uuid
 import time
 
+from datetime import datetime
 from jaaql.constants import *
+from urllib.parse import quote
+from jaaql.exceptions.http_status_exception import HttpStatusException, HTTPStatus
 from jaaql.utilities.utils import load_config, await_jaaql_installation, get_jaaql_connection
-from jaaql.utilities.utils_no_project_imports import check_allowable_file_path
+from jaaql.utilities.utils_no_project_imports import check_allowable_file_path, time_delta_ms
 from email.utils import formatdate, make_msgid
 from smtplib import SMTP, SMTPException, SMTPAuthenticationError
+import base64
 from base64 import urlsafe_b64encode as b64e
 from typing import Union, List
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 from queue import Queue, Empty
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 import re
 import hashlib
 import json
@@ -51,6 +60,128 @@ TIMEOUT__filename = 15000
 REGEX__html_tags = r'<(\/[a-zA-Z]+|(!?[a-zA-Z]+((\s)*((\"?[^(\">)]*\"?)|[a-zA-Z]*\s*=\s*\"[^\"]*\"))*))>'
 
 HTTP_ARG__oauth_token = "oauth_token"
+
+KEY__attachment_name = "name"
+KEY__artifact_base = "artifact_base"
+
+
+class DrivenChrome:
+    def __init__(self, db_interface: DBInterface, db_key: bytes, is_deployed: bool):
+        self.attachments = Queue()
+        self.completed_attachments = set()
+        self.errored_attachments = {}
+        self.db_interface = db_interface
+        self.chrome_lock = threading.Lock()
+        self.driver = None
+        self.is_deployed = is_deployed
+        self.db_key = db_key
+        self.template_dir_path = os.path.join(DIR__www, DIR__render_template)
+
+        self.a4_params = {'landscape': False, 'paperWidth': 8.27, 'paperHeight': 11.69, 'printBackground': True}
+
+        threading.Thread(target=self.start_chrome, daemon=True).start()
+        threading.Thread(target=self.purge_rendered_documents, daemon=True).start()
+
+    def parameters_to_get_str(self, access_token: str, parameters: dict):
+        if parameters is None:
+            parameters = {}
+        parameters[KEY__oauth_token] = access_token
+
+        return "?" + "&".join([key + "=" + quote(itm) for key, itm in parameters.items()])
+
+    def chrome_page_to_pdf(self, url: str, access_token: str, parameters: dict):
+        filename = None
+
+        with self.chrome_lock:
+            self.driver.get(url + self.parameters_to_get_str(access_token, parameters))
+            start_time = datetime.now()
+            while True:
+                filename = self.driver.find_elements(By.ID, ELE__jaaql_filename)
+                if len(filename) != 0:
+                    file_text = filename[0].get_attribute("innerHTML")
+                    if not file_text.endswith(".pdf"):
+                        file_text += ".pdf"
+                    filename = file_text
+                    break
+                else:
+                    if time_delta_ms(start_time, datetime.now()) > TIMEOUT__filename:
+                        raise HttpStatusException(ERR__attachment_filename)
+                    time.sleep(0.25)
+
+            return filename, base64.b64decode(self.driver.execute_cdp_cmd("Page.printToPDF", self.a4_params)["data"])
+
+    def purge_rendered_documents(self):
+        while True:
+            resp = execute_supplied_statement(self.db_interface, QUERY__purge_rendered_documents, as_objects=True)
+            for to_purge in resp:
+                if to_purge[KEY__create_file]:
+                    try:
+                        os.remove(os.path.join(self.template_dir_path, str(to_purge[KEY__document_id]) + "." + to_purge[KEY__render_as]))
+                    except FileNotFoundError:
+                        pass
+            time.sleep(5)
+
+    def render_document_requests(self):
+        while True:
+            try:
+                resp = execute_supplied_statement_singleton(self.db_interface, QUERY__fetch_unrendered_document, as_objects=True,
+                                                            decrypt_columns=[KEY__parameters, KEY__oauth_token], encryption_key=self.db_key)
+                parameters = {}
+                if resp[KEY__parameters]:
+                    parameters = json.loads(resp[KEY__parameters])
+
+                base_url = EmailAttachment.static_format_attached_url(resp[KEY__artifact_base_url], self.is_deployed)
+                filename, content = self.chrome_page_to_pdf(base_url, resp[KEY__oauth_token], parameters)
+
+                inputs = {KEY__document_id: resp[KEY__document_id], KEY__content: None, ATTR__filename: filename}
+                if resp[KEY__create_file]:
+                    if not os.path.exists(self.template_dir_path):
+                        os.mkdir(self.template_dir_path)
+                    with open(os.path.join(self.template_dir_path, str(resp[KEY__document_id]) + "." + resp[KEY__render_as]), "wb") as f:
+                        f.write(content)
+                else:
+                    inputs[KEY__content] = content
+
+                execute_supplied_statement(self.db_interface, QUERY__mark_rendered_document_completed, inputs)
+            except HttpStatusException as ex:
+                if ex.response_code == HTTPStatus.UNPROCESSABLE_ENTITY:
+                    time.sleep(0.25)
+                else:
+                    traceback.print_exc()
+
+    def start_chrome(self):
+        options = Options()
+        options.add_argument("--window-size=1920,1080")
+        options.headless = True
+        service_log_path = None
+
+        if self.is_deployed:
+            options.add_argument('--no-sandbox')
+            service_log_path = "log/chromedriver.log"
+
+        with webdriver.Chrome(options=options, service=Service(service_log_path=service_log_path)) as driver:
+            self.driver = driver
+            threading.Thread(target=self.render_document_requests, daemon=True).start()
+            while True:
+                current_attachment: 'EmailAttachment' = self.attachments.get()
+                try:
+                    url = execute_supplied_statement_singleton(self.db_interface, QUERY__fetch_email_template,
+                                                               {KEY__attachment_name: current_attachment.name,
+                                                                KEY__template: current_attachment.template}, as_objects=True)[KEY__url]
+                    if not url.endswith(".html"):
+                        url += ".html"
+                    url = current_attachment.artifact_base + "/" + url
+                    filename, content = self.chrome_page_to_pdf(url, current_attachment.access_token, current_attachment.parameters)
+                    current_attachment.content = content
+                    current_attachment.filename = filename
+                except HttpStatusException as ex:
+                    self.errored_attachments[current_attachment.id] = str(ex)
+                    self.completed_attachments.add(current_attachment.id)
+                except Exception as ex:
+                    traceback.print_exc()
+                    self.errored_attachments[current_attachment.id] = str(ex)
+                    self.completed_attachments.add(current_attachment.id)
+                self.completed_attachments.add(current_attachment.id)
 
 
 class EmailAttachment:
@@ -104,6 +235,28 @@ class EmailAttachment:
 
     def encode_content(self):
         return b64e(self.content).decode(ENCODING__ascii)
+
+    def build_attachment(self, access_token: str, driven_chrome: DrivenChrome) -> MIMEApplication:
+        self.access_token = access_token
+        driven_chrome.attachments.put(self)
+
+        start_time = datetime.now()
+        while time_delta_ms(start_time, datetime.now()) < TIMEOUT__attachment:
+            if self.id in driven_chrome.completed_attachments:
+                break
+            time.sleep(1)
+
+        if self.id not in driven_chrome.completed_attachments:
+            raise Exception(ERR__attachment_timeout)
+        driven_chrome.completed_attachments.remove(self.id)
+
+        if self.id in driven_chrome.errored_attachments:
+            raise Exception(ERR__attachment_error % driven_chrome.errored_attachments.pop(self.id))
+
+        attachment = MIMEApplication(self.content, _subtype=self.filename.split(".")[-1])
+        attachment.add_header('Content-Disposition', 'attachment', filename=self.filename)
+
+        return attachment
 
 
 TYPE__email_attachments = Union[EmailAttachment, List[EmailAttachment]]
@@ -202,6 +355,8 @@ class EmailManagerService:
         self.threadsafe_queue_initialiser = ThreadsafeQueueInitialiser()
         threading.Thread(target=self.dispatcher_manager_thread, daemon=True).start()
 
+        self.driven_chrome = DrivenChrome(connection, self.db_crypt_key, self.is_gunicorn)
+
     def construct_message(self, dispatcher_info: dict, email: Email) -> (str, MIMEMultipart):
         send_body = email.body
 
@@ -227,14 +382,14 @@ class EmailManagerService:
         if email.attachments is not None:
             email_attachments = email.attachments
             for attachment in email_attachments:
-                pass  # TODO set up attachments
+                message_final.attach(attachment.build_attachment(email.attachment_access_token, self.driven_chrome))
 
         return send_body, message_final
 
     def is_connected(self, conn: SMTP):
         try:
             status = conn.noop()[0]
-        except Exception:
+        except:
             status = -1
         return True if status == 250 else False
 
@@ -279,11 +434,13 @@ class EmailManagerService:
         for dispatcher_key, dispatcher_tuple in potentially_require_threads.items():
             threading.Thread(target=self.dispatcher_thread, args=[dispatcher_key, dispatcher_tuple[0]]).start()
 
-    def get_dispatcher_queue_from_key(self, dispatcher_key: str):
-        return self.dispatchers.get(dispatcher_key, (None, self.threadsafe_queue_initialiser.fetch_queue(dispatcher_key)))[1]
+    def get_dispatcher_queue_from_key(self, dispatcher_key: str) -> Queue:
+        _, ret = self.dispatchers.get(dispatcher_key, (None, self.threadsafe_queue_initialiser.fetch_queue(dispatcher_key)))
+        return ret
 
-    def get_dispatcher_info_from_key(self, dispatcher_key: str):
-        return self.dispatchers.get(dispatcher_key, (None, None))[0]
+    def get_dispatcher_info_from_key(self, dispatcher_key: str) -> Union[dict, None]:
+        info, _ = self.dispatchers.get(dispatcher_key, (None, None))
+        return info
 
     def dispatcher_manager_thread(self):
         printed = False

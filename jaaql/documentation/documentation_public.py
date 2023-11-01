@@ -94,8 +94,6 @@ ARG_RES__security_event_unlock_code = SwaggerArgumentResponse(
     example="ABC123"
 )
 
-KEY__oauth_token = "oauth_token"
-
 ARG_RES__oauth_token = SwaggerArgumentResponse(
     name=KEY__oauth_token,
     description="An auth token",
