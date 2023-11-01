@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 from jaaql.constants import *
 from urllib.parse import quote
-from jaaql.exceptions.http_status_exception import HttpStatusException, HTTPStatus
+from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.utilities.utils import load_config, await_jaaql_installation, get_jaaql_connection
 from jaaql.utilities.utils_no_project_imports import check_allowable_file_path, time_delta_ms
 from email.utils import formatdate, make_msgid
@@ -62,6 +62,7 @@ REGEX__html_tags = r'<(\/[a-zA-Z]+|(!?[a-zA-Z]+((\s)*((\"?[^(\">)]*\"?)|[a-zA-Z]
 HTTP_ARG__oauth_token = "oauth_token"
 
 KEY__attachment_name = "name"
+KEY__attachment_application = "application"
 KEY__artifact_base = "artifact_base"
 
 
@@ -80,7 +81,6 @@ class DrivenChrome:
         self.a4_params = {'landscape': False, 'paperWidth': 8.27, 'paperHeight': 11.69, 'printBackground': True}
 
         threading.Thread(target=self.start_chrome, daemon=True).start()
-        threading.Thread(target=self.purge_rendered_documents, daemon=True).start()
 
     def parameters_to_get_str(self, access_token: str, parameters: dict):
         if parameters is None:
@@ -90,8 +90,6 @@ class DrivenChrome:
         return "?" + "&".join([key + "=" + quote(itm) for key, itm in parameters.items()])
 
     def chrome_page_to_pdf(self, url: str, access_token: str, parameters: dict):
-        filename = None
-
         with self.chrome_lock:
             self.driver.get(url + self.parameters_to_get_str(access_token, parameters))
             start_time = datetime.now()
@@ -110,45 +108,6 @@ class DrivenChrome:
 
             return filename, base64.b64decode(self.driver.execute_cdp_cmd("Page.printToPDF", self.a4_params)["data"])
 
-    def purge_rendered_documents(self):
-        while True:
-            resp = execute_supplied_statement(self.db_interface, QUERY__purge_rendered_documents, as_objects=True)
-            for to_purge in resp:
-                if to_purge[KEY__create_file]:
-                    try:
-                        os.remove(os.path.join(self.template_dir_path, str(to_purge[KEY__document_id]) + "." + to_purge[KEY__render_as]))
-                    except FileNotFoundError:
-                        pass
-            time.sleep(5)
-
-    def render_document_requests(self):
-        while True:
-            try:
-                resp = execute_supplied_statement_singleton(self.db_interface, QUERY__fetch_unrendered_document, as_objects=True,
-                                                            decrypt_columns=[KEY__parameters, KEY__oauth_token], encryption_key=self.db_key)
-                parameters = {}
-                if resp[KEY__parameters]:
-                    parameters = json.loads(resp[KEY__parameters])
-
-                base_url = EmailAttachment.static_format_attached_url(resp[KEY__artifact_base_url], self.is_deployed)
-                filename, content = self.chrome_page_to_pdf(base_url, resp[KEY__oauth_token], parameters)
-
-                inputs = {KEY__document_id: resp[KEY__document_id], KEY__content: None, ATTR__filename: filename}
-                if resp[KEY__create_file]:
-                    if not os.path.exists(self.template_dir_path):
-                        os.mkdir(self.template_dir_path)
-                    with open(os.path.join(self.template_dir_path, str(resp[KEY__document_id]) + "." + resp[KEY__render_as]), "wb") as f:
-                        f.write(content)
-                else:
-                    inputs[KEY__content] = content
-
-                execute_supplied_statement(self.db_interface, QUERY__mark_rendered_document_completed, inputs)
-            except HttpStatusException as ex:
-                if ex.response_code == HTTPStatus.UNPROCESSABLE_ENTITY:
-                    time.sleep(0.25)
-                else:
-                    traceback.print_exc()
-
     def start_chrome(self):
         options = Options()
         options.add_argument("--window-size=1920,1080")
@@ -161,17 +120,15 @@ class DrivenChrome:
 
         with webdriver.Chrome(options=options, service=Service(service_log_path=service_log_path)) as driver:
             self.driver = driver
-            threading.Thread(target=self.render_document_requests, daemon=True).start()
             while True:
                 current_attachment: 'EmailAttachment' = self.attachments.get()
                 try:
-                    url = execute_supplied_statement_singleton(self.db_interface, QUERY__fetch_email_template,
-                                                               {KEY__attachment_name: current_attachment.name,
-                                                                KEY__template: current_attachment.template}, as_objects=True)[KEY__url]
-                    if not url.endswith(".html"):
-                        url += ".html"
-                    url = current_attachment.artifact_base + "/" + url
-                    filename, content = self.chrome_page_to_pdf(url, current_attachment.access_token, current_attachment.parameters)
+                    template = document_template__select(self.db_interface, current_attachment.application, current_attachment.name)
+                    content_path = template[KG__document_template__content_path]
+                    if not content_path.endswith(".html"):
+                        content_path += ".html"
+                    content_path = current_attachment.artifact_base + "/" + content_path
+                    filename, content = self.chrome_page_to_pdf(content_path, current_attachment.access_token, current_attachment.parameters)
                     current_attachment.content = content
                     current_attachment.filename = filename
                 except HttpStatusException as ex:
@@ -185,8 +142,9 @@ class DrivenChrome:
 
 
 class EmailAttachment:
-    def __init__(self, name: str, parameters: dict, template: str, artifact_base: str = None):
+    def __init__(self, name: str, application: str, parameters: dict, template: str, artifact_base: str = None):
         self.name = name
+        self.application = application
         self.artifact_base = artifact_base
         self.parameters = parameters
         self.id = str(uuid.uuid4())
@@ -213,15 +171,17 @@ class EmailAttachment:
         self.artifact_base = EmailAttachment.static_format_attached_url(artifact_base_url, is_container)
 
     def repr_json(self):
-        return dict(name=self.name, parameters=self.parameters, template=self.template, artifact_base=self.artifact_base)
+        return dict(name=self.name, application=self.application, parameters=self.parameters,
+                    template=self.template, artifact_base=self.artifact_base)
 
     @staticmethod
     def deserialize(attachment: dict, template: str = None, artiface_base_url: str = None):
         if template is not None:
-            return EmailAttachment(attachment[KEY__attachment_name], attachment[KEY__parameters], template, artiface_base_url)
+            return EmailAttachment(attachment[KEY__attachment_name], attachment[KEY__attachment_name], attachment[KEY__parameters],
+                                   template, artiface_base_url)
         else:
-            return EmailAttachment(attachment[KEY__attachment_name], attachment[KEY__parameters], attachment[KEY__template],
-                                   attachment[KEY__artifact_base])
+            return EmailAttachment(attachment[KEY__attachment_name], attachment[KEY__attachment_name], attachment[KEY__parameters],
+                                   attachment[KEY__template], attachment[KEY__artifact_base])
 
     @staticmethod
     def deserialize_list(attachments: list, template: str, artiface_base_url: str):

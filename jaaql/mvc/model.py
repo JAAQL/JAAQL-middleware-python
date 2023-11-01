@@ -693,9 +693,13 @@ WHERE
                                         submit_data, account_id, None, self.cached_canned_query_service,
                                         as_objects=True, singleton=True)
 
+        # TODO write exception query. Select document_request where application = ... and template = ...
+        # TODO change how file is named and waited for
+
         self.email_manager.construct_and_send_email(app[KG__application__artifacts_source],
                                                     fetched_template[KG__email_template__dispatcher], fetched_template,
-                                                    username, email_replacement_data)
+                                                    username, email_replacement_data,
+                                                    attachments=None, attachment_access_token=None)  # TODO load attachments
 
     def reset_password(self, inputs: dict):
         app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
