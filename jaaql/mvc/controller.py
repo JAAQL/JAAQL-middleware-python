@@ -92,8 +92,8 @@ class JAAQLController(BaseJAAQLController):
             return self.model.sign_up(http_inputs, account_id)
 
         @self.publish_route('/email', DOCUMENTATION__emails)
-        def send_email(is_the_anonymous_user: bool, account_id: str, http_inputs: dict, username: str):
-            return self.model.send_email(is_the_anonymous_user, account_id, http_inputs, username)
+        def send_email(is_the_anonymous_user: bool, account_id: str, http_inputs: dict, username: str, auth_token: str):
+            return self.model.send_email(is_the_anonymous_user, account_id, http_inputs, username, auth_token)
 
         @self.publish_route('/account/reset-password', DOCUMENTATION__reset_password)
         def reset_password(http_inputs: dict):

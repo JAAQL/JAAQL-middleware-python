@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.exceptions.fxls at 09/05/2023, 23:01:02
+This script was generated from jaaql.exceptions.fxls at 2023-11-02, 19:58:20
 """
 
 from jaaql.utilities.crypt_utils import get_repeatable_salt
@@ -11,8 +11,8 @@ def add_account_password(
     account__id, account_password__hash
 ):
     account_password__uuid = account_password__insert(
-        connection, encryption_key, account__id, 
-        account_password__hash, 
+        connection, encryption_key, account__id,
+        account_password__hash,
         encryption_salts={KG__account_password__hash: get_repeatable_salt(vault_repeatable_salt, account__id)}
     )[KG__account_password__uuid]
 
@@ -63,8 +63,7 @@ def fetch_most_recent_password_from_username(
         connection, QUERY__fetch_most_recent_password_from_username, {KG__account__username: account__username},
         encryption_key=encryption_key, encrypt_parameters=[KG__account__username], encryption_salts={
             KG__account__username: get_repeatable_salt(vault_repeatable_salt)
-        },
-        decrypt_columns=[KG__account_password__hash], as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+        }, as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
     )
 
 
@@ -168,7 +167,7 @@ QUERY__check_security_event_unlock = """
     FROM application A
     WHERE
         S.application = A.name AND
-        (S.event_lock = :event_lock OR S.unlock_key = :unlock_key) AND S.unlock_timestamp is null AND
+        S.event_lock = :event_lock AND S.unlock_timestamp is null AND
         S.creation_timestamp + (A.unlock_code_validity_period || ' seconds')::interval > current_timestamp
     RETURNING S.*, A.unlock_code_validity_period, (S.unlock_code = :unlock_code OR S.unlock_key = :unlock_key) as key_fits
 """
@@ -184,4 +183,26 @@ def check_security_event_unlock(
             KG__security_event__unlock_code: unlock_code,
             KG__security_event__unlock_key: unlock_key
         }, as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+    )
+
+
+QUERY__fetch_document_templates_for_email_template = """
+    SELECT
+        *
+    FROM
+        document_template T
+    WHERE
+        T.application = :application AND
+        T.email_template = :email_template
+"""
+
+
+def fetch_document_templates_for_email_template(
+    connection: DBInterface, application, email_template
+):
+    return execute_supplied_statement(
+        connection, QUERY__fetch_document_templates_for_email_template, {
+            KG__document_template__application: application,
+            KG__document_template__email_template: email_template
+        }, as_objects=True
     )

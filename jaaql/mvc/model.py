@@ -3,6 +3,7 @@ import uuid
 import re
 from wsgiref.handlers import format_date_time
 from jaaql.db.db_pg_interface import DBPGInterface, QUERY__dba_query_external
+from jaaql.email.email_manager_service import EmailAttachment
 from jaaql.mvc.base_model import BaseJAAQLModel, VAULT_KEY__jwt_crypt_key
 from jaaql.exceptions.http_status_exception import HttpStatusException, ERR__already_installed, HttpSingletonStatusException
 from os.path import join
@@ -654,7 +655,7 @@ WHERE
             KEY__username: account[KG__account__username]
         }
 
-    def send_email(self, is_the_anonymous_user: bool, account_id: str, inputs: dict, username: str):
+    def send_email(self, is_the_anonymous_user: bool, account_id: str, inputs: dict, username: str, auth_token: str):
         app = application__select(self.jaaql_lookup_connection, inputs[KEY__application])
 
         fetched_template = email_template__select(self.jaaql_lookup_connection, inputs[KEY__application], inputs[KEY__template])
@@ -694,12 +695,20 @@ WHERE
                                         as_objects=True, singleton=True)
 
         # TODO write exception query. Select document_request where application = ... and template = ...
+        document_templates = fetch_document_templates_for_email_template(self.jaaql_lookup_connection, inputs[KEY__application], inputs[KEY__template])
+        attachments = [
+            EmailAttachment(
+                template[KG__document_template__name], template[KG__document_template__application], inputs[KEY__parameters],
+                template[KG__document_template__email_template],
+            )
+            for template in document_templates
+        ]
         # TODO change how file is named and waited for
 
         self.email_manager.construct_and_send_email(app[KG__application__artifacts_source],
                                                     fetched_template[KG__email_template__dispatcher], fetched_template,
                                                     username, email_replacement_data,
-                                                    attachments=None, attachment_access_token=None)  # TODO load attachments
+                                                    attachments=attachments, attachment_access_token=auth_token)  # TODO load attachments
 
     def reset_password(self, inputs: dict):
         app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
