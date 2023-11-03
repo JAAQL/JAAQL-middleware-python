@@ -76,6 +76,7 @@ ENVIRON__install_path = "INSTALL_PATH"
 ENVIRON__sentinel_url = "SENTINEL_URL"
 ENVIRON__canned_queries = "CANNED_QUERIES"
 ENVIRON__allow_debugging_users = "YOUR_APP_HAS_NO_SECURITY_IF_THIS_IS_TRUE__ALLOW_DEBUGGING_USERS"
+ENVIRON__allow_skip_oauth = "YOUR_APP_HAS_NO_SECURITY_IF_THIS_IS_TRUE__ALLOW_SKIP_AUTH"
 
 EMAIL_PARAM__unlock_key = "JAAQL__UNLOCK_KEY"
 EMAIL_PARAM__unlock_code = "JAAQL__UNLOCK_CODE"
@@ -114,6 +115,10 @@ PORT__ems = 6061
 PORT__mms = 6062
 PORT__shared_var_service = 6063
 
+IPS__local = [
+    "127.0.0.1", "localhost"
+]
+
 ENDPOINT__send_email = "/send-email"
 ENDPOINT__execute_migrations = "/internal/migrations"
 ENDPOINT__internal_applications = "/internal/applications"
@@ -142,5 +147,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.21.5"
+VERSION = "4.21.6"
 

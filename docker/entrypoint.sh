@@ -108,8 +108,12 @@ if [ -f "$SITE_FILE" ] ; then
 fi
 if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   echo "Writing nginx config file"
-  echo "limit_req_zone \$binary_remote_addr zone=jaaqllimit:10m rate=5r/s;" >> /etc/nginx/sites-available/jaaql
-  echo "limit_req_zone \$binary_remote_addr zone=httplimit:10m rate=10r/s;" >> /etc/nginx/sites-available/jaaql
+  if [ "$ALLOW_UNLIMITED_REQUESTS" = "TRUE" ]; then
+    echo "Allowing unlimited requests"
+  else
+    echo "limit_req_zone \$binary_remote_addr zone=jaaqllimit:10m rate=5r/s;" >> /etc/nginx/sites-available/jaaql
+    echo "limit_req_zone \$binary_remote_addr zone=httplimit:10m rate=10r/s;" >> /etc/nginx/sites-available/jaaql
+  fi
   if [ "$IS_HTTPS" = "TRUE" ] ; then
     if [ "$HTTPS_WWW" = "TRUE" ] ; then
       echo "server {" >> /etc/nginx/sites-available/jaaql
@@ -138,15 +142,23 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   echo "    root $INSTALL_PATH/www;" >> /etc/nginx/sites-available/jaaql
   echo "    index index.html;" >> /etc/nginx/sites-available/jaaql
   echo "    location / {" >> /etc/nginx/sites-available/jaaql
-  echo "        limit_req zone=httplimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
-  echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
+  if [ "$ALLOW_UNLIMITED_REQUESTS" = "TRUE" ]; then
+    echo "Skipping httplimit as unlimited requests allowed"
+  else
+    echo "        limit_req zone=httplimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
+    echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
+  fi
   if [ "$IS_FROZEN" = "TRUE" ] ; then
     echo "        return 503;"
   fi
   echo "    }" >> /etc/nginx/sites-available/jaaql
   echo "    location /api {" >> /etc/nginx/sites-available/jaaql
-  echo "        limit_req zone=jaaqllimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
-  echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
+  if [ "$ALLOW_UNLIMITED_REQUESTS" = "TRUE" ]; then
+    echo "Skipping jaaqllimit as unlimited requests allowed"
+  else
+    echo "        limit_req zone=jaaqllimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
+    echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
+  fi
   echo "        include proxy_params;" >> /etc/nginx/sites-available/jaaql
   echo "        proxy_pass http://unix:$INSTALL_PATH/jaaql.sock:/;" >> /etc/nginx/sites-available/jaaql
   echo "        proxy_set_header X-Real-IP \$remote_addr;" >> /etc/nginx/sites-available/jaaql
@@ -161,8 +173,12 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   echo "    server_name localhost;" >> /etc/nginx/sites-available/jaaql
   echo "$SECURITY_HEADERS" >> /etc/nginx/sites-available/jaaql
   echo "    location /api {" >> /etc/nginx/sites-available/jaaql
-  echo "        limit_req zone=jaaqllimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
-  echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
+  if [ "$ALLOW_UNLIMITED_REQUESTS" = "TRUE" ]; then
+    echo "Skipping jaaqllimit2 as unlimited requests allowed"
+  else
+    echo "        limit_req zone=jaaqllimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
+    echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
+  fi
   echo "        include proxy_params;" >> /etc/nginx/sites-available/jaaql
   echo "        proxy_pass http://unix:$INSTALL_PATH/jaaql.sock:/;" >> /etc/nginx/sites-available/jaaql
   echo "        proxy_set_header X-Real-IP \$remote_addr;" >> /etc/nginx/sites-available/jaaql
@@ -170,8 +186,12 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   echo "    root $INSTALL_PATH/www;" >> /etc/nginx/sites-available/jaaql
   echo "    index index.html;" >> /etc/nginx/sites-available/jaaql
   echo "    location / {" >> /etc/nginx/sites-available/jaaql
-  echo "        limit_req zone=httplimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
-  echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
+  if [ "$ALLOW_UNLIMITED_REQUESTS" = "TRUE" ]; then
+    echo "Skipping httplimit2 as unlimited requests allowed"
+  else
+    echo "        limit_req zone=httplimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
+    echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
+  fi
   echo "    }" >> /etc/nginx/sites-available/jaaql
   echo "}" >> /etc/nginx/sites-available/jaaql
 fi

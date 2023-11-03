@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.exceptions.fxls at 2023-11-02, 19:58:20
+This script was generated from jaaql.exceptions.fxls at 2023-11-02, 21:56:22
 """
 
 from jaaql.utilities.crypt_utils import get_repeatable_salt
@@ -63,7 +63,8 @@ def fetch_most_recent_password_from_username(
         connection, QUERY__fetch_most_recent_password_from_username, {KG__account__username: account__username},
         encryption_key=encryption_key, encrypt_parameters=[KG__account__username], encryption_salts={
             KG__account__username: get_repeatable_salt(vault_repeatable_salt)
-        }, as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+        },
+        decrypt_columns=[KG__account_password__hash], as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
     )
 
 
@@ -167,7 +168,7 @@ QUERY__check_security_event_unlock = """
     FROM application A
     WHERE
         S.application = A.name AND
-        S.event_lock = :event_lock AND S.unlock_timestamp is null AND
+        (S.event_lock = :event_lock OR S.unlock_key = :unlock_key) AND S.unlock_timestamp is null AND
         S.creation_timestamp + (A.unlock_code_validity_period || ' seconds')::interval > current_timestamp
     RETURNING S.*, A.unlock_code_validity_period, (S.unlock_code = :unlock_code OR S.unlock_key = :unlock_key) as key_fits
 """

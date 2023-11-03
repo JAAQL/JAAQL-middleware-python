@@ -15,7 +15,7 @@ import os
 import dataclasses
 import decimal
 from queue import Queue
-from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, format_cookie, COOKIE_JAAQL_AUTH
+from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH
 from jaaql.utilities.utils import time_delta_ms, Profiler
 from flask import Response, Flask, request, jsonify, current_app
 from flask.json.provider import DefaultJSONProvider
@@ -24,7 +24,7 @@ from jaaql.mvc.model import JAAQLModel
 from jaaql.mvc.response import *
 from typing import Union
 from jaaql.db.db_utils import create_interface_for_db
-from monitor.main import HEADER__security, HEADER__security_bypass_jaaql, HEADER__security_bypass
+from monitor.main import HEADER__security, HEADER__security_bypass_jaaql, HEADER__security_bypass, HEADER__security_specify_user
 
 from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, TYPE__response, \
     SwaggerFlatResponse, REST__DELETE, REST__GET, REST__OPTIONS, REST__POST, REST__PUT, SwaggerList, SwaggerResponse, \
@@ -88,10 +88,6 @@ BOOL__allowed = {
     "true": True,
     "false": False
 }
-
-IPS__local = [
-    "127.0.0.1", "localhost"
-]
 
 
 def json_serial(obj):
@@ -487,6 +483,7 @@ class BaseJAAQLController:
                     if swagger_documentation.security:
                         bypass_super = request.headers.get(HEADER__security_bypass)
                         bypass_jaaql = request.headers.get(HEADER__security_bypass_jaaql)
+                        bypass_user = request.headers.get(HEADER__security_specify_user)
                         if bypass_super or bypass_jaaql:
                             if ip_addr not in IPS__local:
                                 raise HttpStatusException("Bypass used in none local context: " + ip_addr, HTTPStatus.UNAUTHORIZED)
@@ -501,6 +498,14 @@ class BaseJAAQLController:
 
                             if verification_hook:
                                 verification_hook.put((True, None, None))
+
+                        if bypass_user:
+                            if not self.model.is_container or os.environ.get(ENVIRON__allow_skip_oauth) == "TRUE":
+                                is_public = False
+                                account_id, ip_id = self.model.get_bypass_user(bypass_user, ip_addr)
+
+                                if verification_hook:
+                                    verification_hook.put((True, None, None))
 
                         elif verification_hook:
                             account_id, username, ip_id, is_public, remember_me = self.model.verify_auth_token_threaded(security_key,

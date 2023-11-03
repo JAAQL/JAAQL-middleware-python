@@ -115,7 +115,8 @@ class EmailManager:
                                       recipient if recipient else account[KG__account__username], parameters)
 
     def construct_and_send_email(self, application_artifacts_source: Optional[str], dispatcher: str, template: dict, to_email: str,
-                                 parameters: Optional[dict], attachments=None, attachment_access_token: str = None):
+                                 parameters: Optional[dict], attachments=None, attachment_access_token: str = None,
+                                 attachment_base_url: str = ""):
         loaded_template = load_artifact(self.is_container, application_artifacts_source, template[KG__email_template__content_url])
 
         loaded_template = self.perform_replacements(loaded_template, REPLACE__str, EmailManager.replace_html_tags, REGEX__email_parameter, parameters)
@@ -136,7 +137,7 @@ class EmailManager:
             if not isinstance(attachment_list, list):
                 attachment_list = [attachment_list]
             for attachment in attachment_list:
-                attachment.format_attachment_url(application_artifacts_source, self.is_container)
+                attachment.format_attachment_url(attachment_base_url, self.is_container)
 
         self._send_email(Email(template[KEY__application], template[KG__email_template__name], dispatcher, to_email, subject, body,
                                attachments=attachments, attachment_access_token=attachment_access_token))

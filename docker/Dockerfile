@@ -112,6 +112,7 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     apt-get autoremove --purge -y
 
 COPY requirements.txt $INSTALL_PATH/requirements.txt
+RUN sed -i 's/\[binary\]/[c]/g' $INSTALL_PATH/requirements.txt
 RUN $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt
 COPY . $INSTALL_PATH
 

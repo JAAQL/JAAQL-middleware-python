@@ -2,6 +2,7 @@ vault/*
 swagger/*
 log/*
 letsencrypt/*
+rendered_templates/*
 
 docker.md
 examples.md

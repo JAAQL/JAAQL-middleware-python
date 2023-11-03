@@ -132,6 +132,7 @@ jaaql_cred
 jaaql_uri
 
 swagger
+rendered_templates
 vault
 www
 log

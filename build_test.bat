@@ -1,8 +1,8 @@
 @echo off
-ECHO This script will build jaaql for local testing
+ECHO This script will build jaaql and push to pypi and docker
+python setup.py sdist bdist_wheel
 python version.py>version.txt
 set /p VERSION=<version.txt
-del version.txt
 del version.txt
 rmdir build /s /q
 rmdir dist /s /q

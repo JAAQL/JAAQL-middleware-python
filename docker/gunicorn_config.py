@@ -1,3 +1,5 @@
+import threading
+import signal
 
 worker_class = "gevent"
 worker_connections = 100
@@ -22,5 +24,6 @@ def child_exit(server, worker):
             print("Halting server. If this step fails, make sure you haven't started any non daemonic threads. When "
                   "creating your threads. Set daemon=True in the constructor to make sure the server can properly "
                   "restart")
-            server.halt()
+            pid = server.pid
+            threading.Thread(target=lambda: os.kill(pid, signal.SIGQUIT)).start()
     has_checked_for_install = True

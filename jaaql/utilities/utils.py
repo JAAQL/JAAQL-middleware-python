@@ -101,7 +101,7 @@ def await_jaaql_bootup(config, is_gunicorn: bool):
             return requests.get(base_url + "/internal/is_installed").status_code
         except:
             pass
-        time.sleep(5)
+        time.sleep(0.5)
 
 
 def await_jaaql_installation(config, is_gunicorn: bool):

@@ -110,7 +110,7 @@ class BaseJAAQLModel:
             pid = open("app.pid", "r").read()
             subprocess.call("kill -HUP " + pid, shell=True)  # Kill gunicorn so coverage report is generated
         else:
-            time.sleep(1)
+            print("I am exiting and this will be picked up!")
             os._exit(0)
 
     def group(self, data: [dict], key_field_name: str):

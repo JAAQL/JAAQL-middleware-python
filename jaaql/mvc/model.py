@@ -476,7 +476,7 @@ WHERE
 
     def verify_auth_token(self, auth_token: str, ip_address: str):
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), auth_token, JWT_PURPOSE__oauth)
-        if not decoded or decoded[KEY__ip_address] != ip_address:
+        if not decoded or (decoded[KEY__ip_address] != ip_address and ip_address not in IPS__local):
             raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
         validate_is_most_recent_password(self.jaaql_lookup_connection, decoded[KEY__account_id], decoded[KEY__password],
@@ -694,21 +694,20 @@ WHERE
                                         submit_data, account_id, None, self.cached_canned_query_service,
                                         as_objects=True, singleton=True)
 
-        # TODO write exception query. Select document_request where application = ... and template = ...
         document_templates = fetch_document_templates_for_email_template(self.jaaql_lookup_connection, inputs[KEY__application], inputs[KEY__template])
         attachments = [
             EmailAttachment(
                 template[KG__document_template__name], template[KG__document_template__application], inputs[KEY__parameters],
-                template[KG__document_template__email_template],
+                template[KG__document_template__email_template]
             )
             for template in document_templates
         ]
-        # TODO change how file is named and waited for
 
         self.email_manager.construct_and_send_email(app[KG__application__artifacts_source],
                                                     fetched_template[KG__email_template__dispatcher], fetched_template,
                                                     username, email_replacement_data,
-                                                    attachments=attachments, attachment_access_token=auth_token)  # TODO load attachments
+                                                    attachments=attachments, attachment_access_token=auth_token,
+                                                    attachment_base_url="http://localhost" if self.is_container else "")
 
     def reset_password(self, inputs: dict):
         app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])

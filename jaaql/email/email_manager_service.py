@@ -3,6 +3,7 @@ import traceback
 import uuid
 import time
 
+from selenium.common.exceptions import NoSuchElementException
 from datetime import datetime
 from jaaql.constants import *
 from urllib.parse import quote
@@ -33,14 +34,14 @@ from jaaql.mvc.generated_queries import *
 from jaaql.utilities.vault import Vault, DIR__vault
 from jaaql.constants import VAULT_KEY__db_crypt_key
 
-ELE__jaaql_filename = "jaaql_filename"
+ATTR__finished_request = "data-jaaql-finished-request"
+ATTR__finished_request_success = "data-jaaql-finished-request-success"
 
 ERR__email_not_found = "Email account not found with name '%s'"
 ERR__invalid_call_to_internal_email_service = "Invalid call to internal email service"
-ERR__attachment_timeout = "Could not send email! Attachment rendering timed out!"
+ERR__attachment_timeout = "Could not send email! Attachment took too long to render!"
+ERR__attachment_timeout_render = "Could not send email! Attachment timed out whilst rendering!"
 ERR__attachment_error = "Could not send email! Attachment rendering received error: '%s'"
-ERR__attachment_filename = "Attachment did not render in time or could not find the file name for the attachment. Please check template. Expected " \
-    "presence of element with id " + ELE__jaaql_filename + " to be present after page has finished loading"
 
 PROTOCOL__imap = "imap"
 PROTOCOL__smtp = "smtp"
@@ -55,7 +56,7 @@ EMAIL__message_id = "Message-ID"
 SPLIT__address = ", "
 
 TIMEOUT__attachment = 60000
-TIMEOUT__filename = 15000
+TIMEOUT__attachment_render = 15000
 
 REGEX__html_tags = r'<(\/[a-zA-Z]+|(!?[a-zA-Z]+((\s)*((\"?[^(\">)]*\"?)|[a-zA-Z]*\s*=\s*\"[^\"]*\"))*))>'
 
@@ -94,17 +95,30 @@ class DrivenChrome:
             self.driver.get(url + self.parameters_to_get_str(access_token, parameters))
             start_time = datetime.now()
             while True:
-                filename = self.driver.find_elements(By.ID, ELE__jaaql_filename)
-                if len(filename) != 0:
-                    file_text = filename[0].get_attribute("innerHTML")
-                    if not file_text.endswith(".pdf"):
-                        file_text += ".pdf"
-                    filename = file_text
+                passed = False
+                filename = ""
+                try:
+                    body = self.driver.find_element(By.TAG_NAME, "body")  # Sometimes the body is not yet present, in which case an exception will fire
+                    finished = body.get_attribute(ATTR__finished_request)
+                    finished_success = body.get_attribute(ATTR__finished_request_success)
+                    if finished_success is not None:
+                        passed = True
+                        if finished_success != ATTR__finished_request_success:
+                            filename = finished_success
+                    if finished is not None and not passed:
+                        raise HttpStatusException("Application level exception: '%s'" % base64.b64decode(finished).decode("UTF-8"))
+                except NoSuchElementException:
+                    pass
+
+                if passed:
+                    if len(filename) == 0:
+                        filename = url.split("/")[-1].split(".html")[0]
+                    if not filename.endswith(".pdf"):
+                        filename += ".pdf"
                     break
                 else:
-                    if time_delta_ms(start_time, datetime.now()) > TIMEOUT__filename:
-                        raise HttpStatusException(ERR__attachment_filename)
-                    time.sleep(0.25)
+                    if time_delta_ms(start_time, datetime.now()) > TIMEOUT__attachment_render:
+                        raise HttpStatusException(ERR__attachment_timeout_render)
 
             return filename, base64.b64decode(self.driver.execute_cdp_cmd("Page.printToPDF", self.a4_params)["data"])
 
@@ -158,12 +172,12 @@ class EmailAttachment:
         if not artifact_base_url.startswith("https://") and not artifact_base_url.startswith("http://"):
             if is_container:
                 if check_allowable_file_path(artifact_base_url):
-                    raise Exception("Illegal artifact base url")
+                    raise Exception("Illegal artifact base url: '" + artifact_base_url + "'")
 
             if artifact_base_url.startswith("file:///"):
                 return artifact_base_url
             else:
-                return "file://" + os.environ[ENVIRON__install_path] + "/www/" + artifact_base_url
+                return "file://" + os.environ.get(ENVIRON__install_path, os.getcwd().replace("\\", "/")) + "/www" + artifact_base_url
         else:
             return artifact_base_url
 
@@ -177,10 +191,10 @@ class EmailAttachment:
     @staticmethod
     def deserialize(attachment: dict, template: str = None, artiface_base_url: str = None):
         if template is not None:
-            return EmailAttachment(attachment[KEY__attachment_name], attachment[KEY__attachment_name], attachment[KEY__parameters],
+            return EmailAttachment(attachment[KEY__attachment_name], attachment[KEY__attachment_application], attachment[KEY__parameters],
                                    template, artiface_base_url)
         else:
-            return EmailAttachment(attachment[KEY__attachment_name], attachment[KEY__attachment_name], attachment[KEY__parameters],
+            return EmailAttachment(attachment[KEY__attachment_name], attachment[KEY__attachment_application], attachment[KEY__parameters],
                                    attachment[KEY__template], attachment[KEY__artifact_base])
 
     @staticmethod
@@ -196,7 +210,7 @@ class EmailAttachment:
     def encode_content(self):
         return b64e(self.content).decode(ENCODING__ascii)
 
-    def build_attachment(self, access_token: str, driven_chrome: DrivenChrome) -> MIMEApplication:
+    def build_attachment(self, access_token: str, driven_chrome: DrivenChrome, is_gunicorn: bool) -> MIMEApplication:
         self.access_token = access_token
         driven_chrome.attachments.put(self)
 
@@ -215,6 +229,11 @@ class EmailAttachment:
 
         attachment = MIMEApplication(self.content, _subtype=self.filename.split(".")[-1])
         attachment.add_header('Content-Disposition', 'attachment', filename=self.filename)
+
+        if not is_gunicorn:
+            os.makedirs("rendered_templates", exist_ok=True)
+            with open("rendered_templates/" + self.filename, "wb") as f:
+                f.write(self.content)
 
         return attachment
 
@@ -342,7 +361,7 @@ class EmailManagerService:
         if email.attachments is not None:
             email_attachments = email.attachments
             for attachment in email_attachments:
-                message_final.attach(attachment.build_attachment(email.attachment_access_token, self.driven_chrome))
+                message_final.attach(attachment.build_attachment(email.attachment_access_token, self.driven_chrome, self.is_gunicorn))
 
         return send_body, message_final
 
