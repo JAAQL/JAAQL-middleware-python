@@ -499,10 +499,11 @@ class BaseJAAQLController:
                             if verification_hook:
                                 verification_hook.put((True, None, None))
 
-                        if bypass_user:
+                        elif bypass_user:
                             if not self.model.is_container or os.environ.get(ENVIRON__allow_skip_oauth) == "TRUE":
                                 is_public = False
                                 account_id, ip_id = self.model.get_bypass_user(bypass_user, ip_addr)
+                                username = bypass_user
 
                                 if verification_hook:
                                     verification_hook.put((True, None, None))
