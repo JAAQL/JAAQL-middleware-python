@@ -111,6 +111,7 @@ class BaseJAAQLModel:
             subprocess.call("kill -HUP " + pid, shell=True)  # Kill gunicorn so coverage report is generated
         else:
             print("I am exiting and this will be picked up!")
+            time.sleep(1.5)  # Allow other connections to have OK returned
             os._exit(0)
 
     def group(self, data: [dict], key_field_name: str):
