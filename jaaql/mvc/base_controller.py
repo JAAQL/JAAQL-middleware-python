@@ -456,6 +456,7 @@ class BaseJAAQLController:
                 resp_type = current_app.json.mimetype
                 jaaql_resp = JAAQLResponse()
                 jaaql_resp.response_type = resp_type
+                remember_me = False
 
                 if not BaseJAAQLController.is_options():
                     the_method = BaseJAAQLController.get_method(swagger_documentation)
@@ -465,7 +466,6 @@ class BaseJAAQLController:
                     ip_id = None
                     username = None
                     is_public = None
-                    remember_me = False
                     verification_hook = None
                     if method.parallel_verification:
                         verification_hook = Queue()
@@ -507,6 +507,8 @@ class BaseJAAQLController:
 
                                 if verification_hook:
                                     verification_hook.put((True, None, None))
+                            else:
+                                raise HttpStatusException("Cannot bypass user!")
 
                         elif verification_hook:
                             account_id, username, ip_id, is_public, remember_me = self.model.verify_auth_token_threaded(security_key,
