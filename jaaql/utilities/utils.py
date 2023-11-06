@@ -112,7 +112,7 @@ def await_jaaql_installation(config, is_gunicorn: bool):
                 break
         except:
             pass
-        time.sleep(5)
+        time.sleep(0.5)
 
 
 def get_external_url(config):
