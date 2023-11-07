@@ -126,13 +126,14 @@ class DrivenChrome:
         options = Options()
         options.add_argument("--window-size=1920,1080")
         options.headless = True
-        service_log_path = None
+        service_args = []
 
         if self.is_deployed:
             options.add_argument('--no-sandbox')
             service_log_path = "log/chromedriver.log"
+            service_args = ["--log-path=%s" % service_log_path]
 
-        with webdriver.Chrome(options=options, service=Service(service_log_path=service_log_path)) as driver:
+        with webdriver.Chrome(options=options, service=Service(service_args=service_args)) as driver:
             self.driver = driver
             while True:
                 current_attachment: 'EmailAttachment' = self.attachments.get()
