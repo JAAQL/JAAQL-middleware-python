@@ -564,6 +564,8 @@ class BaseJAAQLController:
                             if not swagger_documentation.security:
                                 raise Exception(ERR__method_required_token)
                             supply_dict[ARG__auth_token] = request.headers.get(HEADER__security)
+                            if supply_dict[ARG__auth_token] is None:
+                                supply_dict[ARG__auth_token] = auth_cookie
 
                         if ARG__auth_token_for_refresh in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__auth_token_for_refresh] = request.headers.get(HEADER__security)

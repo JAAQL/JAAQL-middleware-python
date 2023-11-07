@@ -55,8 +55,8 @@ EMAIL__message_id = "Message-ID"
 
 SPLIT__address = ", "
 
-TIMEOUT__attachment = 60000
-TIMEOUT__attachment_render = 15000
+TIMEOUT__attachment = 90000
+TIMEOUT__attachment_render = 30000
 
 REGEX__html_tags = r'<(\/[a-zA-Z]+|(!?[a-zA-Z]+((\s)*((\"?[^(\">)]*\"?)|[a-zA-Z]*\s*=\s*\"[^\"]*\"))*))>'
 
@@ -88,7 +88,7 @@ class DrivenChrome:
             parameters = {}
         parameters[KEY__oauth_token] = access_token
 
-        return "?" + "&".join([key + "=" + quote(itm) for key, itm in parameters.items()])
+        return "?" + "&".join([key + "=" + quote(itm if isinstance(itm, bytes) else itm.encode("UTF-8")) for key, itm in parameters.items()])
 
     def chrome_page_to_pdf(self, url: str, access_token: str, parameters: dict):
         with self.chrome_lock:

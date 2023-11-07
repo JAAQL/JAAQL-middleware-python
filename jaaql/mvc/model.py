@@ -703,11 +703,15 @@ WHERE
             for template in document_templates
         ]
 
+        attachment_base_url = ""
+        if self.is_container:
+            attachment_base_url = app[KG__application__base_url]
+
         self.email_manager.construct_and_send_email(app[KG__application__artifacts_source],
                                                     fetched_template[KG__email_template__dispatcher], fetched_template,
                                                     username, email_replacement_data,
                                                     attachments=attachments, attachment_access_token=auth_token,
-                                                    attachment_base_url="http://localhost" if self.is_container else "")
+                                                    attachment_base_url=attachment_base_url)
 
     def reset_password(self, inputs: dict):
         app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
