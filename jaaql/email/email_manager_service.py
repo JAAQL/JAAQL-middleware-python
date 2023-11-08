@@ -118,6 +118,7 @@ class DrivenChrome:
                     break
                 else:
                     if time_delta_ms(start_time, datetime.now()) > TIMEOUT__attachment_render:
+                        print(self.driver.page_source)
                         raise HttpStatusException(ERR__attachment_timeout_render)
 
             return filename, base64.b64decode(self.driver.execute_cdp_cmd("Page.printToPDF", self.a4_params)["data"])
