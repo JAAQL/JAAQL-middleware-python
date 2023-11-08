@@ -93,7 +93,6 @@ class DrivenChrome:
     def chrome_page_to_pdf(self, url: str, access_token: str, parameters: dict):
         with self.chrome_lock:
             self.driver.get(url + self.parameters_to_get_str(access_token, parameters))
-            raise HttpStatusException(ERR__attachment_timeout_render)
             start_time = datetime.now()
             while True:
                 passed = False
@@ -118,6 +117,9 @@ class DrivenChrome:
                         filename += ".pdf"
                     break
                 else:
+                    for log in self.driver.get_log('browser'):
+                        print("CHROMEFAILURE: " + log)
+
                     if time_delta_ms(start_time, datetime.now()) > TIMEOUT__attachment_render:
                         raise HttpStatusException(ERR__attachment_timeout_render)
 
@@ -131,8 +133,6 @@ class DrivenChrome:
 
         if self.is_deployed:
             options.add_argument('--no-sandbox')
-            service_log_path = "log/chromedriver.log"
-            service_args = ["--log-path=%s" % service_log_path]
 
         with webdriver.Chrome(options=options, service=Service(service_args=service_args)) as driver:
             self.driver = driver
