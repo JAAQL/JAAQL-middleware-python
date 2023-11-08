@@ -118,7 +118,7 @@ class DrivenChrome:
                     break
                 else:
                     for log in self.driver.get_log('browser'):
-                        print("CHROMEFAILURE: " + log)
+                        print("CHROMEFAILURE: " + (log if isinstance(log, str) else json.dumps(log)))
 
                     if time_delta_ms(start_time, datetime.now()) > TIMEOUT__attachment_render:
                         raise HttpStatusException(ERR__attachment_timeout_render)

@@ -477,7 +477,6 @@ WHERE
     def verify_auth_token(self, auth_token: str, ip_address: str):
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), auth_token, JWT_PURPOSE__oauth)
         if not decoded or (decoded[KEY__ip_address] != ip_address and ip_address not in IPS__local):
-            print("Attempted access with ip address " + ip_address)
             raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
 
         validate_is_most_recent_password(self.jaaql_lookup_connection, decoded[KEY__account_id], decoded[KEY__password],
