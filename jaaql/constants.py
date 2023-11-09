@@ -1,4 +1,5 @@
 import os
+import socket
 
 KEY__username = "username"
 KEY__password = "password"
@@ -117,8 +118,22 @@ PORT__ems = 6061
 PORT__mms = 6062
 PORT__shared_var_service = 6063
 
+
+def get_ipv6_address():
+    s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+    try:
+        # doesn't even have to be reachable
+        s.connect(('2001:db8::', 1))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = '127.0.0.1'
+    finally:
+        s.close()
+    return ip
+
+
 IPS__local = [
-    "127.0.0.1", "localhost", "172.17.0.1", os.environ.get("SERVER_ADDRESS", "thisipcantexist")
+    "127.0.0.1", "localhost", "172.17.0.1", os.environ.get("SERVER_ADDRESS", "thisipcantexist"), get_ipv6_address()
 ]
 
 ENDPOINT__send_email = "/send-email"
@@ -149,5 +164,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.21.22"
+VERSION = "4.21.23"
 
