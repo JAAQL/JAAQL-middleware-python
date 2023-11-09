@@ -118,6 +118,7 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
     if [ "$HTTPS_WWW" = "TRUE" ] ; then
       echo "server {" >> /etc/nginx/sites-available/jaaql
       echo "    listen 80;" >> /etc/nginx/sites-available/jaaql
+      echo "    listen [::]:80;" >> /etc/nginx/sites-available/jaaql
       echo "    server_name $SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
       echo "    return 301 http://www.$SERVER_ADDRESS\$request_uri;" >> /etc/nginx/sites-available/jaaql
       echo "}" >> /etc/nginx/sites-available/jaaql
@@ -125,6 +126,7 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
     else
       echo "server {" >> /etc/nginx/sites-available/jaaql
       echo "    listen 80;" >> /etc/nginx/sites-available/jaaql
+      echo "    listen [::]:80;" >> /etc/nginx/sites-available/jaaql
       echo "    server_name www.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
       echo "    return 301 http://$SERVER_ADDRESS\$request_uri;" >> /etc/nginx/sites-available/jaaql
       echo "}" >> /etc/nginx/sites-available/jaaql
@@ -133,6 +135,7 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   fi
   echo "server {" >> /etc/nginx/sites-available/jaaql
   echo "    listen 80;" >> /etc/nginx/sites-available/jaaql
+  echo "    listen [::]:80;" >> /etc/nginx/sites-available/jaaql
   if [ "$IS_HTTPS" = "TRUE" ] && [ "$HTTPS_WWW" = "TRUE" ] ; then
     echo "    server_name www.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
   else

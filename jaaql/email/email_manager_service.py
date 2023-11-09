@@ -444,7 +444,7 @@ class EmailManagerService:
         send_recipients = email.recipient_names
         whitelist = dispatcher_info[KG__email_dispatcher__whitelist]
 
-        if whitelist is not None and whitelist != "":
+        if whitelist is not None and whitelist != "" and os.environ.get("JAAQL_USE_EMAIL_WHITELIST") == "TRUE":
             send_to = []
             send_recipients = []
             for to, recipient in zip(email.to, email.recipient_names):

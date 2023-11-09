@@ -1,3 +1,5 @@
+import os
+
 KEY__username = "username"
 KEY__password = "password"
 KEY__dbms_user = "dbms_user"
@@ -116,7 +118,7 @@ PORT__mms = 6062
 PORT__shared_var_service = 6063
 
 IPS__local = [
-    "127.0.0.1", "localhost", "172.17.0.1"
+    "127.0.0.1", "localhost", "172.17.0.1", os.environ.get("SERVER_ADDRESS", "thisipcantexist")
 ]
 
 ENDPOINT__send_email = "/send-email"
@@ -147,5 +149,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.21.20"
+VERSION = "4.21.22"
 
