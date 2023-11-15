@@ -388,7 +388,7 @@ class EmailManagerService:
         if conn is None:
             raise Exception("Could not connect to email dispatcher '%s' with address '%s:%d'" % dispatcher_key, host, port)
 
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+        context = ssl.create_default_context()
 
         conn.starttls(context=context)
         conn.login(username, password)
