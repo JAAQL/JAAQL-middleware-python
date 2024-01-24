@@ -116,6 +116,11 @@ class JAAQLModel(BaseJAAQLModel):
 
         return account_id
 
+    def create_account_batch_with_potential_password(self, connection: DBInterface, inputs: list):
+        for cur_input in inputs:
+            self.create_account_with_potential_password(connection, cur_input[KEY__username], cur_input[KEY__attach_as], cur_input[KEY__password],
+                                                        already_exists=True)
+
     def validate_query(self, queries: list, query, allow_list=True):
         if isinstance(query, list) and allow_list:
             for sub_query in query:
@@ -715,7 +720,10 @@ WHERE
                                                     attachments=attachments, attachment_access_token=auth_token,
                                                     attachment_base_url=attachment_base_url)
 
-    def reset_password(self, inputs: dict):
+    def reset_password(self, inputs: dict, is_the_anonymous_user: bool):
+        if is_the_anonymous_user:
+            raise HttpStatusException("Cannot change this user's password")
+
         app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
         if inputs[KEY__reset_password_template] is None:
             inputs[KEY__reset_password_template] = app[KG__application__default_r_et]
@@ -785,8 +793,12 @@ WHERE
             KG__security_event__event_lock: reg_env_ins[KG__security_event__event_lock]
         }
 
-    def sign_up(self, inputs: dict, account_id: str):
+    def sign_up(self, inputs: dict, account_id: str, is_the_anonymous_user: bool):
         app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
+
+        if is_the_anonymous_user and not app[KG__application__allow_public_signup]:
+            raise HttpStatusException("This app doesn't allow public signup")
+
         if inputs[KEY__sign_up_template] is None:
             inputs[KEY__sign_up_template] = app[KG__application__default_s_et]
         if inputs[KEY__already_signed_up_template] is None:

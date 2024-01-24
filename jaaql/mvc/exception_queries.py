@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.exceptions.fxls at 2023-11-02, 21:56:22
+This script was generated from jaaql.exceptions.fxls at 2024-01-16, 14:18:24
 """
 
 from jaaql.utilities.crypt_utils import get_repeatable_salt
@@ -11,8 +11,8 @@ def add_account_password(
     account__id, account_password__hash
 ):
     account_password__uuid = account_password__insert(
-        connection, encryption_key, account__id,
-        account_password__hash,
+        connection, encryption_key, account__id, 
+        account_password__hash, 
         encryption_salts={KG__account_password__hash: get_repeatable_salt(vault_repeatable_salt, account__id)}
     )[KG__account_password__uuid]
 

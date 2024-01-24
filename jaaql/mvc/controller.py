@@ -67,6 +67,10 @@ class JAAQLController(BaseJAAQLController):
         def accounts(connection: DBInterface, http_inputs: dict):
             self.model.create_account_with_potential_password(connection, **http_inputs)
 
+        @self.publish_route('/accounts/batch', DOCUMENTATION__create_account_batch)
+        def accounts(connection: DBInterface, http_inputs: dict):
+            self.model.create_account_batch_with_potential_password(connection, **http_inputs)
+
         @self.publish_route('/prepare', DOCUMENTATION__prepare)
         def prepare(http_inputs: dict, account_id: str):
             return self.model.prepare_queries(http_inputs, account_id)
@@ -88,16 +92,16 @@ class JAAQLController(BaseJAAQLController):
             self.model.attach_dispatcher_credentials(connection, http_inputs)
 
         @self.publish_route('/sign-up', DOCUMENTATION__sign_up)
-        def sign_up(http_inputs: dict, account_id: str):
-            return self.model.sign_up(http_inputs, account_id)
+        def sign_up(http_inputs: dict, account_id: str, is_the_anonymous_user: bool):
+            return self.model.sign_up(http_inputs, account_id, is_the_anonymous_user)
 
         @self.publish_route('/email', DOCUMENTATION__emails)
         def send_email(is_the_anonymous_user: bool, account_id: str, http_inputs: dict, username: str, auth_token: str):
             return self.model.send_email(is_the_anonymous_user, account_id, http_inputs, username, auth_token)
 
         @self.publish_route('/account/reset-password', DOCUMENTATION__reset_password)
-        def reset_password(http_inputs: dict):
-            return self.model.reset_password(http_inputs)
+        def reset_password(http_inputs: dict, is_the_anonymous_user: bool):
+            return self.model.reset_password(http_inputs, is_the_anonymous_user)
 
         @self.publish_route('/security-event', DOCUMENTATION__security_event)
         def security_event(http_inputs: dict):

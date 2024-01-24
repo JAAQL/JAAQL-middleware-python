@@ -33,6 +33,27 @@ DOCUMENTATION__create_account = SwaggerDocumentation(
     )
 )
 
+DOCUMENTATION__create_account_batch = SwaggerDocumentation(
+    tags="Admin",
+    methods=SwaggerMethod(
+        method=REST__POST,
+        name="Create account",
+        description="Will create a batch of accounts, if you have privileges to do so",
+        body=SwaggerList(
+            ARG_RES__username,
+            set_nullable(ARG_RES__password, "Whether the user is given a password"),
+            SwaggerArgumentResponse(
+                name=KEY__attach_as,
+                description="Whether the user will attach as a role",
+                arg_type=SwaggerSimpleList(str, "The user to attach as"),
+                required=False,
+                condition="Defaults to false",
+                example="my-role"
+            )
+        )
+    )
+)
+
 DOCUMENTATION__password = SwaggerDocumentation(
     tags="Account",
     methods=SwaggerMethod(
