@@ -643,22 +643,23 @@ WHERE
 
         self.mark_security_event_unlocked(sec_evt)
 
-        if template[KG__email_template__type] == EMAIL_TYPE__signup:
-            data_relation = template[KG__email_template__data_validation_view]
-            dbms_user_column_name = template[KG__email_template__dbms_user_column_name]
-            submit_data = {
-                KEY__schema: template[KG__email_template__validation_schema],
-                KEY__application: template[KEY__application],
-                KEY_parameters: {
-                    "signed_up_at": datetime.now(),
-                    dbms_user_column_name: sec_evt[KG__security_event__account]
-                },
-                KEY_query: f'UPDATE {data_relation} SET signed_up_at = :signed_up_at WHERE {dbms_user_column_name} = :{dbms_user_column_name} AND signed_up_at is null'
-                # Ignore pycharm PEP issue
-            }
-            # We now get the data that can be shown in the email
-            submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data,
-                   self.jaaql_lookup_connection.role, None, self.cached_canned_query_service)
+        # TODO maybe someday we'll add this back in
+        # if template[KG__email_template__type] == EMAIL_TYPE__signup:
+        #     data_relation = template[KG__email_template__data_validation_view]
+        #     dbms_user_column_name = template[KG__email_template__dbms_user_column_name]
+        #     submit_data = {
+        #         KEY__schema: template[KG__email_template__validation_schema],
+        #         KEY__application: template[KEY__application],
+        #         KEY_parameters: {
+        #             "signed_up_at": datetime.now(),
+        #             dbms_user_column_name: sec_evt[KG__security_event__account]
+        #         },
+        #         KEY_query: f'UPDATE {data_relation} SET signed_up_at = :signed_up_at WHERE {dbms_user_column_name} = :{dbms_user_column_name} AND signed_up_at is null'
+        #         # Ignore pycharm PEP issue
+        #     }
+        #     # We now get the data that can be shown in the email
+        #     submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data,
+        #            self.jaaql_lookup_connection.role, None, self.cached_canned_query_service)
 
         return {
             KEY__parameters: parameters,
@@ -922,9 +923,14 @@ WHERE
                 raise HttpStatusException("Unsafe data relation specified for sign up")
             submit_data[KEY_query] = f'SELECT * FROM {data_relation} WHERE "{dbms_user_column_name}" = :{dbms_user_column_name}{where_clause}'  # Ignore pycharm PEP issue
             # We now get the data that can be shown in the email
-            email_replacement_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data,
-                                            self.jaaql_lookup_connection.role, None, self.cached_canned_query_service, as_objects=True,
-                                            singleton=True)
+            try:
+                email_replacement_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data,
+                                                self.jaaql_lookup_connection.role, None, self.cached_canned_query_service, as_objects=True,
+                                                singleton=True)
+            except HttpSingletonStatusException:
+                del submit_data[KEY__parameters][dbms_user_column_name]
+                raise HttpSingletonStatusException(f'Unable to locate email data. Please check that the data returned from your input query (do _not_ include {
+                    dbms_user_column_name}) matches an entry in {data_relation}: ' + json.dumps(submit_data, indent=4))
 
             template = already_signed_up_template if account_existed else sign_up_template
             unlock_code = self.gen_security_event_unlock_code(CODE__letters, CODE__invite_length)
