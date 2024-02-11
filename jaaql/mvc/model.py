@@ -334,8 +334,8 @@ WHERE
         if self.is_container:
             if not self.vault.get_obj(VAULT_KEY__allow_jaaql_uninstall):
                 raise HttpStatusException("JAAQL not permitted to uninstall itself")
-            subprocess.call("./pg_reboot.sh", cwd="/")
             DBPGInterface.close_all_pools()
+            subprocess.call("./pg_reboot.sh", cwd="/")
         else:
             subprocess.call("docker kill jaaql_pg")
             subprocess.call("docker rm jaaql_pg")
