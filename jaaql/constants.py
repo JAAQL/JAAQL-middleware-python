@@ -3,7 +3,6 @@ import socket
 
 KEY__username = "username"
 KEY__password = "password"
-KEY__dbms_user = "dbms_user"
 KEY__remember_me = "remember_me"
 KEY__attach_as = "attach_as"
 KEY__ip_address = "ip_address"
@@ -38,6 +37,7 @@ KEY__query = "query"
 KEY__security_key = "security_key"
 KEY__id = "id"
 KEY__oauth_token = "oauth_token"
+KEY__accounts = "accounts"
 
 REGEX__dmbs_object_name = r'^[0-9a-zA-Z_]{1,32}$'
 
@@ -164,5 +164,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.21.24"
+VERSION = "4.21.25"
 

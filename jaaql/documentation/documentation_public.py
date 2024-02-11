@@ -37,18 +37,22 @@ DOCUMENTATION__create_account_batch = SwaggerDocumentation(
     tags="Admin",
     methods=SwaggerMethod(
         method=REST__POST,
-        name="Create account",
+        name="Create account batch",
         description="Will create a batch of accounts, if you have privileges to do so",
-        body=SwaggerList(
-            ARG_RES__username,
-            set_nullable(ARG_RES__password, "Whether the user is given a password"),
-            SwaggerArgumentResponse(
-                name=KEY__attach_as,
-                description="Whether the user will attach as a role",
-                arg_type=SwaggerSimpleList(str, "The user to attach as"),
-                required=False,
-                condition="Defaults to false",
-                example="my-role"
+        body=SwaggerArgumentResponse(
+            name=KEY__accounts,
+            description="A list of the accounts",
+            arg_type=SwaggerList(
+                ARG_RES__username,
+                set_nullable(ARG_RES__password, "Whether the user is given a password"),
+                SwaggerArgumentResponse(
+                    name=KEY__attach_as,
+                    description="Whether the user will attach as a role",
+                    arg_type=str,
+                    required=False,
+                    condition="Defaults to false",
+                    example="my-role"
+                )
             )
         )
     )
@@ -185,15 +189,6 @@ DOCUMENTATION__emails = SwaggerDocumentation(
             ARG_RES__parameters
         ]
     )
-)
-
-ARG_RES__dbms_user = SwaggerArgumentResponse(
-    name=KEY__dbms_user,
-    description="The id of the dmbs user",
-    arg_type=str,
-    lower=True,
-    strip=True,
-    example=[str(uuid.uuid4()), str(uuid.uuid4())]
 )
 
 DOCUMENTATION__sign_up = SwaggerDocumentation(

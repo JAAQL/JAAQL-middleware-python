@@ -144,7 +144,7 @@ TYPE__exceptions = Optional[Union[List[SwaggerResponseException], SwaggerRespons
 class SwaggerSimpleList:
 
     def __init__(self, arg_type: type, description: str, example: Optional[TYPE__example] = None,
-                 required: bool = False, condition: str = None):
+                 required: bool = True, condition: str = None):
         self.arg_type = arg_type
         self.description = description
         self.example = example

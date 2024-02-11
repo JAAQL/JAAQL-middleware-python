@@ -93,8 +93,6 @@ SIGNUP__started = 1
 SIGNUP__already_registered = 2
 SIGNUP__completed = 3
 
-SPECIAL_COLUMN_DBMS_USER = "dbms_user"
-
 
 class JAAQLModel(BaseJAAQLModel):
     VERIFICATION_QUEUE = None
@@ -106,20 +104,23 @@ class JAAQLModel(BaseJAAQLModel):
         raise HttpStatusException("Not yet implemented", response_code=HTTPStatus.NOT_IMPLEMENTED)
 
     def create_account_with_potential_password(self, connection: DBInterface, username: str, attach_as: str = None, password: str = None,
-                                               already_exists: bool = False, is_the_anonymous_user: bool = False):
+                                               already_exists: bool = False, is_the_anonymous_user: bool = False, allow_already_exists: bool = False):
         account_id = create_account(connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
                                     username, attach_as, already_exists,
-                                    is_the_anonymous_user)
+                                    is_the_anonymous_user, allow_already_exists)
 
-        if password:
+        if password and account_id != "account_already_existed":
             self.add_account_password(account_id, password)
+
+        if account_id == "account_already_existed":
+            account_id = attach_as
 
         return account_id
 
-    def create_account_batch_with_potential_password(self, connection: DBInterface, inputs: list):
-        for cur_input in inputs:
+    def create_account_batch_with_potential_password(self, connection: DBInterface, accounts: list):
+        for cur_input in accounts:
             self.create_account_with_potential_password(connection, cur_input[KEY__username], cur_input[KEY__attach_as], cur_input[KEY__password],
-                                                        already_exists=True)
+                                                        allow_already_exists=True)
 
     def validate_query(self, queries: list, query, allow_list=True):
         if isinstance(query, list) and allow_list:
@@ -333,15 +334,15 @@ WHERE
         if self.is_container:
             if not self.vault.get_obj(VAULT_KEY__allow_jaaql_uninstall):
                 raise HttpStatusException("JAAQL not permitted to uninstall itself")
-
+            DBPGInterface.close_all_pools()
             subprocess.call("./pg_reboot.sh", cwd="/")
         else:
             subprocess.call("docker kill jaaql_pg")
             subprocess.call("docker rm jaaql_pg")
             subprocess.Popen("docker run --name jaaql_pg -p 5434:5432 jaaql/jaaql_pg", start_new_session=True, creationflags=0x00000008)
             time.sleep(7.5)
+            DBPGInterface.close_all_pools()
 
-        DBPGInterface.close_all_pools()
         self.jaaql_lookup_connection = None
         self.install_key = str(uuid.uuid4())
         self.install(
@@ -644,14 +645,16 @@ WHERE
 
         if template[KG__email_template__type] == EMAIL_TYPE__signup:
             data_relation = template[KG__email_template__data_validation_view]
+            dbms_user_column_name = template[KG__email_template__dbms_user_column_name]
             submit_data = {
                 KEY__schema: template[KG__email_template__validation_schema],
                 KEY__application: template[KEY__application],
                 KEY_parameters: {
                     "signed_up_at": datetime.now(),
-                    "dbms_user": sec_evt[KG__security_event__account]
+                    dbms_user_column_name: sec_evt[KG__security_event__account]
                 },
-                KEY_query: f'UPDATE {data_relation} SET signed_up_at = :signed_up_at WHERE dbms_user = :dbms_user AND signed_up_at is null'  # Ignore pycharm PEP issue
+                KEY_query: f'UPDATE {data_relation} SET signed_up_at = :signed_up_at WHERE {dbms_user_column_name} = :{dbms_user_column_name} AND signed_up_at is null'
+                # Ignore pycharm PEP issue
             }
             # We now get the data that can be shown in the email
             submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data,
@@ -796,9 +799,6 @@ WHERE
     def sign_up(self, inputs: dict, account_id: str, is_the_anonymous_user: bool):
         app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
 
-        if is_the_anonymous_user and not app[KG__application__allow_public_signup]:
-            raise HttpStatusException("This app doesn't allow public signup")
-
         if inputs[KEY__sign_up_template] is None:
             inputs[KEY__sign_up_template] = app[KG__application__default_s_et]
         if inputs[KEY__already_signed_up_template] is None:
@@ -815,10 +815,16 @@ WHERE
         if sign_up_template[KG__email_template__type] != EMAIL_TYPE__signup:
             raise HttpStatusException(ERR__template_not_signup)
 
+        dbms_user_column_name = sign_up_template[KG__email_template__dbms_user_column_name]
+
         already_signed_up_template = email_template__select(self.jaaql_lookup_connection, inputs[KG__security_event__application],
                                                             inputs[KEY__already_signed_up_template])
         if already_signed_up_template[KG__email_template__type] != EMAIL_TYPE__already_signed_up:
             raise HttpStatusException(ERR__template_not_already)
+
+        if is_the_anonymous_user and (not already_signed_up_template[KG__email_template__can_be_sent_anonymously] or
+                                      not sign_up_template[KG__email_template__can_be_sent_anonymously]):
+            raise HttpStatusException("Cannot sign up publicly using this route")
 
         conn = None
         account_db_interface = None
@@ -837,17 +843,16 @@ WHERE
             ret = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, account_id, None,
                          self.cached_canned_query_service, as_objects=False, singleton=True, keep_alive_conn=True, conn=conn, interface=account_db_interface)
             ret = objectify(ret[list(ret.keys())[-1]], singleton=True)
-
             # This is the permissions check. It is an update that returns something that is ignored
             # An exception will be triggered here if the user does not have permissions
             where_clause = " AND ".join(['"' + key + '" = :' + key for key in ret.keys() if re.match(REGEX__dmbs_object_name, key) is not None])
             if len(where_clause) != 0:
                 where_clause = " AND " + where_clause
             sign_up_table = sign_up_template[KG__email_template__data_validation_table]
-            upt_query = f'UPDATE "{sign_up_table}" SET dbms_user = :dbms_user WHERE dbms_user is null{where_clause}'  # Ignore pycharm pep issue
+            upt_query = f'UPDATE "{sign_up_table}" SET "{dbms_user_column_name}" = :{dbms_user_column_name} WHERE {dbms_user_column_name} is null{where_clause}'  # Ignore pycharm pep issue
             submit_data[KEY_query] = upt_query
             submit_data[KEY_parameters] = ret
-            submit_data[KEY_parameters][SPECIAL_COLUMN_DBMS_USER] = None
+            submit_data[KEY_parameters][dbms_user_column_name] = None
             submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, account_id,
                    None, self.cached_canned_query_service, keep_alive_conn=True, conn=conn, interface=account_db_interface)
 
@@ -860,7 +865,7 @@ WHERE
                     KEY__application: inputs[KG__security_event__application],
                     KEY__schema: sign_up_template[KG__email_template__validation_schema],
                     KEY_parameters: inputs[KEY__parameters],
-                    KEY_query: f'SELECT dbms_user FROM {data_relation} WHERE {where_clause[5:]}'  # Ignore pycharm PEP issue
+                    KEY_query: f'SELECT {dbms_user_column_name} FROM {data_relation} WHERE {where_clause[5:]}'  # Ignore pycharm PEP issue
                 }
 
                 try:
@@ -868,7 +873,7 @@ WHERE
                                        self.jaaql_lookup_connection, get_user_data,
                                        self.jaaql_lookup_connection.role, None,
                                        self.cached_canned_query_service, as_objects=True,
-                                       singleton=True)["dbms_user"]
+                                       singleton=True)[dbms_user_column_name]
 
                     account = account__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), dbms_user)
                     inputs[KEY__username] = account[KG__account__username]
@@ -891,7 +896,7 @@ WHERE
 
             # We set the dbms user in the application. This can potentially cause an index clash due to a unique index on the dbms_user column
             # This is desirable in many situations but will allow username enumeration
-            submit_data[KEY__parameters][SPECIAL_COLUMN_DBMS_USER] = new_account_id
+            submit_data[KEY__parameters][dbms_user_column_name] = new_account_id
             submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, account_id,
                    None, self.cached_canned_query_service, keep_alive_conn=True, conn=conn, interface=account_db_interface)
 
@@ -915,7 +920,7 @@ WHERE
             # We will change the model in the future when time allows that we have a single sign up and reset template with alternatives attached
             if re.match(REGEX__dmbs_object_name, data_relation) is None:
                 raise HttpStatusException("Unsafe data relation specified for sign up")
-            submit_data[KEY_query] = f'SELECT * FROM {data_relation} WHERE dbms_user = :dbms_user{where_clause}'  # Ignore pycharm PEP issue
+            submit_data[KEY_query] = f'SELECT * FROM {data_relation} WHERE "{dbms_user_column_name}" = :{dbms_user_column_name}{where_clause}'  # Ignore pycharm PEP issue
             # We now get the data that can be shown in the email
             email_replacement_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data,
                                             self.jaaql_lookup_connection.role, None, self.cached_canned_query_service, as_objects=True,

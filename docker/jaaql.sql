@@ -1,6 +1,6 @@
-create extension dblink;
-create extension jaaql;
-create extension plpgsql_check;
+create extension if not exists dblink;
+create extension if not exists jaaql;
+create extension if not exists plpgsql_check;
 
 DO
 $do$

@@ -3,6 +3,32 @@
 */
 -- Install script
 
+create type _error_type as (
+    table_name character varying(63),
+    index integer,
+    message character varying(256),
+    column_name character varying(63)
+);
+CREATE DOMAIN _error_record AS _error_type
+    CHECK ((VALUE).table_name is not null AND
+           (VALUE).message is not null);
+
+create type _status_type as (
+    result integer,
+    errors _error_record[]
+);
+CREATE DOMAIN _status_record AS _status_type
+    CHECK ((VALUE).result is not null);
+
+create type _error_result as
+(
+    result integer,
+    table_name text,
+    index integer,
+    message text,
+    column_name text
+);
+
 --(0) Check table and column names
 
 
@@ -20,14 +46,12 @@ create table application (
     default_u_et object_name,
     unlock_key_validity_period validity_period not null default 1209600,
     unlock_code_validity_period short_validity_period not null default 900,
-    allow_public_signup bool_booleanhitthisbranch not null,
-    is_live bool_booleanhitthisbranch not null default false,
+    is_live bool not null default false,
     primary key (name),
     check (unlock_key_validity_period between 15 and 9999999),
     check (unlock_code_validity_period between 15 and 86400) );
     create function "application.insert__internal" (
         is_live bool,
-        allow_public_signup bool,
         unlock_code_validity_period integer,
         unlock_key_validity_period integer,
         base_url character varying(256),
@@ -74,13 +98,6 @@ create table application (
                         'unlock_code_validity_period'
                     )::_error_record;
             end if;
-            if "application.insert__internal".allow_public_signup is null then
-                _status.errors = _status.errors ||
-                    ROW('application', _index,
-                        'Er moet een waarde ingevuld worden voor Allow Public Signup',
-                        'allow_public_signup'
-                    )::_error_record;
-            end if;
             if "application.insert__internal".is_live is null then
                 _status.errors = _status.errors ||
                     ROW('application', _index,
@@ -118,7 +135,6 @@ create table application (
                     default_u_et,
                     unlock_key_validity_period,
                     unlock_code_validity_period,
-                    allow_public_signup,
                     is_live
                 ) VALUES (
                     "application.insert__internal"."name",
@@ -131,7 +147,6 @@ create table application (
                     "application.insert__internal"."default_u_et",
                     "application.insert__internal"."unlock_key_validity_period",
                     "application.insert__internal"."unlock_code_validity_period",
-                    "application.insert__internal"."allow_public_signup",
                     "application.insert__internal"."is_live" );
                 _status.result = 1;
             end if;
@@ -140,7 +155,6 @@ create table application (
     $$ language plpgsql security definer;
     select * from plpgsql_check_function(
         '"application.insert__internal"('
-            'bool,'
             'bool,'
             'integer,'
             'integer,'
@@ -158,7 +172,6 @@ create table application (
 
     create function "application.insert" (
         is_live bool,
-        allow_public_signup bool,
         unlock_code_validity_period integer,
         unlock_key_validity_period integer,
         base_url character varying(256),
@@ -184,7 +197,6 @@ create table application (
                 default_u_et => "application.insert".default_u_et,
                 unlock_key_validity_period => "application.insert".unlock_key_validity_period,
                 unlock_code_validity_period => "application.insert".unlock_code_validity_period,
-                allow_public_signup => "application.insert".allow_public_signup,
                 is_live => "application.insert".is_live);
 
             if cardinality(_status.errors) <> 0 then
@@ -217,7 +229,6 @@ create table application (
         default_u_et character varying(63) default null,
         unlock_key_validity_period integer default null,
         unlock_code_validity_period integer default null,
-        allow_public_signup bool default null,
         is_live bool default null,
         _index integer default null,
         _check_only boolean default false) returns _status_record as
@@ -258,7 +269,6 @@ create table application (
                 default_u_et = coalesce("application.update__internal".default_u_et, A.default_u_et),
                 unlock_key_validity_period = coalesce("application.update__internal".unlock_key_validity_period, A.unlock_key_validity_period),
                 unlock_code_validity_period = coalesce("application.update__internal".unlock_code_validity_period, A.unlock_code_validity_period),
-                allow_public_signup = coalesce("application.update__internal".allow_public_signup, A.allow_public_signup),
                 is_live = coalesce("application.update__internal".is_live, A.is_live)
             WHERE 
                 A.name = "application.update__internal".name;
@@ -279,7 +289,6 @@ create table application (
             'integer,'
             'integer,'
             'bool,'
-            'bool,'
             'integer,'
             'boolean)'
     );
@@ -295,7 +304,6 @@ create table application (
         default_u_et character varying(63) default null,
         unlock_key_validity_period integer default null,
         unlock_code_validity_period integer default null,
-        allow_public_signup bool default null,
         is_live bool default null) returns SETOF _error_result as
     $$
         DECLARE
@@ -312,7 +320,6 @@ create table application (
                 default_u_et => "application.update".default_u_et,
                 unlock_key_validity_period => "application.update".unlock_key_validity_period,
                 unlock_code_validity_period => "application.update".unlock_code_validity_period,
-                allow_public_signup => "application.update".allow_public_signup,
                 is_live => "application.update".is_live);
 
             return QUERY
@@ -336,7 +343,6 @@ create table application (
         default_u_et character varying(63) default null,
         unlock_key_validity_period integer default null,
         unlock_code_validity_period integer default null,
-        allow_public_signup bool default null,
         is_live bool default null,
         _index integer default null,
         _check_only boolean default false) returns _status_record as
@@ -361,7 +367,6 @@ create table application (
                     default_u_et => "application.persist__internal".default_u_et,
                     unlock_key_validity_period => CASE WHEN "application.persist__internal".unlock_key_validity_period = '' THEN null ELSE "application.persist__internal".unlock_key_validity_period END,
                     unlock_code_validity_period => CASE WHEN "application.persist__internal".unlock_code_validity_period = '' THEN null ELSE "application.persist__internal".unlock_code_validity_period END,
-                    allow_public_signup => CASE WHEN "application.persist__internal".allow_public_signup = '' THEN null ELSE "application.persist__internal".allow_public_signup END,
                     is_live => CASE WHEN "application.persist__internal".is_live = '' THEN null ELSE "application.persist__internal".is_live END,
                     _index => "application.persist__internal"._index,
                     _check_only => cardinality(_status.errors) <> 0 or "application.persist__internal"._check_only);
@@ -377,7 +382,6 @@ create table application (
                     default_u_et => "application.persist__internal".default_u_et,
                     unlock_key_validity_period => CASE WHEN "application.persist__internal".unlock_key_validity_period = '' THEN null ELSE "application.persist__internal".unlock_key_validity_period END,
                     unlock_code_validity_period => CASE WHEN "application.persist__internal".unlock_code_validity_period = '' THEN null ELSE "application.persist__internal".unlock_code_validity_period END,
-                    allow_public_signup => CASE WHEN "application.persist__internal".allow_public_signup = '' THEN null ELSE "application.persist__internal".allow_public_signup END,
                     is_live => CASE WHEN "application.persist__internal".is_live = '' THEN null ELSE "application.persist__internal".is_live END,
                     _index => "application.persist__internal"._index,
                     _check_only => cardinality(_status.errors) <> 0 or "application.persist__internal"._check_only);
@@ -407,7 +411,6 @@ create table application (
             'integer,'
             'integer,'
             'bool,'
-            'bool,'
             'integer,'
             'boolean)'
     );
@@ -423,7 +426,6 @@ create table application (
         default_u_et character varying(63) default null,
         unlock_key_validity_period integer default null,
         unlock_code_validity_period integer default null,
-        allow_public_signup bool default null,
         is_live bool default null) returns SETOF _error_result as
     $$
         DECLARE
@@ -440,7 +442,6 @@ create table application (
                 default_u_et => "application.persist".default_u_et,
                 unlock_key_validity_period => "application.persist".unlock_key_validity_period,
                 unlock_code_validity_period => "application.persist".unlock_code_validity_period,
-                allow_public_signup => "application.persist".allow_public_signup,
                 is_live => "application.persist".is_live);
 
             return QUERY
@@ -852,7 +853,7 @@ create table email_dispatcher (
     port internet_port,
     username email_server_username,
     password encrypted__email_server_password,
-    whitelist text_texthitthisbranch,
+    whitelist text,
     primary key (application, name),
     check (port between 1 and 65536) );
     create function "email_dispatcher.insert__internal" (
@@ -1297,10 +1298,11 @@ create table email_template (
     type email_template_type not null,
     content_url safe_path not null,
     validation_schema object_name,
+    dbms_user_column_name object_name,
     data_validation_table object_name,
     data_validation_view object_name,
     dispatcher_domain_recipient email_account_username,
-    can_be_sent_anonymously bool_booleanhitthisbranch,
+    can_be_sent_anonymously bool,
     primary key (application, name) );
     create function "email_template.insert__internal" (
         content_url character varying(255),
@@ -1309,6 +1311,7 @@ create table email_template (
         dispatcher character varying(63),
         application character varying(63),
         validation_schema character varying(63) default null,
+        dbms_user_column_name character varying(63) default null,
         data_validation_table character varying(63) default null,
         data_validation_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
@@ -1385,6 +1388,7 @@ create table email_template (
                     type,
                     content_url,
                     validation_schema,
+                    dbms_user_column_name,
                     data_validation_table,
                     data_validation_view,
                     dispatcher_domain_recipient,
@@ -1396,6 +1400,7 @@ create table email_template (
                     "email_template.insert__internal"."type",
                     "email_template.insert__internal"."content_url",
                     "email_template.insert__internal"."validation_schema",
+                    "email_template.insert__internal"."dbms_user_column_name",
                     "email_template.insert__internal"."data_validation_table",
                     "email_template.insert__internal"."data_validation_view",
                     "email_template.insert__internal"."dispatcher_domain_recipient",
@@ -1415,6 +1420,7 @@ create table email_template (
             'character varying(63),'
             'character varying(63),'
             'character varying(63),'
+            'character varying(63),'
             'character varying(64),'
             'bool,'
             'integer,'
@@ -1428,6 +1434,7 @@ create table email_template (
         dispatcher character varying(63),
         application character varying(63),
         validation_schema character varying(63) default null,
+        dbms_user_column_name character varying(63) default null,
         data_validation_table character varying(63) default null,
         data_validation_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
@@ -1443,6 +1450,7 @@ create table email_template (
                 type => "email_template.insert".type,
                 content_url => "email_template.insert".content_url,
                 validation_schema => "email_template.insert".validation_schema,
+                dbms_user_column_name => "email_template.insert".dbms_user_column_name,
                 data_validation_table => "email_template.insert".data_validation_table,
                 data_validation_view => "email_template.insert".data_validation_view,
                 dispatcher_domain_recipient => "email_template.insert".dispatcher_domain_recipient,
@@ -1474,6 +1482,7 @@ create table email_template (
         type character varying(1) default null,
         content_url character varying(255) default null,
         validation_schema character varying(63) default null,
+        dbms_user_column_name character varying(63) default null,
         data_validation_table character varying(63) default null,
         data_validation_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
@@ -1513,6 +1522,7 @@ create table email_template (
                 type = coalesce("email_template.update__internal".type, E.type),
                 content_url = coalesce("email_template.update__internal".content_url, E.content_url),
                 validation_schema = coalesce("email_template.update__internal".validation_schema, E.validation_schema),
+                dbms_user_column_name = coalesce("email_template.update__internal".dbms_user_column_name, E.dbms_user_column_name),
                 data_validation_table = coalesce("email_template.update__internal".data_validation_table, E.data_validation_table),
                 data_validation_view = coalesce("email_template.update__internal".data_validation_view, E.data_validation_view),
                 dispatcher_domain_recipient = coalesce("email_template.update__internal".dispatcher_domain_recipient, E.dispatcher_domain_recipient),
@@ -1534,6 +1544,7 @@ create table email_template (
             'character varying(63),'
             'character varying(63),'
             'character varying(63),'
+            'character varying(63),'
             'character varying(64),'
             'bool,'
             'integer,'
@@ -1547,6 +1558,7 @@ create table email_template (
         type character varying(1) default null,
         content_url character varying(255) default null,
         validation_schema character varying(63) default null,
+        dbms_user_column_name character varying(63) default null,
         data_validation_table character varying(63) default null,
         data_validation_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
@@ -1562,6 +1574,7 @@ create table email_template (
                 type => "email_template.update".type,
                 content_url => "email_template.update".content_url,
                 validation_schema => "email_template.update".validation_schema,
+                dbms_user_column_name => "email_template.update".dbms_user_column_name,
                 data_validation_table => "email_template.update".data_validation_table,
                 data_validation_view => "email_template.update".data_validation_view,
                 dispatcher_domain_recipient => "email_template.update".dispatcher_domain_recipient,
@@ -1584,6 +1597,7 @@ create table email_template (
         type character varying(1) default null,
         content_url character varying(255) default null,
         validation_schema character varying(63) default null,
+        dbms_user_column_name character varying(63) default null,
         data_validation_table character varying(63) default null,
         data_validation_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
@@ -1608,6 +1622,7 @@ create table email_template (
                     type => "email_template.persist__internal".type,
                     content_url => "email_template.persist__internal".content_url,
                     validation_schema => "email_template.persist__internal".validation_schema,
+                    dbms_user_column_name => "email_template.persist__internal".dbms_user_column_name,
                     data_validation_table => "email_template.persist__internal".data_validation_table,
                     data_validation_view => "email_template.persist__internal".data_validation_view,
                     dispatcher_domain_recipient => "email_template.persist__internal".dispatcher_domain_recipient,
@@ -1622,6 +1637,7 @@ create table email_template (
                     type => "email_template.persist__internal".type,
                     content_url => "email_template.persist__internal".content_url,
                     validation_schema => "email_template.persist__internal".validation_schema,
+                    dbms_user_column_name => "email_template.persist__internal".dbms_user_column_name,
                     data_validation_table => "email_template.persist__internal".data_validation_table,
                     data_validation_view => "email_template.persist__internal".data_validation_view,
                     dispatcher_domain_recipient => "email_template.persist__internal".dispatcher_domain_recipient,
@@ -1651,6 +1667,7 @@ create table email_template (
             'character varying(63),'
             'character varying(63),'
             'character varying(63),'
+            'character varying(63),'
             'character varying(64),'
             'bool,'
             'integer,'
@@ -1664,6 +1681,7 @@ create table email_template (
         type character varying(1) default null,
         content_url character varying(255) default null,
         validation_schema character varying(63) default null,
+        dbms_user_column_name character varying(63) default null,
         data_validation_table character varying(63) default null,
         data_validation_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
@@ -1679,6 +1697,7 @@ create table email_template (
                 type => "email_template.persist".type,
                 content_url => "email_template.persist".content_url,
                 validation_schema => "email_template.persist".validation_schema,
+                dbms_user_column_name => "email_template.persist".dbms_user_column_name,
                 data_validation_table => "email_template.persist".data_validation_table,
                 data_validation_view => "email_template.persist".data_validation_view,
                 dispatcher_domain_recipient => "email_template.persist".dispatcher_domain_recipient,
@@ -2111,11 +2130,11 @@ create table document_template (
 create table document_request (
     application internet_name not null,
     template object_name not null,
-    uuid uuid_uuidhitthisbranch not null,
-    request_timestamp timestamptz_datetimehitthisbranch not null default current_timestamp,
+    uuid uuid not null,
+    request_timestamp timestamptz not null default current_timestamp,
     encrypted_access_token encrypted__access_token not null,
-    encrypted_parameters text_texthitthisbranch,
-    render_timestamp timestamptz_datetimehitthisbranch,
+    encrypted_parameters text,
+    render_timestamp timestamptz,
     primary key (uuid) );
     create function "document_request.insert__internal" (
         encrypted_access_token character varying(64),
@@ -2522,8 +2541,8 @@ create table document_request (
 create table account (
     id postgres_role not null,
     username encrypted__jaaql_username not null,
-    deletion_timestamp timestamptz_datetimehitthisbranch,
-    most_recent_password uuid_uuidhitthisbranch,
+    deletion_timestamp timestamptz,
+    most_recent_password uuid,
     primary key (id),
     unique (username) );
     create function "account.insert__internal" (
@@ -2855,9 +2874,9 @@ create table account (
 -- account_password...
 create table account_password (
     account postgres_role not null,
-    uuid uuid_uuidhitthisbranch not null default gen_random_uuid(),
+    uuid uuid not null default gen_random_uuid(),
     hash encrypted__hash not null,
-    creation_timestamp timestamptz_datetimehitthisbranch not null default current_timestamp,
+    creation_timestamp timestamptz not null default current_timestamp,
     primary key (uuid),
     unique (hash) );
     create function "account_password.insert__internal" (
@@ -3203,10 +3222,10 @@ create table account_password (
 -- validated_ip_address...
 create table validated_ip_address (
     account postgres_role not null,
-    uuid uuid_uuidhitthisbranch not null default gen_random_uuid(),
+    uuid uuid not null default gen_random_uuid(),
     encrypted_salted_ip_address encrypted__salted_ip not null,
-    first_authentication_timestamp timestamptz_datetimehitthisbranch not null default current_timestamp,
-    last_authentication_timestamp timestamptz_datetimehitthisbranch not null,
+    first_authentication_timestamp timestamptz not null default current_timestamp,
+    last_authentication_timestamp timestamptz not null,
     primary key (uuid),
     unique (encrypted_salted_ip_address) );
     create function "validated_ip_address.insert__internal" (
@@ -3576,14 +3595,14 @@ create table validated_ip_address (
 -- security_event...
 create table security_event (
     application internet_name not null,
-    event_lock uuid_uuidhitthisbranch not null default gen_random_uuid(),
-    creation_timestamp timestamptz_datetimehitthisbranch not null default current_timestamp,
+    event_lock uuid not null default gen_random_uuid(),
+    creation_timestamp timestamptz not null default current_timestamp,
     wrong_key_attempt_count current_attempt_count not null default 0,
     email_template object_name not null,
     account postgres_role not null,
-    unlock_key uuid_uuidhitthisbranch not null default gen_random_uuid(),
+    unlock_key uuid not null default gen_random_uuid(),
     unlock_code unlock_code not null,
-    unlock_timestamp timestamptz_datetimehitthisbranch,
+    unlock_timestamp timestamptz,
     primary key (application, event_lock),
     check (wrong_key_attempt_count between 0 and 3) );
     create function "security_event.insert__internal" (

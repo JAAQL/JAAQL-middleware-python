@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.fxli at 2024-01-16, 14:18:24
+This script was generated from jaaql.fxli at 2024-02-11, 00:36:29
 """
 
 from jaaql.db.db_interface import DBInterface
@@ -17,7 +17,6 @@ KG__application__default_r_et = "default_r_et"
 KG__application__default_u_et = "default_u_et"
 KG__application__unlock_key_validity_period = "unlock_key_validity_period"
 KG__application__unlock_code_validity_period = "unlock_code_validity_period"
-KG__application__allow_public_signup = "allow_public_signup"
 KG__application__is_live = "is_live"
 
 # Generated queries for table 'application'
@@ -25,10 +24,10 @@ QG__application_delete = "DELETE FROM application WHERE name = :name"
 QG__application_insert = """
     INSERT INTO application (name, base_url, artifacts_source,
         default_schema, default_s_et, default_a_et,
-        default_r_et, default_u_et, allow_public_signup)
+        default_r_et, default_u_et)
     VALUES (:name, :base_url, :artifacts_source,
         :default_schema, :default_s_et, :default_a_et,
-        :default_r_et, :default_u_et, :allow_public_signup)
+        :default_r_et, :default_u_et)
     RETURNING unlock_key_validity_period, unlock_code_validity_period, is_live
 """
 QG__application_select_all = "SELECT * FROM application"
@@ -46,7 +45,6 @@ QG__application_update = """
         default_u_et = COALESCE(:default_u_et, default_u_et),
         unlock_key_validity_period = COALESCE(:unlock_key_validity_period, unlock_key_validity_period),
         unlock_code_validity_period = COALESCE(:unlock_code_validity_period, unlock_code_validity_period),
-        allow_public_signup = COALESCE(:allow_public_signup, allow_public_signup),
         is_live = COALESCE(:is_live, is_live)
     WHERE
         name = :name
@@ -73,7 +71,7 @@ def application__update(
     base_url=None, artifacts_source=None, default_schema=None,
     default_s_et=None, default_a_et=None, default_r_et=None,
     default_u_et=None, unlock_key_validity_period=None, unlock_code_validity_period=None,
-    allow_public_signup=None, is_live=None
+    is_live=None
 ):
     execute_supplied_statement(
         connection, QG__application_update,
@@ -91,7 +89,6 @@ def application__update(
             KG__application__default_u_et: default_u_et,
             KG__application__unlock_key_validity_period: unlock_key_validity_period,
             KG__application__unlock_code_validity_period: unlock_code_validity_period,
-            KG__application__allow_public_signup: allow_public_signup,
             KG__application__is_live: is_live
         }
     )
@@ -123,7 +120,7 @@ def application__select_all(
 
 def application__insert(
     connection: DBInterface,
-    name, base_url, allow_public_signup,
+    name, base_url,
     artifacts_source=None, default_schema=None, default_s_et=None,
     default_a_et=None, default_r_et=None, default_u_et=None
 ):
@@ -137,8 +134,7 @@ def application__insert(
             KG__application__default_s_et: default_s_et,
             KG__application__default_a_et: default_a_et,
             KG__application__default_r_et: default_r_et,
-            KG__application__default_u_et: default_u_et,
-            KG__application__allow_public_signup: allow_public_signup
+            KG__application__default_u_et: default_u_et
         }, as_objects=True
     )
 
@@ -457,6 +453,7 @@ KG__email_template__name = "name"
 KG__email_template__type = "type"
 KG__email_template__content_url = "content_url"
 KG__email_template__validation_schema = "validation_schema"
+KG__email_template__dbms_user_column_name = "dbms_user_column_name"
 KG__email_template__data_validation_table = "data_validation_table"
 KG__email_template__data_validation_view = "data_validation_view"
 KG__email_template__dispatcher_domain_recipient = "dispatcher_domain_recipient"
@@ -467,12 +464,12 @@ QG__email_template_delete = "DELETE FROM email_template WHERE application = :app
 QG__email_template_insert = """
     INSERT INTO email_template (application, dispatcher, name,
         type, content_url, validation_schema,
-        data_validation_table, data_validation_view, dispatcher_domain_recipient,
-        can_be_sent_anonymously)
+        dbms_user_column_name, data_validation_table, data_validation_view,
+        dispatcher_domain_recipient, can_be_sent_anonymously)
     VALUES (:application, :dispatcher, :name,
         :type, :content_url, :validation_schema,
-        :data_validation_table, :data_validation_view, :dispatcher_domain_recipient,
-        :can_be_sent_anonymously)
+        :dbms_user_column_name, :data_validation_table, :data_validation_view,
+        :dispatcher_domain_recipient, :can_be_sent_anonymously)
 """
 QG__email_template_select_all = "SELECT * FROM email_template"
 QG__email_template_select = "SELECT * FROM email_template WHERE application = :application AND name = :name"
@@ -484,6 +481,7 @@ QG__email_template_update = """
         type = COALESCE(:type, type),
         content_url = COALESCE(:content_url, content_url),
         validation_schema = COALESCE(:validation_schema, validation_schema),
+        dbms_user_column_name = COALESCE(:dbms_user_column_name, dbms_user_column_name),
         data_validation_table = COALESCE(:data_validation_table, data_validation_table),
         data_validation_view = COALESCE(:data_validation_view, data_validation_view),
         dispatcher_domain_recipient = COALESCE(:dispatcher_domain_recipient, dispatcher_domain_recipient),
@@ -512,8 +510,8 @@ def email_template__update(
     connection: DBInterface,
     application, name,
     dispatcher=None, type=None, content_url=None,
-    validation_schema=None, data_validation_table=None, data_validation_view=None,
-    dispatcher_domain_recipient=None, can_be_sent_anonymously=None
+    validation_schema=None, dbms_user_column_name=None, data_validation_table=None,
+    data_validation_view=None, dispatcher_domain_recipient=None, can_be_sent_anonymously=None
 ):
     execute_supplied_statement(
         connection, QG__email_template_update,
@@ -527,6 +525,7 @@ def email_template__update(
             KG__email_template__type: type,
             KG__email_template__content_url: content_url,
             KG__email_template__validation_schema: validation_schema,
+            KG__email_template__dbms_user_column_name: dbms_user_column_name,
             KG__email_template__data_validation_table: data_validation_table,
             KG__email_template__data_validation_view: data_validation_view,
             KG__email_template__dispatcher_domain_recipient: dispatcher_domain_recipient,
@@ -564,8 +563,8 @@ def email_template__insert(
     connection: DBInterface,
     application, dispatcher, name,
     type, content_url,
-    validation_schema=None, data_validation_table=None, data_validation_view=None,
-    dispatcher_domain_recipient=None, can_be_sent_anonymously=None
+    validation_schema=None, dbms_user_column_name=None, data_validation_table=None,
+    data_validation_view=None, dispatcher_domain_recipient=None, can_be_sent_anonymously=None
 ):
     execute_supplied_statement(
         connection, QG__email_template_insert,
@@ -576,6 +575,7 @@ def email_template__insert(
             KG__email_template__type: type,
             KG__email_template__content_url: content_url,
             KG__email_template__validation_schema: validation_schema,
+            KG__email_template__dbms_user_column_name: dbms_user_column_name,
             KG__email_template__data_validation_table: data_validation_table,
             KG__email_template__data_validation_view: data_validation_view,
             KG__email_template__dispatcher_domain_recipient: dispatcher_domain_recipient,

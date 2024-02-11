@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.exceptions.fxls at 2024-01-16, 14:18:24
+This script was generated from jaaql.exceptions.fxls at 2024-02-11, 00:36:29
 """
 
 from jaaql.utilities.crypt_utils import get_repeatable_salt
@@ -83,9 +83,10 @@ def fetch_account_from_username(
     )
 
 
-QUERY__create_account = "SELECT create_account(:username, :attach_as, :already_exists, :is_the_anonymous_user) as account_id"
+QUERY__create_account = "SELECT create_account(:username, :attach_as, :already_exists, :is_the_anonymous_user, :allow_already_exists) as account_id"
 KEY__attach_as = "attach_as"
 KEY__already_exists = "already_exists"
+KEY__allow_already_exists = "allow_already_exists"
 KEY__username = "username"
 KEY__is_the_anonymous_user = "is_the_anonymous_user"
 KEY__account_id = "account_id"
@@ -93,14 +94,16 @@ KEY__account_id = "account_id"
 
 def create_account(
     connection: DBInterface, encryption_key: bytes, vault_repeatable_salt: str,
-    username, attach_as=None, already_exists=False, is_the_anonymous_user=False
+    username, attach_as=None, already_exists=False, is_the_anonymous_user=False,
+    allow_already_exists=False
 ):
     return execute_supplied_statement_singleton(
         connection, QUERY__create_account, {
             KEY__username: username,
             KEY__attach_as: attach_as,
             KEY__already_exists: already_exists,
-            KEY__is_the_anonymous_user: is_the_anonymous_user
+            KEY__is_the_anonymous_user: is_the_anonymous_user,
+            KEY__allow_already_exists: allow_already_exists
         }, encryption_salts={
             KG__account__username: get_repeatable_salt(vault_repeatable_salt)
         }, as_objects=True, encryption_key=encryption_key, encrypt_parameters=[KG__account__username]

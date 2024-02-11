@@ -1,11 +1,18 @@
-create function create_account(username text, attach_as postgres_role = null, already_exists boolean = false, is_the_anonymous_user boolean = false) returns postgres_role as
+create function create_account(username text, attach_as postgres_role = null, already_exists boolean = false, is_the_anonymous_user boolean = false, allow_already_exists boolean = false) returns postgres_role as
 $$
 DECLARE
     account_id postgres_role;
 BEGIN
     if attach_as is not null then
         if not already_exists then
-            EXECUTE 'CREATE ROLE ' || quote_ident(attach_as);
+            BEGIN
+                EXECUTE 'CREATE ROLE ' || quote_ident(attach_as);
+            EXCEPTION WHEN duplicate_object THEN
+                IF NOT allow_already_exists THEN
+                    RAISE;
+                END IF;
+                return 'account_already_existed';
+            END;
         end if;
         INSERT INTO account (id, username) VALUES (attach_as, create_account.username) RETURNING id INTO account_id;
     else
