@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.fxli at 2024-02-13, 10:19:36
+This script was generated from jaaql.fxli at 2024-02-13, 13:29:20
 """
 
 from jaaql.db.db_interface import DBInterface
@@ -453,9 +453,9 @@ KG__email_template__name = "name"
 KG__email_template__type = "type"
 KG__email_template__content_url = "content_url"
 KG__email_template__validation_schema = "validation_schema"
+KG__email_template__base_relation = "base_relation"
 KG__email_template__dbms_user_column_name = "dbms_user_column_name"
-KG__email_template__data_validation_table = "data_validation_table"
-KG__email_template__data_validation_view = "data_validation_view"
+KG__email_template__permissions_and_data_view = "permissions_and_data_view"
 KG__email_template__dispatcher_domain_recipient = "dispatcher_domain_recipient"
 KG__email_template__can_be_sent_anonymously = "can_be_sent_anonymously"
 
@@ -464,11 +464,11 @@ QG__email_template_delete = "DELETE FROM email_template WHERE application = :app
 QG__email_template_insert = """
     INSERT INTO email_template (application, dispatcher, name,
         type, content_url, validation_schema,
-        dbms_user_column_name, data_validation_table, data_validation_view,
+        base_relation, dbms_user_column_name, permissions_and_data_view,
         dispatcher_domain_recipient, can_be_sent_anonymously)
     VALUES (:application, :dispatcher, :name,
         :type, :content_url, :validation_schema,
-        :dbms_user_column_name, :data_validation_table, :data_validation_view,
+        :base_relation, :dbms_user_column_name, :permissions_and_data_view,
         :dispatcher_domain_recipient, :can_be_sent_anonymously)
 """
 QG__email_template_select_all = "SELECT * FROM email_template"
@@ -481,9 +481,9 @@ QG__email_template_update = """
         type = COALESCE(:type, type),
         content_url = COALESCE(:content_url, content_url),
         validation_schema = COALESCE(:validation_schema, validation_schema),
+        base_relation = COALESCE(:base_relation, base_relation),
         dbms_user_column_name = COALESCE(:dbms_user_column_name, dbms_user_column_name),
-        data_validation_table = COALESCE(:data_validation_table, data_validation_table),
-        data_validation_view = COALESCE(:data_validation_view, data_validation_view),
+        permissions_and_data_view = COALESCE(:permissions_and_data_view, permissions_and_data_view),
         dispatcher_domain_recipient = COALESCE(:dispatcher_domain_recipient, dispatcher_domain_recipient),
         can_be_sent_anonymously = COALESCE(:can_be_sent_anonymously, can_be_sent_anonymously)
     WHERE
@@ -510,8 +510,8 @@ def email_template__update(
     connection: DBInterface,
     application, name,
     dispatcher=None, type=None, content_url=None,
-    validation_schema=None, dbms_user_column_name=None, data_validation_table=None,
-    data_validation_view=None, dispatcher_domain_recipient=None, can_be_sent_anonymously=None
+    validation_schema=None, base_relation=None, dbms_user_column_name=None,
+    permissions_and_data_view=None, dispatcher_domain_recipient=None, can_be_sent_anonymously=None
 ):
     execute_supplied_statement(
         connection, QG__email_template_update,
@@ -525,9 +525,9 @@ def email_template__update(
             KG__email_template__type: type,
             KG__email_template__content_url: content_url,
             KG__email_template__validation_schema: validation_schema,
+            KG__email_template__base_relation: base_relation,
             KG__email_template__dbms_user_column_name: dbms_user_column_name,
-            KG__email_template__data_validation_table: data_validation_table,
-            KG__email_template__data_validation_view: data_validation_view,
+            KG__email_template__permissions_and_data_view: permissions_and_data_view,
             KG__email_template__dispatcher_domain_recipient: dispatcher_domain_recipient,
             KG__email_template__can_be_sent_anonymously: can_be_sent_anonymously
         }
@@ -563,8 +563,8 @@ def email_template__insert(
     connection: DBInterface,
     application, dispatcher, name,
     type, content_url,
-    validation_schema=None, dbms_user_column_name=None, data_validation_table=None,
-    data_validation_view=None, dispatcher_domain_recipient=None, can_be_sent_anonymously=None
+    validation_schema=None, base_relation=None, dbms_user_column_name=None,
+    permissions_and_data_view=None, dispatcher_domain_recipient=None, can_be_sent_anonymously=None
 ):
     execute_supplied_statement(
         connection, QG__email_template_insert,
@@ -575,9 +575,9 @@ def email_template__insert(
             KG__email_template__type: type,
             KG__email_template__content_url: content_url,
             KG__email_template__validation_schema: validation_schema,
+            KG__email_template__base_relation: base_relation,
             KG__email_template__dbms_user_column_name: dbms_user_column_name,
-            KG__email_template__data_validation_table: data_validation_table,
-            KG__email_template__data_validation_view: data_validation_view,
+            KG__email_template__permissions_and_data_view: permissions_and_data_view,
             KG__email_template__dispatcher_domain_recipient: dispatcher_domain_recipient,
             KG__email_template__can_be_sent_anonymously: can_be_sent_anonymously
         }
