@@ -4069,15 +4069,62 @@ create table security_event (
 
 
 -- (2) References
-
-
-
-
-
-
-
-
-
-
-
+-- application...
+alter table application add constraint application__default_schema
+    foreign key (name, default_schema)
+        references application_schema (application, name);
+alter table application add constraint application__default_sign_up_email_template
+    foreign key (name, default_s_et)
+        references email_template (application, name);
+alter table application add constraint application__default_already_signed_up_email_template
+    foreign key (name, default_a_et)
+        references email_template (application, name);
+alter table application add constraint application__default_reset_password_email_template
+    foreign key (name, default_r_et)
+        references email_template (application, name);
+alter table application add constraint application__default_unregistered_password_reset_email_template
+    foreign key (name, default_u_et)
+        references email_template (application, name);-- application_schema...
+alter table application_schema add constraint application_schema__application
+    foreign key (application)
+        references application (name);-- email_dispatcher...
+alter table email_dispatcher add constraint email_dispatcher__application
+    foreign key (application)
+        references application (name);-- jaaql...
+alter table _jaaql add constraint jaaql__the_anonymous_user
+    foreign key (the_anonymous_user)
+        references account (id);-- email_template...
+alter table email_template add constraint email_template__dispatcher
+    foreign key (application, dispatcher)
+        references email_dispatcher (application, name);
+alter table email_template add constraint email_template__validation_schema
+    foreign key (application, validation_schema)
+        references application_schema (application, name);-- document_template...
+alter table document_template add constraint document_template__application
+    foreign key (application)
+        references application (name);
+alter table document_template add constraint document_template__email_template
+    foreign key (application, email_template)
+        references email_template (application, name);-- document_request...
+alter table document_request add constraint document_request__template
+    foreign key (application, template)
+        references document_template (application, name);-- account...
+alter table account add constraint account__most_recent_password
+    foreign key (most_recent_password)
+        references account_password (uuid);-- account_password...
+alter table account_password add constraint account_password__account
+    foreign key (account)
+        references account (id);-- validated_ip_address...
+alter table validated_ip_address add constraint validated_ip_address__account
+    foreign key (account)
+        references account (id);-- security_event...
+alter table security_event add constraint security_event__application
+    foreign key (application)
+        references application (name);
+alter table security_event add constraint security_event__email_template
+    foreign key (application, email_template)
+        references email_template (application, name);
+alter table security_event add constraint security_event__account
+    foreign key (account)
+        references account (id);
 
