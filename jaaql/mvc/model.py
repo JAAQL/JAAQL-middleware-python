@@ -724,10 +724,7 @@ WHERE
                                                     attachments=attachments, attachment_access_token=auth_token,
                                                     attachment_base_url=attachment_base_url)
 
-    def reset_password(self, inputs: dict, is_the_anonymous_user: bool):
-        if is_the_anonymous_user:
-            raise HttpStatusException("Cannot change this user's password")
-
+    def reset_password(self, inputs: dict):
         app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
         if inputs[KEY__reset_password_template] is None:
             inputs[KEY__reset_password_template] = app[KG__application__default_r_et]
@@ -751,17 +748,20 @@ WHERE
             raise HttpStatusException(ERR__template_not_unregistered)
 
         account_existed = False
-        try:
-            account_id = self.create_account_with_potential_password(self.jaaql_lookup_connection, inputs[KEY__username])
-        except HttpStatusException as hs:
-            if not hs.message.startswith(SQL__err_duplicate):
-                raise hs  # Unrelated exception, raise it
 
+        try:
             account = fetch_account_from_username(self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
                                                   inputs[KEY__username])
             account_id = account[KG__account__id]
             if account[KG__account__most_recent_password] is not None:
                 account_existed = True
+
+            jaaql_singleton = jaaql__select(self.jaaql_lookup_connection)
+
+            if account == jaaql_singleton[KG__jaaql__the_anonymous_user]:
+                raise HttpStatusException("Cannot change this user's password as this user is the anonymous user")
+        except HttpSingletonStatusException:
+            pass  # account did not exist
 
         count = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
                                                      QUERY__count_security_events_of_type_in_24hr_window,

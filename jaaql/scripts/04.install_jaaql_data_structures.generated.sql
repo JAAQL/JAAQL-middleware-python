@@ -1298,9 +1298,9 @@ create table email_template (
     type email_template_type not null,
     content_url safe_path not null,
     validation_schema object_name,
+    base_relation object_name,
     dbms_user_column_name object_name,
-    data_validation_table object_name,
-    data_validation_view object_name,
+    permissions_and_data_view object_name,
     dispatcher_domain_recipient email_account_username,
     can_be_sent_anonymously bool,
     primary key (application, name) );
@@ -1311,9 +1311,9 @@ create table email_template (
         dispatcher character varying(63),
         application character varying(63),
         validation_schema character varying(63) default null,
+        base_relation character varying(63) default null,
         dbms_user_column_name character varying(63) default null,
-        data_validation_table character varying(63) default null,
-        data_validation_view character varying(63) default null,
+        permissions_and_data_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
         can_be_sent_anonymously bool default null,
         _index integer default null,
@@ -1388,9 +1388,9 @@ create table email_template (
                     type,
                     content_url,
                     validation_schema,
+                    base_relation,
                     dbms_user_column_name,
-                    data_validation_table,
-                    data_validation_view,
+                    permissions_and_data_view,
                     dispatcher_domain_recipient,
                     can_be_sent_anonymously
                 ) VALUES (
@@ -1400,9 +1400,9 @@ create table email_template (
                     "email_template.insert__internal"."type",
                     "email_template.insert__internal"."content_url",
                     "email_template.insert__internal"."validation_schema",
+                    "email_template.insert__internal"."base_relation",
                     "email_template.insert__internal"."dbms_user_column_name",
-                    "email_template.insert__internal"."data_validation_table",
-                    "email_template.insert__internal"."data_validation_view",
+                    "email_template.insert__internal"."permissions_and_data_view",
                     "email_template.insert__internal"."dispatcher_domain_recipient",
                     "email_template.insert__internal"."can_be_sent_anonymously" );
                 _status.result = 1;
@@ -1434,9 +1434,9 @@ create table email_template (
         dispatcher character varying(63),
         application character varying(63),
         validation_schema character varying(63) default null,
+        base_relation character varying(63) default null,
         dbms_user_column_name character varying(63) default null,
-        data_validation_table character varying(63) default null,
-        data_validation_view character varying(63) default null,
+        permissions_and_data_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
         can_be_sent_anonymously bool default null) returns SETOF _error_result as
     $$
@@ -1450,9 +1450,9 @@ create table email_template (
                 type => "email_template.insert".type,
                 content_url => "email_template.insert".content_url,
                 validation_schema => "email_template.insert".validation_schema,
+                base_relation => "email_template.insert".base_relation,
                 dbms_user_column_name => "email_template.insert".dbms_user_column_name,
-                data_validation_table => "email_template.insert".data_validation_table,
-                data_validation_view => "email_template.insert".data_validation_view,
+                permissions_and_data_view => "email_template.insert".permissions_and_data_view,
                 dispatcher_domain_recipient => "email_template.insert".dispatcher_domain_recipient,
                 can_be_sent_anonymously => "email_template.insert".can_be_sent_anonymously);
 
@@ -1482,9 +1482,9 @@ create table email_template (
         type character varying(1) default null,
         content_url character varying(255) default null,
         validation_schema character varying(63) default null,
+        base_relation character varying(63) default null,
         dbms_user_column_name character varying(63) default null,
-        data_validation_table character varying(63) default null,
-        data_validation_view character varying(63) default null,
+        permissions_and_data_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
         can_be_sent_anonymously bool default null,
         _index integer default null,
@@ -1522,9 +1522,9 @@ create table email_template (
                 type = coalesce("email_template.update__internal".type, E.type),
                 content_url = coalesce("email_template.update__internal".content_url, E.content_url),
                 validation_schema = coalesce("email_template.update__internal".validation_schema, E.validation_schema),
+                base_relation = coalesce("email_template.update__internal".base_relation, E.base_relation),
                 dbms_user_column_name = coalesce("email_template.update__internal".dbms_user_column_name, E.dbms_user_column_name),
-                data_validation_table = coalesce("email_template.update__internal".data_validation_table, E.data_validation_table),
-                data_validation_view = coalesce("email_template.update__internal".data_validation_view, E.data_validation_view),
+                permissions_and_data_view = coalesce("email_template.update__internal".permissions_and_data_view, E.permissions_and_data_view),
                 dispatcher_domain_recipient = coalesce("email_template.update__internal".dispatcher_domain_recipient, E.dispatcher_domain_recipient),
                 can_be_sent_anonymously = coalesce("email_template.update__internal".can_be_sent_anonymously, E.can_be_sent_anonymously)
             WHERE 
@@ -1558,9 +1558,9 @@ create table email_template (
         type character varying(1) default null,
         content_url character varying(255) default null,
         validation_schema character varying(63) default null,
+        base_relation character varying(63) default null,
         dbms_user_column_name character varying(63) default null,
-        data_validation_table character varying(63) default null,
-        data_validation_view character varying(63) default null,
+        permissions_and_data_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
         can_be_sent_anonymously bool default null) returns SETOF _error_result as
     $$
@@ -1574,9 +1574,9 @@ create table email_template (
                 type => "email_template.update".type,
                 content_url => "email_template.update".content_url,
                 validation_schema => "email_template.update".validation_schema,
+                base_relation => "email_template.update".base_relation,
                 dbms_user_column_name => "email_template.update".dbms_user_column_name,
-                data_validation_table => "email_template.update".data_validation_table,
-                data_validation_view => "email_template.update".data_validation_view,
+                permissions_and_data_view => "email_template.update".permissions_and_data_view,
                 dispatcher_domain_recipient => "email_template.update".dispatcher_domain_recipient,
                 can_be_sent_anonymously => "email_template.update".can_be_sent_anonymously);
 
@@ -1597,9 +1597,9 @@ create table email_template (
         type character varying(1) default null,
         content_url character varying(255) default null,
         validation_schema character varying(63) default null,
+        base_relation character varying(63) default null,
         dbms_user_column_name character varying(63) default null,
-        data_validation_table character varying(63) default null,
-        data_validation_view character varying(63) default null,
+        permissions_and_data_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
         can_be_sent_anonymously bool default null,
         _index integer default null,
@@ -1622,9 +1622,9 @@ create table email_template (
                     type => "email_template.persist__internal".type,
                     content_url => "email_template.persist__internal".content_url,
                     validation_schema => "email_template.persist__internal".validation_schema,
+                    base_relation => "email_template.persist__internal".base_relation,
                     dbms_user_column_name => "email_template.persist__internal".dbms_user_column_name,
-                    data_validation_table => "email_template.persist__internal".data_validation_table,
-                    data_validation_view => "email_template.persist__internal".data_validation_view,
+                    permissions_and_data_view => "email_template.persist__internal".permissions_and_data_view,
                     dispatcher_domain_recipient => "email_template.persist__internal".dispatcher_domain_recipient,
                     can_be_sent_anonymously => CASE WHEN "email_template.persist__internal".can_be_sent_anonymously = '' THEN null ELSE "email_template.persist__internal".can_be_sent_anonymously END,
                     _index => "email_template.persist__internal"._index,
@@ -1637,9 +1637,9 @@ create table email_template (
                     type => "email_template.persist__internal".type,
                     content_url => "email_template.persist__internal".content_url,
                     validation_schema => "email_template.persist__internal".validation_schema,
+                    base_relation => "email_template.persist__internal".base_relation,
                     dbms_user_column_name => "email_template.persist__internal".dbms_user_column_name,
-                    data_validation_table => "email_template.persist__internal".data_validation_table,
-                    data_validation_view => "email_template.persist__internal".data_validation_view,
+                    permissions_and_data_view => "email_template.persist__internal".permissions_and_data_view,
                     dispatcher_domain_recipient => "email_template.persist__internal".dispatcher_domain_recipient,
                     can_be_sent_anonymously => CASE WHEN "email_template.persist__internal".can_be_sent_anonymously = '' THEN null ELSE "email_template.persist__internal".can_be_sent_anonymously END,
                     _index => "email_template.persist__internal"._index,
@@ -1681,9 +1681,9 @@ create table email_template (
         type character varying(1) default null,
         content_url character varying(255) default null,
         validation_schema character varying(63) default null,
+        base_relation character varying(63) default null,
         dbms_user_column_name character varying(63) default null,
-        data_validation_table character varying(63) default null,
-        data_validation_view character varying(63) default null,
+        permissions_and_data_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
         can_be_sent_anonymously bool default null) returns SETOF _error_result as
     $$
@@ -1697,9 +1697,9 @@ create table email_template (
                 type => "email_template.persist".type,
                 content_url => "email_template.persist".content_url,
                 validation_schema => "email_template.persist".validation_schema,
+                base_relation => "email_template.persist".base_relation,
                 dbms_user_column_name => "email_template.persist".dbms_user_column_name,
-                data_validation_table => "email_template.persist".data_validation_table,
-                data_validation_view => "email_template.persist".data_validation_view,
+                permissions_and_data_view => "email_template.persist".permissions_and_data_view,
                 dispatcher_domain_recipient => "email_template.persist".dispatcher_domain_recipient,
                 can_be_sent_anonymously => "email_template.persist".can_be_sent_anonymously);
 
@@ -3599,22 +3599,26 @@ create table security_event (
     creation_timestamp timestamptz not null default current_timestamp,
     wrong_key_attempt_count current_attempt_count not null default 0,
     email_template object_name not null,
-    account postgres_role not null,
+    account postgres_role,
+    fake_account encrypted__jaaql_username,
     unlock_key uuid not null default gen_random_uuid(),
     unlock_code unlock_code not null,
     unlock_timestamp timestamptz,
+    finish_timestamp timestamptz,
     primary key (application, event_lock),
     check (wrong_key_attempt_count between 0 and 3) );
     create function "security_event.insert__internal" (
         unlock_code character varying(10),
         unlock_key uuid,
-        account character varying(63),
         email_template character varying(63),
         wrong_key_attempt_count smallint,
         creation_timestamp timestamptz,
         event_lock uuid,
         application character varying(63),
+        account character varying(63) default null,
+        fake_account character varying(255) default null,
         unlock_timestamp timestamptz default null,
+        finish_timestamp timestamptz default null,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
     $$
@@ -3628,9 +3632,6 @@ create table security_event (
             end if;
             if "security_event.insert__internal".email_template is null then
                 "security_event.insert__internal".email_template = '';
-            end if;
-            if "security_event.insert__internal".account is null then
-                "security_event.insert__internal".account = '';
             end if;
             if "security_event.insert__internal".unlock_code is null then
                 "security_event.insert__internal".unlock_code = '';
@@ -3655,13 +3656,6 @@ create table security_event (
                     ROW('security_event', _index,
                         'Er moet een waarde ingevuld worden voor Email Template',
                         'email_template'
-                    )::_error_record;
-            end if;
-            if "security_event.insert__internal".account = '' then
-                _status.errors = _status.errors ||
-                    ROW('security_event', _index,
-                        'Er moet een waarde ingevuld worden voor Account',
-                        'account'
                     )::_error_record;
             end if;
             if "security_event.insert__internal".unlock_key is null then
@@ -3705,9 +3699,11 @@ create table security_event (
                     wrong_key_attempt_count,
                     email_template,
                     account,
+                    fake_account,
                     unlock_key,
                     unlock_code,
-                    unlock_timestamp
+                    unlock_timestamp,
+                    finish_timestamp
                 ) VALUES (
                     "security_event.insert__internal"."application",
                     "security_event.insert__internal"."event_lock",
@@ -3715,9 +3711,11 @@ create table security_event (
                     "security_event.insert__internal"."wrong_key_attempt_count",
                     "security_event.insert__internal"."email_template",
                     "security_event.insert__internal"."account",
+                    "security_event.insert__internal"."fake_account",
                     "security_event.insert__internal"."unlock_key",
                     "security_event.insert__internal"."unlock_code",
-                    "security_event.insert__internal"."unlock_timestamp" );
+                    "security_event.insert__internal"."unlock_timestamp",
+                    "security_event.insert__internal"."finish_timestamp" );
                 _status.result = 1;
             end if;
             return _status;
@@ -3728,11 +3726,13 @@ create table security_event (
             'character varying(10),'
             'uuid,'
             'character varying(63),'
-            'character varying(63),'
             'smallint,'
             'timestamptz,'
             'uuid,'
             'character varying(63),'
+            'character varying(63),'
+            'character varying(255),'
+            'timestamptz,'
             'timestamptz,'
             'integer,'
             'boolean)'
@@ -3741,13 +3741,15 @@ create table security_event (
     create function "security_event.insert" (
         unlock_code character varying(10),
         unlock_key uuid,
-        account character varying(63),
         email_template character varying(63),
         wrong_key_attempt_count smallint,
         creation_timestamp timestamptz,
         event_lock uuid,
         application character varying(63),
-        unlock_timestamp timestamptz default null) returns SETOF _error_result as
+        account character varying(63) default null,
+        fake_account character varying(255) default null,
+        unlock_timestamp timestamptz default null,
+        finish_timestamp timestamptz default null) returns SETOF _error_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3759,9 +3761,11 @@ create table security_event (
                 wrong_key_attempt_count => "security_event.insert".wrong_key_attempt_count,
                 email_template => "security_event.insert".email_template,
                 account => "security_event.insert".account,
+                fake_account => "security_event.insert".fake_account,
                 unlock_key => "security_event.insert".unlock_key,
                 unlock_code => "security_event.insert".unlock_code,
-                unlock_timestamp => "security_event.insert".unlock_timestamp);
+                unlock_timestamp => "security_event.insert".unlock_timestamp,
+                finish_timestamp => "security_event.insert".finish_timestamp);
 
             if cardinality(_status.errors) <> 0 then
                 return QUERY
@@ -3789,9 +3793,11 @@ create table security_event (
         wrong_key_attempt_count smallint default null,
         email_template character varying(63) default null,
         account character varying(63) default null,
+        fake_account character varying(255) default null,
         unlock_key uuid default null,
         unlock_code character varying(10) default null,
         unlock_timestamp timestamptz default null,
+        finish_timestamp timestamptz default null,
         _index integer default null,
         _check_only boolean default false) returns _status_record as
     $$
@@ -3827,9 +3833,11 @@ create table security_event (
                 wrong_key_attempt_count = coalesce("security_event.update__internal".wrong_key_attempt_count, S.wrong_key_attempt_count),
                 email_template = coalesce("security_event.update__internal".email_template, S.email_template),
                 account = coalesce("security_event.update__internal".account, S.account),
+                fake_account = coalesce("security_event.update__internal".fake_account, S.fake_account),
                 unlock_key = coalesce("security_event.update__internal".unlock_key, S.unlock_key),
                 unlock_code = coalesce("security_event.update__internal".unlock_code, S.unlock_code),
-                unlock_timestamp = coalesce("security_event.update__internal".unlock_timestamp, S.unlock_timestamp)
+                unlock_timestamp = coalesce("security_event.update__internal".unlock_timestamp, S.unlock_timestamp),
+                finish_timestamp = coalesce("security_event.update__internal".finish_timestamp, S.finish_timestamp)
             WHERE 
                 S.application = "security_event.update__internal".application AND
                 S.event_lock = "security_event.update__internal".event_lock;
@@ -3845,8 +3853,10 @@ create table security_event (
             'smallint,'
             'character varying(63),'
             'character varying(63),'
+            'character varying(255),'
             'uuid,'
             'character varying(10),'
+            'timestamptz,'
             'timestamptz,'
             'integer,'
             'boolean)'
@@ -3859,9 +3869,11 @@ create table security_event (
         wrong_key_attempt_count smallint default null,
         email_template character varying(63) default null,
         account character varying(63) default null,
+        fake_account character varying(255) default null,
         unlock_key uuid default null,
         unlock_code character varying(10) default null,
-        unlock_timestamp timestamptz default null) returns SETOF _error_result as
+        unlock_timestamp timestamptz default null,
+        finish_timestamp timestamptz default null) returns SETOF _error_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3873,9 +3885,11 @@ create table security_event (
                 wrong_key_attempt_count => "security_event.update".wrong_key_attempt_count,
                 email_template => "security_event.update".email_template,
                 account => "security_event.update".account,
+                fake_account => "security_event.update".fake_account,
                 unlock_key => "security_event.update".unlock_key,
                 unlock_code => "security_event.update".unlock_code,
-                unlock_timestamp => "security_event.update".unlock_timestamp);
+                unlock_timestamp => "security_event.update".unlock_timestamp,
+                finish_timestamp => "security_event.update".finish_timestamp);
 
             return QUERY
                 SELECT
@@ -3894,9 +3908,11 @@ create table security_event (
         wrong_key_attempt_count smallint default null,
         email_template character varying(63) default null,
         account character varying(63) default null,
+        fake_account character varying(255) default null,
         unlock_key uuid default null,
         unlock_code character varying(10) default null,
         unlock_timestamp timestamptz default null,
+        finish_timestamp timestamptz default null,
         _index integer default null,
         _check_only boolean default false) returns _status_record as
     $$
@@ -3917,9 +3933,11 @@ create table security_event (
                     wrong_key_attempt_count => CASE WHEN "security_event.persist__internal".wrong_key_attempt_count = '' THEN null ELSE "security_event.persist__internal".wrong_key_attempt_count END,
                     email_template => "security_event.persist__internal".email_template,
                     account => "security_event.persist__internal".account,
+                    fake_account => "security_event.persist__internal".fake_account,
                     unlock_key => CASE WHEN "security_event.persist__internal".unlock_key = '' THEN null ELSE "security_event.persist__internal".unlock_key END,
                     unlock_code => "security_event.persist__internal".unlock_code,
                     unlock_timestamp => CASE WHEN "security_event.persist__internal".unlock_timestamp = '' THEN null ELSE "security_event.persist__internal".unlock_timestamp END,
+                    finish_timestamp => CASE WHEN "security_event.persist__internal".finish_timestamp = '' THEN null ELSE "security_event.persist__internal".finish_timestamp END,
                     _index => "security_event.persist__internal"._index,
                     _check_only => cardinality(_status.errors) <> 0 or "security_event.persist__internal"._check_only);
             elsif _count = 1 then
@@ -3930,9 +3948,11 @@ create table security_event (
                     wrong_key_attempt_count => CASE WHEN "security_event.persist__internal".wrong_key_attempt_count = '' THEN null ELSE "security_event.persist__internal".wrong_key_attempt_count END,
                     email_template => "security_event.persist__internal".email_template,
                     account => "security_event.persist__internal".account,
+                    fake_account => "security_event.persist__internal".fake_account,
                     unlock_key => CASE WHEN "security_event.persist__internal".unlock_key = '' THEN null ELSE "security_event.persist__internal".unlock_key END,
                     unlock_code => "security_event.persist__internal".unlock_code,
                     unlock_timestamp => CASE WHEN "security_event.persist__internal".unlock_timestamp = '' THEN null ELSE "security_event.persist__internal".unlock_timestamp END,
+                    finish_timestamp => CASE WHEN "security_event.persist__internal".finish_timestamp = '' THEN null ELSE "security_event.persist__internal".finish_timestamp END,
                     _index => "security_event.persist__internal"._index,
                     _check_only => cardinality(_status.errors) <> 0 or "security_event.persist__internal"._check_only);
             else
@@ -3956,8 +3976,10 @@ create table security_event (
             'smallint,'
             'character varying(63),'
             'character varying(63),'
+            'character varying(255),'
             'uuid,'
             'character varying(10),'
+            'timestamptz,'
             'timestamptz,'
             'integer,'
             'boolean)'
@@ -3970,9 +3992,11 @@ create table security_event (
         wrong_key_attempt_count smallint default null,
         email_template character varying(63) default null,
         account character varying(63) default null,
+        fake_account character varying(255) default null,
         unlock_key uuid default null,
         unlock_code character varying(10) default null,
-        unlock_timestamp timestamptz default null) returns SETOF _error_result as
+        unlock_timestamp timestamptz default null,
+        finish_timestamp timestamptz default null) returns SETOF _error_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3984,9 +4008,11 @@ create table security_event (
                 wrong_key_attempt_count => "security_event.persist".wrong_key_attempt_count,
                 email_template => "security_event.persist".email_template,
                 account => "security_event.persist".account,
+                fake_account => "security_event.persist".fake_account,
                 unlock_key => "security_event.persist".unlock_key,
                 unlock_code => "security_event.persist".unlock_code,
-                unlock_timestamp => "security_event.persist".unlock_timestamp);
+                unlock_timestamp => "security_event.persist".unlock_timestamp,
+                finish_timestamp => "security_event.persist".finish_timestamp);
 
             return QUERY
                 SELECT
