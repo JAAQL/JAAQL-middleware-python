@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.fxli at 2024-02-13, 13:29:20
+This script was generated from jaaql.fxli at 2024-02-14, 15:18:39
 """
 
 from jaaql.db.db_interface import DBInterface
@@ -1152,17 +1152,21 @@ KG__security_event__creation_timestamp = "creation_timestamp"
 KG__security_event__wrong_key_attempt_count = "wrong_key_attempt_count"
 KG__security_event__email_template = "email_template"
 KG__security_event__account = "account"
+KG__security_event__fake_account = "fake_account"
 KG__security_event__unlock_key = "unlock_key"
 KG__security_event__unlock_code = "unlock_code"
 KG__security_event__unlock_timestamp = "unlock_timestamp"
+KG__security_event__finish_timestamp = "finish_timestamp"
 
 # Generated queries for table 'security_event'
 QG__security_event_delete = "DELETE FROM security_event WHERE application = :application AND event_lock = :event_lock"
 QG__security_event_insert = """
     INSERT INTO security_event (application, email_template, account,
-        unlock_code, unlock_timestamp)
+        fake_account, unlock_code, unlock_timestamp,
+        finish_timestamp)
     VALUES (:application, :email_template, :account,
-        :unlock_code, :unlock_timestamp)
+        :fake_account, :unlock_code, :unlock_timestamp,
+        :finish_timestamp)
     RETURNING event_lock, creation_timestamp, wrong_key_attempt_count,
         unlock_key
 """
@@ -1176,9 +1180,11 @@ QG__security_event_update = """
         wrong_key_attempt_count = COALESCE(:wrong_key_attempt_count, wrong_key_attempt_count),
         email_template = COALESCE(:email_template, email_template),
         account = COALESCE(:account, account),
+        fake_account = COALESCE(:fake_account, fake_account),
         unlock_key = COALESCE(:unlock_key, unlock_key),
         unlock_code = COALESCE(:unlock_code, unlock_code),
-        unlock_timestamp = COALESCE(:unlock_timestamp, unlock_timestamp)
+        unlock_timestamp = COALESCE(:unlock_timestamp, unlock_timestamp),
+        finish_timestamp = COALESCE(:finish_timestamp, finish_timestamp)
     WHERE
         application = :application AND event_lock = :event_lock
 """
@@ -1200,11 +1206,12 @@ def security_event__delete(
 
 
 def security_event__update(
-    connection: DBInterface,
+    connection: DBInterface, encryption_key: bytes,
     application, event_lock,
     creation_timestamp=None, wrong_key_attempt_count=None, email_template=None,
-    account=None, unlock_key=None, unlock_code=None,
-    unlock_timestamp=None
+    account=None, fake_account=None, unlock_key=None,
+    unlock_code=None, unlock_timestamp=None, finish_timestamp=None,
+    encryption_salts=None
 ):
     execute_supplied_statement(
         connection, QG__security_event_update,
@@ -1218,15 +1225,19 @@ def security_event__update(
             KG__security_event__wrong_key_attempt_count: wrong_key_attempt_count,
             KG__security_event__email_template: email_template,
             KG__security_event__account: account,
+            KG__security_event__fake_account: fake_account,
             KG__security_event__unlock_key: unlock_key,
             KG__security_event__unlock_code: unlock_code,
-            KG__security_event__unlock_timestamp: unlock_timestamp
-        }
+            KG__security_event__unlock_timestamp: unlock_timestamp,
+            KG__security_event__finish_timestamp: finish_timestamp
+        }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
+            KG__security_event__fake_account
+        ]
     )
 
 
 def security_event__select(
-    connection: DBInterface,
+    connection: DBInterface, encryption_key: bytes,
     application, event_lock,
     singleton_code: int = None, singleton_message: str = "security_event does not exist"
 ):
@@ -1236,25 +1247,30 @@ def security_event__select(
             # Key Fields
             KG__security_event__application: application,
             KG__security_event__event_lock: event_lock
-        },
+        }, encryption_key=encryption_key, decrypt_columns=[
+            KG__security_event__fake_account
+        ],
         as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
     )
 
 
 def security_event__select_all(
-    connection: DBInterface
+    connection: DBInterface, encryption_key: bytes
 ):
     return execute_supplied_statement(
-        connection, QG__security_event_select_all,
+        connection, QG__security_event_select_all, encryption_key=encryption_key, decrypt_columns=[
+            KG__security_event__fake_account
+        ],
         as_objects=True
     )
 
 
 def security_event__insert(
-    connection: DBInterface,
-    application, email_template, account,
-    unlock_code,
-    unlock_timestamp=None
+    connection: DBInterface, encryption_key: bytes,
+    application, email_template, unlock_code,
+    account=None, fake_account=None, unlock_timestamp=None,
+    finish_timestamp=None,
+    encryption_salts=None
 ):
     return execute_supplied_statement_singleton(
         connection, QG__security_event_insert,
@@ -1262,7 +1278,11 @@ def security_event__insert(
             KG__security_event__application: application,
             KG__security_event__email_template: email_template,
             KG__security_event__account: account,
+            KG__security_event__fake_account: fake_account,
             KG__security_event__unlock_code: unlock_code,
-            KG__security_event__unlock_timestamp: unlock_timestamp
-        }, as_objects=True
+            KG__security_event__unlock_timestamp: unlock_timestamp,
+            KG__security_event__finish_timestamp: finish_timestamp
+        }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
+            KG__security_event__fake_account
+        ], as_objects=True
     )

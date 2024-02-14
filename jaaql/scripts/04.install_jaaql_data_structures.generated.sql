@@ -3599,22 +3599,26 @@ create table security_event (
     creation_timestamp timestamptz not null default current_timestamp,
     wrong_key_attempt_count current_attempt_count not null default 0,
     email_template object_name not null,
-    account postgres_role not null,
+    account postgres_role,
+    fake_account encrypted__jaaql_username,
     unlock_key uuid not null default gen_random_uuid(),
     unlock_code unlock_code not null,
     unlock_timestamp timestamptz,
+    finish_timestamp timestamptz,
     primary key (application, event_lock),
     check (wrong_key_attempt_count between 0 and 3) );
     create function "security_event.insert__internal" (
         unlock_code character varying(10),
         unlock_key uuid,
-        account character varying(63),
         email_template character varying(63),
         wrong_key_attempt_count smallint,
         creation_timestamp timestamptz,
         event_lock uuid,
         application character varying(63),
+        account character varying(63) default null,
+        fake_account character varying(255) default null,
         unlock_timestamp timestamptz default null,
+        finish_timestamp timestamptz default null,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
     $$
@@ -3628,9 +3632,6 @@ create table security_event (
             end if;
             if "security_event.insert__internal".email_template is null then
                 "security_event.insert__internal".email_template = '';
-            end if;
-            if "security_event.insert__internal".account is null then
-                "security_event.insert__internal".account = '';
             end if;
             if "security_event.insert__internal".unlock_code is null then
                 "security_event.insert__internal".unlock_code = '';
@@ -3655,13 +3656,6 @@ create table security_event (
                     ROW('security_event', _index,
                         'Er moet een waarde ingevuld worden voor Email Template',
                         'email_template'
-                    )::_error_record;
-            end if;
-            if "security_event.insert__internal".account = '' then
-                _status.errors = _status.errors ||
-                    ROW('security_event', _index,
-                        'Er moet een waarde ingevuld worden voor Account',
-                        'account'
                     )::_error_record;
             end if;
             if "security_event.insert__internal".unlock_key is null then
@@ -3705,9 +3699,11 @@ create table security_event (
                     wrong_key_attempt_count,
                     email_template,
                     account,
+                    fake_account,
                     unlock_key,
                     unlock_code,
-                    unlock_timestamp
+                    unlock_timestamp,
+                    finish_timestamp
                 ) VALUES (
                     "security_event.insert__internal"."application",
                     "security_event.insert__internal"."event_lock",
@@ -3715,9 +3711,11 @@ create table security_event (
                     "security_event.insert__internal"."wrong_key_attempt_count",
                     "security_event.insert__internal"."email_template",
                     "security_event.insert__internal"."account",
+                    "security_event.insert__internal"."fake_account",
                     "security_event.insert__internal"."unlock_key",
                     "security_event.insert__internal"."unlock_code",
-                    "security_event.insert__internal"."unlock_timestamp" );
+                    "security_event.insert__internal"."unlock_timestamp",
+                    "security_event.insert__internal"."finish_timestamp" );
                 _status.result = 1;
             end if;
             return _status;
@@ -3728,11 +3726,13 @@ create table security_event (
             'character varying(10),'
             'uuid,'
             'character varying(63),'
-            'character varying(63),'
             'smallint,'
             'timestamptz,'
             'uuid,'
             'character varying(63),'
+            'character varying(63),'
+            'character varying(255),'
+            'timestamptz,'
             'timestamptz,'
             'integer,'
             'boolean)'
@@ -3741,13 +3741,15 @@ create table security_event (
     create function "security_event.insert" (
         unlock_code character varying(10),
         unlock_key uuid,
-        account character varying(63),
         email_template character varying(63),
         wrong_key_attempt_count smallint,
         creation_timestamp timestamptz,
         event_lock uuid,
         application character varying(63),
-        unlock_timestamp timestamptz default null) returns SETOF _error_result as
+        account character varying(63) default null,
+        fake_account character varying(255) default null,
+        unlock_timestamp timestamptz default null,
+        finish_timestamp timestamptz default null) returns SETOF _error_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3759,9 +3761,11 @@ create table security_event (
                 wrong_key_attempt_count => "security_event.insert".wrong_key_attempt_count,
                 email_template => "security_event.insert".email_template,
                 account => "security_event.insert".account,
+                fake_account => "security_event.insert".fake_account,
                 unlock_key => "security_event.insert".unlock_key,
                 unlock_code => "security_event.insert".unlock_code,
-                unlock_timestamp => "security_event.insert".unlock_timestamp);
+                unlock_timestamp => "security_event.insert".unlock_timestamp,
+                finish_timestamp => "security_event.insert".finish_timestamp);
 
             if cardinality(_status.errors) <> 0 then
                 return QUERY
@@ -3789,9 +3793,11 @@ create table security_event (
         wrong_key_attempt_count smallint default null,
         email_template character varying(63) default null,
         account character varying(63) default null,
+        fake_account character varying(255) default null,
         unlock_key uuid default null,
         unlock_code character varying(10) default null,
         unlock_timestamp timestamptz default null,
+        finish_timestamp timestamptz default null,
         _index integer default null,
         _check_only boolean default false) returns _status_record as
     $$
@@ -3827,9 +3833,11 @@ create table security_event (
                 wrong_key_attempt_count = coalesce("security_event.update__internal".wrong_key_attempt_count, S.wrong_key_attempt_count),
                 email_template = coalesce("security_event.update__internal".email_template, S.email_template),
                 account = coalesce("security_event.update__internal".account, S.account),
+                fake_account = coalesce("security_event.update__internal".fake_account, S.fake_account),
                 unlock_key = coalesce("security_event.update__internal".unlock_key, S.unlock_key),
                 unlock_code = coalesce("security_event.update__internal".unlock_code, S.unlock_code),
-                unlock_timestamp = coalesce("security_event.update__internal".unlock_timestamp, S.unlock_timestamp)
+                unlock_timestamp = coalesce("security_event.update__internal".unlock_timestamp, S.unlock_timestamp),
+                finish_timestamp = coalesce("security_event.update__internal".finish_timestamp, S.finish_timestamp)
             WHERE 
                 S.application = "security_event.update__internal".application AND
                 S.event_lock = "security_event.update__internal".event_lock;
@@ -3845,8 +3853,10 @@ create table security_event (
             'smallint,'
             'character varying(63),'
             'character varying(63),'
+            'character varying(255),'
             'uuid,'
             'character varying(10),'
+            'timestamptz,'
             'timestamptz,'
             'integer,'
             'boolean)'
@@ -3859,9 +3869,11 @@ create table security_event (
         wrong_key_attempt_count smallint default null,
         email_template character varying(63) default null,
         account character varying(63) default null,
+        fake_account character varying(255) default null,
         unlock_key uuid default null,
         unlock_code character varying(10) default null,
-        unlock_timestamp timestamptz default null) returns SETOF _error_result as
+        unlock_timestamp timestamptz default null,
+        finish_timestamp timestamptz default null) returns SETOF _error_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3873,9 +3885,11 @@ create table security_event (
                 wrong_key_attempt_count => "security_event.update".wrong_key_attempt_count,
                 email_template => "security_event.update".email_template,
                 account => "security_event.update".account,
+                fake_account => "security_event.update".fake_account,
                 unlock_key => "security_event.update".unlock_key,
                 unlock_code => "security_event.update".unlock_code,
-                unlock_timestamp => "security_event.update".unlock_timestamp);
+                unlock_timestamp => "security_event.update".unlock_timestamp,
+                finish_timestamp => "security_event.update".finish_timestamp);
 
             return QUERY
                 SELECT
@@ -3894,9 +3908,11 @@ create table security_event (
         wrong_key_attempt_count smallint default null,
         email_template character varying(63) default null,
         account character varying(63) default null,
+        fake_account character varying(255) default null,
         unlock_key uuid default null,
         unlock_code character varying(10) default null,
         unlock_timestamp timestamptz default null,
+        finish_timestamp timestamptz default null,
         _index integer default null,
         _check_only boolean default false) returns _status_record as
     $$
@@ -3917,9 +3933,11 @@ create table security_event (
                     wrong_key_attempt_count => CASE WHEN "security_event.persist__internal".wrong_key_attempt_count = '' THEN null ELSE "security_event.persist__internal".wrong_key_attempt_count END,
                     email_template => "security_event.persist__internal".email_template,
                     account => "security_event.persist__internal".account,
+                    fake_account => "security_event.persist__internal".fake_account,
                     unlock_key => CASE WHEN "security_event.persist__internal".unlock_key = '' THEN null ELSE "security_event.persist__internal".unlock_key END,
                     unlock_code => "security_event.persist__internal".unlock_code,
                     unlock_timestamp => CASE WHEN "security_event.persist__internal".unlock_timestamp = '' THEN null ELSE "security_event.persist__internal".unlock_timestamp END,
+                    finish_timestamp => CASE WHEN "security_event.persist__internal".finish_timestamp = '' THEN null ELSE "security_event.persist__internal".finish_timestamp END,
                     _index => "security_event.persist__internal"._index,
                     _check_only => cardinality(_status.errors) <> 0 or "security_event.persist__internal"._check_only);
             elsif _count = 1 then
@@ -3930,9 +3948,11 @@ create table security_event (
                     wrong_key_attempt_count => CASE WHEN "security_event.persist__internal".wrong_key_attempt_count = '' THEN null ELSE "security_event.persist__internal".wrong_key_attempt_count END,
                     email_template => "security_event.persist__internal".email_template,
                     account => "security_event.persist__internal".account,
+                    fake_account => "security_event.persist__internal".fake_account,
                     unlock_key => CASE WHEN "security_event.persist__internal".unlock_key = '' THEN null ELSE "security_event.persist__internal".unlock_key END,
                     unlock_code => "security_event.persist__internal".unlock_code,
                     unlock_timestamp => CASE WHEN "security_event.persist__internal".unlock_timestamp = '' THEN null ELSE "security_event.persist__internal".unlock_timestamp END,
+                    finish_timestamp => CASE WHEN "security_event.persist__internal".finish_timestamp = '' THEN null ELSE "security_event.persist__internal".finish_timestamp END,
                     _index => "security_event.persist__internal"._index,
                     _check_only => cardinality(_status.errors) <> 0 or "security_event.persist__internal"._check_only);
             else
@@ -3956,8 +3976,10 @@ create table security_event (
             'smallint,'
             'character varying(63),'
             'character varying(63),'
+            'character varying(255),'
             'uuid,'
             'character varying(10),'
+            'timestamptz,'
             'timestamptz,'
             'integer,'
             'boolean)'
@@ -3970,9 +3992,11 @@ create table security_event (
         wrong_key_attempt_count smallint default null,
         email_template character varying(63) default null,
         account character varying(63) default null,
+        fake_account character varying(255) default null,
         unlock_key uuid default null,
         unlock_code character varying(10) default null,
-        unlock_timestamp timestamptz default null) returns SETOF _error_result as
+        unlock_timestamp timestamptz default null,
+        finish_timestamp timestamptz default null) returns SETOF _error_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3984,9 +4008,11 @@ create table security_event (
                 wrong_key_attempt_count => "security_event.persist".wrong_key_attempt_count,
                 email_template => "security_event.persist".email_template,
                 account => "security_event.persist".account,
+                fake_account => "security_event.persist".fake_account,
                 unlock_key => "security_event.persist".unlock_key,
                 unlock_code => "security_event.persist".unlock_code,
-                unlock_timestamp => "security_event.persist".unlock_timestamp);
+                unlock_timestamp => "security_event.persist".unlock_timestamp,
+                finish_timestamp => "security_event.persist".finish_timestamp);
 
             return QUERY
                 SELECT
@@ -4069,15 +4095,62 @@ create table security_event (
 
 
 -- (2) References
-
-
-
-
-
-
-
-
-
-
-
+-- application...
+alter table application add constraint application__default_schema
+    foreign key (name, default_schema)
+        references application_schema (application, name);
+alter table application add constraint application__default_sign_up_email_template
+    foreign key (name, default_s_et)
+        references email_template (application, name);
+alter table application add constraint application__default_already_signed_up_email_template
+    foreign key (name, default_a_et)
+        references email_template (application, name);
+alter table application add constraint application__default_reset_password_email_template
+    foreign key (name, default_r_et)
+        references email_template (application, name);
+alter table application add constraint application__default_unregistered_password_reset_email_template
+    foreign key (name, default_u_et)
+        references email_template (application, name);-- application_schema...
+alter table application_schema add constraint application_schema__application
+    foreign key (application)
+        references application (name);-- email_dispatcher...
+alter table email_dispatcher add constraint email_dispatcher__application
+    foreign key (application)
+        references application (name);-- jaaql...
+alter table _jaaql add constraint jaaql__the_anonymous_user
+    foreign key (the_anonymous_user)
+        references account (id);-- email_template...
+alter table email_template add constraint email_template__dispatcher
+    foreign key (application, dispatcher)
+        references email_dispatcher (application, name);
+alter table email_template add constraint email_template__validation_schema
+    foreign key (application, validation_schema)
+        references application_schema (application, name);-- document_template...
+alter table document_template add constraint document_template__application
+    foreign key (application)
+        references application (name);
+alter table document_template add constraint document_template__email_template
+    foreign key (application, email_template)
+        references email_template (application, name);-- document_request...
+alter table document_request add constraint document_request__template
+    foreign key (application, template)
+        references document_template (application, name);-- account...
+alter table account add constraint account__most_recent_password
+    foreign key (most_recent_password)
+        references account_password (uuid);-- account_password...
+alter table account_password add constraint account_password__account
+    foreign key (account)
+        references account (id);-- validated_ip_address...
+alter table validated_ip_address add constraint validated_ip_address__account
+    foreign key (account)
+        references account (id);-- security_event...
+alter table security_event add constraint security_event__application
+    foreign key (application)
+        references application (name);
+alter table security_event add constraint security_event__email_template
+    foreign key (application, email_template)
+        references email_template (application, name);
+alter table security_event add constraint security_event__account
+    foreign key (account)
+        references account (id);
 

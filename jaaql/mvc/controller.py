@@ -100,8 +100,8 @@ class JAAQLController(BaseJAAQLController):
             return self.model.send_email(is_the_anonymous_user, account_id, http_inputs, username, auth_token)
 
         @self.publish_route('/account/reset-password', DOCUMENTATION__reset_password)
-        def reset_password(http_inputs: dict, is_the_anonymous_user: bool):
-            return self.model.reset_password(http_inputs, is_the_anonymous_user)
+        def reset_password(http_inputs: dict):
+            return self.model.reset_password(http_inputs)
 
         @self.publish_route('/security-event', DOCUMENTATION__security_event)
         def security_event(http_inputs: dict):
