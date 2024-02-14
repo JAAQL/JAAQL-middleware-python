@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.exceptions.fxls at 2024-02-14, 15:18:39
+This script was generated from jaaql.exceptions.fxls at 2024-02-14, 15:49:55
 """
 
 from jaaql.utilities.crypt_utils import get_repeatable_salt
@@ -147,11 +147,27 @@ KEY__is_default = "is_default"
 
 QUERY__count_security_events_of_type_in_24hr_window = """
     SELECT
-        COUNT(*)
+        COUNT(*) as count
     FROM security_event S
     INNER JOIN email_template E ON E.name = S.email_template AND E.application = S.application
-    WHERE E.type IN (:type_one, :type_two) AND account = :account AND (creation_timestamp + interval '24 hour') > current_timestamp
+    WHERE E.type IN (:type_one, :type_two) AND ((:account is not null AND account = :account) OR (:fake_account is not null AND fake_account = :fake_account)) AND (creation_timestamp + interval '24 hour') > current_timestamp
 """
+
+
+def count_for_security_event(
+    connection: DBInterface, encryption_key: bytes, vault_repeatable_salt: str,
+    type_one: str, type_two: str,
+    account, fake_account = None
+):
+    return execute_supplied_statement_singleton(
+        connection, QUERY__count_security_events_of_type_in_24hr_window, {
+            "type_one": type_one, "type_two": type_two,
+            KG__security_event__account: account,
+            KG__security_event__fake_account: fake_account
+        }, as_objects=True, encryption_key=encryption_key, encrypt_parameters=[KG__account__username],
+        encryption_salts={KG__security_event__fake_account: get_repeatable_salt(vault_repeatable_salt, fake_account)}
+    )[KEY__count]
+
 
 KEY__type_one = "type_one"
 KEY__type_two = "type_two"

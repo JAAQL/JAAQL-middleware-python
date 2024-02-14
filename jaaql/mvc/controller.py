@@ -92,8 +92,8 @@ class JAAQLController(BaseJAAQLController):
             self.model.attach_dispatcher_credentials(connection, http_inputs)
 
         @self.publish_route('/sign-up', DOCUMENTATION__sign_up)
-        def sign_up(http_inputs: dict, account_id: str, is_the_anonymous_user: bool):
-            return self.model.sign_up(http_inputs, account_id, is_the_anonymous_user)
+        def sign_up(http_inputs: dict, account_id: str):
+            return self.model.sign_up(http_inputs, account_id)
 
         @self.publish_route('/email', DOCUMENTATION__emails)
         def send_email(is_the_anonymous_user: bool, account_id: str, http_inputs: dict, username: str, auth_token: str):
