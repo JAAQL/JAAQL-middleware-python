@@ -633,11 +633,6 @@ WHERE
 
         parameters = None
 
-        if template[KG__email_template__data_validation_table]:
-            # app = application__select(self.jaaql_lookup_connection, sec_evt[KG__security_event__application])  # TODO try select parameters
-            parameters = {}
-            # TODO possibly load parameters
-
         if template[KG__email_template__type] in [EMAIL_TYPE__signup, EMAIL_TYPE__reset_password, EMAIL_TYPE__unregistered_password_reset]:
             self.add_account_password(sec_evt[KG__security_event__account], inputs[KEY__password])
 
