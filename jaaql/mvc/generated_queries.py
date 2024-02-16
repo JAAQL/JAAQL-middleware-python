@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.fxli at 2024-02-16, 02:29:12
+This script was generated from jaaql.fxli at 2024-02-16, 05:26:33
 """
 
 from jaaql.db.db_interface import DBInterface

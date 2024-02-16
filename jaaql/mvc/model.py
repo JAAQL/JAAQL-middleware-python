@@ -604,17 +604,16 @@ WHERE
         if not evt[KEY__key_fits]:
             raise HttpStatusException(ERR__incorrect_lock_code)
 
+        if evt[KG__security_event__unlock_timestamp] is None:
+            security_event__update(self.jaaql_lookup_connection, self.get_db_crypt_key(), evt[KG__security_event__application],
+                                   evt[KG__security_event__event_lock], unlock_timestamp=datetime.now())
+
         if returning:
             return evt
         else:
             template = email_template__select(self.jaaql_lookup_connection, evt[KG__security_event__application],
                                               evt[KG__security_event__email_template])
             return template[KG__email_template__type]
-
-    def mark_security_event_unlocked(self, sec_evt: dict):
-        # TODO unlock the fake account
-        security_event__update(self.jaaql_lookup_connection, sec_evt[KG__security_event__application], sec_evt[KG__security_event__event_lock],
-                               unlock_timestamp=datetime.now())
 
     def finish_security_event(self, inputs: dict):
         sec_evt = self.check_security_event_key_and_security_event_is_unlocked({
@@ -632,7 +631,8 @@ WHERE
         if template[KG__email_template__type] in [EMAIL_TYPE__signup, EMAIL_TYPE__reset_password, EMAIL_TYPE__unregistered_password_reset]:
             self.add_account_password(sec_evt[KG__security_event__account], inputs[KEY__password])
 
-        self.mark_security_event_unlocked(sec_evt)
+        security_event__update(self.jaaql_lookup_connection, self.get_db_crypt_key(), sec_evt[KG__security_event__application],
+                               sec_evt[KG__security_event__event_lock], finish_timestamp=datetime.now())
 
         # TODO maybe someday we'll add this back in
         # if template[KG__email_template__type] == EMAIL_TYPE__signup:
