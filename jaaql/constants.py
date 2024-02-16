@@ -152,7 +152,7 @@ CONFIG__default_desc = "Default config description"
 DATASET__default = "Default dataset"
 DATASET__default_desc = "Default dataset description"
 
-ARTIFACTS_DEFAULT_DIRECTORY = "artifacts"
+TEMPLATES_DEFAULT_DIRECTORY = "Templates"
 
 USERNAME__jaaql = "jaaql"
 USERNAME__super_db = "super_db"
@@ -164,5 +164,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.21.31"
+VERSION = "4.21.32"
 

@@ -1,6 +1,31 @@
 /*
 **  This installation module was generated from ../../../Packages/DBMS/Postgres/15/jaaql.install for Postgres/15
 */
+-- BATON functions
+
+create function "BS.iso_extended_week_number" (
+   d date
+) returns character varying(8) as
+$$
+DECLARE
+    _result character varying(8) = '';
+BEGIN
+    SELECT
+        EXTRACT(ISOYEAR FROM d)::text ||
+        '-W' ||
+        lpad(EXTRACT(WEEK FROM d)::text, 2, '0')
+    INTO
+        _result;
+
+    return _result;
+END;
+$$ language plpgsql;
+
+SELECT * from plpgsql_check_function(
+    '"BS.iso_extended_week_number"(date)'
+);
+
+grant execute on function "BS.iso_extended_week_number" to public;
 -- Install script
 
 create type _error_type as (
@@ -38,7 +63,7 @@ create type _error_result as
 create table application (
     name internet_name not null,
     base_url url not null,
-    artifacts_source location,
+    templates_source location,
     default_schema object_name,
     default_s_et object_name,
     default_a_et object_name,
@@ -56,7 +81,7 @@ create table application (
         unlock_key_validity_period integer,
         base_url character varying(256),
         name character varying(63),
-        artifacts_source character varying(256) default null,
+        templates_source character varying(256) default null,
         default_schema character varying(63) default null,
         default_s_et character varying(63) default null,
         default_a_et character varying(63) default null,
@@ -127,7 +152,7 @@ create table application (
                 INSERT INTO application (
                     name,
                     base_url,
-                    artifacts_source,
+                    templates_source,
                     default_schema,
                     default_s_et,
                     default_a_et,
@@ -139,7 +164,7 @@ create table application (
                 ) VALUES (
                     "application.insert__internal"."name",
                     "application.insert__internal"."base_url",
-                    "application.insert__internal"."artifacts_source",
+                    "application.insert__internal"."templates_source",
                     "application.insert__internal"."default_schema",
                     "application.insert__internal"."default_s_et",
                     "application.insert__internal"."default_a_et",
@@ -176,7 +201,7 @@ create table application (
         unlock_key_validity_period integer,
         base_url character varying(256),
         name character varying(63),
-        artifacts_source character varying(256) default null,
+        templates_source character varying(256) default null,
         default_schema character varying(63) default null,
         default_s_et character varying(63) default null,
         default_a_et character varying(63) default null,
@@ -189,7 +214,7 @@ create table application (
             SELECT * INTO strict _status FROM "application.insert__internal"(
                 name => "application.insert".name,
                 base_url => "application.insert".base_url,
-                artifacts_source => "application.insert".artifacts_source,
+                templates_source => "application.insert".templates_source,
                 default_schema => "application.insert".default_schema,
                 default_s_et => "application.insert".default_s_et,
                 default_a_et => "application.insert".default_a_et,
@@ -221,7 +246,7 @@ create table application (
     create function "application.update__internal" (
         name character varying(63),
         base_url character varying(256) default null,
-        artifacts_source character varying(256) default null,
+        templates_source character varying(256) default null,
         default_schema character varying(63) default null,
         default_s_et character varying(63) default null,
         default_a_et character varying(63) default null,
@@ -261,7 +286,7 @@ create table application (
             UPDATE application A
             SET
                 base_url = coalesce("application.update__internal".base_url, A.base_url),
-                artifacts_source = coalesce("application.update__internal".artifacts_source, A.artifacts_source),
+                templates_source = coalesce("application.update__internal".templates_source, A.templates_source),
                 default_schema = coalesce("application.update__internal".default_schema, A.default_schema),
                 default_s_et = coalesce("application.update__internal".default_s_et, A.default_s_et),
                 default_a_et = coalesce("application.update__internal".default_a_et, A.default_a_et),
@@ -296,7 +321,7 @@ create table application (
     create function "application.update" (
         name character varying(63),
         base_url character varying(256) default null,
-        artifacts_source character varying(256) default null,
+        templates_source character varying(256) default null,
         default_schema character varying(63) default null,
         default_s_et character varying(63) default null,
         default_a_et character varying(63) default null,
@@ -312,7 +337,7 @@ create table application (
             SELECT * INTO strict _status FROM "application.update__internal"(
                 name => "application.update".name,
                 base_url => "application.update".base_url,
-                artifacts_source => "application.update".artifacts_source,
+                templates_source => "application.update".templates_source,
                 default_schema => "application.update".default_schema,
                 default_s_et => "application.update".default_s_et,
                 default_a_et => "application.update".default_a_et,
@@ -335,7 +360,7 @@ create table application (
     create function "application.persist__internal" (
         name character varying(63),
         base_url character varying(256) default null,
-        artifacts_source character varying(256) default null,
+        templates_source character varying(256) default null,
         default_schema character varying(63) default null,
         default_s_et character varying(63) default null,
         default_a_et character varying(63) default null,
@@ -359,7 +384,7 @@ create table application (
                 SELECT * INTO strict _status FROM "application.insert__internal"(
                     name => "application.persist__internal".name,
                     base_url => "application.persist__internal".base_url,
-                    artifacts_source => "application.persist__internal".artifacts_source,
+                    templates_source => "application.persist__internal".templates_source,
                     default_schema => "application.persist__internal".default_schema,
                     default_s_et => "application.persist__internal".default_s_et,
                     default_a_et => "application.persist__internal".default_a_et,
@@ -374,7 +399,7 @@ create table application (
                 SELECT * INTO strict _status FROM "application.update__internal"(
                     name => "application.persist__internal".name,
                     base_url => "application.persist__internal".base_url,
-                    artifacts_source => "application.persist__internal".artifacts_source,
+                    templates_source => "application.persist__internal".templates_source,
                     default_schema => "application.persist__internal".default_schema,
                     default_s_et => "application.persist__internal".default_s_et,
                     default_a_et => "application.persist__internal".default_a_et,
@@ -418,7 +443,7 @@ create table application (
     create function "application.persist" (
         name character varying(63),
         base_url character varying(256) default null,
-        artifacts_source character varying(256) default null,
+        templates_source character varying(256) default null,
         default_schema character varying(63) default null,
         default_s_et character varying(63) default null,
         default_a_et character varying(63) default null,
@@ -434,7 +459,7 @@ create table application (
             SELECT * INTO strict _status FROM "application.persist__internal"(
                 name => "application.persist".name,
                 base_url => "application.persist".base_url,
-                artifacts_source => "application.persist".artifacts_source,
+                templates_source => "application.persist".templates_source,
                 default_schema => "application.persist".default_schema,
                 default_s_et => "application.persist".default_s_et,
                 default_a_et => "application.persist".default_a_et,
@@ -1281,7 +1306,7 @@ create table email_dispatcher (
     $$ language plpgsql security definer;
 -- jaaql...
 create table _jaaql (
-    the_anonymous_user postgres_role not null,
+    the_anonymous_user postgres_role,
     security_event_attempt_limit attempt_count not null,
     _singleton_key boolean PRIMARY KEY not null default true,
     check(_singleton_key is true),
@@ -4093,8 +4118,1127 @@ create table security_event (
         END;
     $$ language plpgsql security definer;
 
+-- (1a) Create view to give current date/time, possibly read from a table
 
--- (2) References
+create view _current as
+    SELECT
+        CURRENT_DATE as date_,
+        LOCALTIMESTAMP as time_;
+
+grant select on "_current" to public;
+
+create view _current_date_parts as (
+    SELECT
+        "BS.iso_extended_week_number"(date_) as iso_extended_week_number_,
+        to_char(time_, 'HH24:MI') as hour_,
+        extract(isodow from date_) - 1 as dow_
+    FROM
+        _current
+);
+
+grant select on "_current_date_parts" to public;
+
+
+
+-- (2) Create super functions
+
+-- application...
+
+-- application_schema...
+
+create function "application_schema.insert+" (
+    application character varying(63),
+    name character varying(63),
+    database character varying(63),
+    use_as_default jsonb
+) returns SETOF _error_result as
+$$
+    DECLARE
+        _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _r jsonb;
+    BEGIN
+        SELECT * INTO strict _returned_status FROM "application_schema.insert__internal"(
+            application => "application_schema.insert+".application,
+            name => "application_schema.insert+".name,
+            database => "application_schema.insert+".database );
+        _status.result = _returned_status.result;
+        _status.errors = _status.errors || _returned_status.errors;
+
+        for _r in SELECT * FROM jsonb_array_elements(use_as_default) loop
+            SELECT * INTO strict _returned_status FROM "application.insert__internal"(
+                name => "application_schema.insert+".application,
+                default_schema => "application_schema.insert+".name,
+                base_url => (_r->>'base_url')::character varying(256),
+                templates_source => (_r->>'templates_source')::character varying(256),
+                default_s_et => (_r->>'default_s_et')::character varying(63),
+                default_a_et => (_r->>'default_a_et')::character varying(63),
+                default_r_et => (_r->>'default_r_et')::character varying(63),
+                default_u_et => (_r->>'default_u_et')::character varying(63),
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            raise exception using errcode='BATON';
+        end if;
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                null::text as table_name,
+                null::integer as index,
+                null::text as message,
+                null::text as column_name;
+    EXCEPTION when sqlstate 'BATON' then
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                unnest.table_name::text as table_name,
+                unnest.index::integer as index,
+                unnest.message::text as message,
+                unnest.column_name::text as column_name
+            FROM unnest(_status.errors);
+    END
+$$ language plpgsql security definer;
+select * from plpgsql_check_function(
+    '"application_schema.insert+"('
+        'character varying(63),'
+        'character varying(63),'
+        'character varying(63),'
+        'jsonb)'
+);
+
+grant execute on function "application_schema.insert+" to registered;
+create function "application_schema.persist+" (
+    application character varying(63),
+    name character varying(63),
+    use_as_default jsonb,
+    database character varying(63) default null
+) returns SETOF _error_result as
+$$
+    DECLARE
+        _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _r jsonb;
+    BEGIN
+        SELECT * INTO strict _returned_status FROM "application_schema.persist__internal"(
+            application => "application_schema.persist+".application,
+            name => "application_schema.persist+".name,
+            database => "application_schema.persist+".database );
+        _status.result = _returned_status.result;
+        _status.errors = _status.errors || _returned_status.errors;
+
+        DELETE FROM application A WHERE
+            A.name = "application_schema.persist+".application AND
+            A.default_schema = "application_schema.persist+".name;
+
+        for _r in SELECT * FROM jsonb_array_elements(use_as_default) loop
+            SELECT * INTO strict _returned_status FROM "application.persist__internal"(
+                name => "application_schema.persist+".application,
+                default_schema => "application_schema.persist+".name,
+                base_url => (_r->>'base_url')::character varying(256),
+                templates_source => (_r->>'templates_source')::character varying(256),
+                default_s_et => (_r->>'default_s_et')::character varying(63),
+                default_a_et => (_r->>'default_a_et')::character varying(63),
+                default_r_et => (_r->>'default_r_et')::character varying(63),
+                default_u_et => (_r->>'default_u_et')::character varying(63),
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            raise exception using errcode='BATON';
+        end if;
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                null::text as table_name,
+                null::integer as index,
+                null::text as message,
+                null::text as column_name;
+    EXCEPTION when sqlstate 'BATON' then
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                unnest.table_name::text as table_name,
+                unnest.index::integer as index,
+                unnest.message::text as message,
+                unnest.column_name::text as column_name
+            FROM unnest(_status.errors);
+    END
+$$ language plpgsql security definer;
+select * from plpgsql_check_function(
+    '"application_schema.persist+"('
+        'character varying(63),'
+        'character varying(63),'
+        'jsonb,'
+        'character varying(63))'
+);
+
+grant execute on function "application_schema.persist+" to registered;
+create function "application_schema.update+" (
+    application character varying(63),
+    name character varying(63),
+    use_as_default jsonb,
+    database character varying(63) default null
+) returns SETOF _error_result as
+$$
+    DECLARE
+        _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _r jsonb;
+    BEGIN
+        SELECT * INTO strict _returned_status FROM "application_schema.update__internal"(
+            application => "application_schema.update+".application,
+            name => "application_schema.update+".name,
+            database => "application_schema.update+".database );
+        _status.result = _returned_status.result;
+        _status.errors = _status.errors || _returned_status.errors;
+
+        DELETE FROM application A WHERE
+            A.name = "application_schema.update+".application AND
+            A.default_schema = "application_schema.update+".name;
+
+        for _r in SELECT * FROM jsonb_array_elements(use_as_default) loop
+            SELECT * INTO strict _returned_status FROM "application.update__internal"(
+                name => "application_schema.update+".application,
+                default_schema => "application_schema.update+".name,
+                base_url => (_r->>'base_url')::character varying(256),
+                templates_source => (_r->>'templates_source')::character varying(256),
+                default_s_et => (_r->>'default_s_et')::character varying(63),
+                default_a_et => (_r->>'default_a_et')::character varying(63),
+                default_r_et => (_r->>'default_r_et')::character varying(63),
+                default_u_et => (_r->>'default_u_et')::character varying(63),
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            raise exception using errcode='BATON';
+        end if;
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                null::text as table_name,
+                null::integer as index,
+                null::text as message,
+                null::text as column_name;
+    EXCEPTION when sqlstate 'BATON' then
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                unnest.table_name::text as table_name,
+                unnest.index::integer as index,
+                unnest.message::text as message,
+                unnest.column_name::text as column_name
+            FROM unnest(_status.errors);
+    END
+$$ language plpgsql security definer;
+select * from plpgsql_check_function(
+    '"application_schema.update+"('
+        'character varying(63),'
+        'character varying(63),'
+        'jsonb,'
+        'character varying(63))'
+);
+
+grant execute on function "application_schema.update+" to registered;
+-- email_dispatcher...
+
+-- jaaql...
+
+-- email_template...
+
+create function "email_template.insert+" (
+    application character varying(63),
+    dispatcher character varying(63),
+    name character varying(63),
+    type character varying(1),
+    content_url character varying(255),
+    validation_schema character varying(63),
+    base_relation character varying(63),
+    dbms_user_column_name character varying(63),
+    permissions_and_data_view character varying(63),
+    dispatcher_domain_recipient character varying(64),
+    can_be_sent_anonymously bool,
+    use_as_default_sign_up jsonb,
+    use_as_default_already_signed_up jsonb,
+    use_as_default_reset_password jsonb,
+    use_as_default_unregisted_password_reset jsonb
+) returns SETOF _error_result as
+$$
+    DECLARE
+        _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _r jsonb;
+    BEGIN
+        SELECT * INTO strict _returned_status FROM "email_template.insert__internal"(
+            application => "email_template.insert+".application,
+            dispatcher => "email_template.insert+".dispatcher,
+            name => "email_template.insert+".name,
+            type => "email_template.insert+".type,
+            content_url => "email_template.insert+".content_url,
+            validation_schema => "email_template.insert+".validation_schema,
+            base_relation => "email_template.insert+".base_relation,
+            dbms_user_column_name => "email_template.insert+".dbms_user_column_name,
+            permissions_and_data_view => "email_template.insert+".permissions_and_data_view,
+            dispatcher_domain_recipient => "email_template.insert+".dispatcher_domain_recipient,
+            can_be_sent_anonymously => "email_template.insert+".can_be_sent_anonymously );
+        _status.result = _returned_status.result;
+        _status.errors = _status.errors || _returned_status.errors;
+
+        for _r in SELECT * FROM jsonb_array_elements(use_as_default_sign_up) loop
+            SELECT * INTO strict _returned_status FROM "application.insert__internal"(
+                name => "email_template.insert+".application,
+                default_s_et => "email_template.insert+".name,
+                base_url => (_r->>'base_url')::character varying(256),
+                templates_source => (_r->>'templates_source')::character varying(256),
+                default_schema => (_r->>'default_schema')::character varying(63),
+                default_a_et => (_r->>'default_a_et')::character varying(63),
+                default_r_et => (_r->>'default_r_et')::character varying(63),
+                default_u_et => (_r->>'default_u_et')::character varying(63),
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        for _r in SELECT * FROM jsonb_array_elements(use_as_default_already_signed_up) loop
+            SELECT * INTO strict _returned_status FROM "application.insert__internal"(
+                name => "email_template.insert+".application,
+                default_a_et => "email_template.insert+".name,
+                base_url => (_r->>'base_url')::character varying(256),
+                templates_source => (_r->>'templates_source')::character varying(256),
+                default_schema => (_r->>'default_schema')::character varying(63),
+                default_s_et => (_r->>'default_s_et')::character varying(63),
+                default_r_et => (_r->>'default_r_et')::character varying(63),
+                default_u_et => (_r->>'default_u_et')::character varying(63),
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        for _r in SELECT * FROM jsonb_array_elements(use_as_default_reset_password) loop
+            SELECT * INTO strict _returned_status FROM "application.insert__internal"(
+                name => "email_template.insert+".application,
+                default_r_et => "email_template.insert+".name,
+                base_url => (_r->>'base_url')::character varying(256),
+                templates_source => (_r->>'templates_source')::character varying(256),
+                default_schema => (_r->>'default_schema')::character varying(63),
+                default_s_et => (_r->>'default_s_et')::character varying(63),
+                default_a_et => (_r->>'default_a_et')::character varying(63),
+                default_u_et => (_r->>'default_u_et')::character varying(63),
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        for _r in SELECT * FROM jsonb_array_elements(use_as_default_unregisted_password_reset) loop
+            SELECT * INTO strict _returned_status FROM "application.insert__internal"(
+                name => "email_template.insert+".application,
+                default_u_et => "email_template.insert+".name,
+                base_url => (_r->>'base_url')::character varying(256),
+                templates_source => (_r->>'templates_source')::character varying(256),
+                default_schema => (_r->>'default_schema')::character varying(63),
+                default_s_et => (_r->>'default_s_et')::character varying(63),
+                default_a_et => (_r->>'default_a_et')::character varying(63),
+                default_r_et => (_r->>'default_r_et')::character varying(63),
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            raise exception using errcode='BATON';
+        end if;
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                null::text as table_name,
+                null::integer as index,
+                null::text as message,
+                null::text as column_name;
+    EXCEPTION when sqlstate 'BATON' then
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                unnest.table_name::text as table_name,
+                unnest.index::integer as index,
+                unnest.message::text as message,
+                unnest.column_name::text as column_name
+            FROM unnest(_status.errors);
+    END
+$$ language plpgsql security definer;
+select * from plpgsql_check_function(
+    '"email_template.insert+"('
+        'character varying(63),'
+        'character varying(63),'
+        'character varying(63),'
+        'character varying(1),'
+        'character varying(255),'
+        'character varying(63),'
+        'character varying(63),'
+        'character varying(63),'
+        'character varying(63),'
+        'character varying(64),'
+        'bool,'
+        'jsonb,'
+        'jsonb,'
+        'jsonb,'
+        'jsonb)'
+);
+
+grant execute on function "email_template.insert+" to registered;
+create function "email_template.persist+" (
+    application character varying(63),
+    name character varying(63),
+    use_as_default_sign_up jsonb,
+    use_as_default_already_signed_up jsonb,
+    use_as_default_reset_password jsonb,
+    use_as_default_unregisted_password_reset jsonb,
+    dispatcher character varying(63) default null,
+    type character varying(1) default null,
+    content_url character varying(255) default null,
+    validation_schema character varying(63) default null,
+    base_relation character varying(63) default null,
+    dbms_user_column_name character varying(63) default null,
+    permissions_and_data_view character varying(63) default null,
+    dispatcher_domain_recipient character varying(64) default null,
+    can_be_sent_anonymously bool default null
+) returns SETOF _error_result as
+$$
+    DECLARE
+        _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _r jsonb;
+    BEGIN
+        SELECT * INTO strict _returned_status FROM "email_template.persist__internal"(
+            application => "email_template.persist+".application,
+            dispatcher => "email_template.persist+".dispatcher,
+            name => "email_template.persist+".name,
+            type => "email_template.persist+".type,
+            content_url => "email_template.persist+".content_url,
+            validation_schema => "email_template.persist+".validation_schema,
+            base_relation => "email_template.persist+".base_relation,
+            dbms_user_column_name => "email_template.persist+".dbms_user_column_name,
+            permissions_and_data_view => "email_template.persist+".permissions_and_data_view,
+            dispatcher_domain_recipient => "email_template.persist+".dispatcher_domain_recipient,
+            can_be_sent_anonymously => "email_template.persist+".can_be_sent_anonymously );
+        _status.result = _returned_status.result;
+        _status.errors = _status.errors || _returned_status.errors;
+
+        DELETE FROM application A WHERE
+            A.name = "email_template.persist+".application AND
+            A.default_s_et = "email_template.persist+".name;
+        DELETE FROM application A WHERE
+            A.name = "email_template.persist+".application AND
+            A.default_a_et = "email_template.persist+".name;
+        DELETE FROM application A WHERE
+            A.name = "email_template.persist+".application AND
+            A.default_r_et = "email_template.persist+".name;
+        DELETE FROM application A WHERE
+            A.name = "email_template.persist+".application AND
+            A.default_u_et = "email_template.persist+".name;
+
+        for _r in SELECT * FROM jsonb_array_elements(use_as_default_sign_up) loop
+            SELECT * INTO strict _returned_status FROM "application.persist__internal"(
+                name => "email_template.persist+".application,
+                default_s_et => "email_template.persist+".name,
+                base_url => (_r->>'base_url')::character varying(256),
+                templates_source => (_r->>'templates_source')::character varying(256),
+                default_schema => (_r->>'default_schema')::character varying(63),
+                default_a_et => (_r->>'default_a_et')::character varying(63),
+                default_r_et => (_r->>'default_r_et')::character varying(63),
+                default_u_et => (_r->>'default_u_et')::character varying(63),
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        for _r in SELECT * FROM jsonb_array_elements(use_as_default_already_signed_up) loop
+            SELECT * INTO strict _returned_status FROM "application.persist__internal"(
+                name => "email_template.persist+".application,
+                default_a_et => "email_template.persist+".name,
+                base_url => (_r->>'base_url')::character varying(256),
+                templates_source => (_r->>'templates_source')::character varying(256),
+                default_schema => (_r->>'default_schema')::character varying(63),
+                default_s_et => (_r->>'default_s_et')::character varying(63),
+                default_r_et => (_r->>'default_r_et')::character varying(63),
+                default_u_et => (_r->>'default_u_et')::character varying(63),
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        for _r in SELECT * FROM jsonb_array_elements(use_as_default_reset_password) loop
+            SELECT * INTO strict _returned_status FROM "application.persist__internal"(
+                name => "email_template.persist+".application,
+                default_r_et => "email_template.persist+".name,
+                base_url => (_r->>'base_url')::character varying(256),
+                templates_source => (_r->>'templates_source')::character varying(256),
+                default_schema => (_r->>'default_schema')::character varying(63),
+                default_s_et => (_r->>'default_s_et')::character varying(63),
+                default_a_et => (_r->>'default_a_et')::character varying(63),
+                default_u_et => (_r->>'default_u_et')::character varying(63),
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        for _r in SELECT * FROM jsonb_array_elements(use_as_default_unregisted_password_reset) loop
+            SELECT * INTO strict _returned_status FROM "application.persist__internal"(
+                name => "email_template.persist+".application,
+                default_u_et => "email_template.persist+".name,
+                base_url => (_r->>'base_url')::character varying(256),
+                templates_source => (_r->>'templates_source')::character varying(256),
+                default_schema => (_r->>'default_schema')::character varying(63),
+                default_s_et => (_r->>'default_s_et')::character varying(63),
+                default_a_et => (_r->>'default_a_et')::character varying(63),
+                default_r_et => (_r->>'default_r_et')::character varying(63),
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            raise exception using errcode='BATON';
+        end if;
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                null::text as table_name,
+                null::integer as index,
+                null::text as message,
+                null::text as column_name;
+    EXCEPTION when sqlstate 'BATON' then
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                unnest.table_name::text as table_name,
+                unnest.index::integer as index,
+                unnest.message::text as message,
+                unnest.column_name::text as column_name
+            FROM unnest(_status.errors);
+    END
+$$ language plpgsql security definer;
+select * from plpgsql_check_function(
+    '"email_template.persist+"('
+        'character varying(63),'
+        'character varying(63),'
+        'jsonb,'
+        'jsonb,'
+        'jsonb,'
+        'jsonb,'
+        'character varying(63),'
+        'character varying(1),'
+        'character varying(255),'
+        'character varying(63),'
+        'character varying(63),'
+        'character varying(63),'
+        'character varying(63),'
+        'character varying(64),'
+        'bool)'
+);
+
+grant execute on function "email_template.persist+" to registered;
+create function "email_template.update+" (
+    application character varying(63),
+    name character varying(63),
+    use_as_default_sign_up jsonb,
+    use_as_default_already_signed_up jsonb,
+    use_as_default_reset_password jsonb,
+    use_as_default_unregisted_password_reset jsonb,
+    dispatcher character varying(63) default null,
+    type character varying(1) default null,
+    content_url character varying(255) default null,
+    validation_schema character varying(63) default null,
+    base_relation character varying(63) default null,
+    dbms_user_column_name character varying(63) default null,
+    permissions_and_data_view character varying(63) default null,
+    dispatcher_domain_recipient character varying(64) default null,
+    can_be_sent_anonymously bool default null
+) returns SETOF _error_result as
+$$
+    DECLARE
+        _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _r jsonb;
+    BEGIN
+        SELECT * INTO strict _returned_status FROM "email_template.update__internal"(
+            application => "email_template.update+".application,
+            dispatcher => "email_template.update+".dispatcher,
+            name => "email_template.update+".name,
+            type => "email_template.update+".type,
+            content_url => "email_template.update+".content_url,
+            validation_schema => "email_template.update+".validation_schema,
+            base_relation => "email_template.update+".base_relation,
+            dbms_user_column_name => "email_template.update+".dbms_user_column_name,
+            permissions_and_data_view => "email_template.update+".permissions_and_data_view,
+            dispatcher_domain_recipient => "email_template.update+".dispatcher_domain_recipient,
+            can_be_sent_anonymously => "email_template.update+".can_be_sent_anonymously );
+        _status.result = _returned_status.result;
+        _status.errors = _status.errors || _returned_status.errors;
+
+        DELETE FROM application A WHERE
+            A.name = "email_template.update+".application AND
+            A.default_s_et = "email_template.update+".name;
+        DELETE FROM application A WHERE
+            A.name = "email_template.update+".application AND
+            A.default_a_et = "email_template.update+".name;
+        DELETE FROM application A WHERE
+            A.name = "email_template.update+".application AND
+            A.default_r_et = "email_template.update+".name;
+        DELETE FROM application A WHERE
+            A.name = "email_template.update+".application AND
+            A.default_u_et = "email_template.update+".name;
+
+        for _r in SELECT * FROM jsonb_array_elements(use_as_default_sign_up) loop
+            SELECT * INTO strict _returned_status FROM "application.update__internal"(
+                name => "email_template.update+".application,
+                default_s_et => "email_template.update+".name,
+                base_url => (_r->>'base_url')::character varying(256),
+                templates_source => (_r->>'templates_source')::character varying(256),
+                default_schema => (_r->>'default_schema')::character varying(63),
+                default_a_et => (_r->>'default_a_et')::character varying(63),
+                default_r_et => (_r->>'default_r_et')::character varying(63),
+                default_u_et => (_r->>'default_u_et')::character varying(63),
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        for _r in SELECT * FROM jsonb_array_elements(use_as_default_already_signed_up) loop
+            SELECT * INTO strict _returned_status FROM "application.update__internal"(
+                name => "email_template.update+".application,
+                default_a_et => "email_template.update+".name,
+                base_url => (_r->>'base_url')::character varying(256),
+                templates_source => (_r->>'templates_source')::character varying(256),
+                default_schema => (_r->>'default_schema')::character varying(63),
+                default_s_et => (_r->>'default_s_et')::character varying(63),
+                default_r_et => (_r->>'default_r_et')::character varying(63),
+                default_u_et => (_r->>'default_u_et')::character varying(63),
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        for _r in SELECT * FROM jsonb_array_elements(use_as_default_reset_password) loop
+            SELECT * INTO strict _returned_status FROM "application.update__internal"(
+                name => "email_template.update+".application,
+                default_r_et => "email_template.update+".name,
+                base_url => (_r->>'base_url')::character varying(256),
+                templates_source => (_r->>'templates_source')::character varying(256),
+                default_schema => (_r->>'default_schema')::character varying(63),
+                default_s_et => (_r->>'default_s_et')::character varying(63),
+                default_a_et => (_r->>'default_a_et')::character varying(63),
+                default_u_et => (_r->>'default_u_et')::character varying(63),
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        for _r in SELECT * FROM jsonb_array_elements(use_as_default_unregisted_password_reset) loop
+            SELECT * INTO strict _returned_status FROM "application.update__internal"(
+                name => "email_template.update+".application,
+                default_u_et => "email_template.update+".name,
+                base_url => (_r->>'base_url')::character varying(256),
+                templates_source => (_r->>'templates_source')::character varying(256),
+                default_schema => (_r->>'default_schema')::character varying(63),
+                default_s_et => (_r->>'default_s_et')::character varying(63),
+                default_a_et => (_r->>'default_a_et')::character varying(63),
+                default_r_et => (_r->>'default_r_et')::character varying(63),
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            raise exception using errcode='BATON';
+        end if;
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                null::text as table_name,
+                null::integer as index,
+                null::text as message,
+                null::text as column_name;
+    EXCEPTION when sqlstate 'BATON' then
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                unnest.table_name::text as table_name,
+                unnest.index::integer as index,
+                unnest.message::text as message,
+                unnest.column_name::text as column_name
+            FROM unnest(_status.errors);
+    END
+$$ language plpgsql security definer;
+select * from plpgsql_check_function(
+    '"email_template.update+"('
+        'character varying(63),'
+        'character varying(63),'
+        'jsonb,'
+        'jsonb,'
+        'jsonb,'
+        'jsonb,'
+        'character varying(63),'
+        'character varying(1),'
+        'character varying(255),'
+        'character varying(63),'
+        'character varying(63),'
+        'character varying(63),'
+        'character varying(63),'
+        'character varying(64),'
+        'bool)'
+);
+
+grant execute on function "email_template.update+" to registered;
+-- document_template...
+
+-- document_request...
+
+-- account...
+
+create function "account.insert+" (
+    id character varying(63),
+    username character varying(255),
+    deletion_timestamp timestamptz,
+    most_recent_password uuid,
+    use_as_the_anonymous_user jsonb
+) returns SETOF _error_result as
+$$
+    DECLARE
+        _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _r jsonb;
+    BEGIN
+        SELECT * INTO strict _returned_status FROM "account.insert__internal"(
+            id => "account.insert+".id,
+            username => "account.insert+".username,
+            deletion_timestamp => "account.insert+".deletion_timestamp,
+            most_recent_password => "account.insert+".most_recent_password );
+        _status.result = _returned_status.result;
+        _status.errors = _status.errors || _returned_status.errors;
+
+        for _r in SELECT * FROM jsonb_array_elements(use_as_the_anonymous_user) loop
+            SELECT * INTO strict _returned_status FROM "jaaql.insert__internal"(
+                the_anonymous_user => "account.insert+".id,
+                security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::smallint END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            raise exception using errcode='BATON';
+        end if;
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                null::text as table_name,
+                null::integer as index,
+                null::text as message,
+                null::text as column_name;
+    EXCEPTION when sqlstate 'BATON' then
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                unnest.table_name::text as table_name,
+                unnest.index::integer as index,
+                unnest.message::text as message,
+                unnest.column_name::text as column_name
+            FROM unnest(_status.errors);
+    END
+$$ language plpgsql security definer;
+select * from plpgsql_check_function(
+    '"account.insert+"('
+        'character varying(63),'
+        'character varying(255),'
+        'timestamptz,'
+        'uuid,'
+        'jsonb)'
+);
+
+grant execute on function "account.insert+" to registered;
+create function "account.persist+" (
+    id character varying(63),
+    use_as_the_anonymous_user jsonb,
+    username character varying(255) default null,
+    deletion_timestamp timestamptz default null,
+    most_recent_password uuid default null
+) returns SETOF _error_result as
+$$
+    DECLARE
+        _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _r jsonb;
+    BEGIN
+        SELECT * INTO strict _returned_status FROM "account.persist__internal"(
+            id => "account.persist+".id,
+            username => "account.persist+".username,
+            deletion_timestamp => "account.persist+".deletion_timestamp,
+            most_recent_password => "account.persist+".most_recent_password );
+        _status.result = _returned_status.result;
+        _status.errors = _status.errors || _returned_status.errors;
+
+        DELETE FROM jaaql J WHERE
+            J.the_anonymous_user = "account.persist+".id;
+
+        for _r in SELECT * FROM jsonb_array_elements(use_as_the_anonymous_user) loop
+            SELECT * INTO strict _returned_status FROM "jaaql.persist__internal"(
+                the_anonymous_user => "account.persist+".id,
+                security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::smallint END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            raise exception using errcode='BATON';
+        end if;
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                null::text as table_name,
+                null::integer as index,
+                null::text as message,
+                null::text as column_name;
+    EXCEPTION when sqlstate 'BATON' then
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                unnest.table_name::text as table_name,
+                unnest.index::integer as index,
+                unnest.message::text as message,
+                unnest.column_name::text as column_name
+            FROM unnest(_status.errors);
+    END
+$$ language plpgsql security definer;
+select * from plpgsql_check_function(
+    '"account.persist+"('
+        'character varying(63),'
+        'jsonb,'
+        'character varying(255),'
+        'timestamptz,'
+        'uuid)'
+);
+
+grant execute on function "account.persist+" to registered;
+create function "account.update+" (
+    id character varying(63),
+    use_as_the_anonymous_user jsonb,
+    username character varying(255) default null,
+    deletion_timestamp timestamptz default null,
+    most_recent_password uuid default null
+) returns SETOF _error_result as
+$$
+    DECLARE
+        _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _r jsonb;
+    BEGIN
+        SELECT * INTO strict _returned_status FROM "account.update__internal"(
+            id => "account.update+".id,
+            username => "account.update+".username,
+            deletion_timestamp => "account.update+".deletion_timestamp,
+            most_recent_password => "account.update+".most_recent_password );
+        _status.result = _returned_status.result;
+        _status.errors = _status.errors || _returned_status.errors;
+
+        DELETE FROM jaaql J WHERE
+            J.the_anonymous_user = "account.update+".id;
+
+        for _r in SELECT * FROM jsonb_array_elements(use_as_the_anonymous_user) loop
+            SELECT * INTO strict _returned_status FROM "jaaql.update__internal"(
+                the_anonymous_user => "account.update+".id,
+                security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::smallint END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            raise exception using errcode='BATON';
+        end if;
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                null::text as table_name,
+                null::integer as index,
+                null::text as message,
+                null::text as column_name;
+    EXCEPTION when sqlstate 'BATON' then
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                unnest.table_name::text as table_name,
+                unnest.index::integer as index,
+                unnest.message::text as message,
+                unnest.column_name::text as column_name
+            FROM unnest(_status.errors);
+    END
+$$ language plpgsql security definer;
+select * from plpgsql_check_function(
+    '"account.update+"('
+        'character varying(63),'
+        'jsonb,'
+        'character varying(255),'
+        'timestamptz,'
+        'uuid)'
+);
+
+grant execute on function "account.update+" to registered;
+-- account_password...
+
+create function "account_password.insert+" (
+    account character varying(63),
+    uuid uuid,
+    hash character varying(512),
+    creation_timestamp timestamptz,
+    use_as_most_recent_password jsonb
+) returns SETOF _error_result as
+$$
+    DECLARE
+        _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _r jsonb;
+    BEGIN
+        SELECT * INTO strict _returned_status FROM "account_password.insert__internal"(
+            account => "account_password.insert+".account,
+            uuid => "account_password.insert+".uuid,
+            hash => "account_password.insert+".hash,
+            creation_timestamp => "account_password.insert+".creation_timestamp );
+        _status.result = _returned_status.result;
+        _status.errors = _status.errors || _returned_status.errors;
+
+        for _r in SELECT * FROM jsonb_array_elements(use_as_most_recent_password) loop
+            SELECT * INTO strict _returned_status FROM "account.insert__internal"(
+                most_recent_password => "account_password.insert+".uuid,
+                id => (_r->>'id')::character varying(63),
+                username => (_r->>'username')::character varying(255),
+                deletion_timestamp => CASE WHEN _r->>'deletion_timestamp' = '' THEN null ELSE (_r->>'deletion_timestamp')::timestamptz END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            raise exception using errcode='BATON';
+        end if;
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                null::text as table_name,
+                null::integer as index,
+                null::text as message,
+                null::text as column_name;
+    EXCEPTION when sqlstate 'BATON' then
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                unnest.table_name::text as table_name,
+                unnest.index::integer as index,
+                unnest.message::text as message,
+                unnest.column_name::text as column_name
+            FROM unnest(_status.errors);
+    END
+$$ language plpgsql security definer;
+select * from plpgsql_check_function(
+    '"account_password.insert+"('
+        'character varying(63),'
+        'uuid,'
+        'character varying(512),'
+        'timestamptz,'
+        'jsonb)'
+);
+
+grant execute on function "account_password.insert+" to registered;
+create function "account_password.persist+" (
+    uuid uuid,
+    use_as_most_recent_password jsonb,
+    account character varying(63) default null,
+    hash character varying(512) default null,
+    creation_timestamp timestamptz default null
+) returns SETOF _error_result as
+$$
+    DECLARE
+        _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _r jsonb;
+    BEGIN
+        SELECT * INTO strict _returned_status FROM "account_password.persist__internal"(
+            account => "account_password.persist+".account,
+            uuid => "account_password.persist+".uuid,
+            hash => "account_password.persist+".hash,
+            creation_timestamp => "account_password.persist+".creation_timestamp );
+        _status.result = _returned_status.result;
+        _status.errors = _status.errors || _returned_status.errors;
+
+        DELETE FROM account A WHERE
+            A.most_recent_password = "account_password.persist+".uuid;
+
+        for _r in SELECT * FROM jsonb_array_elements(use_as_most_recent_password) loop
+            SELECT * INTO strict _returned_status FROM "account.persist__internal"(
+                most_recent_password => "account_password.persist+".uuid,
+                id => (_r->>'id')::character varying(63),
+                username => (_r->>'username')::character varying(255),
+                deletion_timestamp => CASE WHEN _r->>'deletion_timestamp' = '' THEN null ELSE (_r->>'deletion_timestamp')::timestamptz END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            raise exception using errcode='BATON';
+        end if;
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                null::text as table_name,
+                null::integer as index,
+                null::text as message,
+                null::text as column_name;
+    EXCEPTION when sqlstate 'BATON' then
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                unnest.table_name::text as table_name,
+                unnest.index::integer as index,
+                unnest.message::text as message,
+                unnest.column_name::text as column_name
+            FROM unnest(_status.errors);
+    END
+$$ language plpgsql security definer;
+select * from plpgsql_check_function(
+    '"account_password.persist+"('
+        'uuid,'
+        'jsonb,'
+        'character varying(63),'
+        'character varying(512),'
+        'timestamptz)'
+);
+
+grant execute on function "account_password.persist+" to registered;
+create function "account_password.update+" (
+    uuid uuid,
+    use_as_most_recent_password jsonb,
+    account character varying(63) default null,
+    hash character varying(512) default null,
+    creation_timestamp timestamptz default null
+) returns SETOF _error_result as
+$$
+    DECLARE
+        _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        _r jsonb;
+    BEGIN
+        SELECT * INTO strict _returned_status FROM "account_password.update__internal"(
+            account => "account_password.update+".account,
+            uuid => "account_password.update+".uuid,
+            hash => "account_password.update+".hash,
+            creation_timestamp => "account_password.update+".creation_timestamp );
+        _status.result = _returned_status.result;
+        _status.errors = _status.errors || _returned_status.errors;
+
+        DELETE FROM account A WHERE
+            A.most_recent_password = "account_password.update+".uuid;
+
+        for _r in SELECT * FROM jsonb_array_elements(use_as_most_recent_password) loop
+            SELECT * INTO strict _returned_status FROM "account.update__internal"(
+                most_recent_password => "account_password.update+".uuid,
+                id => (_r->>'id')::character varying(63),
+                username => (_r->>'username')::character varying(255),
+                deletion_timestamp => CASE WHEN _r->>'deletion_timestamp' = '' THEN null ELSE (_r->>'deletion_timestamp')::timestamptz END,
+                _index => (_r->>'_index')::integer,
+                _check_only => cardinality(_status.errors) <> 0);
+            _status.errors = _status.errors || _returned_status.errors;
+        end loop;
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            raise exception using errcode='BATON';
+        end if;
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                null::text as table_name,
+                null::integer as index,
+                null::text as message,
+                null::text as column_name;
+    EXCEPTION when sqlstate 'BATON' then
+        return QUERY
+            SELECT
+                _status.result::integer as result,
+                unnest.table_name::text as table_name,
+                unnest.index::integer as index,
+                unnest.message::text as message,
+                unnest.column_name::text as column_name
+            FROM unnest(_status.errors);
+    END
+$$ language plpgsql security definer;
+select * from plpgsql_check_function(
+    '"account_password.update+"('
+        'uuid,'
+        'jsonb,'
+        'character varying(63),'
+        'character varying(512),'
+        'timestamptz)'
+);
+
+grant execute on function "account_password.update+" to registered;
+-- validated_ip_address...
+
+-- security_event...
+
+
+
+-- (3) Populate tables
+
+-- jaaql...
+insert into jaaql (the_anonymous_user, security_event_attempt_limit)
+values (NULL, 3);
+
+
+
+-- (4) References
+
 -- application...
 alter table application add constraint application__default_schema
     foreign key (name, default_schema)
@@ -4110,40 +5254,50 @@ alter table application add constraint application__default_reset_password_email
         references email_template (application, name);
 alter table application add constraint application__default_unregistered_password_reset_email_template
     foreign key (name, default_u_et)
-        references email_template (application, name);-- application_schema...
+        references email_template (application, name);
+-- application_schema...
 alter table application_schema add constraint application_schema__application
     foreign key (application)
-        references application (name);-- email_dispatcher...
+        references application (name);
+-- email_dispatcher...
 alter table email_dispatcher add constraint email_dispatcher__application
     foreign key (application)
-        references application (name);-- jaaql...
+        references application (name);
+-- jaaql...
 alter table _jaaql add constraint jaaql__the_anonymous_user
     foreign key (the_anonymous_user)
-        references account (id);-- email_template...
+        references account (id);
+-- email_template...
 alter table email_template add constraint email_template__dispatcher
     foreign key (application, dispatcher)
         references email_dispatcher (application, name);
 alter table email_template add constraint email_template__validation_schema
     foreign key (application, validation_schema)
-        references application_schema (application, name);-- document_template...
+        references application_schema (application, name);
+-- document_template...
 alter table document_template add constraint document_template__application
     foreign key (application)
         references application (name);
 alter table document_template add constraint document_template__email_template
     foreign key (application, email_template)
-        references email_template (application, name);-- document_request...
+        references email_template (application, name);
+-- document_request...
 alter table document_request add constraint document_request__template
     foreign key (application, template)
-        references document_template (application, name);-- account...
+        references document_template (application, name);
+-- account...
 alter table account add constraint account__most_recent_password
     foreign key (most_recent_password)
-        references account_password (uuid);-- account_password...
+        references account_password (uuid);
+-- account_password...
 alter table account_password add constraint account_password__account
     foreign key (account)
-        references account (id);-- validated_ip_address...
+        references account (id);
+-- validated_ip_address...
 alter table validated_ip_address add constraint validated_ip_address__account
     foreign key (account)
-        references account (id);-- security_event...
+        references account (id);
+-- security_event...
 alter table security_event add constraint security_event__application
     foreign key (application)
         references application (name);
@@ -4153,4 +5307,62 @@ alter table security_event add constraint security_event__email_template
 alter table security_event add constraint security_event__account
     foreign key (account)
         references account (id);
+
+-- (5) Grant access to tables
+
+    grant select on application to registered;
+    grant select on application_schema to registered;
+    grant select on email_dispatcher to registered;
+    grant select on jaaql to registered;
+    grant select on email_template to registered;
+    grant select on document_template to registered;
+    grant select on document_request to registered;
+    grant select on account to registered;
+    grant select on account_password to registered;
+    grant select on validated_ip_address to registered;
+    grant select on security_event to registered;
+
+
+-- (6) Grant access to functions
+
+    grant execute on function "application.insert" to registered;
+    grant execute on function "application.delete" to registered;
+    grant execute on function "application.update" to registered;
+    grant execute on function "application.persist" to registered;
+    grant execute on function "application_schema.insert" to registered;
+    grant execute on function "application_schema.delete" to registered;
+    grant execute on function "application_schema.update" to registered;
+    grant execute on function "application_schema.persist" to registered;
+    grant execute on function "email_dispatcher.insert" to registered;
+    grant execute on function "email_dispatcher.delete" to registered;
+    grant execute on function "email_dispatcher.update" to registered;
+    grant execute on function "email_dispatcher.persist" to registered;
+    grant execute on function "email_template.insert" to registered;
+    grant execute on function "email_template.delete" to registered;
+    grant execute on function "email_template.update" to registered;
+    grant execute on function "email_template.persist" to registered;
+    grant execute on function "document_template.insert" to registered;
+    grant execute on function "document_template.delete" to registered;
+    grant execute on function "document_template.update" to registered;
+    grant execute on function "document_template.persist" to registered;
+    grant execute on function "document_request.insert" to registered;
+    grant execute on function "document_request.delete" to registered;
+    grant execute on function "document_request.update" to registered;
+    grant execute on function "document_request.persist" to registered;
+    grant execute on function "account.insert" to registered;
+    grant execute on function "account.delete" to registered;
+    grant execute on function "account.update" to registered;
+    grant execute on function "account.persist" to registered;
+    grant execute on function "account_password.insert" to registered;
+    grant execute on function "account_password.delete" to registered;
+    grant execute on function "account_password.update" to registered;
+    grant execute on function "account_password.persist" to registered;
+    grant execute on function "validated_ip_address.insert" to registered;
+    grant execute on function "validated_ip_address.delete" to registered;
+    grant execute on function "validated_ip_address.update" to registered;
+    grant execute on function "validated_ip_address.persist" to registered;
+    grant execute on function "security_event.insert" to registered;
+    grant execute on function "security_event.delete" to registered;
+    grant execute on function "security_event.update" to registered;
+    grant execute on function "security_event.persist" to registered;
 

@@ -1,7 +1,7 @@
 from jaaql.db.db_interface import DBInterface
 from jaaql.db.db_utils import execute_supplied_statement_singleton, execute_supplied_statement
 from jaaql.constants import KEY__application, FILE__canned_queries
-from jaaql.utilities.utils_no_project_imports import load_artifact
+from jaaql.utilities.utils_no_project_imports import load_template
 from jaaql.exceptions.http_status_exception import HttpStatusException
 from requests.exceptions import RequestException
 import json
@@ -20,7 +20,7 @@ class CachedCannedQueryService:
         # TODO disabled for now
         # apps = execute_supplied_statement(connection, QUERY__load_application, as_objects=True)
         # for app in apps:
-        #     self.refresh_application(is_container, connection, app[KEY__name], app[KEY__artifacts_source])
+        #     self.refresh_application(is_container, connection, app[KEY__name], app[KEY__templates_source])
 
     def get_canned_query(self, application: str, file: str, pos: int) -> str:
         if application not in self.canned_queries:
@@ -42,11 +42,11 @@ class CachedCannedQueryService:
         # if config_resource_url is None:
         #     config_resource_url = execute_supplied_statement_singleton(connection, QUERY__load_applications,
         #                                                                {KEY__application: application},
-        #                                                                as_objects=True)[KEY__artifact_base_url]
+        #                                                                as_objects=True)[KEY__template_base_url]
 #
         # canned_queries = None
         # try:
-        #     canned_queries = load_artifact(is_container, config_resource_url, FILE__canned_queries)
+        #     canned_queries = load_template(is_container, config_resource_url, FILE__canned_queries)
         #     json.loads(canned_queries)
         # except FileNotFoundError:
         #     pass  # No canned queries for app. This is _okay_

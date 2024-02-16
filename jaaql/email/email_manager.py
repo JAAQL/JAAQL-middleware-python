@@ -6,11 +6,9 @@ import requests
 from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.constants import *
 from urllib.parse import quote
-from jaaql.utilities.utils_no_project_imports import load_artifact
+from jaaql.utilities.utils_no_project_imports import load_template
 from typing import Optional
 from jaaql.mvc.handmade_queries import *
-from jaaql.db.db_utils_no_circ import submit
-from jaaql.interpreter.interpret_jaaql import KEY_query, KEY_parameters, KEY_assert, ASSERT_one
 
 REGEX__html_entities = r'<.*?>'
 REGEX__object_name = r'^[0-9a-zA-Z_]{1,63}$'
@@ -53,71 +51,10 @@ class EmailManager:
     def replace_tags_then_encode(val):
         return EmailManager.uri_encode_replace(EmailManager.replace_html_tags(val))
 
-    def send_email(self, vault, config, db_crypt_key, jaaql_connection, application: str, template: str, application_artifacts_source: str,
-                   application_base_url: str, account_id: str, parameters: dict = None, parameter_id: str = None,
-                   none_sanitized_parameters: dict = None, recipient: str = None):
-        if none_sanitized_parameters is None:
-            none_sanitized_parameters = {}
-
-        account = account__select(jaaql_connection, db_crypt_key, account_id)
-        template = email_template__select(jaaql_connection, application, template)
-
-        if parameters is not None and len(parameters) == 0:
-            parameters = None
-
-        if template[KG__email_template__validation_schema] is None and parameters is not None:
-            raise HttpStatusException(ERR__unexpected_parameters)
-        if template[KG__email_template__validation_schema] is not None and parameters is None:
-            raise HttpStatusException(ERR__expected_parameters)
-
-        if parameters is not None:
-            ins_query = "INSERT INTO %s (%s) VALUES (%s) RETURNING id"
-
-            if parameter_id is not None:
-                parameters[KEY__id] = parameter_id
-
-            for col, _ in parameters.items():
-                if not re.match(REGEX__object_name, col):
-                    raise HttpStatusException(ERR__invalid_object_name % col)
-
-            cols = ", ".join(['"' + key + '"' for key in parameters.keys()])
-            vals = ", ".join([':' + key for key in parameters.keys()])
-
-            ins_query = ins_query % (template[KG__email_template__data_validation_table], cols, vals)
-            parameter_id = submit(vault, config, db_crypt_key, jaaql_connection, {
-                KEY__application: application,
-                KEY__schema: template[KG__email_template__validation_schema],
-                KEY_query: ins_query,
-                KEY_parameters: parameters,
-                KEY_assert: ASSERT_one
-            }, account_id, as_objects=True, singleton=True)[KEY__id]
-
-            sel_table = \
-                template[KG__email_template__data_validation_table] if template[KG__email_template__data_validation_view] is None \
-                    else template[KG__email_template__data_validation_view]
-
-            sel_query = "SELECT * FROM %s WHERE id = :id" % sel_table
-            parameters = submit(vault, config, db_crypt_key, jaaql_connection, {
-                KEY__application: application,
-                KEY__schema: template[KG__email_template__validation_schema],
-                KEY_query: sel_query,
-                KEY_parameters: {KEY__id: parameter_id},
-                KEY_assert: ASSERT_one
-            }, account_id, as_objects=True, singleton=True)
-        else:
-            parameters = {}
-
-        none_sanitized_parameters[EMAIL_PARAM__app_url] = application_base_url
-        none_sanitized_parameters[EMAIL_PARAM__email_address] = account[KG__account__username]
-        parameters = {**parameters, **none_sanitized_parameters}
-
-        self.construct_and_send_email(application_artifacts_source, template[KG__email_template__dispatcher], template,
-                                      recipient if recipient else account[KG__account__username], parameters)
-
-    def construct_and_send_email(self, application_artifacts_source: Optional[str], dispatcher: str, template: dict, to_email: str,
+    def construct_and_send_email(self, application_templates_source: Optional[str], dispatcher: str, template: dict, to_email: str,
                                  parameters: Optional[dict], attachments=None, attachment_access_token: str = None,
                                  attachment_base_url: str = ""):
-        loaded_template = load_artifact(self.is_container, application_artifacts_source, template[KG__email_template__content_url])
+        loaded_template = load_template(self.is_container, application_templates_source, template[KG__email_template__content_url])
 
         loaded_template = self.perform_replacements(loaded_template, REPLACE__str, EmailManager.replace_html_tags, REGEX__email_parameter, parameters)
         loaded_template = self.perform_replacements(loaded_template, REPLACE__uri_encoded_str, EmailManager.replace_tags_then_encode,

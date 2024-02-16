@@ -12,6 +12,10 @@ from jaaql.db.db_interface import DBInterface
 from jaaql.utilities.utils_no_project_imports import objectify
 
 
+def get_jaaql_connection_to_db(vault, config, database: str, jaaql_connection: DBInterface):
+    return create_interface_for_db(vault, config, jaaql_connection.role, database)
+
+
 def get_required_db(vault, config, jaaql_connection: DBInterface, inputs: dict, account_id: str, conn=None, interface: DBInterface = None):
     if not isinstance(inputs, dict):
         raise HttpStatusException("Expected object or string input")

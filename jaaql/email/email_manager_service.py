@@ -64,7 +64,7 @@ HTTP_ARG__oauth_token = "oauth_token"
 
 KEY__attachment_name = "name"
 KEY__attachment_application = "application"
-KEY__artifact_base = "artifact_base"
+KEY__template_base = "template_base"
 
 
 class DrivenChrome:
@@ -143,7 +143,7 @@ class DrivenChrome:
                     content_path = template[KG__document_template__content_path]
                     if not content_path.endswith(".html"):
                         content_path += ".html"
-                    content_path = current_attachment.artifact_base + "/" + content_path
+                    content_path = current_attachment.template_base + "/" + content_path
                     filename, content = self.chrome_page_to_pdf(content_path, current_attachment.access_token, current_attachment.parameters)
                     current_attachment.content = content
                     current_attachment.filename = filename
@@ -158,10 +158,10 @@ class DrivenChrome:
 
 
 class EmailAttachment:
-    def __init__(self, name: str, application: str, parameters: dict, template: str, artifact_base: str = None):
+    def __init__(self, name: str, application: str, parameters: dict, template: str, template_base: str = None):
         self.name = name
         self.application = application
-        self.artifact_base = artifact_base
+        self.template_base = template_base
         self.parameters = parameters
         self.id = str(uuid.uuid4())
         self.filename = None
@@ -170,25 +170,25 @@ class EmailAttachment:
         self.template = str(template)
 
     @staticmethod
-    def static_format_attached_url(artifact_base_url: str, is_container: bool):
-        if not artifact_base_url.startswith("https://") and not artifact_base_url.startswith("http://"):
+    def static_format_attached_url(template_base_url: str, is_container: bool):
+        if not template_base_url.startswith("https://") and not template_base_url.startswith("http://"):
             if is_container:
-                if check_allowable_file_path(artifact_base_url):
-                    raise Exception("Illegal artifact base url: '" + artifact_base_url + "'")
+                if check_allowable_file_path(template_base_url):
+                    raise Exception("Illegal template base url: '" + template_base_url + "'")
 
-            if artifact_base_url.startswith("file:///"):
-                return artifact_base_url
+            if template_base_url.startswith("file:///"):
+                return template_base_url
             else:
-                return "file://" + os.environ.get(ENVIRON__install_path, os.getcwd().replace("\\", "/")) + "/www" + artifact_base_url
+                return "file://" + os.environ.get(ENVIRON__install_path, os.getcwd().replace("\\", "/")) + "/www" + template_base_url
         else:
-            return artifact_base_url
+            return template_base_url
 
-    def format_attachment_url(self, artifact_base_url: str, is_container: bool):
-        self.artifact_base = EmailAttachment.static_format_attached_url(artifact_base_url, is_container)
+    def format_attachment_url(self, template_base_url: str, is_container: bool):
+        self.template_base = EmailAttachment.static_format_attached_url(template_base_url, is_container)
 
     def repr_json(self):
         return dict(name=self.name, application=self.application, parameters=self.parameters,
-                    template=self.template, artifact_base=self.artifact_base)
+                    template=self.template, template_base=self.template_base)
 
     @staticmethod
     def deserialize(attachment: dict, template: str = None, artiface_base_url: str = None):
@@ -197,7 +197,7 @@ class EmailAttachment:
                                    template, artiface_base_url)
         else:
             return EmailAttachment(attachment[KEY__attachment_name], attachment[KEY__attachment_application], attachment[KEY__parameters],
-                                   attachment[KEY__template], attachment[KEY__artifact_base])
+                                   attachment[KEY__template], attachment[KEY__template_base])
 
     @staticmethod
     def deserialize_list(attachments: list, template: str, artiface_base_url: str):

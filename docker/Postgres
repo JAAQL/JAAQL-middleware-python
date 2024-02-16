@@ -1,4 +1,4 @@
-FROM postgres:16.0
+FROM postgres:16.1
 LABEL maintainer="jaaql.io"
 
 ARG POSTGRES_VERSION="16"

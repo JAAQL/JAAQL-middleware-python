@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.fxli at 2024-02-14, 15:49:55
+This script was generated from jaaql.fxli at 2024-02-16, 02:29:12
 """
 
 from jaaql.db.db_interface import DBInterface
@@ -9,7 +9,7 @@ from jaaql.db.db_utils import execute_supplied_statement, execute_supplied_state
 # Generated keys for table 'application'
 KG__application__name = "name"
 KG__application__base_url = "base_url"
-KG__application__artifacts_source = "artifacts_source"
+KG__application__templates_source = "templates_source"
 KG__application__default_schema = "default_schema"
 KG__application__default_s_et = "default_s_et"
 KG__application__default_a_et = "default_a_et"
@@ -22,10 +22,10 @@ KG__application__is_live = "is_live"
 # Generated queries for table 'application'
 QG__application_delete = "DELETE FROM application WHERE name = :name"
 QG__application_insert = """
-    INSERT INTO application (name, base_url, artifacts_source,
+    INSERT INTO application (name, base_url, templates_source,
         default_schema, default_s_et, default_a_et,
         default_r_et, default_u_et)
-    VALUES (:name, :base_url, :artifacts_source,
+    VALUES (:name, :base_url, :templates_source,
         :default_schema, :default_s_et, :default_a_et,
         :default_r_et, :default_u_et)
     RETURNING unlock_key_validity_period, unlock_code_validity_period, is_live
@@ -37,7 +37,7 @@ QG__application_update = """
         application
     SET
         base_url = COALESCE(:base_url, base_url),
-        artifacts_source = COALESCE(:artifacts_source, artifacts_source),
+        templates_source = COALESCE(:templates_source, templates_source),
         default_schema = COALESCE(:default_schema, default_schema),
         default_s_et = COALESCE(:default_s_et, default_s_et),
         default_a_et = COALESCE(:default_a_et, default_a_et),
@@ -68,7 +68,7 @@ def application__delete(
 def application__update(
     connection: DBInterface,
     name,
-    base_url=None, artifacts_source=None, default_schema=None,
+    base_url=None, templates_source=None, default_schema=None,
     default_s_et=None, default_a_et=None, default_r_et=None,
     default_u_et=None, unlock_key_validity_period=None, unlock_code_validity_period=None,
     is_live=None
@@ -81,7 +81,7 @@ def application__update(
 
             # None Key Fields
             KG__application__base_url: base_url,
-            KG__application__artifacts_source: artifacts_source,
+            KG__application__templates_source: templates_source,
             KG__application__default_schema: default_schema,
             KG__application__default_s_et: default_s_et,
             KG__application__default_a_et: default_a_et,
@@ -121,7 +121,7 @@ def application__select_all(
 def application__insert(
     connection: DBInterface,
     name, base_url,
-    artifacts_source=None, default_schema=None, default_s_et=None,
+    templates_source=None, default_schema=None, default_s_et=None,
     default_a_et=None, default_r_et=None, default_u_et=None
 ):
     return execute_supplied_statement_singleton(
@@ -129,7 +129,7 @@ def application__insert(
         {
             KG__application__name: name,
             KG__application__base_url: base_url,
-            KG__application__artifacts_source: artifacts_source,
+            KG__application__templates_source: templates_source,
             KG__application__default_schema: default_schema,
             KG__application__default_s_et: default_s_et,
             KG__application__default_a_et: default_a_et,
@@ -435,7 +435,8 @@ def jaaql__select_all(
 
 def jaaql__insert(
     connection: DBInterface,
-    the_anonymous_user, security_event_attempt_limit
+    security_event_attempt_limit,
+    the_anonymous_user=None
 ):
     execute_supplied_statement(
         connection, QG__jaaql_insert,
