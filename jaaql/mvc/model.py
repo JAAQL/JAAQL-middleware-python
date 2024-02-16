@@ -598,11 +598,6 @@ WHERE
 
         timezone = evt[KG__security_event__creation_timestamp].tzinfo
         add_seconds = timedelta(seconds=evt[KG__application__unlock_code_validity_period])
-        print(timezone)
-        print(evt[KG__security_event__creation_timestamp])
-        print(add_seconds)
-        print(evt[KG__security_event__creation_timestamp] + add_seconds)
-        print(datetime.now(timezone))
         if evt[KG__security_event__creation_timestamp] + add_seconds < datetime.now(timezone):
             raise HttpStatusException(ERR__unlock_code_expired)
 
