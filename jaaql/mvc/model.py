@@ -859,12 +859,15 @@ WHERE
             account_db_interface = get_required_db(self.vault, self.config, self.jaaql_lookup_connection, submit_data, account_id)
             conn = account_db_interface.get_conn()
 
+            pre_ret = None
+
             if inputs.get(KEY_query):
                 # For public sign up perform this query as the public user
                 ret = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, account_id,
                              None,
                              self.cached_canned_query_service, as_objects=False, singleton=True, keep_alive_conn=True, conn=conn,
                              interface=account_db_interface)
+                pre_ret = ret
                 ret = objectify(ret[list(ret.keys())[-1]], singleton=True)
             else:
                 # For public sign up be careful about this
@@ -967,9 +970,12 @@ WHERE
             self.email_manager.construct_and_send_email(app[KG__application__templates_source], template[KG__email_template__dispatcher], template,
                                                         inputs[KEY__username], sign_up_data)
 
-            return {
-                KG__security_event__event_lock: reg_event[KG__security_event__event_lock]
-            }
+            if pre_ret is not None:
+                return pre_ret
+            else:
+                return {
+                    KG__security_event__event_lock: reg_event[KG__security_event__event_lock]
+                }
         except Exception as err:
             if conn is not None:
                 account_db_interface.put_conn_handle_error(conn, err)

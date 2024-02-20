@@ -224,17 +224,7 @@ DOCUMENTATION__sign_up = SwaggerDocumentation(
                     example=KG__application__default_a_et
                 )
             ],
-            response=[
-                SwaggerResponse(
-                    description="Sign up response",
-                    response=ARG_RES__event_lock
-                ),
-                SwaggerFlatResponse(
-                    description=ERR__too_many_signup_attempts,
-                    code=HTTPStatus.TOO_MANY_REQUESTS,
-                    body=ERR__too_many_signup_attempts
-                )
-            ]
+            response=RES__allow_all
         )
     ]
 )
