@@ -39,6 +39,11 @@ fi
 CSP_HEADER="default-src 'self'; child-src 'none';$SCRIPT_SRC_ATTR$CSP_CONNECT_SRC frame-src 'self'; object-src 'none'; worker-src 'none'; form-action 'self'; frame-ancestors 'self'; navigate-to 'self'; style-src-attr 'unsafe-inline';$UPGRADE_INSECURE_REQUESTS"
 
 SECURITY_HEADERS="    charset UTF-8;\n"
+if [ "$NO_CACHING" = "TRUE" ]; then
+  SECURITY_HEADERS=$SECURITY_HEADERS'    expires 0;\n'
+  SECURITY_HEADERS=$SECURITY_HEADERS'    add_header Cache-Control "no-cache, no-store, must-revalidate";\n'
+  SECURITY_HEADERS=$SECURITY_HEADERS'    add_header Pragma no-cache;\n'
+fi
 SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "X-Frame-Options" "DENY";\n'
 SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "X-Content-Type-Options" "nosniff";\n'
 SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Referrer-Policy" "strict-origin-when-cross-origin";\n'
