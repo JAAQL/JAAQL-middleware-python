@@ -328,6 +328,49 @@ WHERE
         return requests.post("http://127.0.0.1:" + str(PORT__shared_var_service) + ENDPOINT__get_shared_var,
                              json={ARG__variable: SHARED_VAR__frozen}).json()[ARG__value]
 
+    def set_page_headers(self, connection: DBInterface):
+        self.is_super_admin(connection)
+
+        if self.is_container:
+            # Define the path to your file
+            file_path = '/etc/nginx/sites-available/jaaql'
+
+            config_path = "nginx.config"
+            if not os.path.exists(config_path):
+                config_path = "www/" + config_path
+                if not os.path.exists(config_path):
+                    print("Could not find config file")
+                    return
+
+            # Read the file content
+            with open(file_path, 'r') as file:
+                lines = file.readlines()
+
+            # Initialize variables to track the current state and to store updated lines
+            in_section = False
+            updated_lines = []
+
+            for line in lines:
+                if line.strip().startswith('add_header "Content-Security-Policy"'):
+                    in_section = True
+                    updated_lines.append(line)
+                    continue  # Skip to the next iteration
+                elif line.strip().startswith('root /') and in_section:
+                    # Append new data before the end marker when in a section
+                    updated_lines.append(new_data)
+                    in_section = False
+
+                if not in_section or line.strip().startswith('root /'):
+                    updated_lines.append(line)
+
+            # Write the updated content back to the file
+            with open(file_path, 'w') as file:
+                file.writelines(updated_lines)
+
+            subprocess.call(['nginx', '-s', 'reload'])
+        else:
+            print("No headers set for local debugging server")
+
     def clean(self, connection: DBInterface):
         self.is_super_admin(connection)
 

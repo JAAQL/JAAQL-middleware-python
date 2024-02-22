@@ -206,3 +206,12 @@ DOCUMENTATION__prepare = SwaggerDocumentation(
         response=RES__allow_all
     )
 )
+
+DOCUMENTATION__set_page_headers = SwaggerDocumentation(
+    tags="Headers",
+    methods=SwaggerMethod(
+        name="Sets page headers",
+        description="Updates the nginx configuration to include some different headers",
+        method=REST__POST
+    )
+)

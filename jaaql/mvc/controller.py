@@ -109,3 +109,7 @@ class JAAQLController(BaseJAAQLController):
                 return self.model.check_security_event_key_and_security_event_is_unlocked(http_inputs)
             else:
                 return self.model.finish_security_event(http_inputs)
+
+        @self.publish_route('/internal/set-page-headers', DOCUMENTATION__set_page_headers)
+        def set_page_headers(connection: DBInterface):
+            self.model.set_page_headers(connection)
