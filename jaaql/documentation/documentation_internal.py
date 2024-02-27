@@ -207,11 +207,11 @@ DOCUMENTATION__prepare = SwaggerDocumentation(
     )
 )
 
-DOCUMENTATION__set_page_headers = SwaggerDocumentation(
-    tags="Headers",
+DOCUMENTATION__set_web_config = SwaggerDocumentation(
+    tags="Web Config",
     methods=SwaggerMethod(
-        name="Sets page headers",
-        description="Updates the nginx configuration to include some different headers",
+        name="Sets web config",
+        description="Updates the nginx configuration, including security headers",
         method=REST__POST
     )
 )

@@ -110,6 +110,6 @@ class JAAQLController(BaseJAAQLController):
             else:
                 return self.model.finish_security_event(http_inputs)
 
-        @self.publish_route('/internal/set-page-headers', DOCUMENTATION__set_page_headers)
-        def set_page_headers(connection: DBInterface):
-            self.model.set_page_headers(connection)
+        @self.publish_route('/internal/set-web-config', DOCUMENTATION__set_web_config)
+        def set_web_config(connection: DBInterface):
+            self.model.set_web_config(connection)

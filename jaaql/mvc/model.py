@@ -328,19 +328,23 @@ WHERE
         return requests.post("http://127.0.0.1:" + str(PORT__shared_var_service) + ENDPOINT__get_shared_var,
                              json={ARG__variable: SHARED_VAR__frozen}).json()[ARG__value]
 
-    def set_page_headers(self, connection: DBInterface):
+    def set_web_config(self, connection: DBInterface):
         self.is_super_admin(connection)
 
         if self.is_container:
             # Define the path to your file
             file_path = '/etc/nginx/sites-available/jaaql'
-
-            config_path = "nginx.config"
+            override = os.environ.get("SET_WEB_CONFIG_OVERRIDE", "")
+            if len(override) != 0:
+                override += "."
+            config_path = f"nginx.${override}config"
             if not os.path.exists(config_path):
                 config_path = "www/" + config_path
                 if not os.path.exists(config_path):
                     print("Could not find config file")
                     return
+
+            new_data = open(config_path, "r").read()
 
             # Read the file content
             with open(file_path, 'r') as file:
@@ -351,16 +355,16 @@ WHERE
             updated_lines = []
 
             for line in lines:
-                if line.strip().startswith('add_header "Content-Security-Policy"'):
+                if line.strip().startswith('charset'):
                     in_section = True
                     updated_lines.append(line)
                     continue  # Skip to the next iteration
-                elif line.strip().startswith('root /') and in_section:
+                elif line.startswith('}') and in_section:
                     # Append new data before the end marker when in a section
                     updated_lines.append(new_data)
                     in_section = False
 
-                if not in_section or line.strip().startswith('root /'):
+                if not in_section or line.startswith('}'):
                     updated_lines.append(line)
 
             # Write the updated content back to the file

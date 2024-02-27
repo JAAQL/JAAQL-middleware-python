@@ -36,7 +36,7 @@ if [ "$IS_HTTPS" = "TRUE" ]; then
   UPGRADE_INSECURE_REQUESTS=" upgrade-insecure-requests;"
 fi
 
-CSP_HEADER="default-src 'self'; child-src 'none';$SCRIPT_SRC_ATTR$CSP_CONNECT_SRC frame-src 'self'; object-src 'none'; worker-src 'none'; form-action 'self'; frame-ancestors 'self'; navigate-to 'self'; style-src-attr 'unsafe-inline';$UPGRADE_INSECURE_REQUESTS"
+CSP_HEADER="default-src 'self'; child-src 'none';$SCRIPT_SRC_ATTR$CSP_CONNECT_SRC frame-src 'self'; object-src 'none'; worker-src 'none'; form-action 'self'; frame-ancestors 'self'; style-src-attr 'unsafe-inline';$UPGRADE_INSECURE_REQUESTS"
 
 SECURITY_HEADERS="    charset UTF-8;\n"
 if [ "$NO_CACHING" = "TRUE" ]; then
@@ -47,10 +47,10 @@ fi
 SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "X-Frame-Options" "DENY";\n'
 SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "X-Content-Type-Options" "nosniff";\n'
 SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Referrer-Policy" "strict-origin-when-cross-origin";\n'
-SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Cross-Origin-Opener-Policy" "same-site";\n'
+SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Cross-Origin-Opener-Policy" "same-origin";\n'
 SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Cross-Origin-Embedder-Policy" "require-corp";\n'
 SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Cross-Origin-Resource-Policy" "same-site";\n'
-SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Permissions-Policy" "camera=(), display-capture=(), fullscreen=(), geolocation=(), microphone=(), web-share=(), interest-cohort=()";\n'
+SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Permissions-Policy" "camera=(), display-capture=(), fullscreen=(), geolocation=(), interest-cohort=(), microphone=(), web-share=()";\n'
 SECURITY_HEADERS=$SECURITY_HEADERS'    add_header "Content-Security-Policy" "'$CSP_HEADER'";\n'
 HSTS_HEADER=""
 if [ "$HSTS_PRELOAD" = "TRUE" ] && [ "$IS_HTTPS" = "TRUE" ]; then
