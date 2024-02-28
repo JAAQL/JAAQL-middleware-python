@@ -1,4 +1,4 @@
-FROM postgres:16.1
+FROM postgres:16.2
 LABEL maintainer="jaaql.io"
 
 ARG POSTGRES_VERSION="16"
@@ -20,7 +20,7 @@ ENV LANG en_GB.UTF-8
 ENV LANGUAGE en_GB:en
 ENV LC_ALL en_GB.UTF-8
 
-ARG CHROME_VERSION="109.0.5414.74"
+ARG CHROME_VERSION="122.0.6261.69"
 ARG PYTHON_MAJOR_VERSION="3.12"
 ARG PYTHON_VERSION="${PYTHON_MAJOR_VERSION}.2"
 
@@ -55,14 +55,16 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     $PY_PATH -mpip install -U pip wheel && \
     $PY_PATH -mpip install certbot-nginx==2.9.0 && \
     apt-get purge --auto-remove build-essential -y && \
-    wget --no-verbose -O /tmp/chrome.deb https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}-1_amd64.deb && \
-    apt install -y /tmp/chrome.deb && \
-    rm /tmp/chrome.deb && \
     apt-get install unzip && \
-    wget -N https://chromedriver.storage.googleapis.com/${CHROME_VERSION}/chromedriver_linux64.zip -P ~/ && \
-    unzip ~/chromedriver_linux64.zip -d ~/ && \
-    rm ~/chromedriver_linux64.zip && \
-    mv -f ~/chromedriver /usr/local/bin/chromedriver && \
+    wget --no-verbose -O /tmp/chrome.zip https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-linux64.zip && \
+    unzip /tmp/chrome.zip -d /opt/ && \
+    ln -s /opt/chrome-linux64/chrome /usr/bin/google-chrome && \
+    rm /tmp/chrome.zip && \
+    wget -N https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chromedriver-linux64.zip -P ~/ && \
+    unzip ~/chromedriver-linux64.zip -d ~/ && \
+    rm ~/chromedriver-linux64.zip && \
+    mv -f ~/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver && \
+    rm -rf ~/chromedriver-linux64 && \
     chown root:root /usr/local/bin/chromedriver && \
     chmod 0755 /usr/local/bin/chromedriver && \
     apt-get install -y gstreamer1.0-libav libnss3-tools libatk-bridge2.0-0 libcups2-dev libxkbcommon-x11-0 libxcomposite-dev libxrandr2 libgbm-dev libgtk-3-0 && \

@@ -341,7 +341,8 @@ WHERE
             if not os.path.exists(config_path):
                 config_path = "www/" + config_path
                 if not os.path.exists(config_path):
-                    print("Could not find config file")
+                    print("Could not find config file '" + config_path + "'")
+                    time.sleep(600)
                     return
 
             new_data = open(config_path, "r").read()
