@@ -357,11 +357,10 @@ WHERE
             for line in lines:
                 if line.strip().startswith('charset'):
                     in_section = True
-                    updated_lines.append(line)
                     continue  # Skip to the next iteration
                 elif line.startswith('}') and in_section:
                     # Append new data before the end marker when in a section
-                    updated_lines.append(new_data)
+                    updated_lines.append(new_data + "\n")
                     in_section = False
 
                 if not in_section or line.startswith('}'):
