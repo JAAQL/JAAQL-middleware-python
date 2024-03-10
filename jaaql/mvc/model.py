@@ -358,12 +358,12 @@ WHERE
                 if line.strip().startswith('charset'):
                     in_section = True
                     continue  # Skip to the next iteration
-                elif line.startswith('}') and in_section:
+                elif (line.startswith('}') or line.strip().startswith("listen 443 ssl")) and in_section:
                     # Append new data before the end marker when in a section
                     updated_lines.append(new_data + "\n")
                     in_section = False
 
-                if not in_section or line.startswith('}'):
+                if not in_section or line.startswith('}') or line.strip().startswith("listen 443 ssl"):
                     updated_lines.append(line)
 
             # Write the updated content back to the file
