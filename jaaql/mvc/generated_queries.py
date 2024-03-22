@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.fxli at 2024-03-22, 19:51:14
+This script was generated from jaaql.fxli at 2024-03-22, 22:17:50
 """
 
 from jaaql.db.db_interface import DBInterface
@@ -37,15 +37,15 @@ QG__application_update = """
         application
     SET
         base_url = COALESCE(:base_url, base_url),
-    templates_source = COALESCE(:templates_source, templates_source),
-    default_schema = COALESCE(:default_schema, default_schema),
-    default_s_et = COALESCE(:default_s_et, default_s_et),
-    default_a_et = COALESCE(:default_a_et, default_a_et),
-    default_r_et = COALESCE(:default_r_et, default_r_et),
-    default_u_et = COALESCE(:default_u_et, default_u_et),
-    unlock_key_validity_period = COALESCE(:unlock_key_validity_period, unlock_key_validity_period),
-    unlock_code_validity_period = COALESCE(:unlock_code_validity_period, unlock_code_validity_period),
-    is_live = COALESCE(:is_live, is_live)
+        templates_source = COALESCE(:templates_source, templates_source),
+        default_schema = COALESCE(:default_schema, default_schema),
+        default_s_et = COALESCE(:default_s_et, default_s_et),
+        default_a_et = COALESCE(:default_a_et, default_a_et),
+        default_r_et = COALESCE(:default_r_et, default_r_et),
+        default_u_et = COALESCE(:default_u_et, default_u_et),
+        unlock_key_validity_period = COALESCE(:unlock_key_validity_period, unlock_key_validity_period),
+        unlock_code_validity_period = COALESCE(:unlock_code_validity_period, unlock_code_validity_period),
+        is_live = COALESCE(:is_live, is_live)
     WHERE
         name = :name
 """
@@ -262,12 +262,12 @@ QG__email_dispatcher_update = """
         email_dispatcher
     SET
         display_name = COALESCE(:display_name, display_name),
-    protocol = COALESCE(:protocol, protocol),
-    url = COALESCE(:url, url),
-    port = COALESCE(:port, port),
-    username = COALESCE(:username, username),
-    password = COALESCE(:password, password),
-    whitelist = COALESCE(:whitelist, whitelist)
+        protocol = COALESCE(:protocol, protocol),
+        url = COALESCE(:url, url),
+        port = COALESCE(:port, port),
+        username = COALESCE(:username, username),
+        password = COALESCE(:password, password),
+        whitelist = COALESCE(:whitelist, whitelist)
     WHERE
         application = :application AND name = :name
 """
@@ -388,7 +388,7 @@ QG__jaaql_update = """
         jaaql
     SET
         the_anonymous_user = COALESCE(:the_anonymous_user, the_anonymous_user),
-    security_event_attempt_limit = COALESCE(:security_event_attempt_limit, security_event_attempt_limit)
+        security_event_attempt_limit = COALESCE(:security_event_attempt_limit, security_event_attempt_limit)
 """
 
 
@@ -480,15 +480,15 @@ QG__email_template_update = """
         email_template
     SET
         dispatcher = COALESCE(:dispatcher, dispatcher),
-    type = COALESCE(:type, type),
-    content_url = COALESCE(:content_url, content_url),
-    validation_schema = COALESCE(:validation_schema, validation_schema),
-    base_relation = COALESCE(:base_relation, base_relation),
-    dbms_user_column_name = COALESCE(:dbms_user_column_name, dbms_user_column_name),
-    permissions_and_data_view = COALESCE(:permissions_and_data_view, permissions_and_data_view),
-    dispatcher_domain_recipient = COALESCE(:dispatcher_domain_recipient, dispatcher_domain_recipient),
-    requires_confirmation = COALESCE(:requires_confirmation, requires_confirmation),
-    can_be_sent_anonymously = COALESCE(:can_be_sent_anonymously, can_be_sent_anonymously)
+        type = COALESCE(:type, type),
+        content_url = COALESCE(:content_url, content_url),
+        validation_schema = COALESCE(:validation_schema, validation_schema),
+        base_relation = COALESCE(:base_relation, base_relation),
+        dbms_user_column_name = COALESCE(:dbms_user_column_name, dbms_user_column_name),
+        permissions_and_data_view = COALESCE(:permissions_and_data_view, permissions_and_data_view),
+        dispatcher_domain_recipient = COALESCE(:dispatcher_domain_recipient, dispatcher_domain_recipient),
+        requires_confirmation = COALESCE(:requires_confirmation, requires_confirmation),
+        can_be_sent_anonymously = COALESCE(:can_be_sent_anonymously, can_be_sent_anonymously)
     WHERE
         application = :application AND name = :name
 """
@@ -612,7 +612,7 @@ QG__document_template_update = """
         document_template
     SET
         content_path = COALESCE(:content_path, content_path),
-    email_template = COALESCE(:email_template, email_template)
+        email_template = COALESCE(:email_template, email_template)
     WHERE
         application = :application AND name = :name
 """
@@ -718,11 +718,11 @@ QG__document_request_update = """
         document_request
     SET
         application = COALESCE(:application, application),
-    template = COALESCE(:template, template),
-    request_timestamp = COALESCE(:request_timestamp, request_timestamp),
-    encrypted_access_token = COALESCE(:encrypted_access_token, encrypted_access_token),
-    encrypted_parameters = COALESCE(:encrypted_parameters, encrypted_parameters),
-    render_timestamp = COALESCE(:render_timestamp, render_timestamp)
+        template = COALESCE(:template, template),
+        request_timestamp = COALESCE(:request_timestamp, request_timestamp),
+        encrypted_access_token = COALESCE(:encrypted_access_token, encrypted_access_token),
+        encrypted_parameters = COALESCE(:encrypted_parameters, encrypted_parameters),
+        render_timestamp = COALESCE(:render_timestamp, render_timestamp)
     WHERE
         uuid = :uuid
 """
@@ -843,8 +843,8 @@ QG__account_update = """
         account
     SET
         username = COALESCE(:username, username),
-    deletion_timestamp = COALESCE(:deletion_timestamp, deletion_timestamp),
-    most_recent_password = COALESCE(:most_recent_password, most_recent_password)
+        deletion_timestamp = COALESCE(:deletion_timestamp, deletion_timestamp),
+        most_recent_password = COALESCE(:most_recent_password, most_recent_password)
     WHERE
         id = :id
 """
@@ -953,8 +953,8 @@ QG__account_password_update = """
         account_password
     SET
         account = COALESCE(:account, account),
-    hash = COALESCE(:hash, hash),
-    creation_timestamp = COALESCE(:creation_timestamp, creation_timestamp)
+        hash = COALESCE(:hash, hash),
+        creation_timestamp = COALESCE(:creation_timestamp, creation_timestamp)
     WHERE
         uuid = :uuid
 """
@@ -1061,9 +1061,9 @@ QG__validated_ip_address_update = """
         validated_ip_address
     SET
         account = COALESCE(:account, account),
-    encrypted_salted_ip_address = COALESCE(:encrypted_salted_ip_address, encrypted_salted_ip_address),
-    first_authentication_timestamp = COALESCE(:first_authentication_timestamp, first_authentication_timestamp),
-    last_authentication_timestamp = COALESCE(:last_authentication_timestamp, last_authentication_timestamp)
+        encrypted_salted_ip_address = COALESCE(:encrypted_salted_ip_address, encrypted_salted_ip_address),
+        first_authentication_timestamp = COALESCE(:first_authentication_timestamp, first_authentication_timestamp),
+        last_authentication_timestamp = COALESCE(:last_authentication_timestamp, last_authentication_timestamp)
     WHERE
         uuid = :uuid
 """
@@ -1184,14 +1184,14 @@ QG__security_event_update = """
         security_event
     SET
         creation_timestamp = COALESCE(:creation_timestamp, creation_timestamp),
-    wrong_key_attempt_count = COALESCE(:wrong_key_attempt_count, wrong_key_attempt_count),
-    email_template = COALESCE(:email_template, email_template),
-    account = COALESCE(:account, account),
-    fake_account = COALESCE(:fake_account, fake_account),
-    unlock_key = COALESCE(:unlock_key, unlock_key),
-    unlock_code = COALESCE(:unlock_code, unlock_code),
-    unlock_timestamp = COALESCE(:unlock_timestamp, unlock_timestamp),
-    finish_timestamp = COALESCE(:finish_timestamp, finish_timestamp)
+        wrong_key_attempt_count = COALESCE(:wrong_key_attempt_count, wrong_key_attempt_count),
+        email_template = COALESCE(:email_template, email_template),
+        account = COALESCE(:account, account),
+        fake_account = COALESCE(:fake_account, fake_account),
+        unlock_key = COALESCE(:unlock_key, unlock_key),
+        unlock_code = COALESCE(:unlock_code, unlock_code),
+        unlock_timestamp = COALESCE(:unlock_timestamp, unlock_timestamp),
+        finish_timestamp = COALESCE(:finish_timestamp, finish_timestamp)
     WHERE
         application = :application AND event_lock = :event_lock
 """
@@ -1329,16 +1329,16 @@ QG__handled_error_update = """
         handled_error
     SET
         error_name = COALESCE(:error_name, error_name),
-    is_arrayed = COALESCE(:is_arrayed, is_arrayed),
-    table_name = COALESCE(:table_name, table_name),
-    table_name_required = COALESCE(:table_name_required, table_name_required),
-    table_possible = COALESCE(:table_possible, table_possible),
-    column_possible = COALESCE(:column_possible, column_possible),
-    has_associated_set = COALESCE(:has_associated_set, has_associated_set),
-    column_name = COALESCE(:column_name, column_name),
-    http_response_code = COALESCE(:http_response_code, http_response_code),
-    message = COALESCE(:message, message),
-    description = COALESCE(:description, description)
+        is_arrayed = COALESCE(:is_arrayed, is_arrayed),
+        table_name = COALESCE(:table_name, table_name),
+        table_name_required = COALESCE(:table_name_required, table_name_required),
+        table_possible = COALESCE(:table_possible, table_possible),
+        column_possible = COALESCE(:column_possible, column_possible),
+        has_associated_set = COALESCE(:has_associated_set, has_associated_set),
+        column_name = COALESCE(:column_name, column_name),
+        http_response_code = COALESCE(:http_response_code, http_response_code),
+        message = COALESCE(:message, message),
+        description = COALESCE(:description, description)
     WHERE
         code = :code
 """
@@ -1539,7 +1539,7 @@ QG__pg_error_class_update = """
         pg_error_class
     SET
         name = COALESCE(:name, name),
-    description = COALESCE(:description, description)
+        description = COALESCE(:description, description)
     WHERE
         code = :code
 """
@@ -1637,8 +1637,8 @@ QG__pg_exception_update = """
         pg_exception
     SET
         pg_class = COALESCE(:pg_class, pg_class),
-    name = COALESCE(:name, name),
-    base_exception = COALESCE(:base_exception, base_exception)
+        name = COALESCE(:name, name),
+        base_exception = COALESCE(:base_exception, base_exception)
     WHERE
         sqlstate = :sqlstate
 """
