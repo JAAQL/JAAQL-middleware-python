@@ -20,10 +20,41 @@ BEGIN
         EXECUTE 'CREATE ROLE ' || quote_ident(account_id);
     end if;
     if not is_the_anonymous_user then
-        EXECUTE 'GRANT registered TO ' || quote_ident(account_id);
+        EXECUTE 'GRANT unconfirmed TO ' || quote_ident(account_id);
     else
         UPDATE jaaql SET the_anonymous_user = account_id;
     end if;
     return account_id;
+END
+$$ language plpgsql SECURITY DEFINER;
+
+create function mark_account_registered(id postgres_role) returns void as
+$$
+DECLARE
+    has_unconfirmed BOOLEAN;
+    lacks_registered BOOLEAN;
+BEGIN
+    SELECT EXISTS (
+        SELECT 1
+        FROM pg_auth_members
+        JOIN pg_roles ON pg_roles.oid = pg_auth_members.roleid
+        WHERE pg_roles.rolname = 'unconfirmed'
+        AND member = (SELECT oid FROM pg_roles WHERE rolname = mark_account_registered.id)
+    ) INTO has_unconfirmed;
+    IF has_unconfirmed THEN
+        EXECUTE 'REVOKE unconfirmed FROM ' || quote_ident(mark_account_registered.id);
+    END IF;
+
+    SELECT NOT EXISTS (
+        SELECT 1
+        FROM pg_auth_members
+        JOIN pg_roles ON pg_roles.oid = pg_auth_members.roleid
+        WHERE pg_roles.rolname = 'registered'
+        AND member = (SELECT oid FROM pg_roles WHERE rolname = mark_account_registered.id)
+    ) INTO lacks_registered;
+    
+    IF lacks_registered THEN
+        EXECUTE 'GRANT registered TO ' || quote_ident(mark_account_registered.id);
+    END IF;
 END
 $$ language plpgsql SECURITY DEFINER;

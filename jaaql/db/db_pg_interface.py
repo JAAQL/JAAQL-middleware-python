@@ -11,6 +11,7 @@ from jaaql.constants import ERR__invalid_token
 from jaaql.db.db_interface import DBInterface, ECHO__none, CHAR__newline
 from jaaql.exceptions.http_status_exception import *
 from jaaql.exceptions.custom_http_status import CustomHTTPStatus
+from jaaql.exceptions.jaaql_interpretable_handled_errors import UserUnauthorized
 from jaaql.constants import KEY__database
 
 ERR__connect_db = "Could not create connection to database!"
@@ -204,7 +205,7 @@ class DBPGInterface(DBInterface):
                         if not res:
                             if code == 500:
                                 raise Exception(err)
-                            raise HttpStatusException(err, code)
+                            raise UserUnauthorized()
 
                     if parameters is None or len(parameters.keys()) == 0:
                         cursor.execute(query, prepare=do_prepare)

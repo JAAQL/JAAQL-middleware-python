@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.exceptions.fxls at 2024-02-16, 05:26:33
+This script was generated from jaaql.exceptions.fxli at 2024-03-22, 19:51:14
 """
 
 from jaaql.utilities.crypt_utils import get_repeatable_salt
@@ -80,6 +80,19 @@ def fetch_account_from_username(
         encryption_key=encryption_key, encrypt_parameters=[KG__account__username], encryption_salts={
             KG__account__username: get_repeatable_salt(vault_repeatable_salt)
         }, as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+    )
+
+
+QUERY__mark_account_registered = "SELECT mark_account_registered(:id)"
+
+
+def mark_account_registered(
+    connection: DBInterface, _id
+):
+    execute_supplied_statement_singleton(
+        connection, QUERY__mark_account_registered, {
+            KG__account__id: _id
+        }
     )
 
 

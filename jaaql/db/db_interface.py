@@ -90,7 +90,7 @@ class DBInterface(ABC):
 
     def __err_to_exception(self, err, echo):
         if err is not None:
-            if isinstance(err, HttpStatusException):
+            if isinstance(err, HttpStatusException) or isinstance(err, JaaqlInterpretableHandledError):
                 self.log_warning(err)
                 raise err
             else:

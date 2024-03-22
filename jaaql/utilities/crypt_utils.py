@@ -1,7 +1,7 @@
 from argon2 import PasswordHasher, low_level
 from argon2.exceptions import *
 import uuid
-from jaaql.exceptions.http_status_exception import HttpStatusException
+from jaaql.exceptions.jaaql_interpretable_handled_errors import UnsatisfactoryPasswordComplexity
 import os
 from typing import Optional, Union
 from cryptography.fernet import Fernet
@@ -132,18 +132,18 @@ def decrypt_raw(secret_key: bytes, data: str) -> str:
 
 def validate_password(password: str):
     if password is None or len(password) < PASSWORD__min_length:
-        raise HttpStatusException(ERR__password_not_long_enough % PASSWORD__min_length)
+        raise UnsatisfactoryPasswordComplexity()
 
     has_number = any([str(num) in password for num in list(range(0, 9))])
     has_special_character = any([not letter.isnumeric() and not letter.isdigit() for letter in password])
     has_upper_case = password.lower() != password
 
     if not has_number and not has_special_character and not has_upper_case:
-        raise HttpStatusException(ERR__password_not_complex_enough)
+        raise UnsatisfactoryPasswordComplexity()
 
     has_letters = not all([letter in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"] for letter in password])
     if not has_letters:
-        raise HttpStatusException(ERR__password_no_letters)
+        raise UnsatisfactoryPasswordComplexity()
 
 
 def fetch_random_salt():

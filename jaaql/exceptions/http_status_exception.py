@@ -1,10 +1,9 @@
 from http import HTTPStatus
-from argparse import Namespace
+from argparse import Namespace  # Used elsewhere
 
 RESP__default_err_message = "We have encountered an error whilst processing your request!"
 RESP__default_err_code = HTTPStatus.INTERNAL_SERVER_ERROR
 
-HTTP_STATUS_CONNECTION_EXPIRED = Namespace(value=419)
 ERR__connection_expired = "Connection expired"
 
 ERR__already_installed = "JAAQL has already been installed!"
@@ -29,3 +28,19 @@ class HttpStatusException(Exception):
 class HttpSingletonStatusException(HttpStatusException):
     def __init__(self, message: str, response_code: int = HTTPStatus.UNPROCESSABLE_ENTITY):
         super().__init__(message, response_code)
+
+
+class JaaqlInterpretableHandledError(Exception):
+    def __init__(self, error_code: int, http_response_code: int,
+                 table_name: str | None, index: int | None, message: str,
+                 column_name: str | None, _set: str | None, descriptor):
+        super().__init__(message)
+
+        self.error_code = error_code
+        self.message = message
+        self.table_name = table_name
+        self.index = index
+        self.column_name = column_name
+        self.descriptor = descriptor
+        self.set = _set
+        self.response_code = http_response_code

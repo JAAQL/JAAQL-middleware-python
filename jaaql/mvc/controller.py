@@ -56,8 +56,8 @@ class JAAQLController(BaseJAAQLController):
             return self.model.execute_migrations(connection)
 
         @self.publish_route('/internal/is_installed', DOCUMENTATION__is_installed)
-        def is_installed(response: JAAQLResponse):
-            return self.model.is_installed(response)
+        def is_installed():
+            return self.model.is_installed()
 
         @self.publish_route(ENDPOINT__is_alive, DOCUMENTATION__is_alive)
         def is_alive():
@@ -91,9 +91,17 @@ class JAAQLController(BaseJAAQLController):
         def dispatchers(connection: DBInterface, http_inputs: dict):
             self.model.attach_dispatcher_credentials(connection, http_inputs)
 
+        @self.publish_route('/invite', DOCUMENTATION__invite)
+        def invite(http_inputs: dict, account_id: str, is_the_anonymous_user: bool):
+            return self.model.invite(http_inputs, account_id, is_the_anonymous_user)
+
         @self.publish_route('/sign-up', DOCUMENTATION__sign_up)
-        def sign_up(http_inputs: dict, account_id: str):
-            return self.model.sign_up(http_inputs, account_id)
+        def sign_up(http_inputs: dict):
+            return self.model.sign_up(http_inputs)
+
+        @self.publish_route('/sign-up-resend', DOCUMENTATION__resend_sign_up)
+        def sign_up_resend(http_inputs: dict, account_id: str, username: str):
+            return self.model.resend_signup_email(http_inputs, account_id, username)
 
         @self.publish_route('/email', DOCUMENTATION__emails)
         def send_email(is_the_anonymous_user: bool, account_id: str, http_inputs: dict, username: str, auth_token: str):

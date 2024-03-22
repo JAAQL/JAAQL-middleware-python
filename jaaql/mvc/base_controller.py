@@ -4,14 +4,14 @@ import uuid
 from functools import wraps
 
 import typing as t
-from werkzeug.exceptions import HTTPException, InternalServerError
+from werkzeug.exceptions import InternalServerError
 import inspect
 import json
 import requests
 from datetime import datetime, date
 from jaaql.exceptions.custom_http_status import CustomHTTPStatus
+from jaaql.exceptions.jaaql_interpretable_handled_errors import UnhandledJaaqlServerError
 import sys
-import os
 import dataclasses
 import decimal
 from queue import Queue
@@ -692,9 +692,22 @@ class BaseJAAQLController:
             traceback.print_tb(error.__traceback__)
             return BaseJAAQLController._cors(Response(RESP__default_err_message, RESP__default_err_code))
 
-        @app.errorhandler(HTTPException)
-        def handle_other_server_error(error: HTTPException):
-            return BaseJAAQLController._cors(Response(error.description, error.code))
+        @app.errorhandler(Exception)
+        def handle_other_server_error(_):
+            return handle_interpretable_pipeline_exception(UnhandledJaaqlServerError())
+
+        @app.errorhandler(JaaqlInterpretableHandledError)
+        def handle_interpretable_pipeline_exception(error: JaaqlInterpretableHandledError):
+            res = jsonify({
+                "error_code": error.error_code,
+                "message": error.message,
+                "table_name": error.table_name,
+                "index": error.index,
+                "column_name": error.column_name,
+                "descriptor": error.descriptor
+            })
+            res.status = error.response_code
+            return BaseJAAQLController._cors(res)
 
         @app.errorhandler(HttpStatusException)
         def handle_pipeline_exception(error: HttpStatusException):

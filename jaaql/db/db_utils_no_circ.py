@@ -10,6 +10,7 @@ from jaaql.constants import KEY__application, KEY__database, KEY__schema, KEY__r
     KEY__read_only, KEY__prevent_unused_parameters, KEY__debugging_account_id, ENVIRON__allow_debugging_users
 from jaaql.db.db_interface import DBInterface
 from jaaql.utilities.utils_no_project_imports import objectify
+from jaaql.mvc.generated_queries import application__select
 
 
 def get_jaaql_connection_to_db(vault, config, database: str, jaaql_connection: DBInterface):
@@ -26,6 +27,8 @@ def get_required_db(vault, config, jaaql_connection: DBInterface, inputs: dict, 
                 KG__application_schema__application: inputs[KEY__application]
             }, as_objects=True)
             if len(schemas) == 0:
+                application__select(jaaql_connection, inputs[KEY__application],
+                                    singleton_message=f"Application '{inputs[KEY__application]}' does not exist. Are you sure you have installed it?")
                 raise HttpStatusException("Application has no schemas!")
             if not schemas[0][KG__application__is_live]:
                 raise HttpStatusException("Application is currently being deployed. Please wait a few minutes until deployment is complete")
@@ -76,10 +79,11 @@ def submit(vault, config, db_crypt_key, jaaql_connection: DBInterface, inputs: d
 
     prevent_unused = inputs.pop(KEY__prevent_unused_parameters) if KEY__prevent_unused_parameters in inputs else True
 
-    ret = InterpretJAAQL(required_db).transform(inputs, skip_commit=inputs.get(KEY__read_only), wait_hook=verification_hook,
-                                                encryption_key=db_crypt_key, conn=conn,
-                                                canned_query_service=cached_canned_query_service, prevent_unused_parameters=prevent_unused,
-                                                and_return_connection_mid_transaction=keep_alive_conn)
+    ret = InterpretJAAQL(required_db, jaaql_connection
+                         ).transform(inputs, skip_commit=inputs.get(KEY__read_only), wait_hook=verification_hook,
+                                     encryption_key=db_crypt_key, conn=conn,
+                                     canned_query_service=cached_canned_query_service, prevent_unused_parameters=prevent_unused,
+                                     and_return_connection_mid_transaction=keep_alive_conn)
 
     if as_objects:
         ret = objectify(ret, singleton=singleton)

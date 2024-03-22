@@ -52,6 +52,13 @@ DOCUMENTATION__create_account_batch = SwaggerDocumentation(
                     required=False,
                     condition="Defaults to false",
                     example="my-role"
+                ),
+                SwaggerArgumentResponse(
+                    name=KEY__registered,
+                    description="Whether or not the user is to be marked as registered. Defaults to true",
+                    arg_type=bool,
+                    required=False,
+                    condition="Defaults to true"
                 )
             )
         )
@@ -192,7 +199,77 @@ DOCUMENTATION__emails = SwaggerDocumentation(
 )
 
 DOCUMENTATION__sign_up = SwaggerDocumentation(
-    tags="Signup",
+    tags="sign_up",
+    # Explicitly set sign up to true to enforce design decision. We use the attempted insert of the current user (which can be the public user) as security
+    # If the insert fails then the user cannot sign up
+    security=False,
+    methods=[
+        SwaggerMethod(
+            name="Signs up to the Platform",
+            description="Requests an invitation, sending an email to the user.",
+            method=REST__POST,
+            body=[
+                ARG_RES__username,
+                set_nullable(ARG_RES__password, "Is the user going through an unconfirmed signup"),
+                ARG_RES__parameters,
+                ARG_RES__query,
+                ARG_RES__event_application,
+                SwaggerArgumentResponse(
+                    name=KEY__sign_up_template,
+                    description="The template to send if the user hasn't signed up",
+                    required=False,
+                    condition="Should an email be sent or the default be used",
+                    arg_type=str,
+                    example=KG__application__default_s_et
+                ),
+                SwaggerArgumentResponse(
+                    name=KEY__already_signed_up_template,
+                    description="The template to send if the user is already signed up",
+                    required=False,
+                    condition="Should an email be sent or the default be used",
+                    arg_type=str,
+                    example=KG__application__default_a_et
+                )
+            ],
+            response=RES__allow_all
+        )
+    ]
+)
+
+DOCUMENTATION__resend_sign_up = SwaggerDocumentation(
+    tags="sign_up",
+    security=True,
+    methods=[
+        SwaggerMethod(
+            name="Resend sign up email",
+            description="Allows an unconfirmed user to resend themselves a signup email when they are logged in.",
+            method=REST__POST,
+            body=[
+                ARG_RES__event_application,
+                SwaggerArgumentResponse(
+                    name=KEY__sign_up_template,
+                    description="The template to send if the user hasn't signed up",
+                    required=False,
+                    condition="Should an email be sent or the default be used",
+                    arg_type=str,
+                    example=KG__application__default_s_et
+                ),
+                SwaggerArgumentResponse(
+                    name=KEY__already_signed_up_template,
+                    description="The template to send if the user is already signed up",
+                    required=False,
+                    condition="Should an email be sent or the default be used",
+                    arg_type=str,
+                    example=KG__application__default_a_et
+                )
+            ],
+            response=RES__allow_all
+        )
+    ]
+)
+
+DOCUMENTATION__invite = SwaggerDocumentation(
+    tags="invite",
     # Explicitly set sign up to true to enforce design decision. We use the attempted insert of the current user (which can be the public user) as security
     # If the insert fails then the user cannot sign up
     security=True,
@@ -258,7 +335,7 @@ DOCUMENTATION__security_event = SwaggerDocumentation(
                 set_nullable(ARG_RES__event_lock, "Just the unlock key can be provided"),
                 ARG_RES__security_event_unlock_key,
                 ARG_RES__security_event_unlock_code,
-                ARG_RES__password
+                set_nullable(ARG_RES__password, "only if it's required")
             ],
             response=SwaggerResponse(
                 description="Signup parameters",

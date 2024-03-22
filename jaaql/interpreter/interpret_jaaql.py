@@ -6,9 +6,12 @@ import re
 from jaaql.utilities.crypt_utils import encrypt_raw, decrypt_raw_ex
 import uuid
 import queue
+import json
 from jaaql.db.db_interface import DBInterface, ECHO__none
+from psycopg.errors import OperationalError, Error
 from jaaql.constants import KEY__position, KEY__file, KEY__application, KEY__error, KEY__error_row_number, KEY__error_query, \
-    KEY__error_set, KEY__error_index
+    KEY__error_set, KEY__error_index, SQLStateJaaql, KEY__restrictions, REGEX__dmbs_object_name
+from jaaql.exceptions.jaaql_interpretable_handled_errors import DatabaseOperationalError, HandledProcedureError, UnhandledQueryError, UnhandledProcedureError
 from typing import Union
 
 
@@ -106,8 +109,9 @@ class MarkerPrepare:
 
 class InterpretJAAQL:
 
-    def __init__(self, db_interface: DBInterface):
+    def __init__(self, db_interface: DBInterface, jaaql_db_interface: DBInterface = None):
         self.db_interface = db_interface
+        self.jaaql_db_interface = jaaql_db_interface
 
     def transform(self, operation: Union[dict, str], conn=None, skip_commit: bool = False, wait_hook: queue.Queue = None,
                   encryption_key: bytes = None, autocommit: bool = False, canned_query_service=None, prevent_unused_parameters: bool = True,
@@ -125,14 +129,33 @@ class InterpretJAAQL:
         is_dict_query = False
         parameters = {}
         past_parameters = {}
+        restrictions = {}
+        skip_as_restricted = []
+        checked_roles_permit = set()
+        checked_roles_restrict = set()
         check_required = True
         ret = {}
         err = None
+        query_key = None
 
         if autocommit:
             conn.autocommit = autocommit
 
         if is_dict_operation:
+            restrictions = operation.get(KEY__restrictions, {})
+            if not isinstance(restrictions, dict):
+                raise HttpStatusException("Malformatted restriction dictionary", HTTPStatus.BAD_REQUEST)
+            else:
+                for key, val in restrictions.items():
+                    if not isinstance(key, str) or not isinstance(val, str) or not re.match(REGEX__dmbs_object_name, val):
+                        raise HttpStatusException("Malformatted restriction dictionary around " + key, HTTPStatus.BAD_REQUEST)
+
+            if len(restrictions) != 0 and do_prepare_only:
+                raise HttpStatusException("Supplying restrictions makes no sense when preparing! Choose one or the other")
+
+            if len(restrictions) != 0 and self.jaaql_db_interface is None:
+                raise Exception("You must provide the jaaql db interface if you plan to check for restrictions")
+
             query = operation.get(KEY_query)
             if KEY_autocommit in operation:
                 if conn.autocommit != operation[KEY_autocommit]:
@@ -247,6 +270,31 @@ class InterpretJAAQL:
                 if was_store:
                     ret[query_key] = []
 
+                if query_key in restrictions:
+                    the_role = restrictions[query_key]
+                    if the_role in checked_roles_permit:
+                        pass  # We allow!
+                    elif the_role in checked_roles_restrict:
+                        skip_as_restricted.append(query_key)
+                    else:
+                        check_query = "SELECT T.has_role FROM check_user_role(%s, %s) T;"
+                        check_parameters = (the_role, self.db_interface.role)
+                        check_conn = self.jaaql_db_interface.get_conn()
+                        try:
+                            permitted = self.jaaql_db_interface.execute_query_fetching_results(check_conn, check_query, check_parameters)["rows"][0][0]
+                            if permitted:
+                                checked_roles_permit.add(the_role)
+                            else:
+                                checked_roles_restrict.add(the_role)
+                                skip_as_restricted.append(query_key)
+                            self.jaaql_db_interface.put_conn(check_conn)
+                        except Exception as ex:
+                            try:
+                                self.jaaql_db_interface.put_conn(check_conn)
+                            except:
+                                pass
+                            raise ex
+
                 for cur_query, cur_parameters, cur_row_idx, cur_state in zip(to_exec, replacement_parameters, range(len(to_exec)), states):
                     exc_query = cur_query
                     exc_state = cur_state
@@ -280,8 +328,15 @@ class InterpretJAAQL:
                             ["NULL" for _ in found_params.keys()]) + arg_close
                         found_params = {}
 
-                    res = self.db_interface.execute_query_fetching_results(conn, last_query, found_params, wait_hook=wait_hook,
-                                                                           requires_dba_check=check_required and canned_query_service is not None)
+                    if query_key in skip_as_restricted:
+                        res = {
+                            "columns": [],
+                            "rows": [],
+                            "type_codes": []
+                        }
+                    else:
+                        res = self.db_interface.execute_query_fetching_results(conn, last_query, found_params, wait_hook=wait_hook,
+                                                                               requires_dba_check=check_required and canned_query_service is not None)
 
                     if do_prepare_only:
                         self.db_interface.execute_query_fetching_results(conn, "DEALLOCATE _jaaql_query_check_" + do_prepare_only, found_params,
@@ -304,7 +359,7 @@ class InterpretJAAQL:
                         ret = res
 
                     cur_assert = query_obj.get(KEY_assert)
-                    if cur_assert != ASSERT_none:
+                    if cur_assert != ASSERT_none and query_key not in skip_as_restricted:
                         if cur_assert == ASSERT_zero and len(res["rows"]) != ASSERT_zero:
                             raise HttpStatusException(ERR_assert_expecting % (str(ASSERT_zero), len(res["rows"])), HTTPStatus.BAD_REQUEST)
                         elif cur_assert == ASSERT_one and len(res["rows"]) != ASSERT_one:
@@ -312,7 +367,7 @@ class InterpretJAAQL:
                         elif cur_assert == ASSERT_one_plus and len(res["rows"]) < ASSERT_one_plus_minimum_allowed:
                             raise HttpStatusException(ERR_assert_expecting % (str(ASSERT_one_plus_message), len(res["rows"])), HTTPStatus.BAD_REQUEST)
 
-                    if query_obj[KEY_decrypt] is not None:
+                    if query_obj[KEY_decrypt] is not None and query_key not in skip_as_restricted:
                         missing = [param for param in query_obj[KEY_decrypt] if param not in res["columns"]]
                         if len(missing) != 0:
                             raise HttpStatusException(ERR__missing_decrypt_column % missing)
@@ -323,7 +378,63 @@ class InterpretJAAQL:
                                  zip(row, res["columns"])] for row in res["rows"]]
         except Exception as ex:
             traceback.print_exc()
-            if is_dict_query:
+            if isinstance(ex, OperationalError):
+                err = DatabaseOperationalError(
+                    message=str(err),
+                    descriptor={
+                        "class": ex.diag.sqlstate[0:2],
+                        "constraint_name": ex.diag.constraint_name,
+                        "context": ex.diag.context,
+                        "datatype_name": ex.diag.datatype_name,
+                        "message_detail": ex.diag.message_detail,
+                        "message_primary": ex.diag.message_primary,
+                        "message_hint": ex.diag.message_hint,
+                        "schema_name": ex.diag.schema_name,
+                        "severity": ex.diag.severity,
+                        "sqlstate": ex.diag.sqlstate
+                    }
+                )
+            elif isinstance(ex, Error):
+                if ex.diag.sqlstate == SQLStateJaaql:
+                    err = HandledProcedureError(message=None, index=None, table_name=None, descriptor=json.loads(ex.diag.message_primary))
+                elif query_key == "_jaaql_procedure":
+                    err = UnhandledProcedureError(
+                        message=str(ex),
+                        table_name=ex.diag.table_name,
+                        column_name=ex.diag.column_name,
+                        descriptor={
+                            "class": ex.diag.sqlstate[0:2],
+                            "constraint_name": ex.diag.constraint_name,
+                            "context": ex.diag.context,
+                            "datatype_name": ex.diag.datatype_name,
+                            "message_detail": ex.diag.message_detail,
+                            "message_primary": ex.diag.message_primary,
+                            "message_hint": ex.diag.message_hint,
+                            "schema_name": ex.diag.schema_name,
+                            "severity": ex.diag.severity,
+                            "sqlstate": ex.diag.sqlstate
+                        }
+                    )
+                else:
+                    err = UnhandledQueryError(
+                        message=str(ex),
+                        _set=query_key,
+                        table_name=ex.diag.table_name,
+                        column_name=ex.diag.column_name,
+                        descriptor={
+                            "class": ex.diag.sqlstate[0:2],
+                            "constraint_name": ex.diag.constraint_name,
+                            "context": ex.diag.context,
+                            "datatype_name": ex.diag.datatype_name,
+                            "message_detail": ex.diag.message_detail,
+                            "message_primary": ex.diag.message_primary,
+                            "message_hint": ex.diag.message_hint,
+                            "schema_name": ex.diag.schema_name,
+                            "severity": ex.diag.severity,
+                            "sqlstate": ex.diag.sqlstate
+                        }
+                    )
+            elif is_dict_query:
                 new_ex = HttpStatusException(str(ex))
                 if isinstance(ex, HttpStatusException):
                     new_ex.response_code = ex.response_code
@@ -340,7 +451,7 @@ class InterpretJAAQL:
                     ex.message[KEY__error_index] = exc_row_idx
                     ex.message[KEY_state] = exc_state
 
-            err = ex
+                err = ex
 
         #
         # and_return_connection_mid_transaction
@@ -352,6 +463,9 @@ class InterpretJAAQL:
             self.db_interface.handle_error(conn, err)
         elif err is not None:
             raise err
+
+        if is_dict_query:
+            ret["_restrictions"] = skip_as_restricted
 
         return ret
 

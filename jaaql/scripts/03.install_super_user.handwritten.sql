@@ -35,8 +35,11 @@ create or replace function setup_jaaql_role_with_password(secure_pass internet_n
 $$
 BEGIN
     CREATE ROLE registered;
+    CREATE ROLE unconfirmed;
     execute 'CREATE ROLE jaaql WITH LOGIN ENCRYPTED PASSWORD ''' || secure_pass || '''';
     grant execute on function create_account to jaaql;
+    grant execute on function mark_account_registered to jaaql;
+    grant execute on function check_user_role TO jaaql;
     ALTER DEFAULT PRIVILEGES FOR ROLE jaaql REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
     ALTER database jaaql OWNER TO jaaql;
     return;
@@ -53,3 +56,18 @@ BEGIN
     return secure_pass;
 END
 $$ language plpgsql;
+
+CREATE OR REPLACE FUNCTION check_user_role(role_name text, user_name text)
+RETURNS TABLE(has_role boolean) AS $$
+BEGIN
+    RETURN QUERY
+        SELECT EXISTS (
+            SELECT 1
+            FROM pg_roles r
+            JOIN pg_auth_members m ON r.oid = m.roleid
+            JOIN pg_roles ur ON m.member = ur.oid
+            WHERE r.rolname = role_name
+            AND ur.rolname = user_name
+        );
+END;
+$$ LANGUAGE plpgsql security definer;

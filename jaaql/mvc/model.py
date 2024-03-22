@@ -1,6 +1,7 @@
 import uuid
 
 import re
+from jaaql.exceptions.jaaql_interpretable_handled_errors import *
 from wsgiref.handlers import format_date_time
 from jaaql.db.db_pg_interface import DBPGInterface, QUERY__dba_query_external
 from jaaql.email.email_manager_service import EmailAttachment
@@ -105,6 +106,9 @@ class JAAQLModel(BaseJAAQLModel):
 
     def create_account_with_potential_password(self, connection: DBInterface, username: str, attach_as: str = None, password: str = None,
                                                already_exists: bool = False, is_the_anonymous_user: bool = False, allow_already_exists: bool = False):
+        if password is not None:
+            crypt_utils.validate_password(password)  # Important that this is here so the password can be validated before creating the account
+
         account_id = create_account(connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
                                     username, attach_as, already_exists,
                                     is_the_anonymous_user, allow_already_exists)
@@ -119,8 +123,12 @@ class JAAQLModel(BaseJAAQLModel):
 
     def create_account_batch_with_potential_password(self, connection: DBInterface, accounts: list):
         for cur_input in accounts:
-            self.create_account_with_potential_password(connection, cur_input[KEY__username], cur_input[KEY__attach_as], cur_input[KEY__password],
-                                                        allow_already_exists=True)
+            account_id = self.create_account_with_potential_password(
+                connection, cur_input[KEY__username], cur_input[KEY__attach_as],
+                cur_input[KEY__password], allow_already_exists=True
+            )
+            if cur_input.get(KEY__registered, True):
+                mark_account_registered(connection, account_id)
 
     def validate_query(self, queries: list, query, allow_list=True):
         if isinstance(query, list) and allow_list:
@@ -404,15 +412,20 @@ WHERE
     def add_account_password(self, account_id: str, password: str):
         crypt_utils.validate_password(password)
         salt = self.get_repeatable_salt(account_id)
-        add_account_password(
-            self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
-            account_id, crypt_utils.hash_password(password, salt)
-        )
+        try:
+            add_account_password(
+                self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
+                account_id, crypt_utils.hash_password(password, salt)
+            )
+        except UnhandledQueryError as hs:
+            if hs.descriptor["sqlstate"] == SQLState.UniqueViolation.value and hs.descriptor["constraint_name"] == Constraints.AccountPasswordHashKey.value:
+                raise PasswordAlreadyUsedBefore()
+            raise hs
 
     def verify_current_password(self, account_id: str, password: str):
         most_recent_password = fetch_most_recent_password(self.jaaql_lookup_connection, self.get_db_crypt_key(), account_id)
         if not crypt_utils.verify_password_hash(most_recent_password, password, salt=self.get_repeatable_salt(account_id)):
-            raise HttpStatusException(ERR__incorrect_credentials)
+            raise IncorrectPasswordVerification()
 
     def add_my_account_password(self, account_id: str, username: str, ip_address: str, is_the_anonymous_user: bool, old_password: str, password: str):
         if is_the_anonymous_user:
@@ -429,10 +442,9 @@ WHERE
                        self.migration_project_name, migration_folder=self.migration_folder, config=self.config, options=self.options,
                        key=self.get_db_crypt_key())
 
-    def is_installed(self, response: JAAQLResponse):
+    def is_installed(self):
         if not self.has_installed:
-            response.response_code = HTTPStatus.UNPROCESSABLE_ENTITY
-            return ERR__not_yet_installed
+            raise NotYetInstalled()
 
     def is_alive(self):
         version = execute_supplied_statement_singleton(self.jaaql_lookup_connection, "SELECT version() as version;", as_objects=True)[ATTR__version]
@@ -509,7 +521,7 @@ WHERE
             try:
                 self.verify_auth_token(auth_token, ip_address)
                 complete.put((True, None, None))
-            except HttpStatusException as ex:
+            except UserUnauthorized as ex:
                 complete.put((False, ex.message, ex.response_code))
             except Exception as ex:
                 complete.put((False, str(ex), 500))
@@ -524,17 +536,20 @@ WHERE
             return payload[KEY__account_id], payload[KEY__username], payload[KEY__ip_address], payload[KEY__is_the_anonymous_user], \
                 payload[KEY__remember_me]
         except Exception:
-            raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
+            raise UserUnauthorized()
 
     def verify_auth_token(self, auth_token: str, ip_address: str):
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), auth_token, JWT_PURPOSE__oauth)
         if not decoded or (decoded[KEY__ip_address] != ip_address and ip_address not in IPS__local):
             if os.environ.get("JAAQL_DEBUGGING") == "TRUE":
                 print("IP not in ips_local: " + ip_address)
-            raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
+            raise UserUnauthorized()
 
-        validate_is_most_recent_password(self.jaaql_lookup_connection, decoded[KEY__account_id], decoded[KEY__password],
-                                         singleton_message=ERR__invalid_token, singleton_code=HTTPStatus.UNAUTHORIZED)
+        try:
+            validate_is_most_recent_password(self.jaaql_lookup_connection, decoded[KEY__account_id], decoded[KEY__password],
+                                             singleton_message=ERR__invalid_token, singleton_code=HTTPStatus.UNAUTHORIZED)
+        except HttpSingletonStatusException:
+            raise UserUnauthorized()
 
         return decoded[KEY__account_id], decoded[KEY__username], decoded[KEY__ip_address], decoded[KEY__is_the_anonymous_user], \
             decoded[KEY__remember_me]
@@ -543,12 +558,12 @@ WHERE
         decoded = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), auth_token, JWT_PURPOSE__oauth, allow_expired=True)
         remember_me = False
         if not decoded:
-            raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
+            raise UserUnauthorized()
         if decoded.get(KEY__remember_me):
             remember_me = decoded[KEY__remember_me]
 
         if datetime.fromisoformat(decoded[KEY__created]) + timedelta(milliseconds=self.refresh_expiry_ms) < datetime.now():
-            raise HttpStatusException(ERR__refresh_expired, HTTPStatus.UNAUTHORIZED)
+            raise UserUnauthorized()
 
         return self.get_auth_token(decoded[KEY__username], ip_address, cookie=cookie, remember_me=remember_me, response=response)
 
@@ -595,7 +610,7 @@ WHERE
                 incorrect_credentials = not exists_matching_validated_ip_address(self.jaaql_lookup_connection, encrypted_salted_ip_address)
 
         if incorrect_credentials:
-            raise HttpStatusException(ERR__incorrect_credentials, HTTPStatus.UNAUTHORIZED)
+            raise UserUnauthorized()
 
         address = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
                                                        QUERY___add_or_update_validated_ip_address,
@@ -634,21 +649,24 @@ WHERE
         return "".join([codeset[random.randint(0, len(codeset) - 1)] for _ in range(length)])
 
     def check_security_event_key_and_security_event_is_unlocked(self, inputs: dict, returning: bool = False):
-        evt = check_security_event_unlock(
-            self.jaaql_lookup_connection, inputs[KG__security_event__event_lock], inputs[KG__security_event__unlock_code],
-            inputs[KG__security_event__unlock_key], singleton_message=ERR__invalid_lock
-        )
+        try:
+            evt = check_security_event_unlock(
+                self.jaaql_lookup_connection, inputs[KG__security_event__event_lock], inputs[KG__security_event__unlock_code],
+                inputs[KG__security_event__unlock_key], singleton_message=ERR__invalid_lock
+            )
+        except HttpSingletonStatusException:
+            raise InvalidSecurityEventLock()
 
         if evt[KG__security_event__wrong_key_attempt_count] >= CODE__max_attempts:
-            raise HttpStatusException("Too many invalid attempts to unlock the code")
+            raise TooManyUnlockAttempts()
 
         timezone = evt[KG__security_event__creation_timestamp].tzinfo
         add_seconds = timedelta(seconds=evt[KG__application__unlock_code_validity_period])
         if evt[KG__security_event__creation_timestamp] + add_seconds < datetime.now(timezone):
-            raise HttpStatusException(ERR__unlock_code_expired)
+            raise SecurityEventShortCodeExpired()
 
         if not evt[KEY__key_fits]:
-            raise HttpStatusException(ERR__incorrect_lock_code)
+            raise SecurityEventIncorrectShortUnlockCode()
 
         if evt[KG__security_event__unlock_timestamp] is None:
             security_event__update(self.jaaql_lookup_connection, self.get_db_crypt_key(), evt[KG__security_event__application],
@@ -675,28 +693,14 @@ WHERE
         parameters = None
 
         if template[KG__email_template__type] in [EMAIL_TYPE__signup, EMAIL_TYPE__reset_password, EMAIL_TYPE__unregistered_password_reset]:
-            self.add_account_password(sec_evt[KG__security_event__account], inputs[KEY__password])
+            if not template[KG__email_template__requires_confirmation]:
+                self.add_account_password(sec_evt[KG__security_event__account], inputs[KEY__password])
+
+        # Anything where we follow an email link confirms the account
+        mark_account_registered(self.jaaql_lookup_connection, account[KG__account__id])
 
         security_event__update(self.jaaql_lookup_connection, self.get_db_crypt_key(), sec_evt[KG__security_event__application],
                                sec_evt[KG__security_event__event_lock], finish_timestamp=datetime.now())
-
-        # TODO maybe someday we'll add this back in
-        # if template[KG__email_template__type] == EMAIL_TYPE__signup:
-        #     data_relation = template[KG__email_template__data_validation_view]
-        #     dbms_user_column_name = template[KG__email_template__dbms_user_column_name]
-        #     submit_data = {
-        #         KEY__schema: template[KG__email_template__validation_schema],
-        #         KEY__application: template[KEY__application],
-        #         KEY_parameters: {
-        #             "signed_up_at": datetime.now(),
-        #             dbms_user_column_name: sec_evt[KG__security_event__account]
-        #         },
-        #         KEY_query: f'UPDATE {data_relation} SET signed_up_at = :signed_up_at WHERE {dbms_user_column_name} = :{dbms_user_column_name} AND signed_up_at is null'
-        #         # Ignore pycharm PEP issue
-        #     }
-        #     # We now get the data that can be shown in the email
-        #     submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data,
-        #            self.jaaql_lookup_connection.role, None, self.cached_canned_query_service)
 
         return {
             KEY__parameters: parameters,
@@ -815,7 +819,7 @@ WHERE
                                          account_id, fake_account_username)
 
         if count >= RESEND__reset_max:
-            raise HttpStatusException(ERR__too_many_reset_requests, HTTPStatus.TOO_MANY_REQUESTS)
+            raise TooManyPasswordResetRequests()
 
         template = reset_template if account_existed else unregistered_template
         unlock_code = self.gen_security_event_unlock_code(CODE__letters, CODE__reset_length)
@@ -865,7 +869,113 @@ WHERE
             KG__security_event__event_lock: reg_env_ins[KG__security_event__event_lock]
         }
 
-    def sign_up(self, inputs: dict, account_id: str):
+    def _send_signup_email(self, sign_up_template, account_id, app, username):
+        count = count_for_security_event(self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
+                                         EMAIL_TYPE__signup, EMAIL_TYPE__already_signed_up, account_id)
+        if count >= RESEND__invite_max:
+            raise TooManySignUpConfirmationRequests()
+
+        sign_up_data_view = sign_up_template[KG__email_template__base_relation]
+        if re.match(REGEX__dmbs_object_name, sign_up_data_view) is None:
+            raise HttpStatusException("Unsafe data relation specified for sign up")
+        email_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, {
+            KEY_query: f"SELECT * FROM {sign_up_data_view}",
+            KEY__application: app[KG__application__name]
+        }, account_id, None, self.cached_canned_query_service, singleton=True, as_objects=True)
+
+        unlock_code = self.gen_security_event_unlock_code(CODE__letters, CODE__invite_length)
+
+        reg_event = security_event__insert(self.jaaql_lookup_connection, self.get_db_crypt_key(),
+                                           app[KG__application__name], sign_up_template[KG__email_template__name], unlock_code,
+                                           account_id)
+
+        email_data[EMAIL_PARAM__app_url] = app[KG__application__base_url]
+        email_data[EMAIL_PARAM__email_address] = username
+        email_data[EMAIL_PARAM__unlock_key] = reg_event[KG__security_event__unlock_key]
+        email_data[EMAIL_PARAM__unlock_code] = unlock_code
+
+        self.email_manager.construct_and_send_email(app[KG__application__templates_source], sign_up_template[KG__email_template__dispatcher], sign_up_template,
+                                                    username, email_data)
+
+    def resend_signup_email(self, inputs, account_id, username):
+        if len(count_succeeded_for_security_event(self.jaaql_lookup_connection, EMAIL_TYPE__signup, EMAIL_TYPE__already_signed_up,
+                                                  account_id)) != 0:
+            raise AccountAlreadyConfirmed()
+
+        app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
+
+        if inputs[KEY__sign_up_template] is None:
+            inputs[KEY__sign_up_template] = app[KG__application__default_s_et]
+        if inputs[KEY__already_signed_up_template] is None:
+            inputs[KEY__already_signed_up_template] = app[KG__application__default_a_et]
+
+        sign_up_template = email_template__select(self.jaaql_lookup_connection, inputs[KG__security_event__application],
+                                                  inputs[KEY__sign_up_template])
+
+        self._send_signup_email(sign_up_template, account_id, app, username)
+
+    def sign_up(self, inputs):
+        app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
+
+        if inputs[KEY__sign_up_template] is None:
+            inputs[KEY__sign_up_template] = app[KG__application__default_s_et]
+        if inputs[KEY__already_signed_up_template] is None:
+            inputs[KEY__already_signed_up_template] = app[KG__application__default_a_et]
+
+        if inputs[KEY__sign_up_template] is None:
+            raise HttpStatusException("Missing sign up template for application. Either supply one in the sign up call or set a default")
+
+        sign_up_template = email_template__select(self.jaaql_lookup_connection, inputs[KG__security_event__application],
+                                                  inputs[KEY__sign_up_template])
+        if sign_up_template[KG__email_template__type] != EMAIL_TYPE__signup:
+            raise HttpStatusException(ERR__template_not_signup)
+
+        password = inputs[KEY__password]
+        requires_confirmation = sign_up_template[KG__email_template__requires_confirmation]
+
+        if not requires_confirmation and not password:
+            raise HttpStatusException("The password must be supplied if unconfirmed signup is allowed")
+        elif requires_confirmation and password:
+            raise HttpStatusException("The password cannot be supplied if confirmed signup is required")
+
+        if inputs[KEY__already_signed_up_template] is None and requires_confirmation:
+            raise HttpStatusException("Missing already signed up template for application (required when requires_confirmation is set to true!). "
+                                      "Either supply one in the sign up call or set a default")
+        elif inputs[KEY__already_signed_up_template] is not None and not requires_confirmation:
+            raise HttpStatusException("You cannot have an already signed up email template when requires confirmation is set to false! "
+                                      "The purpose of this email template is to prevent username enumeration and that makes no sense when no "
+                                      "confirmation is required.")
+
+        if inputs[KEY__already_signed_up_template]:
+            already_signed_up_template = email_template__select(self.jaaql_lookup_connection, inputs[KG__security_event__application],
+                                                                inputs[KEY__already_signed_up_template])
+            if already_signed_up_template[KG__email_template__type] != EMAIL_TYPE__already_signed_up:
+                raise HttpStatusException(ERR__template_not_already)
+
+        try:
+            new_account_id = self.create_account_with_potential_password(self.jaaql_lookup_connection, inputs[KEY__username], password=password)
+        except UnhandledQueryError as hs:
+            if hs.descriptor["sqlstate"] == SQLState.UniqueViolation.value and hs.descriptor["constraint_name"] == Constraints.AccountUsernameKey.value:
+                # TODO this allows username enumeration. Requires confirmation needs to be handled
+                raise AccountAlreadyExists()
+
+            # Unrelated exception
+            raise hs
+
+        res = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, {
+            KEY_query: inputs[KEY__query],
+            KEY__application: app[KG__application__name],
+            KEY_parameters: inputs[KEY__parameters]
+        }, new_account_id, None, self.cached_canned_query_service, singleton=True)
+
+        self._send_signup_email(sign_up_template, new_account_id, app, inputs[KEY__username])
+
+        return res
+
+    def invite(self, inputs: dict, account_id: str, is_the_anonymous_user: bool):
+        if is_the_anonymous_user:
+            raise HttpStatusException("Cannot invite users as the anonymous user")
+
         app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
 
         if inputs[KEY__sign_up_template] is None:

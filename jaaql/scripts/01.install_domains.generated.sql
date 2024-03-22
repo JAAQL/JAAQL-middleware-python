@@ -1,5 +1,5 @@
 /*
-**  This installation module was generated from ../../../Packages/DBMS/Postgres/15/domains.install for Postgres/15
+**  This installation module was generated from ..\..\..\Users\aaron.tasker\Dropbox\Packages/DBMS/Postgres/15/domains.install for Postgres/15
 */
 
 CREATE DOMAIN encrypted__email_server_password AS character varying(256);
@@ -24,3 +24,12 @@ CREATE DOMAIN safe_path AS character varying(255) CHECK (VALUE ~* '^[a-z$0-9_\-\
 CREATE DOMAIN email_account_username AS character varying(64) CHECK (VALUE ~* '^[a-zA-Z0-9_\-\.]+$');
 CREATE DOMAIN current_attempt_count AS smallint CHECK (VALUE between 0 and 3);
 CREATE DOMAIN unlock_code AS character varying(10);
+CREATE DOMAIN error_code AS numeric CHECK (VALUE between 1001 and 1999);
+CREATE DOMAIN error_name AS character varying(45);
+CREATE DOMAIN http_response_code AS numeric CHECK (VALUE between 100 and 599);
+CREATE DOMAIN pg_base_exception_name AS character varying(20);
+CREATE DOMAIN pg_error_class_code AS character varying(2);
+CREATE DOMAIN pg_error_class_name AS character varying(50);
+CREATE DOMAIN pg_error_class_description AS character varying(200);
+CREATE DOMAIN pg_sqlstate AS character varying(5);
+CREATE DOMAIN pg_exception_name AS character varying(50);

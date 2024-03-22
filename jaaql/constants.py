@@ -1,6 +1,9 @@
 import os
 import socket
 
+# Do not delete this as it's being used elsewhere
+from jaaql.generated_constants import *
+
 KEY__username = "username"
 KEY__password = "password"
 KEY__remember_me = "remember_me"
@@ -38,6 +41,8 @@ KEY__security_key = "security_key"
 KEY__id = "id"
 KEY__oauth_token = "oauth_token"
 KEY__accounts = "accounts"
+KEY__registered = "registered"
+KEY__restrictions = "restrictions"
 
 REGEX__dmbs_object_name = r'^[0-9a-zA-Z_]{1,32}$'
 
@@ -93,8 +98,9 @@ JWT_PURPOSE__oauth = "oauth"
 JWT_PURPOSE__pre_auth = "pre_auth"
 JWT_PURPOSE__connection = "connection"
 
+SQLStateJaaql = 'JQ000'
+
 ERR__invalid_token = "Invalid token!"
-ERR__not_yet_installed = "JAAQL has not yet been installed!"
 ERR__user_public = "Cannot perform this action on a public user!"
 ERR__too_many_signup_attempts = "Too many signup attempts"
 ERR__too_many_reset_requests = "Too many reset requests"
@@ -164,5 +170,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.21.44"
+VERSION = "4.22.0"
 

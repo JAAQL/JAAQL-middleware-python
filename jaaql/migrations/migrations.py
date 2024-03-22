@@ -7,7 +7,8 @@ import hashlib
 from os.path import join, isdir
 from os import listdir, environ
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
-from jaaql.exceptions.http_status_exception import HttpStatusException
+from jaaql.exceptions.jaaql_interpretable_handled_errors import UnhandledQueryError
+from jaaql.generated_constants import SQLState
 from jaaql.utilities.crypt_utils import encrypt_raw, AES__iv_length
 from jaaql.utilities.utils_no_project_imports import objectify
 import re
@@ -125,10 +126,13 @@ def run_migrations(host: str, bypass_super: str, bypass_jaaql: str, db_interface
 
     try:
         migration_history = objectify(ij.transform(statement_load_table, conn=conn))
-    except HttpStatusException:
-        print("Migration history table does not exist. Creating")
-        db_interface.execute_script_file(conn, join(get_jaaql_root(), PATH_MIGRATIONS, SCRIPT_MIGRATION_HISTORY))
-        migration_history = objectify(ij.transform(statement_load_table, conn=conn))
+    except UnhandledQueryError as ex:
+        if ex.descriptor["sqlstate"] == SQLState.UndefinedTable.value:
+            print("Migration history table does not exist. Creating")
+            db_interface.execute_script_file(conn, join(get_jaaql_root(), PATH_MIGRATIONS, SCRIPT_MIGRATION_HISTORY))
+            migration_history = objectify(ij.transform(statement_load_table, conn=conn))
+        else:
+            raise ex
 
     installed_scripts = [cur[ATTR_SCRIPT] for cur in migration_history]
     cur_installed_rank = ([-1] + sorted([cur[ATTR_INSTALLED_RANK] for cur in migration_history]))[-1]

@@ -89,9 +89,9 @@ DOCUMENTATION__is_installed = SwaggerDocumentation(
         response=[
             SwaggerFlatResponse(),
             SwaggerFlatResponse(
-                description=ERR__not_yet_installed,
+                description="Not yet installed",
                 code=HTTPStatus.UNPROCESSABLE_ENTITY,
-                body=ERR__not_yet_installed
+                body="Not yet installed"
             )
         ]
     )

@@ -1,5 +1,5 @@
 /*
-**  This installation module was generated from ../../../Packages/DBMS/Postgres/15/jaaql.install for Postgres/15
+**  This installation module was generated from ..\..\..\Users\aaron.tasker\Dropbox\Packages/DBMS/Postgres/15/jaaql.install for Postgres/15
 */
 -- BATON functions
 
@@ -26,7 +26,6 @@ SELECT * from plpgsql_check_function(
 );
 
 grant execute on function "BS.iso_extended_week_number" to public;
--- Install script
 
 create type _error_type as (
     table_name character varying(63),
@@ -38,21 +37,34 @@ CREATE DOMAIN _error_record AS _error_type
     CHECK ((VALUE).table_name is not null AND
            (VALUE).message is not null);
 
+create domain _jaaql_procedure_result AS integer NOT NULL;
+
 create type _status_type as (
     result integer,
     errors _error_record[]
 );
+
 CREATE DOMAIN _status_record AS _status_type
     CHECK ((VALUE).result is not null);
 
-create type _error_result as
-(
-    result integer,
-    table_name text,
-    index integer,
-    message text,
-    column_name text
-);
+CREATE FUNCTION raise_jaaql_handled_query_exception(_status _status_record)
+RETURNS void AS $$
+BEGIN
+    RAISE EXCEPTION '%',
+    (
+        SELECT json_agg(row_to_json(t))::text
+        FROM (
+            SELECT
+                e.table_name::text AS table_name,
+                e.index::integer AS index,
+                e.message::text AS message,
+                e.column_name::text AS column_name
+            FROM unnest(_status.errors) AS e
+        ) t
+    )
+    USING ERRCODE = 'JQ000';
+END;
+$$ LANGUAGE plpgsql;
 
 --(0) Check table and column names
 
@@ -71,7 +83,7 @@ create table application (
     default_u_et object_name,
     unlock_key_validity_period validity_period not null default 1209600,
     unlock_code_validity_period short_validity_period not null default 900,
-    is_live bool not null default false,
+    is_live bool not null default FALSE,
     primary key (name),
     check (unlock_key_validity_period between 15 and 9999999),
     check (unlock_code_validity_period between 15 and 86400) );
@@ -206,7 +218,7 @@ create table application (
         default_s_et character varying(63) default null,
         default_a_et character varying(63) default null,
         default_r_et character varying(63) default null,
-        default_u_et character varying(63) default null) returns SETOF _error_result as
+        default_u_et character varying(63) default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -224,24 +236,12 @@ create table application (
                 unlock_code_validity_period => "application.insert".unlock_code_validity_period,
                 is_live => "application.insert".is_live);
 
-            if cardinality(_status.errors) <> 0 then
-                return QUERY
-                    SELECT
-                        _status.result::integer as result,
-                        unnest.table_name::text as table_name,
-                        unnest.index::integer as index,
-                        unnest.message::text as message,
-                        unnest.column_name::text as column_name
-                    FROM unnest(_status.errors);
-            end if;
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    null::text as table_name,
-                    null::integer as index,
-                    null::text as message,
-                    null::text as column_name;
-        END;    
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
     $$ language plpgsql security definer;
     create function "application.update__internal" (
         name character varying(63),
@@ -329,7 +329,7 @@ create table application (
         default_u_et character varying(63) default null,
         unlock_key_validity_period integer default null,
         unlock_code_validity_period integer default null,
-        is_live bool default null) returns SETOF _error_result as
+        is_live bool default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -346,15 +346,11 @@ create table application (
                 unlock_key_validity_period => "application.update".unlock_key_validity_period,
                 unlock_code_validity_period => "application.update".unlock_code_validity_period,
                 is_live => "application.update".is_live);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "application.persist__internal" (
@@ -451,7 +447,7 @@ create table application (
         default_u_et character varying(63) default null,
         unlock_key_validity_period integer default null,
         unlock_code_validity_period integer default null,
-        is_live bool default null) returns SETOF _error_result as
+        is_live bool default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -469,14 +465,11 @@ create table application (
                 unlock_code_validity_period => "application.persist".unlock_code_validity_period,
                 is_live => "application.persist".is_live);
 
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "application.delete__internal" (
@@ -523,22 +516,18 @@ create table application (
     );
 
     create function "application.delete" (
-        name character varying(63)) returns SETOF _error_result as
+        name character varying(63)) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
         BEGIN
             SELECT * INTO strict _status FROM "application.delete__internal"(
                 name => "application.delete".name);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
 -- application_schema...
@@ -621,7 +610,7 @@ create table application_schema (
     create function "application_schema.insert" (
         database character varying(63),
         name character varying(63),
-        application character varying(63)) returns SETOF _error_result as
+        application character varying(63)) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -631,24 +620,12 @@ create table application_schema (
                 name => "application_schema.insert".name,
                 database => "application_schema.insert".database);
 
-            if cardinality(_status.errors) <> 0 then
-                return QUERY
-                    SELECT
-                        _status.result::integer as result,
-                        unnest.table_name::text as table_name,
-                        unnest.index::integer as index,
-                        unnest.message::text as message,
-                        unnest.column_name::text as column_name
-                    FROM unnest(_status.errors);
-            end if;
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    null::text as table_name,
-                    null::integer as index,
-                    null::text as message,
-                    null::text as column_name;
-        END;    
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
     $$ language plpgsql security definer;
     create function "application_schema.update__internal" (
         application character varying(63),
@@ -705,7 +682,7 @@ create table application_schema (
     create function "application_schema.update" (
         application character varying(63),
         name character varying(63),
-        database character varying(63) default null) returns SETOF _error_result as
+        database character varying(63) default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -714,15 +691,11 @@ create table application_schema (
                 application => "application_schema.update".application,
                 name => "application_schema.update".name,
                 database => "application_schema.update".database);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "application_schema.persist__internal" (
@@ -780,7 +753,7 @@ create table application_schema (
     create function "application_schema.persist" (
         application character varying(63),
         name character varying(63),
-        database character varying(63) default null) returns SETOF _error_result as
+        database character varying(63) default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -790,14 +763,11 @@ create table application_schema (
                 name => "application_schema.persist".name,
                 database => "application_schema.persist".database);
 
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "application_schema.delete__internal" (
@@ -849,7 +819,7 @@ create table application_schema (
 
     create function "application_schema.delete" (
         application character varying(63),
-        name character varying(63)) returns SETOF _error_result as
+        name character varying(63)) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -857,15 +827,11 @@ create table application_schema (
             SELECT * INTO strict _status FROM "application_schema.delete__internal"(
                 application => "application_schema.delete".application,
                 name => "application_schema.delete".name);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
 -- email_dispatcher...
@@ -985,7 +951,7 @@ create table email_dispatcher (
         port integer default null,
         username character varying(255) default null,
         password character varying(256) default null,
-        whitelist text default null) returns SETOF _error_result as
+        whitelist text default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -1001,24 +967,12 @@ create table email_dispatcher (
                 password => "email_dispatcher.insert".password,
                 whitelist => "email_dispatcher.insert".whitelist);
 
-            if cardinality(_status.errors) <> 0 then
-                return QUERY
-                    SELECT
-                        _status.result::integer as result,
-                        unnest.table_name::text as table_name,
-                        unnest.index::integer as index,
-                        unnest.message::text as message,
-                        unnest.column_name::text as column_name
-                    FROM unnest(_status.errors);
-            end if;
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    null::text as table_name,
-                    null::integer as index,
-                    null::text as message,
-                    null::text as column_name;
-        END;    
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
     $$ language plpgsql security definer;
     create function "email_dispatcher.update__internal" (
         application character varying(63),
@@ -1099,7 +1053,7 @@ create table email_dispatcher (
         port integer default null,
         username character varying(255) default null,
         password character varying(256) default null,
-        whitelist text default null) returns SETOF _error_result as
+        whitelist text default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -1114,15 +1068,11 @@ create table email_dispatcher (
                 username => "email_dispatcher.update".username,
                 password => "email_dispatcher.update".password,
                 whitelist => "email_dispatcher.update".whitelist);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "email_dispatcher.persist__internal" (
@@ -1210,7 +1160,7 @@ create table email_dispatcher (
         port integer default null,
         username character varying(255) default null,
         password character varying(256) default null,
-        whitelist text default null) returns SETOF _error_result as
+        whitelist text default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -1226,14 +1176,11 @@ create table email_dispatcher (
                 password => "email_dispatcher.persist".password,
                 whitelist => "email_dispatcher.persist".whitelist);
 
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "email_dispatcher.delete__internal" (
@@ -1285,7 +1232,7 @@ create table email_dispatcher (
 
     create function "email_dispatcher.delete" (
         application character varying(63),
-        name character varying(63)) returns SETOF _error_result as
+        name character varying(63)) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -1293,15 +1240,11 @@ create table email_dispatcher (
             SELECT * INTO strict _status FROM "email_dispatcher.delete__internal"(
                 application => "email_dispatcher.delete".application,
                 name => "email_dispatcher.delete".name);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
 -- jaaql...
@@ -1327,6 +1270,7 @@ create table email_template (
     dbms_user_column_name object_name,
     permissions_and_data_view object_name,
     dispatcher_domain_recipient email_account_username,
+    requires_confirmation bool,
     can_be_sent_anonymously bool,
     primary key (application, name) );
     create function "email_template.insert__internal" (
@@ -1340,6 +1284,7 @@ create table email_template (
         dbms_user_column_name character varying(63) default null,
         permissions_and_data_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
+        requires_confirmation bool default null,
         can_be_sent_anonymously bool default null,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
@@ -1417,6 +1362,7 @@ create table email_template (
                     dbms_user_column_name,
                     permissions_and_data_view,
                     dispatcher_domain_recipient,
+                    requires_confirmation,
                     can_be_sent_anonymously
                 ) VALUES (
                     "email_template.insert__internal"."application",
@@ -1429,6 +1375,7 @@ create table email_template (
                     "email_template.insert__internal"."dbms_user_column_name",
                     "email_template.insert__internal"."permissions_and_data_view",
                     "email_template.insert__internal"."dispatcher_domain_recipient",
+                    "email_template.insert__internal"."requires_confirmation",
                     "email_template.insert__internal"."can_be_sent_anonymously" );
                 _status.result = 1;
             end if;
@@ -1448,6 +1395,7 @@ create table email_template (
             'character varying(63),'
             'character varying(64),'
             'bool,'
+            'bool,'
             'integer,'
             'boolean)'
     );
@@ -1463,7 +1411,8 @@ create table email_template (
         dbms_user_column_name character varying(63) default null,
         permissions_and_data_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
-        can_be_sent_anonymously bool default null) returns SETOF _error_result as
+        requires_confirmation bool default null,
+        can_be_sent_anonymously bool default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -1479,26 +1428,15 @@ create table email_template (
                 dbms_user_column_name => "email_template.insert".dbms_user_column_name,
                 permissions_and_data_view => "email_template.insert".permissions_and_data_view,
                 dispatcher_domain_recipient => "email_template.insert".dispatcher_domain_recipient,
+                requires_confirmation => "email_template.insert".requires_confirmation,
                 can_be_sent_anonymously => "email_template.insert".can_be_sent_anonymously);
 
-            if cardinality(_status.errors) <> 0 then
-                return QUERY
-                    SELECT
-                        _status.result::integer as result,
-                        unnest.table_name::text as table_name,
-                        unnest.index::integer as index,
-                        unnest.message::text as message,
-                        unnest.column_name::text as column_name
-                    FROM unnest(_status.errors);
-            end if;
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    null::text as table_name,
-                    null::integer as index,
-                    null::text as message,
-                    null::text as column_name;
-        END;    
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
     $$ language plpgsql security definer;
     create function "email_template.update__internal" (
         application character varying(63),
@@ -1511,6 +1449,7 @@ create table email_template (
         dbms_user_column_name character varying(63) default null,
         permissions_and_data_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
+        requires_confirmation bool default null,
         can_be_sent_anonymously bool default null,
         _index integer default null,
         _check_only boolean default false) returns _status_record as
@@ -1551,6 +1490,7 @@ create table email_template (
                 dbms_user_column_name = coalesce("email_template.update__internal".dbms_user_column_name, E.dbms_user_column_name),
                 permissions_and_data_view = coalesce("email_template.update__internal".permissions_and_data_view, E.permissions_and_data_view),
                 dispatcher_domain_recipient = coalesce("email_template.update__internal".dispatcher_domain_recipient, E.dispatcher_domain_recipient),
+                requires_confirmation = coalesce("email_template.update__internal".requires_confirmation, E.requires_confirmation),
                 can_be_sent_anonymously = coalesce("email_template.update__internal".can_be_sent_anonymously, E.can_be_sent_anonymously)
             WHERE 
                 E.application = "email_template.update__internal".application AND
@@ -1572,6 +1512,7 @@ create table email_template (
             'character varying(63),'
             'character varying(64),'
             'bool,'
+            'bool,'
             'integer,'
             'boolean)'
     );
@@ -1587,7 +1528,8 @@ create table email_template (
         dbms_user_column_name character varying(63) default null,
         permissions_and_data_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
-        can_be_sent_anonymously bool default null) returns SETOF _error_result as
+        requires_confirmation bool default null,
+        can_be_sent_anonymously bool default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -1603,16 +1545,13 @@ create table email_template (
                 dbms_user_column_name => "email_template.update".dbms_user_column_name,
                 permissions_and_data_view => "email_template.update".permissions_and_data_view,
                 dispatcher_domain_recipient => "email_template.update".dispatcher_domain_recipient,
+                requires_confirmation => "email_template.update".requires_confirmation,
                 can_be_sent_anonymously => "email_template.update".can_be_sent_anonymously);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "email_template.persist__internal" (
@@ -1626,6 +1565,7 @@ create table email_template (
         dbms_user_column_name character varying(63) default null,
         permissions_and_data_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
+        requires_confirmation bool default null,
         can_be_sent_anonymously bool default null,
         _index integer default null,
         _check_only boolean default false) returns _status_record as
@@ -1651,6 +1591,7 @@ create table email_template (
                     dbms_user_column_name => "email_template.persist__internal".dbms_user_column_name,
                     permissions_and_data_view => "email_template.persist__internal".permissions_and_data_view,
                     dispatcher_domain_recipient => "email_template.persist__internal".dispatcher_domain_recipient,
+                    requires_confirmation => CASE WHEN "email_template.persist__internal".requires_confirmation = '' THEN null ELSE "email_template.persist__internal".requires_confirmation END,
                     can_be_sent_anonymously => CASE WHEN "email_template.persist__internal".can_be_sent_anonymously = '' THEN null ELSE "email_template.persist__internal".can_be_sent_anonymously END,
                     _index => "email_template.persist__internal"._index,
                     _check_only => cardinality(_status.errors) <> 0 or "email_template.persist__internal"._check_only);
@@ -1666,6 +1607,7 @@ create table email_template (
                     dbms_user_column_name => "email_template.persist__internal".dbms_user_column_name,
                     permissions_and_data_view => "email_template.persist__internal".permissions_and_data_view,
                     dispatcher_domain_recipient => "email_template.persist__internal".dispatcher_domain_recipient,
+                    requires_confirmation => CASE WHEN "email_template.persist__internal".requires_confirmation = '' THEN null ELSE "email_template.persist__internal".requires_confirmation END,
                     can_be_sent_anonymously => CASE WHEN "email_template.persist__internal".can_be_sent_anonymously = '' THEN null ELSE "email_template.persist__internal".can_be_sent_anonymously END,
                     _index => "email_template.persist__internal"._index,
                     _check_only => cardinality(_status.errors) <> 0 or "email_template.persist__internal"._check_only);
@@ -1695,6 +1637,7 @@ create table email_template (
             'character varying(63),'
             'character varying(64),'
             'bool,'
+            'bool,'
             'integer,'
             'boolean)'
     );
@@ -1710,7 +1653,8 @@ create table email_template (
         dbms_user_column_name character varying(63) default null,
         permissions_and_data_view character varying(63) default null,
         dispatcher_domain_recipient character varying(64) default null,
-        can_be_sent_anonymously bool default null) returns SETOF _error_result as
+        requires_confirmation bool default null,
+        can_be_sent_anonymously bool default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -1726,16 +1670,14 @@ create table email_template (
                 dbms_user_column_name => "email_template.persist".dbms_user_column_name,
                 permissions_and_data_view => "email_template.persist".permissions_and_data_view,
                 dispatcher_domain_recipient => "email_template.persist".dispatcher_domain_recipient,
+                requires_confirmation => "email_template.persist".requires_confirmation,
                 can_be_sent_anonymously => "email_template.persist".can_be_sent_anonymously);
 
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "email_template.delete__internal" (
@@ -1787,7 +1729,7 @@ create table email_template (
 
     create function "email_template.delete" (
         application character varying(63),
-        name character varying(63)) returns SETOF _error_result as
+        name character varying(63)) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -1795,15 +1737,11 @@ create table email_template (
             SELECT * INTO strict _status FROM "email_template.delete__internal"(
                 application => "email_template.delete".application,
                 name => "email_template.delete".name);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
 -- document_template...
@@ -1892,7 +1830,7 @@ create table document_template (
         content_path character varying(255),
         name character varying(63),
         application character varying(63),
-        email_template character varying(63) default null) returns SETOF _error_result as
+        email_template character varying(63) default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -1903,24 +1841,12 @@ create table document_template (
                 content_path => "document_template.insert".content_path,
                 email_template => "document_template.insert".email_template);
 
-            if cardinality(_status.errors) <> 0 then
-                return QUERY
-                    SELECT
-                        _status.result::integer as result,
-                        unnest.table_name::text as table_name,
-                        unnest.index::integer as index,
-                        unnest.message::text as message,
-                        unnest.column_name::text as column_name
-                    FROM unnest(_status.errors);
-            end if;
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    null::text as table_name,
-                    null::integer as index,
-                    null::text as message,
-                    null::text as column_name;
-        END;    
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
     $$ language plpgsql security definer;
     create function "document_template.update__internal" (
         application character varying(63),
@@ -1981,7 +1907,7 @@ create table document_template (
         application character varying(63),
         name character varying(63),
         content_path character varying(255) default null,
-        email_template character varying(63) default null) returns SETOF _error_result as
+        email_template character varying(63) default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -1991,15 +1917,11 @@ create table document_template (
                 name => "document_template.update".name,
                 content_path => "document_template.update".content_path,
                 email_template => "document_template.update".email_template);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "document_template.persist__internal" (
@@ -2062,7 +1984,7 @@ create table document_template (
         application character varying(63),
         name character varying(63),
         content_path character varying(255) default null,
-        email_template character varying(63) default null) returns SETOF _error_result as
+        email_template character varying(63) default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -2073,14 +1995,11 @@ create table document_template (
                 content_path => "document_template.persist".content_path,
                 email_template => "document_template.persist".email_template);
 
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "document_template.delete__internal" (
@@ -2132,7 +2051,7 @@ create table document_template (
 
     create function "document_template.delete" (
         application character varying(63),
-        name character varying(63)) returns SETOF _error_result as
+        name character varying(63)) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -2140,15 +2059,11 @@ create table document_template (
             SELECT * INTO strict _status FROM "document_template.delete__internal"(
                 application => "document_template.delete".application,
                 name => "document_template.delete".name);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
 -- document_request...
@@ -2275,7 +2190,7 @@ create table document_request (
         template character varying(63),
         application character varying(63),
         encrypted_parameters text default null,
-        render_timestamp timestamptz default null) returns SETOF _error_result as
+        render_timestamp timestamptz default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -2289,24 +2204,12 @@ create table document_request (
                 encrypted_parameters => "document_request.insert".encrypted_parameters,
                 render_timestamp => "document_request.insert".render_timestamp);
 
-            if cardinality(_status.errors) <> 0 then
-                return QUERY
-                    SELECT
-                        _status.result::integer as result,
-                        unnest.table_name::text as table_name,
-                        unnest.index::integer as index,
-                        unnest.message::text as message,
-                        unnest.column_name::text as column_name
-                    FROM unnest(_status.errors);
-            end if;
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    null::text as table_name,
-                    null::integer as index,
-                    null::text as message,
-                    null::text as column_name;
-        END;    
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
     $$ language plpgsql security definer;
     create function "document_request.update__internal" (
         uuid uuid,
@@ -2378,7 +2281,7 @@ create table document_request (
         request_timestamp timestamptz default null,
         encrypted_access_token character varying(64) default null,
         encrypted_parameters text default null,
-        render_timestamp timestamptz default null) returns SETOF _error_result as
+        render_timestamp timestamptz default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -2391,15 +2294,11 @@ create table document_request (
                 encrypted_access_token => "document_request.update".encrypted_access_token,
                 encrypted_parameters => "document_request.update".encrypted_parameters,
                 render_timestamp => "document_request.update".render_timestamp);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "document_request.persist__internal" (
@@ -2476,7 +2375,7 @@ create table document_request (
         request_timestamp timestamptz default null,
         encrypted_access_token character varying(64) default null,
         encrypted_parameters text default null,
-        render_timestamp timestamptz default null) returns SETOF _error_result as
+        render_timestamp timestamptz default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -2490,14 +2389,11 @@ create table document_request (
                 encrypted_parameters => "document_request.persist".encrypted_parameters,
                 render_timestamp => "document_request.persist".render_timestamp);
 
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "document_request.delete__internal" (
@@ -2544,22 +2440,18 @@ create table document_request (
     );
 
     create function "document_request.delete" (
-        uuid uuid) returns SETOF _error_result as
+        uuid uuid) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
         BEGIN
             SELECT * INTO strict _status FROM "document_request.delete__internal"(
                 uuid => "document_request.delete".uuid);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
 -- account...
@@ -2645,7 +2537,7 @@ create table account (
         username character varying(255),
         id character varying(63),
         deletion_timestamp timestamptz default null,
-        most_recent_password uuid default null) returns SETOF _error_result as
+        most_recent_password uuid default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -2656,24 +2548,12 @@ create table account (
                 deletion_timestamp => "account.insert".deletion_timestamp,
                 most_recent_password => "account.insert".most_recent_password);
 
-            if cardinality(_status.errors) <> 0 then
-                return QUERY
-                    SELECT
-                        _status.result::integer as result,
-                        unnest.table_name::text as table_name,
-                        unnest.index::integer as index,
-                        unnest.message::text as message,
-                        unnest.column_name::text as column_name
-                    FROM unnest(_status.errors);
-            end if;
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    null::text as table_name,
-                    null::integer as index,
-                    null::text as message,
-                    null::text as column_name;
-        END;    
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
     $$ language plpgsql security definer;
     create function "account.update__internal" (
         id character varying(63),
@@ -2733,7 +2613,7 @@ create table account (
         id character varying(63),
         username character varying(255) default null,
         deletion_timestamp timestamptz default null,
-        most_recent_password uuid default null) returns SETOF _error_result as
+        most_recent_password uuid default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -2743,15 +2623,11 @@ create table account (
                 username => "account.update".username,
                 deletion_timestamp => "account.update".deletion_timestamp,
                 most_recent_password => "account.update".most_recent_password);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "account.persist__internal" (
@@ -2813,7 +2689,7 @@ create table account (
         id character varying(63),
         username character varying(255) default null,
         deletion_timestamp timestamptz default null,
-        most_recent_password uuid default null) returns SETOF _error_result as
+        most_recent_password uuid default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -2824,14 +2700,11 @@ create table account (
                 deletion_timestamp => "account.persist".deletion_timestamp,
                 most_recent_password => "account.persist".most_recent_password);
 
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "account.delete__internal" (
@@ -2878,22 +2751,18 @@ create table account (
     );
 
     create function "account.delete" (
-        id character varying(63)) returns SETOF _error_result as
+        id character varying(63)) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
         BEGIN
             SELECT * INTO strict _status FROM "account.delete__internal"(
                 id => "account.delete".id);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
 -- account_password...
@@ -2993,7 +2862,7 @@ create table account_password (
         creation_timestamp timestamptz,
         hash character varying(512),
         uuid uuid,
-        account character varying(63)) returns SETOF _error_result as
+        account character varying(63)) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3004,24 +2873,12 @@ create table account_password (
                 hash => "account_password.insert".hash,
                 creation_timestamp => "account_password.insert".creation_timestamp);
 
-            if cardinality(_status.errors) <> 0 then
-                return QUERY
-                    SELECT
-                        _status.result::integer as result,
-                        unnest.table_name::text as table_name,
-                        unnest.index::integer as index,
-                        unnest.message::text as message,
-                        unnest.column_name::text as column_name
-                    FROM unnest(_status.errors);
-            end if;
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    null::text as table_name,
-                    null::integer as index,
-                    null::text as message,
-                    null::text as column_name;
-        END;    
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
     $$ language plpgsql security definer;
     create function "account_password.update__internal" (
         uuid uuid,
@@ -3081,7 +2938,7 @@ create table account_password (
         uuid uuid,
         account character varying(63) default null,
         hash character varying(512) default null,
-        creation_timestamp timestamptz default null) returns SETOF _error_result as
+        creation_timestamp timestamptz default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3091,15 +2948,11 @@ create table account_password (
                 uuid => "account_password.update".uuid,
                 hash => "account_password.update".hash,
                 creation_timestamp => "account_password.update".creation_timestamp);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "account_password.persist__internal" (
@@ -3161,7 +3014,7 @@ create table account_password (
         uuid uuid,
         account character varying(63) default null,
         hash character varying(512) default null,
-        creation_timestamp timestamptz default null) returns SETOF _error_result as
+        creation_timestamp timestamptz default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3172,14 +3025,11 @@ create table account_password (
                 hash => "account_password.persist".hash,
                 creation_timestamp => "account_password.persist".creation_timestamp);
 
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "account_password.delete__internal" (
@@ -3226,22 +3076,18 @@ create table account_password (
     );
 
     create function "account_password.delete" (
-        uuid uuid) returns SETOF _error_result as
+        uuid uuid) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
         BEGIN
             SELECT * INTO strict _status FROM "account_password.delete__internal"(
                 uuid => "account_password.delete".uuid);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
 -- validated_ip_address...
@@ -3354,7 +3200,7 @@ create table validated_ip_address (
         first_authentication_timestamp timestamptz,
         encrypted_salted_ip_address character varying(256),
         uuid uuid,
-        account character varying(63)) returns SETOF _error_result as
+        account character varying(63)) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3366,24 +3212,12 @@ create table validated_ip_address (
                 first_authentication_timestamp => "validated_ip_address.insert".first_authentication_timestamp,
                 last_authentication_timestamp => "validated_ip_address.insert".last_authentication_timestamp);
 
-            if cardinality(_status.errors) <> 0 then
-                return QUERY
-                    SELECT
-                        _status.result::integer as result,
-                        unnest.table_name::text as table_name,
-                        unnest.index::integer as index,
-                        unnest.message::text as message,
-                        unnest.column_name::text as column_name
-                    FROM unnest(_status.errors);
-            end if;
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    null::text as table_name,
-                    null::integer as index,
-                    null::text as message,
-                    null::text as column_name;
-        END;    
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
     $$ language plpgsql security definer;
     create function "validated_ip_address.update__internal" (
         uuid uuid,
@@ -3447,7 +3281,7 @@ create table validated_ip_address (
         account character varying(63) default null,
         encrypted_salted_ip_address character varying(256) default null,
         first_authentication_timestamp timestamptz default null,
-        last_authentication_timestamp timestamptz default null) returns SETOF _error_result as
+        last_authentication_timestamp timestamptz default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3458,15 +3292,11 @@ create table validated_ip_address (
                 encrypted_salted_ip_address => "validated_ip_address.update".encrypted_salted_ip_address,
                 first_authentication_timestamp => "validated_ip_address.update".first_authentication_timestamp,
                 last_authentication_timestamp => "validated_ip_address.update".last_authentication_timestamp);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "validated_ip_address.persist__internal" (
@@ -3533,7 +3363,7 @@ create table validated_ip_address (
         account character varying(63) default null,
         encrypted_salted_ip_address character varying(256) default null,
         first_authentication_timestamp timestamptz default null,
-        last_authentication_timestamp timestamptz default null) returns SETOF _error_result as
+        last_authentication_timestamp timestamptz default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3545,14 +3375,11 @@ create table validated_ip_address (
                 first_authentication_timestamp => "validated_ip_address.persist".first_authentication_timestamp,
                 last_authentication_timestamp => "validated_ip_address.persist".last_authentication_timestamp);
 
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "validated_ip_address.delete__internal" (
@@ -3599,22 +3426,18 @@ create table validated_ip_address (
     );
 
     create function "validated_ip_address.delete" (
-        uuid uuid) returns SETOF _error_result as
+        uuid uuid) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
         BEGIN
             SELECT * INTO strict _status FROM "validated_ip_address.delete__internal"(
                 uuid => "validated_ip_address.delete".uuid);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
 -- security_event...
@@ -3774,7 +3597,7 @@ create table security_event (
         account character varying(63) default null,
         fake_account character varying(255) default null,
         unlock_timestamp timestamptz default null,
-        finish_timestamp timestamptz default null) returns SETOF _error_result as
+        finish_timestamp timestamptz default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3792,24 +3615,12 @@ create table security_event (
                 unlock_timestamp => "security_event.insert".unlock_timestamp,
                 finish_timestamp => "security_event.insert".finish_timestamp);
 
-            if cardinality(_status.errors) <> 0 then
-                return QUERY
-                    SELECT
-                        _status.result::integer as result,
-                        unnest.table_name::text as table_name,
-                        unnest.index::integer as index,
-                        unnest.message::text as message,
-                        unnest.column_name::text as column_name
-                    FROM unnest(_status.errors);
-            end if;
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    null::text as table_name,
-                    null::integer as index,
-                    null::text as message,
-                    null::text as column_name;
-        END;    
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
     $$ language plpgsql security definer;
     create function "security_event.update__internal" (
         application character varying(63),
@@ -3898,7 +3709,7 @@ create table security_event (
         unlock_key uuid default null,
         unlock_code character varying(10) default null,
         unlock_timestamp timestamptz default null,
-        finish_timestamp timestamptz default null) returns SETOF _error_result as
+        finish_timestamp timestamptz default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3915,15 +3726,11 @@ create table security_event (
                 unlock_code => "security_event.update".unlock_code,
                 unlock_timestamp => "security_event.update".unlock_timestamp,
                 finish_timestamp => "security_event.update".finish_timestamp);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "security_event.persist__internal" (
@@ -4021,7 +3828,7 @@ create table security_event (
         unlock_key uuid default null,
         unlock_code character varying(10) default null,
         unlock_timestamp timestamptz default null,
-        finish_timestamp timestamptz default null) returns SETOF _error_result as
+        finish_timestamp timestamptz default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -4039,14 +3846,11 @@ create table security_event (
                 unlock_timestamp => "security_event.persist".unlock_timestamp,
                 finish_timestamp => "security_event.persist".finish_timestamp);
 
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
     create function "security_event.delete__internal" (
@@ -4098,7 +3902,7 @@ create table security_event (
 
     create function "security_event.delete" (
         application character varying(63),
-        event_lock uuid) returns SETOF _error_result as
+        event_lock uuid) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -4106,17 +3910,487 @@ create table security_event (
             SELECT * INTO strict _status FROM "security_event.delete__internal"(
                 application => "security_event.delete".application,
                 event_lock => "security_event.delete".event_lock);
-
-            return QUERY
-                SELECT
-                    _status.result::integer as result,
-                    unnest.table_name::text as table_name,
-                    unnest.index::integer as index,
-                    unnest.message::text as message,
-                    unnest.column_name::text as column_name
-                FROM unnest(_status.errors);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
+-- handled_error...
+create table handled_error (
+    code error_code not null,
+    error_name error_name,
+    is_arrayed bool not null,
+    table_name object_name,
+    table_name_required bool,
+    table_possible bool,
+    column_possible bool,
+    has_associated_set bool,
+    column_name object_name,
+    http_response_code http_response_code default 422,
+    message text,
+    description text not null,
+    primary key (code),
+    check (code between 1001 and 1999),
+    check (http_response_code between 100 and 599) );
+    create function "handled_error.insert__internal" (
+        description text,
+        is_arrayed bool,
+        code numeric,
+        error_name character varying(45) default null,
+        table_name character varying(63) default null,
+        table_name_required bool default null,
+        table_possible bool default null,
+        column_possible bool default null,
+        has_associated_set bool default null,
+        column_name character varying(63) default null,
+        http_response_code numeric default null,
+        message text default null,
+        _index integer default null,
+        _check_only boolean default false ) returns _status_record as
+    $$
+        DECLARE
+            _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+            _count integer not null = 0;
+        BEGIN
+        -- (1) Coercion
+        -- (A) Check that required values are present
+            if "handled_error.insert__internal".is_arrayed is null then
+                _status.errors = _status.errors ||
+                    ROW('handled_error', _index,
+                        'Er moet een waarde ingevuld worden voor Is Arrayed',
+                        'is_arrayed'
+                    )::_error_record;
+            end if;
+            if "handled_error.insert__internal".description is null then
+                _status.errors = _status.errors ||
+                    ROW('handled_error', _index,
+                        'Er moet een waarde ingevuld worden voor Description',
+                        'description'
+                    )::_error_record;
+            end if;
+        -- (D) Check that there is no record in the table with the same prime key
+            SELECT COUNT(*) into _count
+            FROM handled_error H
+            WHERE
+                H.code = "handled_error.insert__internal".code;
+            if _count <> 0 then
+                _status.errors = _status.errors ||
+                    ROW('handled_error', _index,
+                        'Er is al een Handled Error geregistreed met '
+                        'Code',
+                        'code'
+                    )::_error_record;
+            end if;
+            -- Get out quick if there are errors
+            if cardinality(_status.errors) <> 0 then
+                return _status;
+            end if;
+            -- Now do the work
+            if not "handled_error.insert__internal"._check_only then
+                INSERT INTO handled_error (
+                    code,
+                    error_name,
+                    is_arrayed,
+                    table_name,
+                    table_name_required,
+                    table_possible,
+                    column_possible,
+                    has_associated_set,
+                    column_name,
+                    http_response_code,
+                    message,
+                    description
+                ) VALUES (
+                    "handled_error.insert__internal"."code",
+                    "handled_error.insert__internal"."error_name",
+                    "handled_error.insert__internal"."is_arrayed",
+                    "handled_error.insert__internal"."table_name",
+                    "handled_error.insert__internal"."table_name_required",
+                    "handled_error.insert__internal"."table_possible",
+                    "handled_error.insert__internal"."column_possible",
+                    "handled_error.insert__internal"."has_associated_set",
+                    "handled_error.insert__internal"."column_name",
+                    "handled_error.insert__internal"."http_response_code",
+                    "handled_error.insert__internal"."message",
+                    "handled_error.insert__internal"."description" );
+                _status.result = 1;
+            end if;
+            return _status;
+        END;
+    $$ language plpgsql security definer;
+    select * from plpgsql_check_function(
+        '"handled_error.insert__internal"('
+            'text,'
+            'bool,'
+            'numeric,'
+            'character varying(45),'
+            'character varying(63),'
+            'bool,'
+            'bool,'
+            'bool,'
+            'bool,'
+            'character varying(63),'
+            'numeric,'
+            'text,'
+            'integer,'
+            'boolean)'
+    );
+
+    create function "handled_error.insert" (
+        description text,
+        is_arrayed bool,
+        code numeric,
+        error_name character varying(45) default null,
+        table_name character varying(63) default null,
+        table_name_required bool default null,
+        table_possible bool default null,
+        column_possible bool default null,
+        has_associated_set bool default null,
+        column_name character varying(63) default null,
+        http_response_code numeric default null,
+        message text default null) returns _jaaql_procedure_result as
+    $$
+        DECLARE
+            _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        BEGIN
+            SELECT * INTO strict _status FROM "handled_error.insert__internal"(
+                code => "handled_error.insert".code,
+                error_name => "handled_error.insert".error_name,
+                is_arrayed => "handled_error.insert".is_arrayed,
+                table_name => "handled_error.insert".table_name,
+                table_name_required => "handled_error.insert".table_name_required,
+                table_possible => "handled_error.insert".table_possible,
+                column_possible => "handled_error.insert".column_possible,
+                has_associated_set => "handled_error.insert".has_associated_set,
+                column_name => "handled_error.insert".column_name,
+                http_response_code => "handled_error.insert".http_response_code,
+                message => "handled_error.insert".message,
+                description => "handled_error.insert".description);
+
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
+    $$ language plpgsql security definer;
+    create function "handled_error.update__internal" (
+        code numeric,
+        error_name character varying(45) default null,
+        is_arrayed bool default null,
+        table_name character varying(63) default null,
+        table_name_required bool default null,
+        table_possible bool default null,
+        column_possible bool default null,
+        has_associated_set bool default null,
+        column_name character varying(63) default null,
+        http_response_code numeric default null,
+        message text default null,
+        description text default null,
+        _index integer default null,
+        _check_only boolean default false) returns _status_record as
+    $$
+        DECLARE
+            _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+            _count integer not null = 0;
+        BEGIN
+        -- (D) Check that there is a record in the table with the same prime key
+            SELECT COUNT(*) into _count
+            FROM handled_error H
+            WHERE
+                H.code = "handled_error.update__internal".code;
+            if _count <> 1 then
+                _status.errors = _status.errors ||
+                    ROW('handled_error', _index,
+                        'Er is geen Handled Error gevonden met '
+                        'Code',
+                        'code'
+                    )::_error_record;
+            end if;
+            -- Get out quick if there are errors
+            if cardinality(_status.errors) <> 0 then
+                return _status;
+            end if;
+            if _check_only then
+                return _status;
+            end if;
+
+            UPDATE handled_error H
+            SET
+                error_name = coalesce("handled_error.update__internal".error_name, H.error_name),
+                is_arrayed = coalesce("handled_error.update__internal".is_arrayed, H.is_arrayed),
+                table_name = coalesce("handled_error.update__internal".table_name, H.table_name),
+                table_name_required = coalesce("handled_error.update__internal".table_name_required, H.table_name_required),
+                table_possible = coalesce("handled_error.update__internal".table_possible, H.table_possible),
+                column_possible = coalesce("handled_error.update__internal".column_possible, H.column_possible),
+                has_associated_set = coalesce("handled_error.update__internal".has_associated_set, H.has_associated_set),
+                column_name = coalesce("handled_error.update__internal".column_name, H.column_name),
+                http_response_code = coalesce("handled_error.update__internal".http_response_code, H.http_response_code),
+                message = coalesce("handled_error.update__internal".message, H.message),
+                description = coalesce("handled_error.update__internal".description, H.description)
+            WHERE 
+                H.code = "handled_error.update__internal".code;
+            return _status;
+        END;
+    $$ language plpgsql security definer;
+
+    select * from plpgsql_check_function(
+        '"handled_error.update__internal"('
+            'numeric,'
+            'character varying(45),'
+            'bool,'
+            'character varying(63),'
+            'bool,'
+            'bool,'
+            'bool,'
+            'bool,'
+            'character varying(63),'
+            'numeric,'
+            'text,'
+            'text,'
+            'integer,'
+            'boolean)'
+    );
+
+    create function "handled_error.update" (
+        code numeric,
+        error_name character varying(45) default null,
+        is_arrayed bool default null,
+        table_name character varying(63) default null,
+        table_name_required bool default null,
+        table_possible bool default null,
+        column_possible bool default null,
+        has_associated_set bool default null,
+        column_name character varying(63) default null,
+        http_response_code numeric default null,
+        message text default null,
+        description text default null) returns _jaaql_procedure_result as
+    $$
+        DECLARE
+            _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        BEGIN
+            SELECT * INTO strict _status FROM "handled_error.update__internal"(
+                code => "handled_error.update".code,
+                error_name => "handled_error.update".error_name,
+                is_arrayed => "handled_error.update".is_arrayed,
+                table_name => "handled_error.update".table_name,
+                table_name_required => "handled_error.update".table_name_required,
+                table_possible => "handled_error.update".table_possible,
+                column_possible => "handled_error.update".column_possible,
+                has_associated_set => "handled_error.update".has_associated_set,
+                column_name => "handled_error.update".column_name,
+                http_response_code => "handled_error.update".http_response_code,
+                message => "handled_error.update".message,
+                description => "handled_error.update".description);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
+    $$ language plpgsql security definer;
+    create function "handled_error.persist__internal" (
+        code numeric,
+        error_name character varying(45) default null,
+        is_arrayed bool default null,
+        table_name character varying(63) default null,
+        table_name_required bool default null,
+        table_possible bool default null,
+        column_possible bool default null,
+        has_associated_set bool default null,
+        column_name character varying(63) default null,
+        http_response_code numeric default null,
+        message text default null,
+        description text default null,
+        _index integer default null,
+        _check_only boolean default false) returns _status_record as
+    $$
+        DECLARE
+            _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+            _count integer not null = 0;
+        BEGIN
+            SELECT COUNT(*) into _count
+            FROM handled_error H
+            WHERE
+                H.code = "handled_error.persist__internal".code;
+            if _count = 0 then
+                SELECT * INTO strict _status FROM "handled_error.insert__internal"(
+                    code => CASE WHEN "handled_error.persist__internal".code = '' THEN null ELSE "handled_error.persist__internal".code END,
+                    error_name => "handled_error.persist__internal".error_name,
+                    is_arrayed => CASE WHEN "handled_error.persist__internal".is_arrayed = '' THEN null ELSE "handled_error.persist__internal".is_arrayed END,
+                    table_name => "handled_error.persist__internal".table_name,
+                    table_name_required => CASE WHEN "handled_error.persist__internal".table_name_required = '' THEN null ELSE "handled_error.persist__internal".table_name_required END,
+                    table_possible => CASE WHEN "handled_error.persist__internal".table_possible = '' THEN null ELSE "handled_error.persist__internal".table_possible END,
+                    column_possible => CASE WHEN "handled_error.persist__internal".column_possible = '' THEN null ELSE "handled_error.persist__internal".column_possible END,
+                    has_associated_set => CASE WHEN "handled_error.persist__internal".has_associated_set = '' THEN null ELSE "handled_error.persist__internal".has_associated_set END,
+                    column_name => "handled_error.persist__internal".column_name,
+                    http_response_code => CASE WHEN "handled_error.persist__internal".http_response_code = '' THEN null ELSE "handled_error.persist__internal".http_response_code END,
+                    message => CASE WHEN "handled_error.persist__internal".message = '' THEN null ELSE "handled_error.persist__internal".message END,
+                    description => CASE WHEN "handled_error.persist__internal".description = '' THEN null ELSE "handled_error.persist__internal".description END,
+                    _index => "handled_error.persist__internal"._index,
+                    _check_only => cardinality(_status.errors) <> 0 or "handled_error.persist__internal"._check_only);
+            elsif _count = 1 then
+                SELECT * INTO strict _status FROM "handled_error.update__internal"(
+                    code => CASE WHEN "handled_error.persist__internal".code = '' THEN null ELSE "handled_error.persist__internal".code END,
+                    error_name => "handled_error.persist__internal".error_name,
+                    is_arrayed => CASE WHEN "handled_error.persist__internal".is_arrayed = '' THEN null ELSE "handled_error.persist__internal".is_arrayed END,
+                    table_name => "handled_error.persist__internal".table_name,
+                    table_name_required => CASE WHEN "handled_error.persist__internal".table_name_required = '' THEN null ELSE "handled_error.persist__internal".table_name_required END,
+                    table_possible => CASE WHEN "handled_error.persist__internal".table_possible = '' THEN null ELSE "handled_error.persist__internal".table_possible END,
+                    column_possible => CASE WHEN "handled_error.persist__internal".column_possible = '' THEN null ELSE "handled_error.persist__internal".column_possible END,
+                    has_associated_set => CASE WHEN "handled_error.persist__internal".has_associated_set = '' THEN null ELSE "handled_error.persist__internal".has_associated_set END,
+                    column_name => "handled_error.persist__internal".column_name,
+                    http_response_code => CASE WHEN "handled_error.persist__internal".http_response_code = '' THEN null ELSE "handled_error.persist__internal".http_response_code END,
+                    message => CASE WHEN "handled_error.persist__internal".message = '' THEN null ELSE "handled_error.persist__internal".message END,
+                    description => CASE WHEN "handled_error.persist__internal".description = '' THEN null ELSE "handled_error.persist__internal".description END,
+                    _index => "handled_error.persist__internal"._index,
+                    _check_only => cardinality(_status.errors) <> 0 or "handled_error.persist__internal"._check_only);
+            else
+                _status.errors = _status.errors ||
+                    ROW('handled_error', _index,
+                        'Er is niet verwacht Handled Error gevonden met '
+                        'Code',
+                        'code'
+                    )::_error_record;
+            end if;
+
+            return _status;
+        END;
+    $$ language plpgsql security definer;
+
+    select * from plpgsql_check_function(
+        '"handled_error.persist__internal"('
+            'numeric,'
+            'character varying(45),'
+            'bool,'
+            'character varying(63),'
+            'bool,'
+            'bool,'
+            'bool,'
+            'bool,'
+            'character varying(63),'
+            'numeric,'
+            'text,'
+            'text,'
+            'integer,'
+            'boolean)'
+    );
+
+    create function "handled_error.persist" (
+        code numeric,
+        error_name character varying(45) default null,
+        is_arrayed bool default null,
+        table_name character varying(63) default null,
+        table_name_required bool default null,
+        table_possible bool default null,
+        column_possible bool default null,
+        has_associated_set bool default null,
+        column_name character varying(63) default null,
+        http_response_code numeric default null,
+        message text default null,
+        description text default null) returns _jaaql_procedure_result as
+    $$
+        DECLARE
+            _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        BEGIN
+            SELECT * INTO strict _status FROM "handled_error.persist__internal"(
+                code => "handled_error.persist".code,
+                error_name => "handled_error.persist".error_name,
+                is_arrayed => "handled_error.persist".is_arrayed,
+                table_name => "handled_error.persist".table_name,
+                table_name_required => "handled_error.persist".table_name_required,
+                table_possible => "handled_error.persist".table_possible,
+                column_possible => "handled_error.persist".column_possible,
+                has_associated_set => "handled_error.persist".has_associated_set,
+                column_name => "handled_error.persist".column_name,
+                http_response_code => "handled_error.persist".http_response_code,
+                message => "handled_error.persist".message,
+                description => "handled_error.persist".description);
+
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
+    $$ language plpgsql security definer;
+    create function "handled_error.delete__internal" (
+        code numeric,
+        _index integer default null,
+        _check_only boolean default false ) returns _status_record as
+    $$
+        DECLARE
+            _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+            _count integer not null = 0;
+        BEGIN
+        -- (D) Check that there is a record in the table with the same prime key
+            SELECT COUNT(*) into _count
+            FROM handled_error H
+            WHERE
+                H.code = "handled_error.delete__internal".code;
+            if _count <> 1 then
+                _status.errors = _status.errors ||
+                    ROW('handled_error', _index,
+                        'Er is geen Handled Error gevonden met '
+                        'Code',
+                        'code'
+                    )::_error_record;
+            end if;            -- Get out quick if there are errors
+            if cardinality(_status.errors) <> 0 then
+                return _status;
+            end if;
+            if _check_only then
+                return _status;
+            end if;
+
+            DELETE FROM handled_error H
+            WHERE 
+                H.code = "handled_error.delete__internal".code;
+            return _status;
+        END;
+    $$ language plpgsql security definer;
+
+    select * from plpgsql_check_function(
+        '"handled_error.delete__internal"('
+            'numeric,'
+            'integer,'
+            'boolean)'
+    );
+
+    create function "handled_error.delete" (
+        code numeric) returns _jaaql_procedure_result as
+    $$
+        DECLARE
+            _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        BEGIN
+            SELECT * INTO strict _status FROM "handled_error.delete__internal"(
+                code => "handled_error.delete".code);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
+    $$ language plpgsql security definer;
+-- pg_base_exception...
+create table pg_base_exception (
+    name pg_base_exception_name not null,
+    primary key (name) );
+-- pg_error_class...
+create table pg_error_class (
+    code pg_error_class_code not null,
+    name pg_error_class_name not null,
+    description pg_error_class_description,
+    primary key (code) );
+-- pg_exception...
+create table pg_exception (
+    pg_class pg_error_class_code not null,
+    sqlstate pg_sqlstate not null,
+    name pg_exception_name not null,
+    base_exception pg_base_exception_name not null,
+    primary key (sqlstate) );
 
 -- (1a) Create view to give current date/time, possibly read from a table
 
@@ -4147,11 +4421,11 @@ grant select on "_current_date_parts" to public;
 -- application_schema...
 
 create function "application_schema.insert+" (
-    application character varying(63),
-    name character varying(63),
+    use_as_default jsonb,
     database character varying(63),
-    use_as_default jsonb
-) returns SETOF _error_result as
+    name character varying(63),
+    application character varying(63)
+) returns _jaaql_procedure_result as
 $$
     DECLARE
         _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -4184,32 +4458,17 @@ $$
         end loop;
         -- Throw exception, which triggers a rollback if errors
         if cardinality(_status.errors) <> 0 then
-            raise exception using errcode='BATON';
+            SELECT raise_jaaql_handled_query_exception(_status);
         end if;
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                null::text as table_name,
-                null::integer as index,
-                null::text as message,
-                null::text as column_name;
-    EXCEPTION when sqlstate 'BATON' then
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                unnest.table_name::text as table_name,
-                unnest.index::integer as index,
-                unnest.message::text as message,
-                unnest.column_name::text as column_name
-            FROM unnest(_status.errors);
+        return _status.result::_jaaql_procedure_result;
     END
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
     '"application_schema.insert+"('
+        'jsonb,'
         'character varying(63),'
         'character varying(63),'
-        'character varying(63),'
-        'jsonb)'
+        'character varying(63))'
 );
 
 grant execute on function "application_schema.insert+" to registered;
@@ -4218,7 +4477,7 @@ create function "application_schema.persist+" (
     name character varying(63),
     use_as_default jsonb,
     database character varying(63) default null
-) returns SETOF _error_result as
+) returns _jaaql_procedure_result as
 $$
     DECLARE
         _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -4255,24 +4514,9 @@ $$
         end loop;
         -- Throw exception, which triggers a rollback if errors
         if cardinality(_status.errors) <> 0 then
-            raise exception using errcode='BATON';
+            SELECT raise_jaaql_handled_query_exception(_status);
         end if;
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                null::text as table_name,
-                null::integer as index,
-                null::text as message,
-                null::text as column_name;
-    EXCEPTION when sqlstate 'BATON' then
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                unnest.table_name::text as table_name,
-                unnest.index::integer as index,
-                unnest.message::text as message,
-                unnest.column_name::text as column_name
-            FROM unnest(_status.errors);
+        return _status.result::_jaaql_procedure_result;
     END
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
@@ -4289,7 +4533,7 @@ create function "application_schema.update+" (
     name character varying(63),
     use_as_default jsonb,
     database character varying(63) default null
-) returns SETOF _error_result as
+) returns _jaaql_procedure_result as
 $$
     DECLARE
         _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -4326,24 +4570,9 @@ $$
         end loop;
         -- Throw exception, which triggers a rollback if errors
         if cardinality(_status.errors) <> 0 then
-            raise exception using errcode='BATON';
+            SELECT raise_jaaql_handled_query_exception(_status);
         end if;
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                null::text as table_name,
-                null::integer as index,
-                null::text as message,
-                null::text as column_name;
-    EXCEPTION when sqlstate 'BATON' then
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                unnest.table_name::text as table_name,
-                unnest.index::integer as index,
-                unnest.message::text as message,
-                unnest.column_name::text as column_name
-            FROM unnest(_status.errors);
+        return _status.result::_jaaql_procedure_result;
     END
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
@@ -4362,22 +4591,23 @@ grant execute on function "application_schema.update+" to registered;
 -- email_template...
 
 create function "email_template.insert+" (
-    application character varying(63),
-    dispatcher character varying(63),
-    name character varying(63),
-    type character varying(1),
-    content_url character varying(255),
-    validation_schema character varying(63),
-    base_relation character varying(63),
-    dbms_user_column_name character varying(63),
-    permissions_and_data_view character varying(63),
-    dispatcher_domain_recipient character varying(64),
-    can_be_sent_anonymously bool,
     use_as_default_sign_up jsonb,
     use_as_default_already_signed_up jsonb,
     use_as_default_reset_password jsonb,
-    use_as_default_unregisted_password_reset jsonb
-) returns SETOF _error_result as
+    use_as_default_unregisted_password_reset jsonb,
+    content_url character varying(255),
+    type character varying(1),
+    name character varying(63),
+    dispatcher character varying(63),
+    application character varying(63),
+    validation_schema character varying(63) default null,
+    base_relation character varying(63) default null,
+    dbms_user_column_name character varying(63) default null,
+    permissions_and_data_view character varying(63) default null,
+    dispatcher_domain_recipient character varying(64) default null,
+    requires_confirmation bool default null,
+    can_be_sent_anonymously bool default null
+) returns _jaaql_procedure_result as
 $$
     DECLARE
         _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -4395,6 +4625,7 @@ $$
             dbms_user_column_name => "email_template.insert+".dbms_user_column_name,
             permissions_and_data_view => "email_template.insert+".permissions_and_data_view,
             dispatcher_domain_recipient => "email_template.insert+".dispatcher_domain_recipient,
+            requires_confirmation => "email_template.insert+".requires_confirmation,
             can_be_sent_anonymously => "email_template.insert+".can_be_sent_anonymously );
         _status.result = _returned_status.result;
         _status.errors = _status.errors || _returned_status.errors;
@@ -4469,43 +4700,29 @@ $$
         end loop;
         -- Throw exception, which triggers a rollback if errors
         if cardinality(_status.errors) <> 0 then
-            raise exception using errcode='BATON';
+            SELECT raise_jaaql_handled_query_exception(_status);
         end if;
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                null::text as table_name,
-                null::integer as index,
-                null::text as message,
-                null::text as column_name;
-    EXCEPTION when sqlstate 'BATON' then
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                unnest.table_name::text as table_name,
-                unnest.index::integer as index,
-                unnest.message::text as message,
-                unnest.column_name::text as column_name
-            FROM unnest(_status.errors);
+        return _status.result::_jaaql_procedure_result;
     END
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
     '"email_template.insert+"('
-        'character varying(63),'
-        'character varying(63),'
-        'character varying(63),'
-        'character varying(1),'
+        'jsonb,'
+        'jsonb,'
+        'jsonb,'
+        'jsonb,'
         'character varying(255),'
+        'character varying(1),'
+        'character varying(63),'
+        'character varying(63),'
+        'character varying(63),'
         'character varying(63),'
         'character varying(63),'
         'character varying(63),'
         'character varying(63),'
         'character varying(64),'
         'bool,'
-        'jsonb,'
-        'jsonb,'
-        'jsonb,'
-        'jsonb)'
+        'bool)'
 );
 
 grant execute on function "email_template.insert+" to registered;
@@ -4524,8 +4741,9 @@ create function "email_template.persist+" (
     dbms_user_column_name character varying(63) default null,
     permissions_and_data_view character varying(63) default null,
     dispatcher_domain_recipient character varying(64) default null,
+    requires_confirmation bool default null,
     can_be_sent_anonymously bool default null
-) returns SETOF _error_result as
+) returns _jaaql_procedure_result as
 $$
     DECLARE
         _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -4543,6 +4761,7 @@ $$
             dbms_user_column_name => "email_template.persist+".dbms_user_column_name,
             permissions_and_data_view => "email_template.persist+".permissions_and_data_view,
             dispatcher_domain_recipient => "email_template.persist+".dispatcher_domain_recipient,
+            requires_confirmation => "email_template.persist+".requires_confirmation,
             can_be_sent_anonymously => "email_template.persist+".can_be_sent_anonymously );
         _status.result = _returned_status.result;
         _status.errors = _status.errors || _returned_status.errors;
@@ -4630,24 +4849,9 @@ $$
         end loop;
         -- Throw exception, which triggers a rollback if errors
         if cardinality(_status.errors) <> 0 then
-            raise exception using errcode='BATON';
+            SELECT raise_jaaql_handled_query_exception(_status);
         end if;
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                null::text as table_name,
-                null::integer as index,
-                null::text as message,
-                null::text as column_name;
-    EXCEPTION when sqlstate 'BATON' then
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                unnest.table_name::text as table_name,
-                unnest.index::integer as index,
-                unnest.message::text as message,
-                unnest.column_name::text as column_name
-            FROM unnest(_status.errors);
+        return _status.result::_jaaql_procedure_result;
     END
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
@@ -4666,6 +4870,7 @@ select * from plpgsql_check_function(
         'character varying(63),'
         'character varying(63),'
         'character varying(64),'
+        'bool,'
         'bool)'
 );
 
@@ -4685,8 +4890,9 @@ create function "email_template.update+" (
     dbms_user_column_name character varying(63) default null,
     permissions_and_data_view character varying(63) default null,
     dispatcher_domain_recipient character varying(64) default null,
+    requires_confirmation bool default null,
     can_be_sent_anonymously bool default null
-) returns SETOF _error_result as
+) returns _jaaql_procedure_result as
 $$
     DECLARE
         _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -4704,6 +4910,7 @@ $$
             dbms_user_column_name => "email_template.update+".dbms_user_column_name,
             permissions_and_data_view => "email_template.update+".permissions_and_data_view,
             dispatcher_domain_recipient => "email_template.update+".dispatcher_domain_recipient,
+            requires_confirmation => "email_template.update+".requires_confirmation,
             can_be_sent_anonymously => "email_template.update+".can_be_sent_anonymously );
         _status.result = _returned_status.result;
         _status.errors = _status.errors || _returned_status.errors;
@@ -4791,24 +4998,9 @@ $$
         end loop;
         -- Throw exception, which triggers a rollback if errors
         if cardinality(_status.errors) <> 0 then
-            raise exception using errcode='BATON';
+            SELECT raise_jaaql_handled_query_exception(_status);
         end if;
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                null::text as table_name,
-                null::integer as index,
-                null::text as message,
-                null::text as column_name;
-    EXCEPTION when sqlstate 'BATON' then
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                unnest.table_name::text as table_name,
-                unnest.index::integer as index,
-                unnest.message::text as message,
-                unnest.column_name::text as column_name
-            FROM unnest(_status.errors);
+        return _status.result::_jaaql_procedure_result;
     END
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
@@ -4827,6 +5019,7 @@ select * from plpgsql_check_function(
         'character varying(63),'
         'character varying(63),'
         'character varying(64),'
+        'bool,'
         'bool)'
 );
 
@@ -4838,12 +5031,12 @@ grant execute on function "email_template.update+" to registered;
 -- account...
 
 create function "account.insert+" (
-    id character varying(63),
+    use_as_the_anonymous_user jsonb,
     username character varying(255),
-    deletion_timestamp timestamptz,
-    most_recent_password uuid,
-    use_as_the_anonymous_user jsonb
-) returns SETOF _error_result as
+    id character varying(63),
+    deletion_timestamp timestamptz default null,
+    most_recent_password uuid default null
+) returns _jaaql_procedure_result as
 $$
     DECLARE
         _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -4868,33 +5061,18 @@ $$
         end loop;
         -- Throw exception, which triggers a rollback if errors
         if cardinality(_status.errors) <> 0 then
-            raise exception using errcode='BATON';
+            SELECT raise_jaaql_handled_query_exception(_status);
         end if;
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                null::text as table_name,
-                null::integer as index,
-                null::text as message,
-                null::text as column_name;
-    EXCEPTION when sqlstate 'BATON' then
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                unnest.table_name::text as table_name,
-                unnest.index::integer as index,
-                unnest.message::text as message,
-                unnest.column_name::text as column_name
-            FROM unnest(_status.errors);
+        return _status.result::_jaaql_procedure_result;
     END
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
     '"account.insert+"('
-        'character varying(63),'
+        'jsonb,'
         'character varying(255),'
+        'character varying(63),'
         'timestamptz,'
-        'uuid,'
-        'jsonb)'
+        'uuid)'
 );
 
 grant execute on function "account.insert+" to registered;
@@ -4904,7 +5082,7 @@ create function "account.persist+" (
     username character varying(255) default null,
     deletion_timestamp timestamptz default null,
     most_recent_password uuid default null
-) returns SETOF _error_result as
+) returns _jaaql_procedure_result as
 $$
     DECLARE
         _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -4932,24 +5110,9 @@ $$
         end loop;
         -- Throw exception, which triggers a rollback if errors
         if cardinality(_status.errors) <> 0 then
-            raise exception using errcode='BATON';
+            SELECT raise_jaaql_handled_query_exception(_status);
         end if;
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                null::text as table_name,
-                null::integer as index,
-                null::text as message,
-                null::text as column_name;
-    EXCEPTION when sqlstate 'BATON' then
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                unnest.table_name::text as table_name,
-                unnest.index::integer as index,
-                unnest.message::text as message,
-                unnest.column_name::text as column_name
-            FROM unnest(_status.errors);
+        return _status.result::_jaaql_procedure_result;
     END
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
@@ -4968,7 +5131,7 @@ create function "account.update+" (
     username character varying(255) default null,
     deletion_timestamp timestamptz default null,
     most_recent_password uuid default null
-) returns SETOF _error_result as
+) returns _jaaql_procedure_result as
 $$
     DECLARE
         _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -4996,24 +5159,9 @@ $$
         end loop;
         -- Throw exception, which triggers a rollback if errors
         if cardinality(_status.errors) <> 0 then
-            raise exception using errcode='BATON';
+            SELECT raise_jaaql_handled_query_exception(_status);
         end if;
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                null::text as table_name,
-                null::integer as index,
-                null::text as message,
-                null::text as column_name;
-    EXCEPTION when sqlstate 'BATON' then
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                unnest.table_name::text as table_name,
-                unnest.index::integer as index,
-                unnest.message::text as message,
-                unnest.column_name::text as column_name
-            FROM unnest(_status.errors);
+        return _status.result::_jaaql_procedure_result;
     END
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
@@ -5029,12 +5177,12 @@ grant execute on function "account.update+" to registered;
 -- account_password...
 
 create function "account_password.insert+" (
-    account character varying(63),
-    uuid uuid,
-    hash character varying(512),
+    use_as_most_recent_password jsonb,
     creation_timestamp timestamptz,
-    use_as_most_recent_password jsonb
-) returns SETOF _error_result as
+    hash character varying(512),
+    uuid uuid,
+    account character varying(63)
+) returns _jaaql_procedure_result as
 $$
     DECLARE
         _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -5061,33 +5209,18 @@ $$
         end loop;
         -- Throw exception, which triggers a rollback if errors
         if cardinality(_status.errors) <> 0 then
-            raise exception using errcode='BATON';
+            SELECT raise_jaaql_handled_query_exception(_status);
         end if;
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                null::text as table_name,
-                null::integer as index,
-                null::text as message,
-                null::text as column_name;
-    EXCEPTION when sqlstate 'BATON' then
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                unnest.table_name::text as table_name,
-                unnest.index::integer as index,
-                unnest.message::text as message,
-                unnest.column_name::text as column_name
-            FROM unnest(_status.errors);
+        return _status.result::_jaaql_procedure_result;
     END
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
     '"account_password.insert+"('
-        'character varying(63),'
-        'uuid,'
-        'character varying(512),'
+        'jsonb,'
         'timestamptz,'
-        'jsonb)'
+        'character varying(512),'
+        'uuid,'
+        'character varying(63))'
 );
 
 grant execute on function "account_password.insert+" to registered;
@@ -5097,7 +5230,7 @@ create function "account_password.persist+" (
     account character varying(63) default null,
     hash character varying(512) default null,
     creation_timestamp timestamptz default null
-) returns SETOF _error_result as
+) returns _jaaql_procedure_result as
 $$
     DECLARE
         _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -5127,24 +5260,9 @@ $$
         end loop;
         -- Throw exception, which triggers a rollback if errors
         if cardinality(_status.errors) <> 0 then
-            raise exception using errcode='BATON';
+            SELECT raise_jaaql_handled_query_exception(_status);
         end if;
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                null::text as table_name,
-                null::integer as index,
-                null::text as message,
-                null::text as column_name;
-    EXCEPTION when sqlstate 'BATON' then
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                unnest.table_name::text as table_name,
-                unnest.index::integer as index,
-                unnest.message::text as message,
-                unnest.column_name::text as column_name
-            FROM unnest(_status.errors);
+        return _status.result::_jaaql_procedure_result;
     END
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
@@ -5163,7 +5281,7 @@ create function "account_password.update+" (
     account character varying(63) default null,
     hash character varying(512) default null,
     creation_timestamp timestamptz default null
-) returns SETOF _error_result as
+) returns _jaaql_procedure_result as
 $$
     DECLARE
         _returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -5193,24 +5311,9 @@ $$
         end loop;
         -- Throw exception, which triggers a rollback if errors
         if cardinality(_status.errors) <> 0 then
-            raise exception using errcode='BATON';
+            SELECT raise_jaaql_handled_query_exception(_status);
         end if;
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                null::text as table_name,
-                null::integer as index,
-                null::text as message,
-                null::text as column_name;
-    EXCEPTION when sqlstate 'BATON' then
-        return QUERY
-            SELECT
-                _status.result::integer as result,
-                unnest.table_name::text as table_name,
-                unnest.index::integer as index,
-                unnest.message::text as message,
-                unnest.column_name::text as column_name
-            FROM unnest(_status.errors);
+        return _status.result::_jaaql_procedure_result;
     END
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
@@ -5227,6 +5330,14 @@ grant execute on function "account_password.update+" to registered;
 
 -- security_event...
 
+-- handled_error...
+
+-- pg_base_exception...
+
+-- pg_error_class...
+
+-- pg_exception...
+
 
 
 -- (3) Populate tables
@@ -5234,6 +5345,328 @@ grant execute on function "account_password.update+" to registered;
 -- jaaql...
 insert into jaaql (the_anonymous_user, security_event_attempt_limit)
 values (NULL, 3);
+
+-- pg_base_exception...
+insert into pg_base_exception (name)
+values ('DatabaseError'),
+       ('OperationalError'),
+       ('NotSupportedError'),
+       ('ProgrammingError'),
+       ('DataError'),
+       ('IntegrityError'),
+       ('InternalError');
+
+-- pg_error_class...
+insert into pg_error_class (code, name, description)
+values ('02', 'NO_DATA', 'this is also a warning class per the SQL standard'),
+       ('03', 'SQL_STATEMENT_NOT_YET_COMPLETE', NULL),
+       ('08', 'CONNECTION_EXCEPTION', NULL),
+       ('09', 'TRIGGERED_ACTION_EXCEPTION', NULL),
+       ('0A', 'FEATURE_NOT_SUPPORTED', NULL),
+       ('0B', 'INVALID_TRANSACTION_INITIATION', NULL),
+       ('0F', 'LOCATOR_EXCEPTION', NULL),
+       ('0L', 'INVALID_GRANTOR', NULL),
+       ('0P', 'INVALID_ROLE_SPECIFICATION', NULL),
+       ('0Z', 'DIAGNOSTICS_EXCEPTION', NULL),
+       ('20', 'CASE_NOT_FOUND', NULL),
+       ('21', 'CARDINALITY_VIOLATION', NULL),
+       ('22', 'DATA_EXCEPTION', NULL),
+       ('23', 'INTEGRITY_CONSTRAINT_VIOLATION', NULL),
+       ('24', 'INVALID_CURSOR_STATE', NULL),
+       ('25', 'INVALID_TRANSACTION_STATE', NULL),
+       ('26', 'INVALID_SQL_STATEMENT_NAME', NULL),
+       ('27', 'TRIGGERED_DATA_CHANGE_VIOLATION', NULL),
+       ('28', 'INVALID_AUTHORIZATION_SPECIFICATION', NULL),
+       ('2B', 'DEPENDENT_PRIVILEGE_DESCRIPTORS_STILL_EXIST', NULL);
+insert into pg_error_class (code, name, description)
+values ('2D', 'INVALID_TRANSACTION_TERMINATION', NULL),
+       ('2F', 'SQL_ROUTINE_EXCEPTION', NULL),
+       ('34', 'INVALID_CURSOR_NAME', NULL),
+       ('38', 'EXTERNAL_ROUTINE_EXCEPTION', NULL),
+       ('39', 'EXTERNAL_ROUTINE_INVOCATION_EXCEPTION', NULL),
+       ('3B', 'SAVEPOINT_EXCEPTION', NULL),
+       ('3D', 'INVALID_CATALOG_NAME', NULL),
+       ('3F', 'INVALID_SCHEMA_NAME', NULL),
+       ('40', 'TRANSACTION_ROLLBACK', NULL),
+       ('42', 'SYNTAX_ERROR_OR_ACCESS_RULE_VIOLATION', NULL),
+       ('44', 'WITH_CHECK_OPTION_VIOLATION', NULL),
+       ('53', 'INSUFFICIENT_RESOURCES', NULL),
+       ('54', 'PROGRAM_LIMIT_EXCEEDED', NULL),
+       ('55', 'OBJECT_NOT_IN_PREREQUISITE_STATE', NULL),
+       ('57', 'OPERATOR_INTERVENTION', NULL),
+       ('58', 'SYSTEM_ERROR', 'errors external to PostgreSQL itself'),
+       ('72', 'SNAPSHOT_FAILURE', NULL),
+       ('F0', 'CONFIGURATION_FILE_ERROR', NULL),
+       ('HV', 'FOREIGN_DATA_WRAPPER_ERROR', 'SQL/MED'),
+       ('P0', 'PL/PGSQL_ERROR', NULL);
+insert into pg_error_class (code, name, description)
+values ('XX', 'INTERNAL_ERROR', NULL);
+
+
+-- pg_exception...
+insert into pg_exception (pg_class, sqlstate, name, base_exception)
+values ('02', '02000', 'NoData', 'DatabaseError'),
+       ('02', '02001', 'NoAdditionalDynamicResultSetsReturned', 'DatabaseError'),
+       ('03', '03000', 'SqlStatementNotYetComplete', 'DatabaseError'),
+       ('08', '08000', 'ConnectionException', 'OperationalError'),
+       ('08', '08001', 'SqlclientUnableToEstablishSqlconnection', 'OperationalError'),
+       ('08', '08003', 'ConnectionDoesNotExist', 'OperationalError'),
+       ('08', '08004', 'SqlserverRejectedEstablishmentOfSqlconnection', 'OperationalError'),
+       ('08', '08006', 'ConnectionFailure', 'OperationalError'),
+       ('08', '08007', 'TransactionResolutionUnknown', 'OperationalError'),
+       ('08', '08P01', 'ProtocolViolation', 'OperationalError'),
+       ('09', '09000', 'TriggeredActionException', 'DatabaseError'),
+       ('0A', '0A000', 'FeatureNotSupported', 'NotSupportedError'),
+       ('0B', '0B000', 'InvalidTransactionInitiation', 'DatabaseError'),
+       ('0F', '0F000', 'LocatorException', 'DatabaseError'),
+       ('0F', '0F001', 'InvalidLocatorSpecification', 'DatabaseError'),
+       ('0L', '0L000', 'InvalidGrantor', 'DatabaseError'),
+       ('0L', '0LP01', 'InvalidGrantOperation', 'DatabaseError'),
+       ('0P', '0P000', 'InvalidRoleSpecification', 'DatabaseError'),
+       ('0Z', '0Z000', 'DiagnosticsException', 'DatabaseError'),
+       ('0Z', '0Z002', 'StackedDiagnosticsAccessedWithoutActiveHandler', 'DatabaseError');
+insert into pg_exception (pg_class, sqlstate, name, base_exception)
+values ('20', '20000', 'CaseNotFound', 'ProgrammingError'),
+       ('21', '21000', 'CardinalityViolation', 'ProgrammingError'),
+       ('22', '22000', 'DataException', 'DataError'),
+       ('22', '22001', 'StringDataRightTruncation', 'DataError'),
+       ('22', '22002', 'NullValueNoIndicatorParameter', 'DataError'),
+       ('22', '22003', 'NumericValueOutOfRange', 'DataError'),
+       ('22', '22004', 'NullValueNotAllowed', 'DataError'),
+       ('22', '22005', 'ErrorInAssignment', 'DataError'),
+       ('22', '22007', 'InvalidDatetimeFormat', 'DataError'),
+       ('22', '22008', 'DatetimeFieldOverflow', 'DataError'),
+       ('22', '22009', 'InvalidTimeZoneDisplacementValue', 'DataError'),
+       ('22', '2200B', 'EscapeCharacterConflict', 'DataError'),
+       ('22', '2200C', 'InvalidUseOfEscapeCharacter', 'DataError'),
+       ('22', '2200D', 'InvalidEscapeOctet', 'DataError'),
+       ('22', '2200F', 'ZeroLengthCharacterString', 'DataError'),
+       ('22', '2200G', 'MostSpecificTypeMismatch', 'DataError'),
+       ('22', '2200H', 'SequenceGeneratorLimitExceeded', 'DataError'),
+       ('22', '2200L', 'NotAnXmlDocument', 'DataError'),
+       ('22', '2200M', 'InvalidXmlDocument', 'DataError'),
+       ('22', '2200N', 'InvalidXmlContent', 'DataError');
+insert into pg_exception (pg_class, sqlstate, name, base_exception)
+values ('22', '2200S', 'InvalidXmlComment', 'DataError'),
+       ('22', '2200T', 'InvalidXmlProcessingInstruction', 'DataError'),
+       ('22', '22010', 'InvalidIndicatorParameterValue', 'DataError'),
+       ('22', '22011', 'SubstringError', 'DataError'),
+       ('22', '22012', 'DivisionByZero', 'DataError'),
+       ('22', '22013', 'InvalidPrecedingOrFollowingSize', 'DataError'),
+       ('22', '22014', 'InvalidArgumentForNtileFunction', 'DataError'),
+       ('22', '22015', 'IntervalFieldOverflow', 'DataError'),
+       ('22', '22016', 'InvalidArgumentForNthValueFunction', 'DataError'),
+       ('22', '22018', 'InvalidCharacterValueForCast', 'DataError'),
+       ('22', '22019', 'InvalidEscapeCharacter', 'DataError'),
+       ('22', '2201B', 'InvalidRegularExpression', 'DataError'),
+       ('22', '2201E', 'InvalidArgumentForLogarithm', 'DataError'),
+       ('22', '2201F', 'InvalidArgumentForPowerFunction', 'DataError'),
+       ('22', '2201G', 'InvalidArgumentForWidthBucketFunction', 'DataError'),
+       ('22', '2201W', 'InvalidRowCountInLimitClause', 'DataError'),
+       ('22', '2201X', 'InvalidRowCountInResultOffsetClause', 'DataError'),
+       ('22', '22021', 'CharacterNotInRepertoire', 'DataError'),
+       ('22', '22022', 'IndicatorOverflow', 'DataError'),
+       ('22', '22023', 'InvalidParameterValue', 'DataError');
+insert into pg_exception (pg_class, sqlstate, name, base_exception)
+values ('22', '22024', 'UnterminatedCString', 'DataError'),
+       ('22', '22025', 'InvalidEscapeSequence', 'DataError'),
+       ('22', '22026', 'StringDataLengthMismatch', 'DataError'),
+       ('22', '22027', 'TrimError', 'DataError'),
+       ('22', '2202E', 'ArraySubscriptError', 'DataError'),
+       ('22', '2202G', 'InvalidTablesampleRepeat', 'DataError'),
+       ('22', '2202H', 'InvalidTablesampleArgument', 'DataError'),
+       ('22', '22030', 'DuplicateJsonObjectKeyValue', 'DataError'),
+       ('22', '22031', 'InvalidArgumentForSqlJsonDatetimeFunction', 'DataError'),
+       ('22', '22032', 'InvalidJsonText', 'DataError'),
+       ('22', '22033', 'InvalidSqlJsonSubscript', 'DataError'),
+       ('22', '22034', 'MoreThanOneSqlJsonItem', 'DataError'),
+       ('22', '22035', 'NoSqlJsonItem', 'DataError'),
+       ('22', '22036', 'NonNumericSqlJsonItem', 'DataError'),
+       ('22', '22037', 'NonUniqueKeysInAJsonObject', 'DataError'),
+       ('22', '22038', 'SingletonSqlJsonItemRequired', 'DataError'),
+       ('22', '22039', 'SqlJsonArrayNotFound', 'DataError'),
+       ('22', '2203A', 'SqlJsonMemberNotFound', 'DataError'),
+       ('22', '2203B', 'SqlJsonNumberNotFound', 'DataError'),
+       ('22', '2203C', 'SqlJsonObjectNotFound', 'DataError');
+insert into pg_exception (pg_class, sqlstate, name, base_exception)
+values ('22', '2203D', 'TooManyJsonArrayElements', 'DataError'),
+       ('22', '2203E', 'TooManyJsonObjectMembers', 'DataError'),
+       ('22', '2203F', 'SqlJsonScalarRequired', 'DataError'),
+       ('22', '2203G', 'SqlJsonItemCannotBeCastToTargetType', 'DataError'),
+       ('22', '22P01', 'FloatingPointException', 'DataError'),
+       ('22', '22P02', 'InvalidTextRepresentation', 'DataError'),
+       ('22', '22P03', 'InvalidBinaryRepresentation', 'DataError'),
+       ('22', '22P04', 'BadCopyFileFormat', 'DataError'),
+       ('22', '22P05', 'UntranslatableCharacter', 'DataError'),
+       ('22', '22P06', 'NonstandardUseOfEscapeCharacter', 'DataError'),
+       ('23', '23000', 'IntegrityConstraintViolation', 'IntegrityError'),
+       ('23', '23001', 'RestrictViolation', 'IntegrityError'),
+       ('23', '23502', 'NotNullViolation', 'IntegrityError'),
+       ('23', '23503', 'ForeignKeyViolation', 'IntegrityError'),
+       ('23', '23505', 'UniqueViolation', 'IntegrityError'),
+       ('23', '23514', 'CheckViolation', 'IntegrityError'),
+       ('23', '23P01', 'ExclusionViolation', 'IntegrityError'),
+       ('24', '24000', 'InvalidCursorState', 'InternalError'),
+       ('25', '25000', 'InvalidTransactionState', 'InternalError'),
+       ('25', '25001', 'ActiveSqlTransaction', 'InternalError');
+insert into pg_exception (pg_class, sqlstate, name, base_exception)
+values ('25', '25002', 'BranchTransactionAlreadyActive', 'InternalError'),
+       ('25', '25003', 'InappropriateAccessModeForBranchTransaction', 'InternalError'),
+       ('25', '25004', 'InappropriateIsolationLevelForBranchTransaction', 'InternalError'),
+       ('25', '25005', 'NoActiveSqlTransactionForBranchTransaction', 'InternalError'),
+       ('25', '25006', 'ReadOnlySqlTransaction', 'InternalError'),
+       ('25', '25007', 'SchemaAndDataStatementMixingNotSupported', 'InternalError'),
+       ('25', '25008', 'HeldCursorRequiresSameIsolationLevel', 'InternalError'),
+       ('25', '25P01', 'NoActiveSqlTransaction', 'InternalError'),
+       ('25', '25P02', 'InFailedSqlTransaction', 'InternalError'),
+       ('25', '25P03', 'IdleInTransactionSessionTimeout', 'InternalError'),
+       ('26', '26000', 'InvalidSqlStatementName', 'ProgrammingError'),
+       ('27', '27000', 'TriggeredDataChangeViolation', 'OperationalError'),
+       ('28', '28000', 'InvalidAuthorizationSpecification', 'OperationalError'),
+       ('28', '28P01', 'InvalidPassword', 'OperationalError'),
+       ('2B', '2B000', 'DependentPrivilegeDescriptorsStillExist', 'InternalError'),
+       ('2B', '2BP01', 'DependentObjectsStillExist', 'InternalError'),
+       ('2D', '2D000', 'InvalidTransactionTermination', 'InternalError'),
+       ('2F', '2F000', 'SqlRoutineException', 'OperationalError'),
+       ('2F', '2F002', 'ModifyingSqlDataNotPermitted', 'OperationalError'),
+       ('2F', '2F003', 'ProhibitedSqlStatementAttempted', 'OperationalError');
+insert into pg_exception (pg_class, sqlstate, name, base_exception)
+values ('2F', '2F004', 'ReadingSqlDataNotPermitted', 'OperationalError'),
+       ('2F', '2F005', 'FunctionExecutedNoReturnStatement', 'OperationalError'),
+       ('34', '34000', 'InvalidCursorName', 'ProgrammingError'),
+       ('38', '38000', 'ExternalRoutineException', 'OperationalError'),
+       ('38', '38001', 'ContainingSqlNotPermitted', 'OperationalError'),
+       ('38', '38002', 'ModifyingSqlDataNotPermittedExt', 'OperationalError'),
+       ('38', '38003', 'ProhibitedSqlStatementAttemptedExt', 'OperationalError'),
+       ('38', '38004', 'ReadingSqlDataNotPermittedExt', 'OperationalError'),
+       ('39', '39000', 'ExternalRoutineInvocationException', 'OperationalError'),
+       ('39', '39001', 'InvalidSqlstateReturned', 'OperationalError'),
+       ('39', '39004', 'NullValueNotAllowedExt', 'OperationalError'),
+       ('39', '39P01', 'TriggerProtocolViolated', 'OperationalError'),
+       ('39', '39P02', 'SrfProtocolViolated', 'OperationalError'),
+       ('39', '39P03', 'EventTriggerProtocolViolated', 'OperationalError'),
+       ('3B', '3B000', 'SavepointException', 'OperationalError'),
+       ('3B', '3B001', 'InvalidSavepointSpecification', 'OperationalError'),
+       ('3D', '3D000', 'InvalidCatalogName', 'ProgrammingError'),
+       ('3F', '3F000', 'InvalidSchemaName', 'ProgrammingError'),
+       ('40', '40000', 'TransactionRollback', 'OperationalError'),
+       ('40', '40001', 'SerializationFailure', 'OperationalError');
+insert into pg_exception (pg_class, sqlstate, name, base_exception)
+values ('40', '40002', 'TransactionIntegrityConstraintViolation', 'OperationalError'),
+       ('40', '40003', 'StatementCompletionUnknown', 'OperationalError'),
+       ('40', '40P01', 'DeadlockDetected', 'OperationalError'),
+       ('42', '42000', 'SyntaxErrorOrAccessRuleViolation', 'ProgrammingError'),
+       ('42', '42501', 'InsufficientPrivilege', 'ProgrammingError'),
+       ('42', '42601', 'SyntaxError', 'ProgrammingError'),
+       ('42', '42602', 'InvalidName', 'ProgrammingError'),
+       ('42', '42611', 'InvalidColumnDefinition', 'ProgrammingError'),
+       ('42', '42622', 'NameTooLong', 'ProgrammingError'),
+       ('42', '42701', 'DuplicateColumn', 'ProgrammingError'),
+       ('42', '42702', 'AmbiguousColumn', 'ProgrammingError'),
+       ('42', '42703', 'UndefinedColumn', 'ProgrammingError'),
+       ('42', '42704', 'UndefinedObject', 'ProgrammingError'),
+       ('42', '42710', 'DuplicateObject', 'ProgrammingError'),
+       ('42', '42712', 'DuplicateAlias', 'ProgrammingError'),
+       ('42', '42723', 'DuplicateFunction', 'ProgrammingError'),
+       ('42', '42725', 'AmbiguousFunction', 'ProgrammingError'),
+       ('42', '42803', 'GroupingError', 'ProgrammingError'),
+       ('42', '42804', 'DatatypeMismatch', 'ProgrammingError'),
+       ('42', '42809', 'WrongObjectType', 'ProgrammingError');
+insert into pg_exception (pg_class, sqlstate, name, base_exception)
+values ('42', '42830', 'InvalidForeignKey', 'ProgrammingError'),
+       ('42', '42846', 'CannotCoerce', 'ProgrammingError'),
+       ('42', '42883', 'UndefinedFunction', 'ProgrammingError'),
+       ('42', '428C9', 'GeneratedAlways', 'ProgrammingError'),
+       ('42', '42939', 'ReservedName', 'ProgrammingError'),
+       ('42', '42P01', 'UndefinedTable', 'ProgrammingError'),
+       ('42', '42P02', 'UndefinedParameter', 'ProgrammingError'),
+       ('42', '42P03', 'DuplicateCursor', 'ProgrammingError'),
+       ('42', '42P04', 'DuplicateDatabase', 'ProgrammingError'),
+       ('42', '42P05', 'DuplicatePreparedStatement', 'ProgrammingError'),
+       ('42', '42P06', 'DuplicateSchema', 'ProgrammingError'),
+       ('42', '42P07', 'DuplicateTable', 'ProgrammingError'),
+       ('42', '42P08', 'AmbiguousParameter', 'ProgrammingError'),
+       ('42', '42P09', 'AmbiguousAlias', 'ProgrammingError'),
+       ('42', '42P10', 'InvalidColumnReference', 'ProgrammingError'),
+       ('42', '42P11', 'InvalidCursorDefinition', 'ProgrammingError'),
+       ('42', '42P12', 'InvalidDatabaseDefinition', 'ProgrammingError'),
+       ('42', '42P13', 'InvalidFunctionDefinition', 'ProgrammingError'),
+       ('42', '42P14', 'InvalidPreparedStatementDefinition', 'ProgrammingError'),
+       ('42', '42P15', 'InvalidSchemaDefinition', 'ProgrammingError');
+insert into pg_exception (pg_class, sqlstate, name, base_exception)
+values ('42', '42P16', 'InvalidTableDefinition', 'ProgrammingError'),
+       ('42', '42P17', 'InvalidObjectDefinition', 'ProgrammingError'),
+       ('42', '42P18', 'IndeterminateDatatype', 'ProgrammingError'),
+       ('42', '42P19', 'InvalidRecursion', 'ProgrammingError'),
+       ('42', '42P20', 'WindowingError', 'ProgrammingError'),
+       ('42', '42P21', 'CollationMismatch', 'ProgrammingError'),
+       ('42', '42P22', 'IndeterminateCollation', 'ProgrammingError'),
+       ('44', '44000', 'WithCheckOptionViolation', 'ProgrammingError'),
+       ('53', '53000', 'InsufficientResources', 'OperationalError'),
+       ('53', '53100', 'DiskFull', 'OperationalError'),
+       ('53', '53200', 'OutOfMemory', 'OperationalError'),
+       ('53', '53300', 'TooManyConnections', 'OperationalError'),
+       ('53', '53400', 'ConfigurationLimitExceeded', 'OperationalError'),
+       ('54', '54000', 'ProgramLimitExceeded', 'OperationalError'),
+       ('54', '54001', 'StatementTooComplex', 'OperationalError'),
+       ('54', '54011', 'TooManyColumns', 'OperationalError'),
+       ('54', '54023', 'TooManyArguments', 'OperationalError'),
+       ('55', '55000', 'ObjectNotInPrerequisiteState', 'OperationalError'),
+       ('55', '55006', 'ObjectInUse', 'OperationalError'),
+       ('55', '55P02', 'CantChangeRuntimeParam', 'OperationalError');
+insert into pg_exception (pg_class, sqlstate, name, base_exception)
+values ('55', '55P03', 'LockNotAvailable', 'OperationalError'),
+       ('55', '55P04', 'UnsafeNewEnumValueUsage', 'OperationalError'),
+       ('57', '57000', 'OperatorIntervention', 'OperationalError'),
+       ('57', '57014', 'QueryCanceled', 'OperationalError'),
+       ('57', '57P01', 'AdminShutdown', 'OperationalError'),
+       ('57', '57P02', 'CrashShutdown', 'OperationalError'),
+       ('57', '57P03', 'CannotConnectNow', 'OperationalError'),
+       ('57', '57P04', 'DatabaseDropped', 'OperationalError'),
+       ('57', '57P05', 'IdleSessionTimeout', 'OperationalError'),
+       ('58', '58000', 'SystemError', 'OperationalError'),
+       ('58', '58030', 'IoError', 'OperationalError'),
+       ('58', '58P01', 'UndefinedFile', 'OperationalError'),
+       ('58', '58P02', 'DuplicateFile', 'OperationalError'),
+       ('72', '72000', 'SnapshotTooOld', 'DatabaseError'),
+       ('F0', 'F0000', 'ConfigFileError', 'OperationalError'),
+       ('F0', 'F0001', 'LockFileExists', 'OperationalError'),
+       ('HV', 'HV000', 'FdwError', 'OperationalError'),
+       ('HV', 'HV001', 'FdwOutOfMemory', 'OperationalError'),
+       ('HV', 'HV002', 'FdwDynamicParameterValueNeeded', 'OperationalError'),
+       ('HV', 'HV004', 'FdwInvalidDataType', 'OperationalError');
+insert into pg_exception (pg_class, sqlstate, name, base_exception)
+values ('HV', 'HV005', 'FdwColumnNameNotFound', 'OperationalError'),
+       ('HV', 'HV006', 'FdwInvalidDataTypeDescriptors', 'OperationalError'),
+       ('HV', 'HV007', 'FdwInvalidColumnName', 'OperationalError'),
+       ('HV', 'HV008', 'FdwInvalidColumnNumber', 'OperationalError'),
+       ('HV', 'HV009', 'FdwInvalidUseOfNullPointer', 'OperationalError'),
+       ('HV', 'HV00A', 'FdwInvalidStringFormat', 'OperationalError'),
+       ('HV', 'HV00B', 'FdwInvalidHandle', 'OperationalError'),
+       ('HV', 'HV00C', 'FdwInvalidOptionIndex', 'OperationalError'),
+       ('HV', 'HV00D', 'FdwInvalidOptionName', 'OperationalError'),
+       ('HV', 'HV00J', 'FdwOptionNameNotFound', 'OperationalError'),
+       ('HV', 'HV00K', 'FdwReplyHandle', 'OperationalError'),
+       ('HV', 'HV00L', 'FdwUnableToCreateExecution', 'OperationalError'),
+       ('HV', 'HV00M', 'FdwUnableToCreateReply', 'OperationalError'),
+       ('HV', 'HV00N', 'FdwUnableToEstablishConnection', 'OperationalError'),
+       ('HV', 'HV00P', 'FdwNoSchemas', 'OperationalError'),
+       ('HV', 'HV00Q', 'FdwSchemaNotFound', 'OperationalError'),
+       ('HV', 'HV00R', 'FdwTableNotFound', 'OperationalError'),
+       ('HV', 'HV010', 'FdwFunctionSequenceError', 'OperationalError'),
+       ('HV', 'HV014', 'FdwTooManyHandles', 'OperationalError'),
+       ('HV', 'HV021', 'FdwInconsistentDescriptorInformation', 'OperationalError');
+insert into pg_exception (pg_class, sqlstate, name, base_exception)
+values ('HV', 'HV024', 'FdwInvalidAttributeValue', 'OperationalError'),
+       ('HV', 'HV090', 'FdwInvalidStringLengthOrBufferLength', 'OperationalError'),
+       ('HV', 'HV091', 'FdwInvalidDescriptorFieldIdentifier', 'OperationalError'),
+       ('P0', 'P0000', 'PlpgsqlError', 'ProgrammingError'),
+       ('P0', 'P0001', 'RaiseException', 'ProgrammingError'),
+       ('P0', 'P0002', 'NoDataFound', 'ProgrammingError'),
+       ('P0', 'P0003', 'TooManyRows', 'ProgrammingError'),
+       ('P0', 'P0004', 'AssertFailure', 'ProgrammingError'),
+       ('XX', 'XX000', 'InternalError_', 'InternalError'),
+       ('XX', 'XX001', 'DataCorrupted', 'InternalError');
 
 
 
@@ -5308,19 +5741,33 @@ alter table security_event add constraint security_event__account
     foreign key (account)
         references account (id);
 
+
+
+-- pg_exception...
+alter table pg_exception add constraint pg_exception__pg_error_class
+    foreign key (pg_class)
+        references pg_error_class (code);
+alter table pg_exception add constraint pg_exception__pg_base_exception
+    foreign key (base_exception)
+        references pg_base_exception (name);
+
 -- (5) Grant access to tables
 
-    grant select on application to registered;
-    grant select on application_schema to registered;
-    grant select on email_dispatcher to registered;
-    grant select on jaaql to registered;
-    grant select on email_template to registered;
-    grant select on document_template to registered;
-    grant select on document_request to registered;
-    grant select on account to registered;
-    grant select on account_password to registered;
-    grant select on validated_ip_address to registered;
-    grant select on security_event to registered;
+    grant select, insert, update, delete on application to registered;
+    grant select, insert, update, delete on application_schema to registered;
+    grant select, insert, update, delete on email_dispatcher to registered;
+    grant select, insert, update, delete on jaaql to registered;
+    grant select, insert, update, delete on email_template to registered;
+    grant select, insert, update, delete on document_template to registered;
+    grant select, insert, update, delete on document_request to registered;
+    grant select, insert, update, delete on account to registered;
+    grant select, insert, update, delete on account_password to registered;
+    grant select, insert, update, delete on validated_ip_address to registered;
+    grant select, insert, update, delete on security_event to registered;
+    grant select, insert, update, delete on handled_error to registered;
+    grant select, insert, update, delete on pg_base_exception to registered;
+    grant select, insert, update, delete on pg_error_class to registered;
+    grant select, insert, update, delete on pg_exception to registered;
 
 
 -- (6) Grant access to functions
@@ -5365,4 +5812,8 @@ alter table security_event add constraint security_event__account
     grant execute on function "security_event.delete" to registered;
     grant execute on function "security_event.update" to registered;
     grant execute on function "security_event.persist" to registered;
+    grant execute on function "handled_error.insert" to registered;
+    grant execute on function "handled_error.delete" to registered;
+    grant execute on function "handled_error.update" to registered;
+    grant execute on function "handled_error.persist" to registered;
 
