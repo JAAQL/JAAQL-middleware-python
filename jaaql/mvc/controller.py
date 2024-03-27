@@ -65,7 +65,10 @@ class JAAQLController(BaseJAAQLController):
 
         @self.publish_route('/accounts', DOCUMENTATION__create_account)
         def accounts(connection: DBInterface, http_inputs: dict):
-            self.model.create_account_with_potential_password(connection, **http_inputs)
+            registered = http_inputs.get(KEY__registered, True)
+            if KEY__registered in http_inputs:
+                http_inputs.pop(KEY__registered)
+            self.model.create_account_with_potential_password(connection, **http_inputs, registered=registered)
 
         @self.publish_route('/accounts/batch', DOCUMENTATION__create_account_batch)
         def accounts(connection: DBInterface, http_inputs: dict):

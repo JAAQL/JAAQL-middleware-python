@@ -105,7 +105,8 @@ class JAAQLModel(BaseJAAQLModel):
         raise HttpStatusException("Not yet implemented", response_code=HTTPStatus.NOT_IMPLEMENTED)
 
     def create_account_with_potential_password(self, connection: DBInterface, username: str, attach_as: str = None, password: str = None,
-                                               already_exists: bool = False, is_the_anonymous_user: bool = False, allow_already_exists: bool = False):
+                                               already_exists: bool = False, is_the_anonymous_user: bool = False, allow_already_exists: bool = False,
+                                               registered: bool = False):
         if password is not None:
             crypt_utils.validate_password(password)  # Important that this is here so the password can be validated before creating the account
 
@@ -119,16 +120,17 @@ class JAAQLModel(BaseJAAQLModel):
         if account_id == "account_already_existed":
             account_id = attach_as
 
+        if registered:
+            mark_account_registered(connection, account_id)
+
         return account_id
 
     def create_account_batch_with_potential_password(self, connection: DBInterface, accounts: list):
         for cur_input in accounts:
-            account_id = self.create_account_with_potential_password(
+            self.create_account_with_potential_password(
                 connection, cur_input[KEY__username], cur_input[KEY__attach_as],
-                cur_input[KEY__password], allow_already_exists=True
+                cur_input[KEY__password], allow_already_exists=True, registered=cur_input.get(KEY__registered, True)
             )
-            if cur_input.get(KEY__registered, True):
-                mark_account_registered(connection, account_id)
 
     def validate_query(self, queries: list, query, allow_list=True):
         if isinstance(query, list) and allow_list:

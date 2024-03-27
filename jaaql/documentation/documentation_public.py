@@ -28,6 +28,13 @@ DOCUMENTATION__create_account = SwaggerDocumentation(
                 required=False,
                 condition="Defaults to false",
                 example="my-role"
+            ),
+            SwaggerArgumentResponse(
+                name=KEY__registered,
+                description="Whether or not the user is to be marked as registered. Defaults to true",
+                arg_type=bool,
+                required=False,
+                condition="Defaults to true"
             )
         ]
     )
