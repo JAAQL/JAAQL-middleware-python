@@ -435,22 +435,27 @@ class InterpretJAAQL:
                         }
                     )
             elif is_dict_query:
-                new_ex = HttpStatusException(str(ex))
-                if isinstance(ex, HttpStatusException):
-                    new_ex.response_code = ex.response_code
-                ex = new_ex
+                if isinstance(ex, JaaqlInterpretableHandledError):
+                    err = ex
+                else:
+                    new_ex = HttpStatusException(str(ex))
+                    if isinstance(ex, HttpStatusException):
+                        new_ex.response_code = ex.response_code
+                    ex = new_ex
 
-                ex.message = {
-                    KEY__error: ex.message,
-                    KEY__error_set: exc_query_key,
-                    KEY__error_query: exc_query,
-                    KEY_parameters: exc_parameters
-                }
-                if was_store:
-                    ex.message[KEY__error_row_number] = exc_row_number
-                    ex.message[KEY__error_index] = exc_row_idx
-                    ex.message[KEY_state] = exc_state
+                    ex.message = {
+                        KEY__error: ex.message,
+                        KEY__error_set: exc_query_key,
+                        KEY__error_query: exc_query,
+                        KEY_parameters: exc_parameters
+                    }
+                    if was_store:
+                        ex.message[KEY__error_row_number] = exc_row_number
+                        ex.message[KEY__error_index] = exc_row_idx
+                        ex.message[KEY_state] = exc_state
 
+                    err = ex
+            else:
                 err = ex
 
         #
