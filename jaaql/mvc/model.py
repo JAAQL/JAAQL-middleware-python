@@ -1,3 +1,4 @@
+import sys
 import uuid
 
 import re
@@ -391,6 +392,7 @@ WHERE
             if not self.vault.get_obj(VAULT_KEY__allow_jaaql_uninstall):
                 raise HttpStatusException("JAAQL not permitted to uninstall itself")
             DBPGInterface.close_all_pools()
+            subprocess.run("crontab -l | grep -v '# jaaql__' | crontab -", check=True, shell=True)
             subprocess.call("./pg_reboot.sh", cwd="/")
         else:
             subprocess.call("docker kill jaaql_pg")
@@ -1139,6 +1141,41 @@ WHERE
                 account_db_interface.put_conn_handle_error(conn, err)
 
             raise err
+
+    @staticmethod
+    def cron_expression_to_string(cron: dict) -> str:
+        """
+        Converts a CronExpression object into a cron expression string.
+        """
+
+        def format_field(field):
+            if isinstance(field, list):
+                return ','.join(map(str, field))
+            elif field is None:
+                return '*'
+            return str(field)
+
+        parts = [
+            format_field(cron.get(CRON_minute)),
+            format_field(cron.get(CRON_hour)),
+            format_field(cron.get(CRON_dayOfMonth)),
+            format_field(cron.get(CRON_month)),
+            format_field(cron.get(CRON_dayOfWeek)),
+            format_field(cron.get(CRON_year))
+        ]
+        return ' '.join(parts)
+
+    def add_cron_job_to_application(self, connection: DBInterface, cron_input: dict):
+        self.is_super_admin(connection)
+        if self.is_container:
+            application = cron_input.pop(KEY__application)
+            application__select(connection, application)
+            command = cron_input.pop(KEY__command)
+            cron_string = self.cron_expression_to_string(cron_input)
+            cron_command = '(crontab - l 2 > /dev/null; echo "' + cron_string + ' ' + command + '  # jaaql__' + application + '") | crontab -'
+            subprocess.run(cron_command, check=True, shell=True)
+        else:
+            print("Cron not supported in debugging mode", file=sys.stderr)
 
     def submit(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
         return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,

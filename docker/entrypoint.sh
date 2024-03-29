@@ -281,7 +281,7 @@ if [ "$IS_HTTPS" = "TRUE" ] ; then
     echo "Skipping certbot renewal as piggybacking implementation"
   else
     $CERTBOT_PATH renew --dry-run &
-    echo "0 0,12 * * * root $PY_PATH -c 'import random; import time; time.sleep(random.random() * 3600)' && $CERTBOT_PATH renew -q" | tee -a /etc/crontab > /dev/null
+    (crontab -l 2>/dev/null; echo "0 0,12 * * * root $PY_PATH -c 'import random; import time; time.sleep(random.random() * 3600)' && $CERTBOT_PATH renew -q") | crontab -
   fi
 fi
 

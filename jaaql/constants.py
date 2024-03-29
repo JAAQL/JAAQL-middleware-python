@@ -43,6 +43,14 @@ KEY__oauth_token = "oauth_token"
 KEY__accounts = "accounts"
 KEY__registered = "registered"
 KEY__restrictions = "restrictions"
+KEY__command = "command"
+
+CRON_minute = "minute"
+CRON_hour = "hour"
+CRON_dayOfMonth = "dayOfMonth"
+CRON_month = "month"
+CRON_dayOfWeek = "dayOfWeek"
+CRON_year = "year"
 
 REGEX__dmbs_object_name = r'^[0-9a-zA-Z_]{1,32}$'
 
@@ -171,4 +179,5 @@ ROLE__postgres = "postgres"
 PROTOCOL__postgres = "postgresql://"
 
 VERSION = "4.22.3"
+VERSION = "4.22.5"
 

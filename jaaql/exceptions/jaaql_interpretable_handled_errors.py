@@ -307,3 +307,17 @@ class IncorrectPasswordVerification(JaaqlInterpretableHandledError):
             index=None,
             descriptor=descriptor
         )
+
+
+class UnhandledRemoteProcedureError(JaaqlInterpretableHandledError):
+    def __init__(self, message, descriptor=None):
+        super().__init__(
+            error_code=1023,
+            http_response_code=500,
+            table_name=None,
+            message=message,
+            column_name=None,
+            _set=None,
+            index=None,
+            descriptor=descriptor
+        )

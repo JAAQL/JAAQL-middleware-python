@@ -121,6 +121,10 @@ class JAAQLController(BaseJAAQLController):
             else:
                 return self.model.finish_security_event(http_inputs)
 
+        @self.publish_route('/cron', DOCUMENTATION__cron)
+        def cron(connection: DBInterface, http_inputs: dict):
+            self.model.add_cron_job_to_application(connection, http_inputs)
+
         @self.publish_route('/internal/set-web-config', DOCUMENTATION__set_web_config)
         def set_web_config(connection: DBInterface):
             self.model.set_web_config(connection)

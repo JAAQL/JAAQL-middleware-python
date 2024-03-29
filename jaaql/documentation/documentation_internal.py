@@ -215,3 +215,61 @@ DOCUMENTATION__set_web_config = SwaggerDocumentation(
         method=REST__POST
     )
 )
+
+DOCUMENTATION__cron = SwaggerDocumentation(
+    tags="Cron",
+    methods=SwaggerMethod(
+        name="Set cron jobs for application",
+        description="Will add a cron jobs pertaining to an application",
+        method=REST__POST,
+        body=[
+            SwaggerArgumentResponse(
+                name=KEY__application,
+                description="The application of the cron job",
+                arg_type=str,
+                example=["out-and-about"]
+            ),
+            SwaggerArgumentResponse(
+                name=KEY__command,
+                description="The command to execute as root",
+                arg_type=str,
+                example=["node /path/to/my/script.js"]
+            ),
+            SwaggerArgumentResponse(
+                name=CRON_minute,
+                description="The minute of cron expression",
+                arg_type=ARG_RESP__allow_all,
+                required=False,
+                condition="Is supplied"
+            ),
+            SwaggerArgumentResponse(
+                name=CRON_hour,
+                description="The hour of cron expression",
+                arg_type=ARG_RESP__allow_all,
+                required=False,
+                condition="Is supplied"
+            ),
+            SwaggerArgumentResponse(
+                name=CRON_dayOfMonth,
+                description="The day of month of cron expression",
+                arg_type=ARG_RESP__allow_all,
+                required=False,
+                condition="Is supplied"
+            ),
+            SwaggerArgumentResponse(
+                name=CRON_month,
+                description="The month of cron expression",
+                arg_type=ARG_RESP__allow_all,
+                required=False,
+                condition="Is supplied"
+            ),
+            SwaggerArgumentResponse(
+                name=CRON_dayOfWeek,
+                description="The day of week of cron expression",
+                arg_type=ARG_RESP__allow_all,
+                required=False,
+                condition="Is supplied"
+            )
+        ]
+    )
+)
