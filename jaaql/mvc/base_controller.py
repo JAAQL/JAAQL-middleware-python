@@ -190,9 +190,7 @@ class BaseJAAQLController:
                 for itm in data[arg.name]:
                     BaseJAAQLController.validate_data_rec(arg.arg_type.responses, itm, fill_missing)
             elif arg.name in data and arg.arg_type == ARG_RESP__allow_all:
-                if not isinstance(data[arg.name], dict):
-                    raise HttpStatusException(ERR__argument_wrong_type % (arg.name, type(data[arg.name]).__name__,
-                                                                          type(dict).__name__), HTTPStatus.BAD_REQUEST)
+                continue
             elif arg.name in data and not isinstance(data[arg.name], arg.arg_type):
                 if data[arg.name] is None and not arg.required:
                     continue
@@ -484,31 +482,22 @@ class BaseJAAQLController:
                         bypass_super = request.headers.get(HEADER__security_bypass)
                         bypass_jaaql = request.headers.get(HEADER__security_bypass_jaaql)
                         bypass_user = request.headers.get(HEADER__security_specify_user)
-                        if bypass_super or bypass_jaaql:
+                        if bypass_super or bypass_jaaql or bypass_user:
                             if ip_addr not in IPS__local:
                                 raise HttpStatusException("Bypass used in none local context: " + ip_addr, HTTPStatus.UNAUTHORIZED)
-                            miss_super_bypass = bypass_super and bypass_super != self.model.local_super_access_key
+                            miss_super_bypass = (bypass_super or bypass_user) and bypass_super != self.model.local_super_access_key
                             miss_jaaql_bypass = bypass_jaaql and bypass_jaaql != self.model.local_jaaql_access_key
                             if miss_super_bypass or miss_jaaql_bypass:
                                 raise HttpStatusException("Invalid bypass key", HTTPStatus.UNAUTHORIZED)
 
                             is_public = False
                             username = USERNAME__super_db if bypass_super else USERNAME__jaaql
+                            if bypass_user:
+                                username = bypass_user
                             account_id, ip_id = self.model.get_bypass_user(username, ip_addr)
 
                             if verification_hook:
                                 verification_hook.put((True, None, None))
-
-                        elif bypass_user:
-                            if not self.model.is_container or os.environ.get(ENVIRON__allow_skip_oauth) == "TRUE":
-                                is_public = False
-                                account_id, ip_id = self.model.get_bypass_user(bypass_user, ip_addr)
-                                username = bypass_user
-
-                                if verification_hook:
-                                    verification_hook.put((True, None, None))
-                            else:
-                                raise HttpStatusException("Cannot bypass user!")
 
                         elif verification_hook:
                             account_id, username, ip_id, is_public, remember_me = self.model.verify_auth_token_threaded(security_key,

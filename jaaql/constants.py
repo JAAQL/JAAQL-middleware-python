@@ -50,7 +50,6 @@ CRON_hour = "hour"
 CRON_dayOfMonth = "dayOfMonth"
 CRON_month = "month"
 CRON_dayOfWeek = "dayOfWeek"
-CRON_year = "year"
 
 REGEX__dmbs_object_name = r'^[0-9a-zA-Z_]{1,32}$'
 
@@ -91,8 +90,6 @@ ENVIRON__jaaql_profiling = "JAAQL_PROFILING"
 ENVIRON__install_path = "INSTALL_PATH"
 ENVIRON__sentinel_url = "SENTINEL_URL"
 ENVIRON__canned_queries = "CANNED_QUERIES"
-ENVIRON__allow_debugging_users = "YOUR_APP_HAS_NO_SECURITY_IF_THIS_IS_TRUE__ALLOW_DEBUGGING_USERS"
-ENVIRON__allow_skip_oauth = "YOUR_APP_HAS_NO_SECURITY_IF_THIS_IS_TRUE__ALLOW_SKIP_AUTH"
 
 EMAIL_PARAM__unlock_key = "JAAQL__UNLOCK_KEY"
 EMAIL_PARAM__unlock_code = "JAAQL__UNLOCK_CODE"
@@ -178,5 +175,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.22.5"
+VERSION = "4.22.8"
 

@@ -392,7 +392,7 @@ WHERE
             if not self.vault.get_obj(VAULT_KEY__allow_jaaql_uninstall):
                 raise HttpStatusException("JAAQL not permitted to uninstall itself")
             DBPGInterface.close_all_pools()
-            subprocess.run("crontab -l | grep -v '# jaaql__' | crontab -", check=True, shell=True)
+            subprocess.run("crontab -l 2> /dev/null | grep -v '# jaaql__' | crontab -", check=True, shell=True)
             subprocess.call("./pg_reboot.sh", cwd="/")
         else:
             subprocess.call("docker kill jaaql_pg")
@@ -1160,21 +1160,23 @@ WHERE
             format_field(cron.get(CRON_hour)),
             format_field(cron.get(CRON_dayOfMonth)),
             format_field(cron.get(CRON_month)),
-            format_field(cron.get(CRON_dayOfWeek)),
-            format_field(cron.get(CRON_year))
+            format_field(cron.get(CRON_dayOfWeek))
         ]
         return ' '.join(parts)
 
     def add_cron_job_to_application(self, connection: DBInterface, cron_input: dict):
         self.is_super_admin(connection)
+        application = cron_input.pop(KEY__application)
+        application__select(connection, application)
+        command = cron_input.pop(KEY__command)
+        if '"' in command:
+            raise HttpStatusException("Please do not use double quotes in your cron expression!")
+        cron_string = self.cron_expression_to_string(cron_input)
+        cron_command = '(crontab -l 2> /dev/null; echo "' + cron_string + ' ' + command + '  # jaaql__' + application + '") | crontab -'
         if self.is_container:
-            application = cron_input.pop(KEY__application)
-            application__select(connection, application)
-            command = cron_input.pop(KEY__command)
-            cron_string = self.cron_expression_to_string(cron_input)
-            cron_command = '(crontab - l 2 > /dev/null; echo "' + cron_string + ' ' + command + '  # jaaql__' + application + '") | crontab -'
-            subprocess.run(cron_command, check=True, shell=True)
+            subprocess.run(cron_command, check=True, shell=True, timeout=5)
         else:
+            print(cron_command)
             print("Cron not supported in debugging mode", file=sys.stderr)
 
     def submit(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):

@@ -111,6 +111,11 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     apt-get -y install locales && \
     sed -i '/en_GB.UTF-8/s/^# //g' /etc/locale.gen && \
     locale-gen && \
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && \
+    export NVM_DIR="$HOME/.nvm" && \
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" && \
+    [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion" && \
+    nvm install 20 && \
     apt-get autoremove --purge -y
 
 COPY requirements.txt $INSTALL_PATH/requirements.txt

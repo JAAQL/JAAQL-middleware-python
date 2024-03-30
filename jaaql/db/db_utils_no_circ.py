@@ -7,7 +7,7 @@ from jaaql.db.db_utils import execute_supplied_statement, create_interface_for_d
 from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
 from jaaql.constants import KEY__application, KEY__database, KEY__schema, KEY__role, DB__jaaql, \
-    KEY__read_only, KEY__prevent_unused_parameters, KEY__debugging_account_id, ENVIRON__allow_debugging_users
+    KEY__read_only, KEY__prevent_unused_parameters
 from jaaql.db.db_interface import DBInterface
 from jaaql.utilities.utils_no_project_imports import objectify
 from jaaql.mvc.generated_queries import application__select
@@ -55,9 +55,6 @@ def get_required_db(vault, config, jaaql_connection: DBInterface, inputs: dict, 
             inputs[KEY__database] = DB__jaaql
 
         sub_role = inputs.pop(KEY__role) if KEY__role in inputs else None
-
-        if os.environ.get(ENVIRON__allow_debugging_users) == "TRUE" and inputs.get(KEY__debugging_account_id) is not None:
-            account_id = inputs.pop(KEY__debugging_account_id)
 
         required_db = create_interface_for_db(vault, config, account_id, inputs[KEY__database], sub_role)
     else:
