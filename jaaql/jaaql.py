@@ -144,4 +144,4 @@ def create_app(override_config_path: str = None, controllers: [JAAQLControllerIn
     if is_gunicorn:
         return controller.app
     else:
-        controller.app.run(port=int(config[CONFIG_KEY__server][CONFIG_KEY_SERVER__port]), host="::", threaded=True)
+        controller.app.run(port=int(config[CONFIG_KEY__server][CONFIG_KEY_SERVER__port]), host="0.0.0.0", threaded=True)

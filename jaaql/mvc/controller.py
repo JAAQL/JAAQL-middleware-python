@@ -68,6 +68,8 @@ class JAAQLController(BaseJAAQLController):
             registered = http_inputs.get(KEY__registered, True)
             if KEY__registered in http_inputs:
                 http_inputs.pop(KEY__registered)
+            if registered is None:
+                registered = True
             self.model.create_account_with_potential_password(connection, **http_inputs, registered=registered)
 
         @self.publish_route('/accounts/batch', DOCUMENTATION__create_account_batch)
