@@ -4,7 +4,7 @@ import uuid
 from functools import wraps
 
 import typing as t
-from werkzeug.exceptions import InternalServerError
+from werkzeug.exceptions import InternalServerError, HTTPException
 import inspect
 import json
 import requests
@@ -37,6 +37,10 @@ ARG__ip_address = "ip_address"
 ARG__response = "response"
 ARG__username = "username"
 ARG__profiler = "profiler"
+ARG__headers = "headers"
+ARG__body = "body"
+ARG__args = "args"
+ARG__flask_request = "flask_request"
 ARG__auth_token = "auth_token"
 ARG__auth_token_for_refresh = "auth_token_for_refresh"
 ARG__connection = "connection"
@@ -231,7 +235,7 @@ class BaseJAAQLController:
                     data[arg.name] = data[arg.name].lower()
 
         for key, _ in data.items():
-            found = any([arg.name == key for arg in arguments])
+            found = any([arg.name == key or arg.arg_type == ARG_RESP__allow_all for arg in arguments])
             if not found:
                 raise HttpStatusException(ERR__unexpected_argument % key, HTTPStatus.BAD_REQUEST)
 
@@ -258,7 +262,10 @@ class BaseJAAQLController:
                 if resp.code.value == match_value:
                     return resp
 
-        raise Exception(ERR__unexpected_response_code % status.value)
+        if isinstance(status, int):
+            raise Exception(ERR__unexpected_response_code % status)
+        else:
+            raise Exception(ERR__unexpected_response_code % status.value)
 
     @staticmethod
     def bi_cast(real_resp, name, arg_type: type):
@@ -344,7 +351,7 @@ class BaseJAAQLController:
         return real_resp
 
     @staticmethod
-    def get_input_as_dictionary(method: SwaggerMethod, is_prod: bool, fill_missing: bool = True):
+    def get_input_as_dictionary(method: SwaggerMethod, is_prod: bool, fill_missing: bool = True, **kwargs):
         data = {}
 
         was_allow_all = False
@@ -356,15 +363,16 @@ class BaseJAAQLController:
             BaseJAAQLController.enforce_content_type_json()
             data = request.json
         else:
-            if len(request.data.decode(request.charset)) != 0:
+            content_type = request.headers.get('Content-Type', '')
+            if 'charset=' not in content_type and len(kwargs) == 0:
                 raise HttpStatusException(ERR__unexpected_request_body, HTTPStatus.BAD_REQUEST)
 
         if isinstance(data, list):
             combined_data = data
         else:
-            combined_data = {**request.form, **request.args, **data}
+            combined_data = {**request.form, **request.args, **data, **kwargs}
 
-            if len(combined_data) != len(request.form) + len(request.args) + len(data):
+            if len(combined_data) != len(request.form) + len(request.args) + len(data) + len(kwargs):
                 raise HttpStatusException(ERR__duplicated_field, HTTPStatus.BAD_REQUEST)
 
         if not was_allow_all:
@@ -442,7 +450,7 @@ class BaseJAAQLController:
 
         def wrap_func(view_func):
             @wraps(view_func)
-            def routed_function(view_func_local):
+            def routed_function(view_func_local, **kwargs):
                 if not self.model.has_installed and not route.startswith('/internal'):
                     resp = Response("Still installing. Be patient", status=HTTPStatus.SERVICE_UNAVAILABLE)
                     self._cors(resp, use_cors)
@@ -512,8 +520,10 @@ class BaseJAAQLController:
                     throw_ex = None
                     ex_msg = None
                     try:
-                        if ARG__http_inputs in inspect.getfullargspec(view_func_local).args:
-                            supply_dict[ARG__http_inputs] = BaseJAAQLController.get_input_as_dictionary(the_method, self.is_prod)
+                        if ARG__http_inputs in inspect.getfullargspec(view_func_local).args or any([key in inspect.getfullargspec(view_func_local).args for key in kwargs.keys()]):
+                            validated = BaseJAAQLController.get_input_as_dictionary(the_method, self.is_prod, **kwargs)
+                            if ARG__http_inputs in inspect.getfullargspec(view_func_local).args:
+                                supply_dict[ARG__http_inputs] = validated
 
                         if ARG__account_id in inspect.getfullargspec(view_func_local).args:
                             if not swagger_documentation.security:
@@ -575,17 +585,34 @@ class BaseJAAQLController:
                         if ARG__profiler in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__profiler] = Profiler(request_id, self.do_profiling)
 
+                        if ARG__headers in inspect.getfullargspec(view_func_local).args:
+                            supply_dict[ARG__headers] = dict(request.headers)
+
+                        if ARG__body in inspect.getfullargspec(view_func_local).args:
+                            supply_dict[ARG__body] = request.get_data()
+
+                        if ARG__args in inspect.getfullargspec(view_func_local).args:
+                            supply_dict[ARG__args] = dict(request.args)
+
+                        if ARG__flask_request in inspect.getfullargspec(view_func_local).args:
+                            supply_dict[ARG__flask_request] = request
+
+                        for k, v in kwargs.items():
+                            if k in inspect.getfullargspec(view_func_local).args:
+                                supply_dict[k] = v
+
                         resp = view_func_local(**supply_dict)
 
                         self.perform_profile(request_id, "Perform work")
 
                         status = jaaql_resp.response_code
-                        method_response = BaseJAAQLController.get_response(the_method, status)
+                        if jaaql_resp.raw_response is None:
+                            method_response = BaseJAAQLController.get_response(the_method, status)
                         do_allow_all = False
                         if len(the_method.responses) != 0:
                             if the_method.responses[0] == RES__allow_all:
                                 do_allow_all = True
-                        if not do_allow_all:
+                        if not do_allow_all and jaaql_resp.raw_response is None:
                             resp = BaseJAAQLController.validate_output(method_response, resp)
 
                         self.perform_profile(request_id, "Validate output")
@@ -614,25 +641,25 @@ class BaseJAAQLController:
                             except Exception as sub_ex:
                                 # The expected response code was not allowed
                                 traceback.print_exc()
-                                ret_status = RESP__default_err_code
-                                ex_msg = RESP__default_err_message
                                 ex = sub_ex
 
                         throw_ex = ex
-
-                    duration = round((datetime.now() - start_time).total_seconds() * 1000)
 
                     self.perform_profile(request_id, "Cleanup")
 
                     if throw_ex is not None:
                         raise throw_ex
 
-                if jaaql_resp.response_type == resp_type:
+                if jaaql_resp.response_type == resp_type and jaaql_resp.raw_response is None:
                     if not isinstance(resp, Response):
                         resp = self.json_serializer.response(resp)
                     resp.status = jaaql_resp.response_code
                 else:
+                    if jaaql_resp.raw_response is not None:
+                        resp = jaaql_resp.raw_response
                     resp = Response(resp, mimetype=jaaql_resp.response_type, status=jaaql_resp.response_code)
+                    for key, val in jaaql_resp.raw_headers.items():
+                        resp.headers.add(key, val)
 
                 if request.cookies.get(COOKIE_JAAQL_AUTH) is not None and COOKIE_JAAQL_AUTH not in jaaql_resp.cookies:
                     resp.headers.add("Set-Cookie", format_cookie(COOKIE_JAAQL_AUTH, request.cookies.get(COOKIE_JAAQL_AUTH),
@@ -648,7 +675,7 @@ class BaseJAAQLController:
 
                 return resp
 
-            self.app.add_url_rule(route, view_func=lambda: routed_function(view_func), methods=methods,
+            self.app.add_url_rule(route, view_func=lambda **kwargs: routed_function(view_func, **kwargs), methods=methods,
                                   endpoint=route)
 
             return routed_function
@@ -682,7 +709,10 @@ class BaseJAAQLController:
             return BaseJAAQLController._cors(Response(RESP__default_err_message, RESP__default_err_code))
 
         @app.errorhandler(Exception)
-        def handle_other_server_error(_):
+        def handle_other_server_error(ex):
+            if isinstance(ex, HTTPException):
+                return ex
+            traceback.print_tb(ex.__traceback__)
             return handle_interpretable_pipeline_exception(UnhandledJaaqlServerError())
 
         @app.errorhandler(JaaqlInterpretableHandledError)

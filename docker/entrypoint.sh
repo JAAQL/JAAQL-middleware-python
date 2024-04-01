@@ -57,16 +57,6 @@ if [ "$HSTS_PRELOAD" = "TRUE" ] && [ "$IS_HTTPS" = "TRUE" ]; then
   HSTS_HEADER='    add_header "Strict-Transport-Security" "max-age=63072000; includeSubDomains; preload";\n'
 fi
 
-if [ -z "${JEQL_VERSION}" ]; then
-  echo "Using default JEQL version"
-else
-  echo "Switching to JEQL version $JEQL_VERSION"
-  cd JEQL
-  git checkout -
-  git pull
-  git checkout tags/v$JEQL_VERSION
-  cd ../
-fi
 if [ -z "${SERVER_ADDRESS}" ]; then
   SERVER_ADDRESS="127.0.0.1"
 fi
@@ -76,10 +66,6 @@ fi
 
 mkdir -p $INSTALL_PATH/log/nginx
 mkdir -p $INSTALL_PATH/www
-cp -r JEQL /JAAQL-middleware-python/jaaql/apps/JEQL
-
-JEQL_REPLACE="    <script src=\"../JEQL/JEQL.js\"></script>"
-sed -ri '9s@^.*$@'"$JEQL_REPLACE"'@' /JAAQL-middleware-python/jaaql/apps/console/index.html
 
 cp -r /JAAQL-middleware-python/jaaql/apps $INSTALL_PATH/www
 

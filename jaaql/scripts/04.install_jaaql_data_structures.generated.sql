@@ -4391,6 +4391,335 @@ create table pg_exception (
     name pg_exception_name not null,
     base_exception pg_base_exception_name not null,
     primary key (sqlstate) );
+-- remote_procedure...
+create table remote_procedure (
+    application internet_name not null,
+    name object_name not null,
+    command text not null,
+    access procedure_access_level not null,
+    primary key (application, name) );
+    create function "remote_procedure.insert__internal" (
+        access character varying(1),
+        command text,
+        name character varying(63),
+        application character varying(63),
+        _index integer default null,
+        _check_only boolean default false ) returns _status_record as
+    $$
+        DECLARE
+            _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+            _count integer not null = 0;
+        BEGIN
+        -- (1) Coercion
+            if "remote_procedure.insert__internal".application is null then
+                "remote_procedure.insert__internal".application = '';
+            end if;
+            if "remote_procedure.insert__internal".name is null then
+                "remote_procedure.insert__internal".name = '';
+            end if;
+            if "remote_procedure.insert__internal".access is null then
+                "remote_procedure.insert__internal".access = '';
+            end if;
+        -- (A) Check that required values are present
+            if "remote_procedure.insert__internal".command is null then
+                _status.errors = _status.errors ||
+                    ROW('remote_procedure', _index,
+                        'Er moet een waarde ingevuld worden voor Command',
+                        'command'
+                    )::_error_record;
+            end if;
+            if "remote_procedure.insert__internal".access = '' then
+                _status.errors = _status.errors ||
+                    ROW('remote_procedure', _index,
+                        'Er moet een waarde ingevuld worden voor Access',
+                        'access'
+                    )::_error_record;
+            end if;
+        -- (D) Check that there is no record in the table with the same prime key
+            SELECT COUNT(*) into _count
+            FROM remote_procedure R
+            WHERE
+                R.application = "remote_procedure.insert__internal".application AND
+                R.name = "remote_procedure.insert__internal".name;
+            if _count <> 0 then
+                _status.errors = _status.errors ||
+                    ROW('remote_procedure', _index,
+                        'Er is al een Remote Procedure geregistreed met '
+                        'Application, Name',
+                        'name'
+                    )::_error_record;
+            end if;
+            -- Get out quick if there are errors
+            if cardinality(_status.errors) <> 0 then
+                return _status;
+            end if;
+            -- Now do the work
+            if not "remote_procedure.insert__internal"._check_only then
+                INSERT INTO remote_procedure (
+                    application,
+                    name,
+                    command,
+                    access
+                ) VALUES (
+                    "remote_procedure.insert__internal"."application",
+                    "remote_procedure.insert__internal"."name",
+                    "remote_procedure.insert__internal"."command",
+                    "remote_procedure.insert__internal"."access" );
+                _status.result = 1;
+            end if;
+            return _status;
+        END;
+    $$ language plpgsql security definer;
+    select * from plpgsql_check_function(
+        '"remote_procedure.insert__internal"('
+            'character varying(1),'
+            'text,'
+            'character varying(63),'
+            'character varying(63),'
+            'integer,'
+            'boolean)'
+    );
+
+    create function "remote_procedure.insert" (
+        access character varying(1),
+        command text,
+        name character varying(63),
+        application character varying(63)) returns _jaaql_procedure_result as
+    $$
+        DECLARE
+            _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        BEGIN
+            SELECT * INTO strict _status FROM "remote_procedure.insert__internal"(
+                application => "remote_procedure.insert".application,
+                name => "remote_procedure.insert".name,
+                command => "remote_procedure.insert".command,
+                access => "remote_procedure.insert".access);
+
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
+    $$ language plpgsql security definer;
+    create function "remote_procedure.update__internal" (
+        application character varying(63),
+        name character varying(63),
+        command text default null,
+        access character varying(1) default null,
+        _index integer default null,
+        _check_only boolean default false) returns _status_record as
+    $$
+        DECLARE
+            _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+            _count integer not null = 0;
+        BEGIN
+        -- (D) Check that there is a record in the table with the same prime key
+            SELECT COUNT(*) into _count
+            FROM remote_procedure R
+            WHERE
+                R.application = "remote_procedure.update__internal".application AND
+                R.name = "remote_procedure.update__internal".name;
+            if _count <> 1 then
+                _status.errors = _status.errors ||
+                    ROW('remote_procedure', _index,
+                        'Er is geen Remote Procedure gevonden met '
+                        'Application, Name',
+                        'name'
+                    )::_error_record;
+            end if;
+            -- Get out quick if there are errors
+            if cardinality(_status.errors) <> 0 then
+                return _status;
+            end if;
+            if _check_only then
+                return _status;
+            end if;
+
+            UPDATE remote_procedure R
+            SET
+                command = coalesce("remote_procedure.update__internal".command, R.command),
+                access = coalesce("remote_procedure.update__internal".access, R.access)
+            WHERE 
+                R.application = "remote_procedure.update__internal".application AND
+                R.name = "remote_procedure.update__internal".name;
+            return _status;
+        END;
+    $$ language plpgsql security definer;
+
+    select * from plpgsql_check_function(
+        '"remote_procedure.update__internal"('
+            'character varying(63),'
+            'character varying(63),'
+            'text,'
+            'character varying(1),'
+            'integer,'
+            'boolean)'
+    );
+
+    create function "remote_procedure.update" (
+        application character varying(63),
+        name character varying(63),
+        command text default null,
+        access character varying(1) default null) returns _jaaql_procedure_result as
+    $$
+        DECLARE
+            _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        BEGIN
+            SELECT * INTO strict _status FROM "remote_procedure.update__internal"(
+                application => "remote_procedure.update".application,
+                name => "remote_procedure.update".name,
+                command => "remote_procedure.update".command,
+                access => "remote_procedure.update".access);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
+    $$ language plpgsql security definer;
+    create function "remote_procedure.persist__internal" (
+        application character varying(63),
+        name character varying(63),
+        command text default null,
+        access character varying(1) default null,
+        _index integer default null,
+        _check_only boolean default false) returns _status_record as
+    $$
+        DECLARE
+            _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+            _count integer not null = 0;
+        BEGIN
+            SELECT COUNT(*) into _count
+            FROM remote_procedure R
+            WHERE
+                R.application = "remote_procedure.persist__internal".application AND
+                R.name = "remote_procedure.persist__internal".name;
+            if _count = 0 then
+                SELECT * INTO strict _status FROM "remote_procedure.insert__internal"(
+                    application => "remote_procedure.persist__internal".application,
+                    name => "remote_procedure.persist__internal".name,
+                    command => CASE WHEN "remote_procedure.persist__internal".command = '' THEN null ELSE "remote_procedure.persist__internal".command END,
+                    access => "remote_procedure.persist__internal".access,
+                    _index => "remote_procedure.persist__internal"._index,
+                    _check_only => cardinality(_status.errors) <> 0 or "remote_procedure.persist__internal"._check_only);
+            elsif _count = 1 then
+                SELECT * INTO strict _status FROM "remote_procedure.update__internal"(
+                    application => "remote_procedure.persist__internal".application,
+                    name => "remote_procedure.persist__internal".name,
+                    command => CASE WHEN "remote_procedure.persist__internal".command = '' THEN null ELSE "remote_procedure.persist__internal".command END,
+                    access => "remote_procedure.persist__internal".access,
+                    _index => "remote_procedure.persist__internal"._index,
+                    _check_only => cardinality(_status.errors) <> 0 or "remote_procedure.persist__internal"._check_only);
+            else
+                _status.errors = _status.errors ||
+                    ROW('remote_procedure', _index,
+                        'Er is niet verwacht Remote Procedure gevonden met '
+                        'Application, Name',
+                        'name'
+                    )::_error_record;
+            end if;
+
+            return _status;
+        END;
+    $$ language plpgsql security definer;
+
+    select * from plpgsql_check_function(
+        '"remote_procedure.persist__internal"('
+            'character varying(63),'
+            'character varying(63),'
+            'text,'
+            'character varying(1),'
+            'integer,'
+            'boolean)'
+    );
+
+    create function "remote_procedure.persist" (
+        application character varying(63),
+        name character varying(63),
+        command text default null,
+        access character varying(1) default null) returns _jaaql_procedure_result as
+    $$
+        DECLARE
+            _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        BEGIN
+            SELECT * INTO strict _status FROM "remote_procedure.persist__internal"(
+                application => "remote_procedure.persist".application,
+                name => "remote_procedure.persist".name,
+                command => "remote_procedure.persist".command,
+                access => "remote_procedure.persist".access);
+
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
+    $$ language plpgsql security definer;
+    create function "remote_procedure.delete__internal" (
+        application character varying(63),
+        name character varying(63),
+        _index integer default null,
+        _check_only boolean default false ) returns _status_record as
+    $$
+        DECLARE
+            _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+            _count integer not null = 0;
+        BEGIN
+        -- (D) Check that there is a record in the table with the same prime key
+            SELECT COUNT(*) into _count
+            FROM remote_procedure R
+            WHERE
+                R.application = "remote_procedure.delete__internal".application AND
+                R.name = "remote_procedure.delete__internal".name;
+            if _count <> 1 then
+                _status.errors = _status.errors ||
+                    ROW('remote_procedure', _index,
+                        'Er is geen Remote Procedure gevonden met '
+                        'Application, Name',
+                        'name'
+                    )::_error_record;
+            end if;            -- Get out quick if there are errors
+            if cardinality(_status.errors) <> 0 then
+                return _status;
+            end if;
+            if _check_only then
+                return _status;
+            end if;
+
+            DELETE FROM remote_procedure R
+            WHERE 
+                R.application = "remote_procedure.delete__internal".application AND
+                R.name = "remote_procedure.delete__internal".name;
+            return _status;
+        END;
+    $$ language plpgsql security definer;
+
+    select * from plpgsql_check_function(
+        '"remote_procedure.delete__internal"('
+            'character varying(63),'
+            'character varying(63),'
+            'integer,'
+            'boolean)'
+    );
+
+    create function "remote_procedure.delete" (
+        application character varying(63),
+        name character varying(63)) returns _jaaql_procedure_result as
+    $$
+        DECLARE
+            _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+        BEGIN
+            SELECT * INTO strict _status FROM "remote_procedure.delete__internal"(
+                application => "remote_procedure.delete".application,
+                name => "remote_procedure.delete".name);
+        -- Throw exception, which triggers a rollback if errors
+        if cardinality(_status.errors) <> 0 then
+            SELECT raise_jaaql_handled_query_exception(_status);
+        end if;
+        return _status.result::_jaaql_procedure_result;
+        END;
+    $$ language plpgsql security definer;
 
 -- (1a) Create view to give current date/time, possibly read from a table
 
@@ -5338,6 +5667,8 @@ grant execute on function "account_password.update+" to registered;
 
 -- pg_exception...
 
+-- remote_procedure...
+
 
 
 -- (3) Populate tables
@@ -5750,6 +6081,10 @@ alter table pg_exception add constraint pg_exception__pg_error_class
 alter table pg_exception add constraint pg_exception__pg_base_exception
     foreign key (base_exception)
         references pg_base_exception (name);
+-- remote_procedure...
+alter table remote_procedure add constraint remote_procedure__application
+    foreign key (application)
+        references application (name);
 
 -- (5) Grant access to tables
 
@@ -5768,6 +6103,7 @@ alter table pg_exception add constraint pg_exception__pg_base_exception
     grant select, insert, update, delete on pg_base_exception to registered;
     grant select, insert, update, delete on pg_error_class to registered;
     grant select, insert, update, delete on pg_exception to registered;
+    grant select, insert, update, delete on remote_procedure to registered;
 
 
 -- (6) Grant access to functions
@@ -5816,4 +6152,8 @@ alter table pg_exception add constraint pg_exception__pg_base_exception
     grant execute on function "handled_error.delete" to registered;
     grant execute on function "handled_error.update" to registered;
     grant execute on function "handled_error.persist" to registered;
+    grant execute on function "remote_procedure.insert" to registered;
+    grant execute on function "remote_procedure.delete" to registered;
+    grant execute on function "remote_procedure.update" to registered;
+    grant execute on function "remote_procedure.persist" to registered;
 

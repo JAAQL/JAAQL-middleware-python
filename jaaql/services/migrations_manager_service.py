@@ -2,7 +2,7 @@ import os
 
 from jaaql.utilities.utils import load_config, get_base_url, await_jaaql_installation, await_jaaql_bootup
 from jaaql.constants import ENDPOINT__install, VAULT_KEY__super_local_access_key, ENDPOINT__execute_migrations, \
-    PORT__mms
+    PORT__mms, ENVIRON__JAAQL__SUPER_BYPASS_KEY
 from jaaql.utilities.vault import Vault, DIR__vault
 from monitor.main import HEADER__security_bypass
 from os.path import join, exists, dirname
@@ -46,8 +46,8 @@ def bootup(vault_key, is_gunicorn: bool = False, install_on_bootup: bool = True)
 
     await_jaaql_installation(config, is_gunicorn)
     vault = Vault(vault_key, DIR__vault)
-
-    bypass_header = {HEADER__security_bypass: vault.get_obj(VAULT_KEY__super_local_access_key)}
+    bypass_header = {HEADER__security_bypass: os.environ.get(ENVIRON__JAAQL__SUPER_BYPASS_KEY,
+                     vault.get_obj(VAULT_KEY__super_local_access_key) if is_gunicorn else "00000-00000")}
     res = requests.post(base_url + ENDPOINT__execute_migrations, headers=bypass_header)
 
     if res.status_code == 200:

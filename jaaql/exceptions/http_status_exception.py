@@ -1,6 +1,8 @@
 from http import HTTPStatus
 from argparse import Namespace  # Used elsewhere
 
+from jaaql.generated_constants import RESPONSE_CODE_LOOKUP
+
 RESP__default_err_message = "We have encountered an error whilst processing your request!"
 RESP__default_err_code = HTTPStatus.INTERNAL_SERVER_ERROR
 
@@ -44,3 +46,11 @@ class JaaqlInterpretableHandledError(Exception):
         self.descriptor = descriptor
         self.set = _set
         self.response_code = http_response_code
+
+    @staticmethod
+    def deserialize_from_json(obj):
+        return JaaqlInterpretableHandledError(
+            obj.get("error_code"), RESPONSE_CODE_LOOKUP.get(obj.get("error_code"), 422), obj.get("table_name"),
+            obj.get("index"), obj.get("message"), obj.get("column_name"),
+            obj.get("_set"), obj.get("descriptor")
+        )

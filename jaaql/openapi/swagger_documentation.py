@@ -67,6 +67,8 @@ OPEN_API__object = "object"
 OPEN_API__openapi = "openapi"
 OPEN_API__parameters = "parameters"
 OPEN_API__paths = "paths"
+FLASK__path_var_open = "<"
+FLASK__path_var_close = ">"
 OPEN_API__path_var_open = "{"
 OPEN_API__path_var_close = "}"
 OPEN_API__properties = "properties"
@@ -354,7 +356,7 @@ class SwaggerMethod:
     def _validate_arguments(arguments: List[Union[SwaggerArgumentResponse, SwaggerList]]):
         arguments = force_list(arguments)
         for arg in arguments:
-            if isinstance(arg.arg_type, SwaggerArgumentResponse):
+            if isinstance(arg.arg_type, SwaggerArgumentResponse) and arg.arg_type != ARG_RESP__allow_all:
                 raise Exception(ERR__nested_not_allowed)
             elif isinstance(arg, SwaggerList):
                 raise Exception(ERR__list_not_allowed)
@@ -502,7 +504,7 @@ def _build_parameter(yaml: str, depth: int, doc: SwaggerDocumentation, arg: Swag
     if is_prod and arg.local_only:
         return yaml
 
-    path_var = OPEN_API__path_var_open + arg.name + OPEN_API__path_var_close
+    path_var = FLASK__path_var_open + arg.name + FLASK__path_var_close
     is_path = path_var in doc.path
 
     yaml = _build_yaml(yaml, depth, YAML__list_separator + OPEN_API__in,
@@ -522,7 +524,7 @@ def _produce_path(doc: SwaggerDocumentation, yaml: str, is_prod: bool) -> str:
     if doc.path == PATH__empty:
         raise Exception(ERR__empty_path)
 
-    yaml = _build_yaml(yaml, 1, doc.path)
+    yaml = _build_yaml(yaml, 1, doc.path.replace(FLASK__path_var_open, OPEN_API__path_var_open).replace(FLASK__path_var_close, OPEN_API__path_var_close))
 
     for method in doc.methods:
         yaml = _build_yaml(yaml, 2, method.method.lower())

@@ -244,8 +244,9 @@ class BaseJAAQLModel:
         if not self.vault.has_obj(VAULT_KEY__super_local_access_key):
             self.vault.insert_obj(VAULT_KEY__super_local_access_key, str(uuid.uuid4()))
 
-        self.local_jaaql_access_key = self.vault.get_obj(VAULT_KEY__jaaql_local_access_key)
-        self.local_super_access_key = os.environ.get("JAAQL__SUPER_BYPASS_KEY",
+        self.local_jaaql_access_key = os.environ.get(ENVIRON__JAAQL__JAAQL_BYPASS_KEY,
+                                                     self.vault.get_obj(VAULT_KEY__super_local_access_key) if self.is_container else "00000-00000")
+        self.local_super_access_key = os.environ.get(ENVIRON__JAAQL__SUPER_BYPASS_KEY,
                                                      self.vault.get_obj(VAULT_KEY__super_local_access_key) if self.is_container else "00000-00000")
 
         if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):

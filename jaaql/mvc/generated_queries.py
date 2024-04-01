@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.fxli at 2024-03-29, 04:52:17
+This script was generated from jaaql.fxli at 2024-04-01, 07:48:24
 """
 
 from jaaql.db.db_interface import DBInterface
@@ -1713,5 +1713,107 @@ def pg_exception__insert(
             KG__pg_exception__sqlstate: sqlstate,
             KG__pg_exception__name: name,
             KG__pg_exception__base_exception: base_exception
+        }
+    )
+
+
+# Generated keys for table 'remote_procedure'
+KG__remote_procedure__application = "application"
+KG__remote_procedure__name = "name"
+KG__remote_procedure__command = "command"
+KG__remote_procedure__access = "access"
+
+# Generated queries for table 'remote_procedure'
+QG__remote_procedure_delete = "DELETE FROM remote_procedure WHERE application = :application AND name = :name"
+QG__remote_procedure_insert = """
+    INSERT INTO remote_procedure (application, name, command,
+        access)
+    VALUES (:application, :name, :command,
+        :access)
+"""
+QG__remote_procedure_select_all = "SELECT * FROM remote_procedure"
+QG__remote_procedure_select = "SELECT * FROM remote_procedure WHERE application = :application AND name = :name"
+QG__remote_procedure_update = """
+    UPDATE
+        remote_procedure
+    SET
+        command = COALESCE(:command, command),
+        access = COALESCE(:access, access)
+    WHERE
+        application = :application AND name = :name
+"""
+
+
+# Generated methods for table 'remote_procedure'
+def remote_procedure__delete(
+    connection: DBInterface,
+    application, name
+):
+    execute_supplied_statement(
+        connection, QG__remote_procedure_delete,
+        {
+            # Key Fields
+            KG__remote_procedure__application: application,
+            KG__remote_procedure__name: name
+        }
+    )
+
+
+def remote_procedure__update(
+    connection: DBInterface,
+    application, name,
+    command=None, access=None
+):
+    execute_supplied_statement(
+        connection, QG__remote_procedure_update,
+        {
+            # Key Fields
+            KG__remote_procedure__application: application,
+            KG__remote_procedure__name: name,
+
+            # None Key Fields
+            KG__remote_procedure__command: command,
+            KG__remote_procedure__access: access
+        }
+    )
+
+
+def remote_procedure__select(
+    connection: DBInterface,
+    application, name,
+    singleton_code: int = None, singleton_message: str = "remote_procedure does not exist"
+):
+    return execute_supplied_statement_singleton(
+        connection, QG__remote_procedure_select, 
+        {
+            # Key Fields
+            KG__remote_procedure__application: application,
+            KG__remote_procedure__name: name
+        },
+        as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+    )
+
+
+def remote_procedure__select_all(
+    connection: DBInterface
+):
+    return execute_supplied_statement(
+        connection, QG__remote_procedure_select_all,
+        as_objects=True
+    )
+
+
+def remote_procedure__insert(
+    connection: DBInterface,
+    application, name, command,
+    access
+):
+    execute_supplied_statement(
+        connection, QG__remote_procedure_insert,
+        {
+            KG__remote_procedure__application: application,
+            KG__remote_procedure__name: name,
+            KG__remote_procedure__command: command,
+            KG__remote_procedure__access: access
         }
     )

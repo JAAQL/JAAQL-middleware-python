@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.exceptions.fxli at 2024-03-29, 04:52:17
+This script was generated from jaaql.exceptions.fxli at 2024-04-01, 07:48:24
 """
 
 from jaaql.utilities.crypt_utils import get_repeatable_salt
@@ -181,6 +181,10 @@ def count_for_security_event(
         encryption_salts={KG__security_event__fake_account: get_repeatable_salt(vault_repeatable_salt, fake_account)}
     )[KEY__count]
 
+
+RPC_ACCESS__private = "P"
+RPC_ACCESS__public = "U"
+RPC_ACCESS__webhook = "W"
 
 KEY__type_one = "type_one"
 KEY__type_two = "type_two"

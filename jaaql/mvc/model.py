@@ -1,4 +1,6 @@
+import base64
 import sys
+import traceback
 import uuid
 
 import re
@@ -1163,6 +1165,83 @@ WHERE
             format_field(cron.get(CRON_dayOfWeek))
         ]
         return ' '.join(parts)
+
+    def handle_procedure(self, http_inputs: dict, is_the_anonymous_user: bool, auth_token: str, username: str, ip_address: str, account_id: str):
+        rpc = remote_procedure__select(self.jaaql_lookup_connection, http_inputs[KG__remote_procedure__application], http_inputs[KG__remote_procedure__name])
+
+        args = http_inputs[KEY__args]
+        if args is None:
+            args = {}
+
+        if rpc[KG__remote_procedure__access] not in [RPC_ACCESS__private, RPC_ACCESS__public]:
+            raise HttpStatusException(f"Cannot call procedure with type '{rpc[KG__remote_procedure__access]}'")
+
+        if rpc[KG__remote_procedure__access] == RPC_ACCESS__private and is_the_anonymous_user:
+            raise HttpStatusException("Cannot call a private remote procedure as the public user")
+
+        encoded_args = base64.b64encode(json.dumps(args).encode(ENCODING__utf)).decode(ENCODING__utf)
+        encoded_access_token = base64.b64encode(auth_token.encode(ENCODING__utf)).decode(ENCODING__utf)
+        encoded_username = base64.b64encode(username.encode(ENCODING__utf)).decode(ENCODING__utf)
+        encoded_ip_address = base64.b64encode(ip_address.encode(ENCODING__utf)).decode(ENCODING__utf)
+        encoded_account_id = base64.b64encode(account_id.encode(ENCODING__utf)).decode(ENCODING__utf)
+
+        command = [rpc[KG__remote_procedure__command], encoded_args, encoded_access_token, encoded_username, encoded_ip_address, encoded_account_id]
+        command = " ".join(command)
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
+
+        try:
+            res = json.loads(result.stdout)
+            if result.returncode == 0:
+                return res
+            elif "error_code" in res:
+                raise JaaqlInterpretableHandledError.deserialize_from_json(res)
+            else:
+                raise Exception("Unrecognised error object")
+        except JaaqlInterpretableHandledError as e:
+            raise e
+        except Exception:
+            print(result.stdout)
+            print(result.stderr)
+            if result.returncode != 0:
+                raise UnhandledRemoteProcedureError()
+
+            traceback.print_exc()
+            raise HttpStatusException("Could not intepret webhook procedure result", HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def handle_webhook(self, application: str, name: str, body: bytes, headers: dict, args: dict, response: JAAQLResponse):
+        rpc = remote_procedure__select(self.jaaql_lookup_connection, application, name)
+
+        if rpc[KG__remote_procedure__access] != RPC_ACCESS__webhook:
+            raise HttpStatusException("Procedure type is not type webhook")
+
+        encoded_body = base64.b64encode(body).decode(ENCODING__utf)
+        encoded_headers = base64.b64encode(json.dumps(headers).encode(ENCODING__utf)).decode(ENCODING__utf)
+        encoded_args = base64.b64encode(json.dumps(args).encode(ENCODING__utf)).decode(ENCODING__utf)
+
+        command = [rpc[KG__remote_procedure__command], encoded_headers, encoded_args, encoded_body]
+        command = " ".join(command)
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
+
+        try:
+            res = json.loads(result.stdout)
+            if result.returncode == 0:
+                response.response_code = res['statusCode']
+                response.raw_response = res['body']
+                response.raw_headers = res['headers']
+            elif "error_code" in res:
+                raise JaaqlInterpretableHandledError.deserialize_from_json(res)
+            else:
+                raise Exception("Unrecognised error object")
+        except JaaqlInterpretableHandledError as e:
+            raise e
+        except Exception:
+            print(result.stdout)
+            print(result.stderr)
+            if result.returncode != 0:
+                raise UnhandledRemoteProcedureError()
+
+            traceback.print_exc()
+            raise HttpStatusException("Could not intepret webhook procedure result", HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def add_cron_job_to_application(self, connection: DBInterface, cron_input: dict):
         self.is_super_admin(connection)

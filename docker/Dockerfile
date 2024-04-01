@@ -33,7 +33,6 @@ COPY ./plpgsql_check /plpgsql_check
 
 RUN apt-get update && apt-get install -y build-essential && apt update && \
     apt install -y libpq-dev && \
-    apt-get install -y git && \
     apt-get install -y cron && \
     mkdir -p /etc/letsencrypt/live && \
     apt -y install nginx && \
@@ -44,6 +43,7 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     apt -y install wget && \
     wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tar.xz && \
     tar xf Python-${PYTHON_VERSION}.tar.xz && \
+    rm -rf Python-${PYTHON_VERSION}.tar.xz && \
     apt install build-essential zlib1g-dev -y \
     libncurses5-dev libgdbm-dev libnss3-dev -y \
     libssl-dev libreadline-dev libffi-dev libbz2-dev curl -y && \
@@ -51,10 +51,10 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     ./configure --enable-optimizations --with-lto --disable-test-modules --without-doc-strings --prefix=/usr/local --with-ensurepip=install && \
     make install && \
     cd ../ && \
+    rm -rf /Python-${PYTHON_VERSION} && \
     $PY_PATH -m ensurepip --default-pip && \
     $PY_PATH -mpip install -U pip wheel && \
     $PY_PATH -mpip install certbot-nginx==2.9.0 && \
-    apt-get purge --auto-remove build-essential -y && \
     apt-get install unzip && \
     wget --no-verbose -O /tmp/chrome.zip https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-linux64.zip && \
     unzip /tmp/chrome.zip -d /opt/ && \
@@ -111,23 +111,20 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     apt-get -y install locales && \
     sed -i '/en_GB.UTF-8/s/^# //g' /etc/locale.gen && \
     locale-gen && \
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && \
-    export NVM_DIR="$HOME/.nvm" && \
-    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" && \
-    [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion" && \
-    nvm install 20 && \
-    apt-get autoremove --purge -y
+    curl -fsSL https://nodejs.org/dist/v20.12.0/node-v20.12.0-linux-x64.tar.xz | tar -xJf - -C /usr/local --strip-components=1
 
 COPY requirements.txt $INSTALL_PATH/requirements.txt
-RUN sed -i 's/\[binary\]/[c]/g' $INSTALL_PATH/requirements.txt
-RUN $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt
+
+RUN sed -i 's/\[binary\]/[c]/g' $INSTALL_PATH/requirements.txt && \
+    $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt && \
+    apt-get purge -y --auto-remove build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev libbz2-dev unzip bzip2 wget && \
+    apt-get autoremove --purge -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /var/tmp/* /tmp/*
+
 COPY . $INSTALL_PATH
 
-RUN git clone https://github.com/JAAQL/JEQL.git && \
-    cd JEQL && \
-    git checkout tags/v2.2.20 && \
-    cd ../ && \
-    rm -rf $INSTALL_PATH/jaaql/config/config.ini && \
+RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini && \
     mv $INSTALL_PATH/jaaql/config/config-docker.ini $INSTALL_PATH/jaaql/config/config.ini && \
     mkdir -p $INSTALL_PATH/www && \
     mkdir -p $INSTALL_PATH/log && \

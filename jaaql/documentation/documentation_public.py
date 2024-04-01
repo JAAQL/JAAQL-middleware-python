@@ -354,3 +354,68 @@ DOCUMENTATION__security_event = SwaggerDocumentation(
         )
     ]
 )
+
+ARG_RES__proc = [
+    SwaggerArgumentResponse(
+        name=KG__remote_procedure__application,
+        description="The remote procedure application",
+        arg_type=str,
+        example="out-and-about"
+    ),
+    SwaggerArgumentResponse(
+        name=KG__remote_procedure__name,
+        description="The name of the remote procedure",
+        arg_type=str,
+        example="my_proc"
+    )
+]
+
+DOCUMENTATION__remote_procedures = SwaggerDocumentation(
+    tags="Remote Procedure",
+    methods=SwaggerMethod(
+        name="Execute remote procedure",
+        description="Executes a remote procedure",
+        method=REST__POST,
+        body=ARG_RES__proc + [
+            SwaggerArgumentResponse(
+                name=KEY__args,
+                arg_type=ARG_RESP__allow_all,
+                description="The arguments that will be passed through to the function, as a JSON object"
+            )
+        ],
+        response=RES__allow_all
+    )
+)
+
+DOCUMENTATION__webhook = SwaggerDocumentation(
+    tags="Webhook",
+    security=False,  # Security is handled at the webhook implementation itself
+    methods=[
+        SwaggerMethod(
+            name="Receive Webhook GET",
+            description="Receives a webhook as a GET",
+            method=REST__GET,
+            arguments=ARG_RES__proc + [ARG_RES__parameters]
+        ),
+        SwaggerMethod(
+            name="Receive Webhook POST",
+            description="Receives a webhook as a POST",
+            method=REST__POST,
+            arguments=[
+                SwaggerArgumentResponse(
+                    name=KG__remote_procedure__application,
+                    description="The remote procedure application",
+                    arg_type=str,
+                    example="out-and-about"
+                ),
+                SwaggerArgumentResponse(
+                    name=KG__remote_procedure__name,
+                    description="The name of the remote procedure",
+                    arg_type=str,
+                    example="my_proc"
+                )
+            ],
+            body=ARG_RESP__allow_all
+        )
+    ]
+)

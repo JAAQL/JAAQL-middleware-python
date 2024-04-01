@@ -270,6 +270,34 @@ class Constraints(Enum):
     PgBaseExceptionNameKey = "pg_base_exception_name_key"
     PgErrorClassCodeKey = "pg_error_class_code_key"
     PgExceptionSqlstateKey = "pg_exception_sqlstate_key"
+    RemoteProcedureApplicationNameKey = "remote_procedure_application_name_key"
     AccountUsernameKey = "account_username_key"
     AccountPasswordHashKey = "account_password_hash_key"
     ValidatedIpAddressEncryptedSaltedIpAddressKey = "validated_ip_address_encrypted_salted_ip_address_key"
+
+
+RESPONSE_CODE_LOOKUP = {
+    1001: 422,
+    1002: 422,
+    1003: 422,
+    1004: 422,
+    1005: 422,
+    1006: 422,
+    1007: 422,
+    1008: 422,
+    1009: 401,
+    1010: 500,
+    1011: 422,
+    1012: 422,
+    1013: 422,
+    1014: 422,
+    1015: 422,
+    1016: 422,
+    1017: 422,
+    1018: 422,
+    1019: 422,
+    1020: 422,
+    1021: 422,
+    1022: 422,
+    1023: 500
+}

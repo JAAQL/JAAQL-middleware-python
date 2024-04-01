@@ -8,6 +8,8 @@ class JAAQLResponse:
         self.account_id = None
         self.ip_id = None
         self.response_type = None
+        self.raw_response = None
+        self.raw_headers = {}
 
         self.cookies = {}
 

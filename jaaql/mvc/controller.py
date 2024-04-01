@@ -125,6 +125,14 @@ class JAAQLController(BaseJAAQLController):
         def cron(connection: DBInterface, http_inputs: dict):
             self.model.add_cron_job_to_application(connection, http_inputs)
 
+        @self.publish_route('/webhook/<application>/<name>', DOCUMENTATION__webhook)
+        def handle_webhook(application: str, name: str, body: bytes, headers: dict, args: dict, response: JAAQLResponse):
+            self.model.handle_webhook(application, name, body, headers, args, response)
+
+        @self.publish_route('/remote_procedure', DOCUMENTATION__remote_procedures)
+        def handle_remote_procedure(http_inputs: dict, is_the_anonymous_user: bool, auth_token: str, username: str, ip_address: str, account_id: str):
+            return self.model.handle_procedure(http_inputs, is_the_anonymous_user, auth_token, username, ip_address, account_id)
+
         @self.publish_route('/internal/set-web-config', DOCUMENTATION__set_web_config)
         def set_web_config(connection: DBInterface):
             self.model.set_web_config(connection)

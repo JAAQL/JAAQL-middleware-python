@@ -44,6 +44,7 @@ KEY__accounts = "accounts"
 KEY__registered = "registered"
 KEY__restrictions = "restrictions"
 KEY__command = "command"
+KEY__args = "args"
 
 CRON_minute = "minute"
 CRON_hour = "hour"
@@ -69,6 +70,9 @@ FILE__canned_queries = "canned_queries.jsql"
 ENCODING__utf = "UTF-8"
 ENCODING__ascii = "ascii"
 EXAMPLE__jwt = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.e30.yXvILkvUUCBqAFlAv6wQ1Q-QRAjfe3eSosO949U73Vo"
+
+ENVIRON__JAAQL__SUPER_BYPASS_KEY = "JAAQL__SUPER_BYPASS_KEY"
+ENVIRON__JAAQL__JAAQL_BYPASS_KEY = "JAAQL__JAAQL_BYPASS_KEY"
 
 VAULT_KEY__db_crypt_key = "db_crypt_key"
 VAULT_KEY__db_repeatable_salt = "repeatable_salt"
@@ -144,7 +148,7 @@ def get_ipv6_address():
 
 
 IPS__local = [
-    "127.0.0.1", "localhost", "172.17.0.1", os.environ.get("SERVER_ADDRESS", "thisipcantexist"), get_ipv6_address()
+    "127.0.0.1", "localhost", "172.17.0.1", os.environ.get("SERVER_ADDRESS", "thisipcantexist"), get_ipv6_address(), "::1"
 ]
 
 ENDPOINT__send_email = "/send-email"
@@ -175,5 +179,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.22.8"
+VERSION = "4.22.11"
 
