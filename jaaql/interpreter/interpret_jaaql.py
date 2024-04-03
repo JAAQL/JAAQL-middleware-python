@@ -24,7 +24,7 @@ ERR_missing_query = "Missing query key from input dictionary"
 ERR_unused_parameter = "Unused parameter! Supplied with '%s' but was never used"
 ERR_polluted_input = "Input polluted. If passing query, only pass parameters as well"
 ERR_malformed_query = "Value of 'query' key malformed. Please use a string if you are passing a value to 'query'"
-ERR_mistyped_parameter = "Type '%s', for parameter '%s' unexpected. Please provide either a string, float, list or integer"
+ERR_mistyped_parameter = "Type '%s', for parameter '%s' unexpected. Please provide either a date, string, float, list or integer"
 ERR_malformed_operation_type = "Operation malformed. Expecting either a list, string or dictionary input"
 ERR_assert_expecting = "Assert expecting %s row(s) but received %d row(s)!"
 ERR_malformed_join = "Joins only allowed as list or string input at the moment!"
@@ -533,6 +533,8 @@ class InterpretJAAQL:
         elif isinstance(value, uuid.UUID):
             return PYFORMAT_str
         elif isinstance(value, list):
+            return PYFORMAT_str
+        elif type(value).__name__ == "date":
             return PYFORMAT_str
         else:
             raise HttpStatusException(ERR_mistyped_parameter % (type(value).__name__, key), HTTPStatus.BAD_REQUEST)
