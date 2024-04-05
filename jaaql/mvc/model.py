@@ -130,9 +130,12 @@ class JAAQLModel(BaseJAAQLModel):
 
     def create_account_batch_with_potential_password(self, connection: DBInterface, accounts: list):
         for cur_input in accounts:
+            registered = cur_input.get(KEY__registered, True)
+            if registered is None:
+                registered = True
             self.create_account_with_potential_password(
                 connection, cur_input[KEY__username], cur_input[KEY__attach_as],
-                cur_input[KEY__password], allow_already_exists=True, registered=cur_input.get(KEY__registered, True)
+                cur_input[KEY__password], allow_already_exists=True, registered=registered
             )
 
     def validate_query(self, queries: list, query, allow_list=True):
