@@ -1,5 +1,5 @@
 /*
-**  This installation module was generated from ..\..\..\Users\aaron.tasker\Dropbox\Packages/DBMS/Postgres/15/domains.install for Postgres/15
+**  This installation module was generated from ..\..\Packages/DBMS/Postgres/15/domains.install for Postgres/15
 */
 
 CREATE DOMAIN encrypted__email_server_password AS character varying(256);
@@ -10,7 +10,7 @@ CREATE DOMAIN encrypted__salted_ip AS character varying(256);
 CREATE DOMAIN internet_name AS character varying(63) CHECK (VALUE ~* '^[a-z0-9\-\$]*$');
 CREATE DOMAIN url AS character varying(256);
 CREATE DOMAIN location AS character varying(256);
-CREATE DOMAIN object_name AS character varying(63) CHECK (VALUE ~* '^[a-z0-9_\$]*$');
+CREATE DOMAIN object_name AS character varying(63) CHECK (VALUE ~* '^[a-zA-Z_][a-zA-Z_0-9\$]*$');
 CREATE DOMAIN validity_period AS integer CHECK (VALUE between 15 and 9999999);
 CREATE DOMAIN short_validity_period AS integer CHECK (VALUE between 15 and 86400);
 CREATE DOMAIN person_name AS character varying(64);
