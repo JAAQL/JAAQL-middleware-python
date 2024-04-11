@@ -102,8 +102,8 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   if [ "$ALLOW_UNLIMITED_REQUESTS" = "TRUE" ]; then
     echo "Allowing unlimited requests"
   else
-    echo "limit_req_zone \$binary_remote_addr zone=jaaqllimit:10m rate=5r/s;" >> /etc/nginx/sites-available/jaaql
-    echo "limit_req_zone \$binary_remote_addr zone=httplimit:10m rate=10r/s;" >> /etc/nginx/sites-available/jaaql
+    echo "limit_req_zone \$binary_remote_addr zone=jaaqllimit:10m rate=3r/s;" >> /etc/nginx/sites-available/jaaql
+    echo "limit_req_zone \$binary_remote_addr zone=httplimit:10m rate=5r/s;" >> /etc/nginx/sites-available/jaaql
   fi
   if [ "$IS_HTTPS" = "TRUE" ] ; then
     if [ "$HTTPS_WWW" = "TRUE" ] ; then
@@ -150,7 +150,7 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   if [ "$ALLOW_UNLIMITED_REQUESTS" = "TRUE" ]; then
     echo "Skipping jaaqllimit as unlimited requests allowed"
   else
-    echo "        limit_req zone=jaaqllimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
+    echo "        limit_req zone=jaaqllimit burst=10 delay=7;" >> /etc/nginx/sites-available/jaaql
     echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
   fi
   echo "        include proxy_params;" >> /etc/nginx/sites-available/jaaql
@@ -171,7 +171,7 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   if [ "$ALLOW_UNLIMITED_REQUESTS" = "TRUE" ]; then
     echo "Skipping jaaqllimit2 as unlimited requests allowed"
   else
-    echo "        limit_req zone=jaaqllimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
+    echo "        limit_req zone=jaaqllimit burst=10 delay=7;" >> /etc/nginx/sites-available/jaaql
     echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
   fi
   echo "        include proxy_params;" >> /etc/nginx/sites-available/jaaql
