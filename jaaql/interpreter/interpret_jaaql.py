@@ -11,7 +11,8 @@ from jaaql.db.db_interface import DBInterface, ECHO__none
 from psycopg.errors import OperationalError, Error
 from jaaql.constants import KEY__position, KEY__file, KEY__application, KEY__error, KEY__error_row_number, KEY__error_query, \
     KEY__error_set, KEY__error_index, SQLStateJaaql, KEY__restrictions, REGEX__dmbs_object_name
-from jaaql.exceptions.jaaql_interpretable_handled_errors import DatabaseOperationalError, HandledProcedureError, UnhandledQueryError, UnhandledProcedureError
+from jaaql.exceptions.jaaql_interpretable_handled_errors import DatabaseOperationalError, HandledProcedureError, UnhandledQueryError, UnhandledProcedureError, \
+    SingletonRequested
 from typing import Union
 
 
@@ -295,23 +296,27 @@ class InterpretJAAQL:
                                 pass
                             raise ex
 
+                skipped_singletons = []
+
                 for cur_query, cur_parameters, cur_row_idx, cur_state in zip(to_exec, replacement_parameters, range(len(to_exec)), states):
                     exc_query = cur_query
                     exc_state = cur_state
                     exc_row_idx = cur_row_idx
                     exc_parameters = cur_parameters
                     exc_row_number = cur_parameters.get(KEY__row_number)
-                    last_query, found_parameter_dictionary = self.pre_prepare_statement(cur_query, cur_parameters, for_prepare=do_prepare_only is not False and do_prepare_only is not None)
+                    last_query, found_parameter_dictionary = self.pre_prepare_statement(
+                        cur_query, cur_parameters, for_prepare=do_prepare_only is not False and do_prepare_only is not None,
+                        skipped_singletons=skipped_singletons)
 
                     enc_parameter_dictionary = {}
 
                     encrypt_parameters = {key: val for key, val in cur_parameters.items() if key not in found_parameter_dictionary}
 
                     if len(encrypt_parameters) != 0:
-                        last_query, enc_parameter_dictionary = self.pre_prepare_statement(last_query, encrypt_parameters,
-                                                                                          match_regex=REGEX_enc_query_argument,
-                                                                                          encryption_key=encryption_key,
-                                                                                          for_prepare=do_prepare_only is not False and do_prepare_only is not None)
+                        last_query, enc_parameter_dictionary = self.pre_prepare_statement(
+                            last_query, encrypt_parameters, match_regex=REGEX_enc_query_argument,
+                            encryption_key=encryption_key, for_prepare=do_prepare_only is not False and do_prepare_only is not None,
+                            skipped_singletons=skipped_singletons)
 
                     last_query = self.encrypt_literals(last_query, encryption_key)
                     found_params = {**found_parameter_dictionary, **enc_parameter_dictionary}
@@ -328,12 +333,17 @@ class InterpretJAAQL:
                             ["NULL" for _ in found_params.keys()]) + arg_close
                         found_params = {}
 
+                    cur_assert = query_obj.get(KEY_assert)
+
                     if query_key in skip_as_restricted:
                         res = {
                             "columns": [],
                             "rows": [],
                             "type_codes": []
                         }
+                        if cur_assert == ASSERT_one:
+                            skipped_singletons.append(query_key)
+
                     else:
                         res = self.db_interface.execute_query_fetching_results(conn, last_query, found_params, wait_hook=wait_hook,
                                                                                requires_dba_check=check_required and canned_query_service is not None)
@@ -358,12 +368,16 @@ class InterpretJAAQL:
                     else:
                         ret = res
 
-                    cur_assert = query_obj.get(KEY_assert)
                     if cur_assert != ASSERT_none and query_key not in skip_as_restricted:
                         if cur_assert == ASSERT_zero and len(res["rows"]) != ASSERT_zero:
                             raise HttpStatusException(ERR_assert_expecting % (str(ASSERT_zero), len(res["rows"])), HTTPStatus.BAD_REQUEST)
                         elif cur_assert == ASSERT_one and len(res["rows"]) != ASSERT_one:
-                            raise HttpStatusException(ERR_assert_expecting % (str(ASSERT_one), len(res["rows"])), HTTPStatus.BAD_REQUEST)
+                            raise SingletonRequested(exc_query_key, descriptor={
+                                "row_count": len(res["rows"]),
+                                "columns": res["rows"],
+                                "rows": res["columns"],
+                                "type_codes": res["type_codes"]
+                            })
                         elif cur_assert == ASSERT_one_plus and len(res["rows"]) < ASSERT_one_plus_minimum_allowed:
                             raise HttpStatusException(ERR_assert_expecting % (str(ASSERT_one_plus_message), len(res["rows"])), HTTPStatus.BAD_REQUEST)
 
@@ -437,6 +451,7 @@ class InterpretJAAQL:
             elif is_dict_query:
                 if isinstance(ex, JaaqlInterpretableHandledError):
                     err = ex
+                    err.set = exc_query_key
                 else:
                     new_ex = HttpStatusException(str(ex))
                     if isinstance(ex, HttpStatusException):
@@ -646,7 +661,7 @@ class InterpretJAAQL:
         return new_query + query[last_end_match:]
 
     def pre_prepare_statement(self, query, parameters, match_regex: str = REGEX_query_argument, encryption_key: bytes = None,
-                              require_presence: bool = True, for_prepare: bool = False):
+                              require_presence: bool = True, for_prepare: bool = False, skipped_singletons: list[str] = None):
         prepared = ""
         last_index = 0
         found_parameters = []
@@ -670,7 +685,11 @@ class InterpretJAAQL:
             if match_str not in found_parameters:
                 if match_str not in parameters and match_str not in MARKERS:
                     if require_presence:
-                        raise HttpStatusException(ERR_missing_parameter % match_str, HTTPStatus.BAD_REQUEST)
+                        missing_str = ERR_missing_parameter % match_str
+                        if skipped_singletons is not None and len(skipped_singletons) != 0:
+                            missing_str += ". Is it possible the parameter exists in one of the following restricted singletons: " + ", ".join(
+                                missing_str) + "?"
+                        raise HttpStatusException(missing_str, HTTPStatus.BAD_REQUEST)
                     else:
                         continue
                 elif match_str not in parameters and match_str in MARKERS:

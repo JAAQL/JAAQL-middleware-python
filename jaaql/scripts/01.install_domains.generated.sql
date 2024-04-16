@@ -7,7 +7,7 @@ CREATE DOMAIN encrypted__access_token AS character varying(64);
 CREATE DOMAIN encrypted__jaaql_username AS character varying(255);
 CREATE DOMAIN encrypted__hash AS character varying(512);
 CREATE DOMAIN encrypted__salted_ip AS character varying(256);
-CREATE DOMAIN internet_name AS character varying(63) CHECK (VALUE ~* '^[a-z0-9\-\$]*$');
+CREATE DOMAIN internet_name AS character varying(63) CHECK (VALUE ~* '^[a-z0-9\-]*$');
 CREATE DOMAIN url AS character varying(256);
 CREATE DOMAIN location AS character varying(256);
 CREATE DOMAIN object_name AS character varying(63) CHECK (VALUE ~* '^[a-zA-Z_][a-zA-Z_0-9\$]*$');

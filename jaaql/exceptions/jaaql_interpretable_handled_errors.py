@@ -147,7 +147,7 @@ class SingletonRequested(JaaqlInterpretableHandledError):
             error_code=1011,
             http_response_code=422,
             table_name=None,
-            message="A singleton was requested for this set but either 0 or 1 row was returned",
+            message="A singleton was requested for this set but either 0 or many rows were returned",
             column_name=None,
             _set=_set,
             index=None,
