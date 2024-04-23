@@ -1,6 +1,4 @@
-/*
-**  This installation module was generated from ..\..\Packages/DBMS/Postgres/15/domains.install for Postgres/15
-*/
+--  This installation module was generated from ..\..\Packages/DBMS/Postgres/15/domains.install for Postgres/15
 
 CREATE DOMAIN encrypted__email_server_password AS character varying(256);
 CREATE DOMAIN encrypted__access_token AS character varying(64);

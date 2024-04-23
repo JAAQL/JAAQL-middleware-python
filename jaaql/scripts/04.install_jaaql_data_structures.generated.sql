@@ -1,6 +1,4 @@
-﻿/*
-**  This installation module was generated from ..\..\Packages/DBMS/Postgres/15/jaaql.install for Postgres/15
-*/
+--  This installation module was generated from ..\..\Packages/DBMS/Postgres/15/jaaql.install for Postgres/15
 -- BATON functions
 
 create function "BS.iso_extended_week_number" (

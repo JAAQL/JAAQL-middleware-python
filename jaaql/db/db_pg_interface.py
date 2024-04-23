@@ -239,7 +239,7 @@ class DBPGInterface(DBInterface):
 
     def handle_db_error(self, err, echo):
         if isinstance(err, ProgrammingError) and hasattr(err, 'pgresult'):
-            err = err.pgresult.error_message.decode("ASCII")
+            err = err.pgresult.error_message.decode("UTF-8")
 
         err = str(err)
         if echo != ECHO__none:
