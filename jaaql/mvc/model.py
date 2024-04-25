@@ -923,7 +923,7 @@ WHERE
 
         self._send_signup_email(sign_up_template, account_id, app, username)
 
-    def sign_up(self, inputs):
+    def sign_up(self, inputs, ip_address: str, response: JAAQLResponse):
         app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
 
         if inputs[KEY__sign_up_template] is None:
@@ -978,6 +978,9 @@ WHERE
         }, new_account_id, None, self.cached_canned_query_service, singleton=True)
 
         self._send_signup_email(sign_up_template, new_account_id, app, inputs[KEY__username])
+
+        if requires_confirmation:
+            self.get_auth_token(inputs[KEY__username], ip_address, password, response, True)
 
         return res
 

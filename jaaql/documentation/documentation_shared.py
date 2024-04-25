@@ -80,6 +80,14 @@ DOCUMENTATION__oauth_token = SwaggerDocumentation(
     )
 )
 
+ARG_RES__remember_me = SwaggerArgumentResponse(
+    name=KEY__remember_me,
+    arg_type=bool,
+    description="Whether or not the returned cookie will act as a remember me cookie",
+    required=False,
+    condition="Defaults to false"
+)
+
 DOCUMENTATION__oauth_cookie = SwaggerDocumentation(
     tags="OAuth",
     security=False,  # This _is_ the security method, therefore it is not expecting a jwt token
@@ -93,11 +101,7 @@ DOCUMENTATION__oauth_cookie = SwaggerDocumentation(
         body=[
             ARG_RES__username,
             ARG_RES__password,
-            SwaggerArgumentResponse(
-                name=KEY__remember_me,
-                arg_type=bool,
-                description="Whether or not the returned cookie will act as a remember me cookie"
-            )
+            ARG_RES__remember_me
         ],
         response=SwaggerFlatResponse()
     )

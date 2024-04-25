@@ -101,8 +101,8 @@ class JAAQLController(BaseJAAQLController):
             return self.model.invite(http_inputs, account_id, is_the_anonymous_user)
 
         @self.publish_route('/sign-up', DOCUMENTATION__sign_up)
-        def sign_up(http_inputs: dict):
-            return self.model.sign_up(http_inputs)
+        def sign_up(http_inputs: dict, ip_address: str, response: JAAQLResponse):
+            return self.model.sign_up(http_inputs, ip_address, response)
 
         @self.publish_route('/sign-up-resend', DOCUMENTATION__resend_sign_up)
         def sign_up_resend(http_inputs: dict, account_id: str, username: str):

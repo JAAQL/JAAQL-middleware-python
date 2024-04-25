@@ -3,7 +3,8 @@ import uuid
 from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
 from jaaql.mvc.generated_queries import *
-from jaaql.documentation.documentation_shared import ARG_RES__username, set_nullable, ARG_RES__password, RES__oauth_token, rename_arg
+from jaaql.documentation.documentation_shared import (ARG_RES__username, set_nullable, ARG_RES__password, RES__oauth_token, rename_arg,
+                                                      ARG_RES__remember_me)
 
 TITLE = "JAAQL API"
 DESCRIPTION = "Collection of methods in the JAAQL API"
@@ -219,6 +220,7 @@ DOCUMENTATION__sign_up = SwaggerDocumentation(
                 ARG_RES__username,
                 set_nullable(ARG_RES__password, "Is the user going through an unconfirmed signup"),
                 ARG_RES__parameters,
+                ARG_RES__remember_me,
                 ARG_RES__query,
                 ARG_RES__event_application,
                 SwaggerArgumentResponse(
