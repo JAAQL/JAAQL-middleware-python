@@ -19,7 +19,7 @@ REGEX__email_parameter = r'({{)([a-zA-Z0-9_\-]+)(}})'
 REGEX__email_uri_encoded_parameter = r'(\[\[)([a-zA-Z0-9_\-]+)(\]\])'
 REPLACE__str = "{{%s}}"
 REPLACE__uri_encoded_str = "[[%s]]"
-ERR__missing_parameter = "Missing parameter from template '%s'"
+ERR__missing_parameter = "Missing replacement parameter '%s' found in template but not in replacement variables. Available variables are: %s"
 ERR__unexpected_parameter_in_template = "Unexpected parameter in template '%s'"
 
 EMAIL_HTML__start = "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\r\n<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"en\">\r\n<body>\r\n"
@@ -89,6 +89,6 @@ class EmailManager:
 
         matched = re.findall(replace_regex, html_template)
         if len(matched) != 0:
-            raise HttpStatusException(ERR__missing_parameter % matched[0][1])
+            raise HttpStatusException(ERR__missing_parameter % (matched[0][1], str(list(args.keys()))))
 
         return html_template

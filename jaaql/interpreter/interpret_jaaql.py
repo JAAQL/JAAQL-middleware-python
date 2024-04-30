@@ -12,7 +12,7 @@ from psycopg.errors import OperationalError, Error
 from jaaql.constants import KEY__position, KEY__file, KEY__application, KEY__error, KEY__error_row_number, KEY__error_query, \
     KEY__error_set, KEY__error_index, SQLStateJaaql, KEY__restrictions, REGEX__dmbs_object_name
 from jaaql.exceptions.jaaql_interpretable_handled_errors import DatabaseOperationalError, HandledProcedureError, UnhandledQueryError, UnhandledProcedureError, \
-    SingletonRequested
+    SingletonExpected
 from typing import Union
 
 
@@ -372,7 +372,7 @@ class InterpretJAAQL:
                         if cur_assert == ASSERT_zero and len(res["rows"]) != ASSERT_zero:
                             raise HttpStatusException(ERR_assert_expecting % (str(ASSERT_zero), len(res["rows"])), HTTPStatus.BAD_REQUEST)
                         elif cur_assert == ASSERT_one and len(res["rows"]) != ASSERT_one:
-                            raise SingletonRequested(exc_query_key, descriptor={
+                            raise SingletonExpected(exc_query_key, descriptor={
                                 "row_count": len(res["rows"]),
                                 "columns": res["rows"],
                                 "rows": res["columns"],

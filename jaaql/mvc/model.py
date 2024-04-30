@@ -702,7 +702,7 @@ WHERE
         parameters = None
 
         if template[KG__email_template__type] in [EMAIL_TYPE__signup, EMAIL_TYPE__reset_password, EMAIL_TYPE__unregistered_password_reset]:
-            if not template[KG__email_template__requires_confirmation]:
+            if template[KG__email_template__requires_confirmation]:
                 self.add_account_password(sec_evt[KG__security_event__account], inputs[KEY__password])
 
         # Anything where we follow an email link confirms the account
@@ -979,7 +979,7 @@ WHERE
 
         self._send_signup_email(sign_up_template, new_account_id, app, inputs[KEY__username])
 
-        if requires_confirmation:
+        if not requires_confirmation:
             self.get_auth_token(inputs[KEY__username], ip_address, password, response, True)
 
         return res
@@ -1197,6 +1197,8 @@ WHERE
 
         try:
             res = json.loads(result.stdout)
+            if os.environ.get("JAAQL_PROCEDURE_DEBUGGING", "false").lower() == "true":
+                print(result.stderr)
             if result.returncode == 0:
                 return res
             elif "error_code" in res:
@@ -1212,7 +1214,7 @@ WHERE
                 raise UnhandledRemoteProcedureError()
 
             traceback.print_exc()
-            raise HttpStatusException("Could not intepret webhook procedure result", HTTPStatus.INTERNAL_SERVER_ERROR)
+            raise HttpStatusException("Could not intepret remote procedure result", HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def handle_webhook(self, application: str, name: str, body: bytes, headers: dict, args: dict, response: JAAQLResponse):
         rpc = remote_procedure__select(self.jaaql_lookup_connection, application, name)
@@ -1259,7 +1261,10 @@ WHERE
         cron_string = self.cron_expression_to_string(cron_input)
         cron_command = '(crontab -l 2> /dev/null; echo "' + cron_string + ' ' + command + '  # jaaql__' + application + '") | crontab -'
         if self.is_container:
-            subprocess.run(cron_command, check=True, shell=True, timeout=5)
+            try:
+                subprocess.run(cron_command, check=True, shell=True, timeout=5, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            except subprocess.CalledProcessError as e:
+                raise CronExpressionError("Error with the cron expression. Input: " + json.dumps(cron_input) + ", evaluated to cron expression: '" + cron_string + "', Stdout:\n" + (e.stdout.decode() if e.stdout else "None") + "\n\nStderr: " + (e.stderr.decode() if e.stderr else "None"))
         else:
             print(cron_command)
             print("Cron not supported in debugging mode", file=sys.stderr)

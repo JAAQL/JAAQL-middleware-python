@@ -4,6 +4,13 @@ set -e
 Xvfb -ac :99 -screen 0 1920x1080x16 &
 export DISPLAY=:99
 
+if [ -z "${TZ}" ]; then
+  echo "Using default timezone"
+else
+  echo "Using timezone $TZ"
+  ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+fi
+
 service cron start
 
 # We expect a backup here
@@ -262,12 +269,14 @@ fi
 
 docker-entrypoint.sh postgres &
 
+(echo "TZ=$TZ") | /usr/bin/crontab -
+
 if [ "$IS_HTTPS" = "TRUE" ] ; then
   if [ "$PIGGYBACK_LETSENCRYPT" = "TRUE" ] ; then
     echo "Skipping certbot renewal as piggybacking implementation"
   else
     $CERTBOT_PATH renew --dry-run &
-    (crontab -l 2>/dev/null; echo "0 0,12 * * * root $PY_PATH -c 'import random; import time; time.sleep(random.random() * 3600)' && $CERTBOT_PATH renew -q") | crontab -
+    (/usr/bin/crontab -l 2>/dev/null; echo "0 0,12 * * * root $PY_PATH -c 'import random; import time; time.sleep(random.random() * 3600)' && $CERTBOT_PATH renew -q") | /usr/bin/crontab -
   fi
 fi
 

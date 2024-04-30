@@ -141,13 +141,13 @@ class UnhandledJaaqlServerError(JaaqlInterpretableHandledError):
         )
 
 
-class SingletonRequested(JaaqlInterpretableHandledError):
+class SingletonExpected(JaaqlInterpretableHandledError):
     def __init__(self, _set, descriptor=None):
         super().__init__(
             error_code=1011,
             http_response_code=422,
             table_name=None,
-            message="A singleton was requested for this set but either 0 or many rows were returned",
+            message="A singleton was requested but this set does not contain exactly one row",
             column_name=None,
             _set=_set,
             index=None,
@@ -316,6 +316,20 @@ class UnhandledRemoteProcedureError(JaaqlInterpretableHandledError):
             http_response_code=500,
             table_name=None,
             message="An unhandled exception has occurred with the remote procedure.",
+            column_name=None,
+            _set=None,
+            index=None,
+            descriptor=descriptor
+        )
+
+
+class CronExpressionError(JaaqlInterpretableHandledError):
+    def __init__(self, message, descriptor=None):
+        super().__init__(
+            error_code=1024,
+            http_response_code=422,
+            table_name=None,
+            message=message,
             column_name=None,
             _set=None,
             index=None,
