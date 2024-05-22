@@ -278,8 +278,11 @@ class InterpretJAAQL:
                     elif the_role in checked_roles_restrict:
                         skip_as_restricted.append(query_key)
                     else:
-                        check_query = "SELECT T.has_role FROM check_user_role(%s, %s) T;"
-                        check_parameters = (the_role, self.db_interface.role)
+                        check_query = "SELECT T.has_role FROM check_user_role(%(test_role)s, %(interface_role)s) T;"
+                        check_parameters = {
+                            "test_role": the_role,
+                            "interface_role": self.db_interface.role
+                        }
                         check_conn = self.jaaql_db_interface.get_conn()
                         try:
                             permitted = self.jaaql_db_interface.execute_query_fetching_results(check_conn, check_query, check_parameters)["rows"][0][0]
