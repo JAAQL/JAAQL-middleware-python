@@ -52,5 +52,5 @@ class JaaqlInterpretableHandledError(Exception):
         return JaaqlInterpretableHandledError(
             obj.get("error_code"), RESPONSE_CODE_LOOKUP.get(obj.get("error_code"), 422), obj.get("table_name"),
             obj.get("index"), obj.get("message"), obj.get("column_name"),
-            obj.get("_set"), obj.get("descriptor")
+            obj.get("set"), obj.get("descriptor")
         )

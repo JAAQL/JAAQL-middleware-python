@@ -723,7 +723,8 @@ class BaseJAAQLController:
                 "table_name": error.table_name,
                 "index": error.index,
                 "column_name": error.column_name,
-                "descriptor": error.descriptor
+                "descriptor": error.descriptor,
+                "set": error.set
             })
             res.status = error.response_code
             return BaseJAAQLController._cors(res)
