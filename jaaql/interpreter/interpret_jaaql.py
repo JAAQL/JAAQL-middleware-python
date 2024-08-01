@@ -397,7 +397,7 @@ class InterpretJAAQL:
             traceback.print_exc()
             if isinstance(ex, OperationalError):
                 err = DatabaseOperationalError(
-                    message=str(err),
+                    message=str(ex),
                     descriptor={
                         "class": ex.diag.sqlstate[0:2],
                         "constraint_name": ex.diag.constraint_name,
