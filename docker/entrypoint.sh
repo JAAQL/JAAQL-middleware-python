@@ -175,24 +175,12 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   echo "$SECURITY_HEADERS" >> /etc/nginx/sites-available/jaaql
   echo "    root $INSTALL_PATH/www;" >> /etc/nginx/sites-available/jaaql
   echo "    location /api {" >> /etc/nginx/sites-available/jaaql
-  if [ "$ALLOW_UNLIMITED_REQUESTS" = "TRUE" ]; then
-    echo "Skipping jaaqllimit2 as unlimited requests allowed"
-  else
-    echo "        limit_req zone=jaaqllimit burst=10 delay=7;" >> /etc/nginx/sites-available/jaaql
-    echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
-  fi
   echo "        include proxy_params;" >> /etc/nginx/sites-available/jaaql
   echo "        proxy_pass http://unix:$INSTALL_PATH/jaaql.sock:/;" >> /etc/nginx/sites-available/jaaql
   echo "        proxy_set_header X-Real-IP \$remote_addr;" >> /etc/nginx/sites-available/jaaql
   echo "    }" >> /etc/nginx/sites-available/jaaql
   echo "    index index.html;" >> /etc/nginx/sites-available/jaaql
   echo "    location / {" >> /etc/nginx/sites-available/jaaql
-  if [ "$ALLOW_UNLIMITED_REQUESTS" = "TRUE" ]; then
-    echo "Skipping httplimit2 as unlimited requests allowed"
-  else
-    echo "        limit_req zone=httplimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
-    echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
-  fi
   echo "    }" >> /etc/nginx/sites-available/jaaql
   echo "}" >> /etc/nginx/sites-available/jaaql
 fi
