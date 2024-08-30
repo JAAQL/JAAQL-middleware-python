@@ -382,9 +382,21 @@ WHERE
                 if not in_section or line.startswith('}') or line.strip().startswith("listen 443 ssl"):
                     updated_lines.append(line)
 
+            second_iteration_updated_lines = []
+            in_localhost = False
+            for line in updated_lines:
+                if line.strip().startswith("server_name localhost;"):
+                    in_localhost = True
+
+                if line.startswith("}"):
+                    in_localhost = False
+
+                if not in_localhost or not line.strip().startswith("limit_req"):  # Ignore limit req for local requests
+                    second_iteration_updated_lines.append(line)
+
             # Write the updated content back to the file
             with open(file_path, 'w') as file:
-                file.writelines(updated_lines)
+                file.writelines(second_iteration_updated_lines)
 
             subprocess.call(['nginx', '-s', 'reload'])
         else:
