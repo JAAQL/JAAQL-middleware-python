@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
 Xvfb -ac :99 -screen 0 1920x1080x16 &
@@ -231,10 +231,10 @@ replace_config
 rm -rf /etc/nginx/sites-enabled/default
 sed 's/\\n/\
 /g' -i /etc/nginx/sites-available/jaaql
-sed -i 's/http {/http {\n        server_tokens off;\n        server_names_hash_bucket_size 128;\n/g' /etc/nginx/nginx.conf
+grep -q "server_tokens" /etc/nginx/nginx.conf || sed -i 's/http {/http {\n        server_tokens off;\n        server_names_hash_bucket_size 128;\n/g' /etc/nginx/nginx.conf
 sed 's/\\n/\
 /g' -i /etc/nginx/nginx.conf
-service nginx restart
+service nginx restart || { echo "Failed to restart nginx. Reason: $(nginx -t 2>&1)"; exit 1; }
 
 CERT_DIR=/etc/letsencrypt/live/$SERVER_ADDRESS
 if [ "$IS_HTTPS" = "TRUE" ] && [ ! -d "$CERT_DIR" ] ; then
@@ -244,7 +244,7 @@ if [ "$IS_HTTPS" = "TRUE" ] && [ ! -d "$CERT_DIR" ] ; then
     APPLY_URL="$APPLY_URL -d www.$SERVER_ADDRESS"
   fi
   $CERTBOT_PATH --nginx $APPLY_URL --redirect --noninteractive --no-eff-email --email $HTTPS_EMAIL --agree-tos -w $INSTALL_PATH/www
-  service nginx restart
+  service nginx restart || { echo "Failed to restart nginx. Reason: $(nginx -t 2>&1)"; exit 1; }
 elif [ "$IS_HTTPS" = "TRUE" ] && [ -d "$CERT_DIR" ] ; then
   echo "Found existing certificates. Installing"
   if [ "$HTTPS_WWW" = "TRUE" ] ; then
@@ -252,7 +252,7 @@ elif [ "$IS_HTTPS" = "TRUE" ] && [ -d "$CERT_DIR" ] ; then
   else
     printf "1\n1\n" | $CERTBOT_PATH --nginx
   fi
-  service nginx restart
+  service nginx restart || { echo "Failed to restart nginx. Reason: $(nginx -t 2>&1)"; exit 1; }
 fi
 
 docker-entrypoint.sh postgres &
