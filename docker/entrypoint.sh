@@ -14,7 +14,7 @@ fi
 service cron start
 
 # We expect a backup here
-if [ -z "${IS_FROZEN}" ]; then
+if [ -z "${IS_RESTORING}" ]; then
   echo "Creating JAAQL from scratch"
 else
   echo "Waiting for restore"
