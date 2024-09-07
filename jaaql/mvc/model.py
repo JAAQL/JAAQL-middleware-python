@@ -872,13 +872,14 @@ WHERE
                 }
 
                 reset_password_data = submit(self.vault, self.config, self.get_db_crypt_key(),
-                                             self.jaaql_lookup_connection, submit_data, self.jaaql_lookup_connection.role,
+                                             self.jaaql_lookup_connection, submit_data, ROLE__jaaql,
                                              None, self.cached_canned_query_service, as_objects=True, singleton=True)
 
         except HttpSingletonStatusException:
             raise HttpSingletonStatusException("Multiple rows returned when selecting from reset password data view")
 
         reset_password_data[EMAIL_PARAM__app_url] = app[KG__application__base_url]
+        reset_password_data[EMAIL_PARAM__app_name] = app[KG__application__name]
         reset_password_data[EMAIL_PARAM__email_address] = inputs[KEY__username]
         reset_password_data[EMAIL_PARAM__unlock_key] = reg_env_ins[KG__security_event__unlock_key]
         reset_password_data[EMAIL_PARAM__unlock_code] = unlock_code
@@ -1048,7 +1049,7 @@ WHERE
                              self.cached_canned_query_service, as_objects=False, singleton=True, keep_alive_conn=True, conn=conn,
                              interface=account_db_interface)
                 pre_ret = ret
-                ret = objectify(ret[list(ret.keys())[-1]], singleton=True)
+                ret = objectify(ret[list(ret.keys())[0]], singleton=True)
             else:
                 # For public sign up be careful about this
                 ret = inputs[KEY__parameters]
@@ -1090,7 +1091,7 @@ WHERE
                 try:
                     dbms_user = submit(self.vault, self.config, self.get_db_crypt_key(),
                                        self.jaaql_lookup_connection, get_user_data,
-                                       self.jaaql_lookup_connection.role, None,
+                                       ROLE__jaaql, None,
                                        self.cached_canned_query_service, as_objects=True,
                                        singleton=True)[dbms_user_column_name]
 
@@ -1103,8 +1104,8 @@ WHERE
             account_existed = False
             try:
                 new_account_id = self.create_account_with_potential_password(self.jaaql_lookup_connection, inputs[KEY__username])
-            except HttpStatusException as hs:
-                if not hs.message.startswith(SQL__err_duplicate):
+            except UnhandledQueryError as hs:
+                if not hs.descriptor['sqlstate'] == SQLState.UniqueViolation.value:
                     raise hs  # Unrelated exception, raise it
 
                 account = fetch_account_from_username(self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
@@ -1132,7 +1133,7 @@ WHERE
             # This is desirable in many situations but will allow username enumeration
             submit_data[KEY_query] = f"UPDATE {base_relation} SET {dbms_user_column_name} = :{dbms_user_column_name}{where_clause}"
             submit_data[KEY__parameters][dbms_user_column_name] = new_account_id
-            submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, self.jaaql_lookup_connection.role,
+            submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, ROLE__jaaql,
                    None, self.cached_canned_query_service)
 
             template = already_signed_up_template if account_existed else sign_up_template
@@ -1143,6 +1144,7 @@ WHERE
                                                new_account_id)
 
             sign_up_data[EMAIL_PARAM__app_url] = app[KG__application__base_url]
+            sign_up_data[EMAIL_PARAM__app_name] = app[KG__application__name]
             sign_up_data[EMAIL_PARAM__email_address] = inputs[KEY__username]
             sign_up_data[EMAIL_PARAM__unlock_key] = reg_event[KG__security_event__unlock_key]
             sign_up_data[EMAIL_PARAM__unlock_code] = unlock_code

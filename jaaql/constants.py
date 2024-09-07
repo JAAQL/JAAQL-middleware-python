@@ -98,6 +98,7 @@ ENVIRON__canned_queries = "CANNED_QUERIES"
 EMAIL_PARAM__unlock_key = "JAAQL__UNLOCK_KEY"
 EMAIL_PARAM__unlock_code = "JAAQL__UNLOCK_CODE"
 EMAIL_PARAM__app_url = "JAAQL__APP_URL"
+EMAIL_PARAM__app_name = "JAAQL__APP_NAME"
 EMAIL_PARAM__email_address = "JAAQL__EMAIL_ADDRESS"
 
 CONFIG_KEY__server = "SERVER"
@@ -179,5 +180,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.23.19"
+VERSION = "4.23.20"
 
