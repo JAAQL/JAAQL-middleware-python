@@ -47,7 +47,11 @@ def load_template(is_container: bool, template_base_url: str, app_relative_path:
             try:
                 return open(template_path.replace("\\", "/"), "r").read()
             except FileNotFoundError:
-                raise HttpStatusException("Could not find template at path '%s'. Are you sure the template is accessible to JAAQL?" % template_path)
+                try:
+                    template_path = join(base_path, template_base_url, app_relative_path)
+                    return open(template_path.replace("\\", "/"), "r").read()
+                except FileNotFoundError:
+                    raise HttpStatusException("Could not find template at path '%s'. Are you sure the template is accessible to JAAQL?" % template_path)
     else:
         splitter = "" if template_base_url.endswith("/") else "/"
         return requests.get(template_base_url + splitter + app_relative_path).text

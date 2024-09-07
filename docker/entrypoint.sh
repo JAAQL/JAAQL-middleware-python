@@ -4,6 +4,9 @@ set -e
 Xvfb -ac :99 -screen 0 1920x1080x16 &
 export DISPLAY=:99
 
+ARCHIVE_DIR=/var/lib/postgresql/archives
+mkdir -p $ARCHIVE_DIR
+
 if [ -z "${TZ}" ]; then
   echo "Using default timezone"
 else
@@ -300,6 +303,10 @@ until psql -U "postgres" -d "jaaql" -c "select 1" > /dev/null 2>&1; do
   echo "Waiting for postgres server"
   sleep 1
 done
+
+if [ ! -f "$ARCHIVE_DIR/postgresql.conf" ] ; then
+  cp /var/lib/postgresql/data/postgresql.conf $ARCHIVE_DIR/postgresql.conf
+fi
 
 while :
 do
