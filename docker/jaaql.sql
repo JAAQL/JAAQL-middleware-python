@@ -13,6 +13,7 @@ BEGIN
                             with
                             ENCODING = ''UTF8''
                             TABLESPACE = pg_default
+                            TEMPLATE = template0
                             CONNECTION LIMIT = -1;');
       PERFORM dblink_exec('dbname=jaaql', 'create extension jaaql;');
       PERFORM dblink_exec('dbname=jaaql', 'create extension plpgsql_check;');

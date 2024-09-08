@@ -6,6 +6,13 @@ export DISPLAY=:99
 
 ARCHIVE_DIR=/var/lib/postgresql/archives
 mkdir -p $ARCHIVE_DIR
+WAS_EMPTY="false"
+if [ -z "$(ls -A /var/lib/postgresql/data)" ]; then
+    WAS_EMPTY="true"
+    su - postgres -c "TZ=$TZ /usr/lib/postgresql/16/bin/initdb $POSTGRES_INITDB_ARGS /var/lib/postgresql/data"
+    rm -f $ARCHIVE_DIR/basebackup
+    cp -r /var/lib/postgresql/data $ARCHIVE_DIR/basebackup
+fi
 
 if [ -z "${TZ}" ]; then
   echo "Using default timezone"
@@ -299,14 +306,21 @@ mv /JAAQL-middleware-python/docker/gunicorn_config.py.tmp /JAAQL-middleware-pyth
 echo "timeout = ${GUNICORN_TIMEOUT}" | cat - /JAAQL-middleware-python/docker/gunicorn_config.py > /JAAQL-middleware-python/docker/gunicorn_config.py.tmp
 mv /JAAQL-middleware-python/docker/gunicorn_config.py.tmp /JAAQL-middleware-python/docker/gunicorn_config.py
 
+if [ $WAS_EMPTY = "true" ]; then
+  until psql -U "postgres" -d "postgres" -c "select 1" > /dev/null 2>&1; do
+    echo "Waiting for postgres server"
+    sleep 1
+  done
+
+  for sql_file in /docker-entrypoint-initdb.d/*.sql; do
+    psql -U postgres -d postgres -f $sql_file
+  done
+fi
+
 until psql -U "postgres" -d "jaaql" -c "select 1" > /dev/null 2>&1; do
-  echo "Waiting for postgres server"
+  echo "Waiting for JAAQL db"
   sleep 1
 done
-
-if [ ! -f "$ARCHIVE_DIR/postgresql.conf" ] ; then
-  cp /var/lib/postgresql/data/postgresql.conf $ARCHIVE_DIR/postgresql.conf
-fi
 
 while :
 do
