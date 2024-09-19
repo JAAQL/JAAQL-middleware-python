@@ -87,16 +87,16 @@ create table application (
     check (unlock_code_validity_period between 15 and 86400) );
     create function "application.insert__internal" (
         is_live bool,
-        unlock_code_validity_period integer,
-        unlock_key_validity_period integer,
-        base_url character varying(256),
-        name character varying(63),
-        templates_source character varying(256) default null,
-        default_schema character varying(63) default null,
-        default_s_et character varying(63) default null,
-        default_a_et character varying(63) default null,
-        default_r_et character varying(63) default null,
-        default_u_et character varying(63) default null,
+        unlock_code_validity_period short_validity_period,
+        unlock_key_validity_period validity_period,
+        base_url url,
+        name internet_name,
+        templates_source location default null,
+        default_schema object_name default null,
+        default_s_et object_name default null,
+        default_a_et object_name default null,
+        default_r_et object_name default null,
+        default_u_et object_name default null,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
     $$
@@ -191,32 +191,32 @@ create table application (
     select * from plpgsql_check_function(
         '"application.insert__internal"('
             'bool,'
-            'integer,'
-            'integer,'
-            'character varying(256),'
-            'character varying(63),'
-            'character varying(256),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(63),'
+            'short_validity_period,'
+            'validity_period,'
+            'url,'
+            'internet_name,'
+            'location,'
+            'object_name,'
+            'object_name,'
+            'object_name,'
+            'object_name,'
+            'object_name,'
             'integer,'
             'boolean)'
     );
 
     create function "application.insert" (
         is_live bool,
-        unlock_code_validity_period integer,
-        unlock_key_validity_period integer,
-        base_url character varying(256),
-        name character varying(63),
-        templates_source character varying(256) default null,
-        default_schema character varying(63) default null,
-        default_s_et character varying(63) default null,
-        default_a_et character varying(63) default null,
-        default_r_et character varying(63) default null,
-        default_u_et character varying(63) default null) returns _jaaql_procedure_result as
+        unlock_code_validity_period short_validity_period,
+        unlock_key_validity_period validity_period,
+        base_url url,
+        name internet_name,
+        templates_source location default null,
+        default_schema object_name default null,
+        default_s_et object_name default null,
+        default_a_et object_name default null,
+        default_r_et object_name default null,
+        default_u_et object_name default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -242,16 +242,16 @@ create table application (
         END;
     $$ language plpgsql security definer;
     create function "application.update__internal" (
-        name character varying(63),
-        base_url character varying(256) default null,
-        templates_source character varying(256) default null,
-        default_schema character varying(63) default null,
-        default_s_et character varying(63) default null,
-        default_a_et character varying(63) default null,
-        default_r_et character varying(63) default null,
-        default_u_et character varying(63) default null,
-        unlock_key_validity_period integer default null,
-        unlock_code_validity_period integer default null,
+        name internet_name,
+        base_url url default null,
+        templates_source location default null,
+        default_schema object_name default null,
+        default_s_et object_name default null,
+        default_a_et object_name default null,
+        default_r_et object_name default null,
+        default_u_et object_name default null,
+        unlock_key_validity_period validity_period default null,
+        unlock_code_validity_period short_validity_period default null,
         is_live bool default null,
         _index integer default null,
         _check_only boolean default false) returns _status_record as
@@ -301,32 +301,32 @@ create table application (
 
     select * from plpgsql_check_function(
         '"application.update__internal"('
-            'character varying(63),'
-            'character varying(256),'
-            'character varying(256),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(63),'
-            'integer,'
-            'integer,'
+            'internet_name,'
+            'url,'
+            'location,'
+            'object_name,'
+            'object_name,'
+            'object_name,'
+            'object_name,'
+            'object_name,'
+            'validity_period,'
+            'short_validity_period,'
             'bool,'
             'integer,'
             'boolean)'
     );
 
     create function "application.update" (
-        name character varying(63),
-        base_url character varying(256) default null,
-        templates_source character varying(256) default null,
-        default_schema character varying(63) default null,
-        default_s_et character varying(63) default null,
-        default_a_et character varying(63) default null,
-        default_r_et character varying(63) default null,
-        default_u_et character varying(63) default null,
-        unlock_key_validity_period integer default null,
-        unlock_code_validity_period integer default null,
+        name internet_name,
+        base_url url default null,
+        templates_source location default null,
+        default_schema object_name default null,
+        default_s_et object_name default null,
+        default_a_et object_name default null,
+        default_r_et object_name default null,
+        default_u_et object_name default null,
+        unlock_key_validity_period validity_period default null,
+        unlock_code_validity_period short_validity_period default null,
         is_live bool default null) returns _jaaql_procedure_result as
     $$
         DECLARE
@@ -352,7 +352,7 @@ create table application (
         END;
     $$ language plpgsql security definer;
     create function "application.delete__internal" (
-        name character varying(63),
+        name internet_name,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
     $$
@@ -389,13 +389,13 @@ create table application (
 
     select * from plpgsql_check_function(
         '"application.delete__internal"('
-            'character varying(63),'
+            'internet_name,'
             'integer,'
             'boolean)'
     );
 
     create function "application.delete" (
-        name character varying(63)) returns _jaaql_procedure_result as
+        name internet_name) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -416,9 +416,9 @@ create table application_schema (
     database object_name not null,
     primary key (application, name) );
     create function "application_schema.insert__internal" (
-        database character varying(63),
-        name character varying(63),
-        application character varying(63),
+        database object_name,
+        name object_name,
+        application internet_name,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
     $$
@@ -479,17 +479,17 @@ create table application_schema (
     $$ language plpgsql security definer;
     select * from plpgsql_check_function(
         '"application_schema.insert__internal"('
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(63),'
+            'object_name,'
+            'object_name,'
+            'internet_name,'
             'integer,'
             'boolean)'
     );
 
     create function "application_schema.insert" (
-        database character varying(63),
-        name character varying(63),
-        application character varying(63)) returns _jaaql_procedure_result as
+        database object_name,
+        name object_name,
+        application internet_name) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -507,9 +507,9 @@ create table application_schema (
         END;
     $$ language plpgsql security definer;
     create function "application_schema.update__internal" (
-        application character varying(63),
-        name character varying(63),
-        database character varying(63) default null,
+        application internet_name,
+        name object_name,
+        database object_name default null,
         _index integer default null,
         _check_only boolean default false) returns _status_record as
     $$
@@ -551,17 +551,17 @@ create table application_schema (
 
     select * from plpgsql_check_function(
         '"application_schema.update__internal"('
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(63),'
+            'internet_name,'
+            'object_name,'
+            'object_name,'
             'integer,'
             'boolean)'
     );
 
     create function "application_schema.update" (
-        application character varying(63),
-        name character varying(63),
-        database character varying(63) default null) returns _jaaql_procedure_result as
+        application internet_name,
+        name object_name,
+        database object_name default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -578,8 +578,8 @@ create table application_schema (
         END;
     $$ language plpgsql security definer;
     create function "application_schema.delete__internal" (
-        application character varying(63),
-        name character varying(63),
+        application internet_name,
+        name object_name,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
     $$
@@ -618,15 +618,15 @@ create table application_schema (
 
     select * from plpgsql_check_function(
         '"application_schema.delete__internal"('
-            'character varying(63),'
-            'character varying(63),'
+            'internet_name,'
+            'object_name,'
             'integer,'
             'boolean)'
     );
 
     create function "application_schema.delete" (
-        application character varying(63),
-        name character varying(63)) returns _jaaql_procedure_result as
+        application internet_name,
+        name object_name) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -655,14 +655,14 @@ create table email_dispatcher (
     primary key (application, name),
     check (port between 1 and 65536) );
     create function "email_dispatcher.insert__internal" (
-        display_name character varying(64),
-        name character varying(63),
-        application character varying(63),
-        protocol character varying(8) default null,
-        url character varying(256) default null,
-        port integer default null,
-        username character varying(255) default null,
-        password character varying(256) default null,
+        display_name person_name,
+        name object_name,
+        application internet_name,
+        protocol email_dispatch_protocol default null,
+        url url default null,
+        port internet_port default null,
+        username email_server_username default null,
+        password encrypted__email_server_password default null,
         whitelist text default null,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
@@ -736,28 +736,28 @@ create table email_dispatcher (
     $$ language plpgsql security definer;
     select * from plpgsql_check_function(
         '"email_dispatcher.insert__internal"('
-            'character varying(64),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(8),'
-            'character varying(256),'
-            'integer,'
-            'character varying(255),'
-            'character varying(256),'
+            'person_name,'
+            'object_name,'
+            'internet_name,'
+            'email_dispatch_protocol,'
+            'url,'
+            'internet_port,'
+            'email_server_username,'
+            'encrypted__email_server_password,'
             'text,'
             'integer,'
             'boolean)'
     );
 
     create function "email_dispatcher.insert" (
-        display_name character varying(64),
-        name character varying(63),
-        application character varying(63),
-        protocol character varying(8) default null,
-        url character varying(256) default null,
-        port integer default null,
-        username character varying(255) default null,
-        password character varying(256) default null,
+        display_name person_name,
+        name object_name,
+        application internet_name,
+        protocol email_dispatch_protocol default null,
+        url url default null,
+        port internet_port default null,
+        username email_server_username default null,
+        password encrypted__email_server_password default null,
         whitelist text default null) returns _jaaql_procedure_result as
     $$
         DECLARE
@@ -782,14 +782,14 @@ create table email_dispatcher (
         END;
     $$ language plpgsql security definer;
     create function "email_dispatcher.update__internal" (
-        application character varying(63),
-        name character varying(63),
-        display_name character varying(64) default null,
-        protocol character varying(8) default null,
-        url character varying(256) default null,
-        port integer default null,
-        username character varying(255) default null,
-        password character varying(256) default null,
+        application internet_name,
+        name object_name,
+        display_name person_name default null,
+        protocol email_dispatch_protocol default null,
+        url url default null,
+        port internet_port default null,
+        username email_server_username default null,
+        password encrypted__email_server_password default null,
         whitelist text default null,
         _index integer default null,
         _check_only boolean default false) returns _status_record as
@@ -838,28 +838,28 @@ create table email_dispatcher (
 
     select * from plpgsql_check_function(
         '"email_dispatcher.update__internal"('
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(64),'
-            'character varying(8),'
-            'character varying(256),'
-            'integer,'
-            'character varying(255),'
-            'character varying(256),'
+            'internet_name,'
+            'object_name,'
+            'person_name,'
+            'email_dispatch_protocol,'
+            'url,'
+            'internet_port,'
+            'email_server_username,'
+            'encrypted__email_server_password,'
             'text,'
             'integer,'
             'boolean)'
     );
 
     create function "email_dispatcher.update" (
-        application character varying(63),
-        name character varying(63),
-        display_name character varying(64) default null,
-        protocol character varying(8) default null,
-        url character varying(256) default null,
-        port integer default null,
-        username character varying(255) default null,
-        password character varying(256) default null,
+        application internet_name,
+        name object_name,
+        display_name person_name default null,
+        protocol email_dispatch_protocol default null,
+        url url default null,
+        port internet_port default null,
+        username email_server_username default null,
+        password encrypted__email_server_password default null,
         whitelist text default null) returns _jaaql_procedure_result as
     $$
         DECLARE
@@ -883,8 +883,8 @@ create table email_dispatcher (
         END;
     $$ language plpgsql security definer;
     create function "email_dispatcher.delete__internal" (
-        application character varying(63),
-        name character varying(63),
+        application internet_name,
+        name object_name,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
     $$
@@ -923,15 +923,15 @@ create table email_dispatcher (
 
     select * from plpgsql_check_function(
         '"email_dispatcher.delete__internal"('
-            'character varying(63),'
-            'character varying(63),'
+            'internet_name,'
+            'object_name,'
             'integer,'
             'boolean)'
     );
 
     create function "email_dispatcher.delete" (
-        application character varying(63),
-        name character varying(63)) returns _jaaql_procedure_result as
+        application internet_name,
+        name object_name) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -973,16 +973,16 @@ create table email_template (
     can_be_sent_anonymously bool,
     primary key (application, name) );
     create function "email_template.insert__internal" (
-        content_url character varying(255),
-        type character varying(1),
-        name character varying(63),
-        dispatcher character varying(63),
-        application character varying(63),
-        validation_schema character varying(63) default null,
-        base_relation character varying(63) default null,
-        dbms_user_column_name character varying(63) default null,
-        permissions_and_data_view character varying(63) default null,
-        dispatcher_domain_recipient character varying(64) default null,
+        content_url safe_path,
+        type email_template_type,
+        name object_name,
+        dispatcher object_name,
+        application internet_name,
+        validation_schema object_name default null,
+        base_relation object_name default null,
+        dbms_user_column_name object_name default null,
+        permissions_and_data_view object_name default null,
+        dispatcher_domain_recipient email_account_username default null,
         requires_confirmation bool default null,
         can_be_sent_anonymously bool default null,
         _index integer default null,
@@ -1083,16 +1083,16 @@ create table email_template (
     $$ language plpgsql security definer;
     select * from plpgsql_check_function(
         '"email_template.insert__internal"('
-            'character varying(255),'
-            'character varying(1),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(64),'
+            'safe_path,'
+            'email_template_type,'
+            'object_name,'
+            'object_name,'
+            'internet_name,'
+            'object_name,'
+            'object_name,'
+            'object_name,'
+            'object_name,'
+            'email_account_username,'
             'bool,'
             'bool,'
             'integer,'
@@ -1100,16 +1100,16 @@ create table email_template (
     );
 
     create function "email_template.insert" (
-        content_url character varying(255),
-        type character varying(1),
-        name character varying(63),
-        dispatcher character varying(63),
-        application character varying(63),
-        validation_schema character varying(63) default null,
-        base_relation character varying(63) default null,
-        dbms_user_column_name character varying(63) default null,
-        permissions_and_data_view character varying(63) default null,
-        dispatcher_domain_recipient character varying(64) default null,
+        content_url safe_path,
+        type email_template_type,
+        name object_name,
+        dispatcher object_name,
+        application internet_name,
+        validation_schema object_name default null,
+        base_relation object_name default null,
+        dbms_user_column_name object_name default null,
+        permissions_and_data_view object_name default null,
+        dispatcher_domain_recipient email_account_username default null,
         requires_confirmation bool default null,
         can_be_sent_anonymously bool default null) returns _jaaql_procedure_result as
     $$
@@ -1138,16 +1138,16 @@ create table email_template (
         END;
     $$ language plpgsql security definer;
     create function "email_template.update__internal" (
-        application character varying(63),
-        name character varying(63),
-        dispatcher character varying(63) default null,
-        type character varying(1) default null,
-        content_url character varying(255) default null,
-        validation_schema character varying(63) default null,
-        base_relation character varying(63) default null,
-        dbms_user_column_name character varying(63) default null,
-        permissions_and_data_view character varying(63) default null,
-        dispatcher_domain_recipient character varying(64) default null,
+        application internet_name,
+        name object_name,
+        dispatcher object_name default null,
+        type email_template_type default null,
+        content_url safe_path default null,
+        validation_schema object_name default null,
+        base_relation object_name default null,
+        dbms_user_column_name object_name default null,
+        permissions_and_data_view object_name default null,
+        dispatcher_domain_recipient email_account_username default null,
         requires_confirmation bool default null,
         can_be_sent_anonymously bool default null,
         _index integer default null,
@@ -1200,16 +1200,16 @@ create table email_template (
 
     select * from plpgsql_check_function(
         '"email_template.update__internal"('
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(1),'
-            'character varying(255),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(64),'
+            'internet_name,'
+            'object_name,'
+            'object_name,'
+            'email_template_type,'
+            'safe_path,'
+            'object_name,'
+            'object_name,'
+            'object_name,'
+            'object_name,'
+            'email_account_username,'
             'bool,'
             'bool,'
             'integer,'
@@ -1217,16 +1217,16 @@ create table email_template (
     );
 
     create function "email_template.update" (
-        application character varying(63),
-        name character varying(63),
-        dispatcher character varying(63) default null,
-        type character varying(1) default null,
-        content_url character varying(255) default null,
-        validation_schema character varying(63) default null,
-        base_relation character varying(63) default null,
-        dbms_user_column_name character varying(63) default null,
-        permissions_and_data_view character varying(63) default null,
-        dispatcher_domain_recipient character varying(64) default null,
+        application internet_name,
+        name object_name,
+        dispatcher object_name default null,
+        type email_template_type default null,
+        content_url safe_path default null,
+        validation_schema object_name default null,
+        base_relation object_name default null,
+        dbms_user_column_name object_name default null,
+        permissions_and_data_view object_name default null,
+        dispatcher_domain_recipient email_account_username default null,
         requires_confirmation bool default null,
         can_be_sent_anonymously bool default null) returns _jaaql_procedure_result as
     $$
@@ -1254,8 +1254,8 @@ create table email_template (
         END;
     $$ language plpgsql security definer;
     create function "email_template.delete__internal" (
-        application character varying(63),
-        name character varying(63),
+        application internet_name,
+        name object_name,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
     $$
@@ -1294,15 +1294,15 @@ create table email_template (
 
     select * from plpgsql_check_function(
         '"email_template.delete__internal"('
-            'character varying(63),'
-            'character varying(63),'
+            'internet_name,'
+            'object_name,'
             'integer,'
             'boolean)'
     );
 
     create function "email_template.delete" (
-        application character varying(63),
-        name character varying(63)) returns _jaaql_procedure_result as
+        application internet_name,
+        name object_name) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -1325,10 +1325,10 @@ create table document_template (
     email_template object_name,
     primary key (application, name) );
     create function "document_template.insert__internal" (
-        content_path character varying(255),
-        name character varying(63),
-        application character varying(63),
-        email_template character varying(63) default null,
+        content_path safe_path,
+        name object_name,
+        application internet_name,
+        email_template object_name default null,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
     $$
@@ -1391,19 +1391,19 @@ create table document_template (
     $$ language plpgsql security definer;
     select * from plpgsql_check_function(
         '"document_template.insert__internal"('
-            'character varying(255),'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(63),'
+            'safe_path,'
+            'object_name,'
+            'internet_name,'
+            'object_name,'
             'integer,'
             'boolean)'
     );
 
     create function "document_template.insert" (
-        content_path character varying(255),
-        name character varying(63),
-        application character varying(63),
-        email_template character varying(63) default null) returns _jaaql_procedure_result as
+        content_path safe_path,
+        name object_name,
+        application internet_name,
+        email_template object_name default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -1422,10 +1422,10 @@ create table document_template (
         END;
     $$ language plpgsql security definer;
     create function "document_template.update__internal" (
-        application character varying(63),
-        name character varying(63),
-        content_path character varying(255) default null,
-        email_template character varying(63) default null,
+        application internet_name,
+        name object_name,
+        content_path safe_path default null,
+        email_template object_name default null,
         _index integer default null,
         _check_only boolean default false) returns _status_record as
     $$
@@ -1468,19 +1468,19 @@ create table document_template (
 
     select * from plpgsql_check_function(
         '"document_template.update__internal"('
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(255),'
-            'character varying(63),'
+            'internet_name,'
+            'object_name,'
+            'safe_path,'
+            'object_name,'
             'integer,'
             'boolean)'
     );
 
     create function "document_template.update" (
-        application character varying(63),
-        name character varying(63),
-        content_path character varying(255) default null,
-        email_template character varying(63) default null) returns _jaaql_procedure_result as
+        application internet_name,
+        name object_name,
+        content_path safe_path default null,
+        email_template object_name default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -1498,8 +1498,8 @@ create table document_template (
         END;
     $$ language plpgsql security definer;
     create function "document_template.delete__internal" (
-        application character varying(63),
-        name character varying(63),
+        application internet_name,
+        name object_name,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
     $$
@@ -1538,15 +1538,15 @@ create table document_template (
 
     select * from plpgsql_check_function(
         '"document_template.delete__internal"('
-            'character varying(63),'
-            'character varying(63),'
+            'internet_name,'
+            'object_name,'
             'integer,'
             'boolean)'
     );
 
     create function "document_template.delete" (
-        application character varying(63),
-        name character varying(63)) returns _jaaql_procedure_result as
+        application internet_name,
+        name object_name) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -1572,11 +1572,11 @@ create table document_request (
     render_timestamp timestamptz,
     primary key (uuid) );
     create function "document_request.insert__internal" (
-        encrypted_access_token character varying(64),
+        encrypted_access_token encrypted__access_token,
         request_timestamp timestamptz,
         uuid uuid,
-        template character varying(63),
-        application character varying(63),
+        template object_name,
+        application internet_name,
         encrypted_parameters text default null,
         render_timestamp timestamptz default null,
         _index integer default null,
@@ -1667,11 +1667,11 @@ create table document_request (
     $$ language plpgsql security definer;
     select * from plpgsql_check_function(
         '"document_request.insert__internal"('
-            'character varying(64),'
+            'encrypted__access_token,'
             'timestamptz,'
             'uuid,'
-            'character varying(63),'
-            'character varying(63),'
+            'object_name,'
+            'internet_name,'
             'text,'
             'timestamptz,'
             'integer,'
@@ -1679,11 +1679,11 @@ create table document_request (
     );
 
     create function "document_request.insert" (
-        encrypted_access_token character varying(64),
+        encrypted_access_token encrypted__access_token,
         request_timestamp timestamptz,
         uuid uuid,
-        template character varying(63),
-        application character varying(63),
+        template object_name,
+        application internet_name,
         encrypted_parameters text default null,
         render_timestamp timestamptz default null) returns _jaaql_procedure_result as
     $$
@@ -1708,10 +1708,10 @@ create table document_request (
     $$ language plpgsql security definer;
     create function "document_request.update__internal" (
         uuid uuid,
-        application character varying(63) default null,
-        template character varying(63) default null,
+        application internet_name default null,
+        template object_name default null,
         request_timestamp timestamptz default null,
-        encrypted_access_token character varying(64) default null,
+        encrypted_access_token encrypted__access_token default null,
         encrypted_parameters text default null,
         render_timestamp timestamptz default null,
         _index integer default null,
@@ -1759,10 +1759,10 @@ create table document_request (
     select * from plpgsql_check_function(
         '"document_request.update__internal"('
             'uuid,'
-            'character varying(63),'
-            'character varying(63),'
+            'internet_name,'
+            'object_name,'
             'timestamptz,'
-            'character varying(64),'
+            'encrypted__access_token,'
             'text,'
             'timestamptz,'
             'integer,'
@@ -1771,10 +1771,10 @@ create table document_request (
 
     create function "document_request.update" (
         uuid uuid,
-        application character varying(63) default null,
-        template character varying(63) default null,
+        application internet_name default null,
+        template object_name default null,
         request_timestamp timestamptz default null,
-        encrypted_access_token character varying(64) default null,
+        encrypted_access_token encrypted__access_token default null,
         encrypted_parameters text default null,
         render_timestamp timestamptz default null) returns _jaaql_procedure_result as
     $$
@@ -1863,8 +1863,8 @@ create table account (
     primary key (id),
     unique (username) );
     create function "account.insert__internal" (
-        username character varying(255),
-        id character varying(63),
+        username encrypted__jaaql_username,
+        id postgres_role,
         deletion_timestamp timestamptz default null,
         most_recent_password uuid default null,
         _index integer default null,
@@ -1925,8 +1925,8 @@ create table account (
     $$ language plpgsql security definer;
     select * from plpgsql_check_function(
         '"account.insert__internal"('
-            'character varying(255),'
-            'character varying(63),'
+            'encrypted__jaaql_username,'
+            'postgres_role,'
             'timestamptz,'
             'uuid,'
             'integer,'
@@ -1934,8 +1934,8 @@ create table account (
     );
 
     create function "account.insert" (
-        username character varying(255),
-        id character varying(63),
+        username encrypted__jaaql_username,
+        id postgres_role,
         deletion_timestamp timestamptz default null,
         most_recent_password uuid default null) returns _jaaql_procedure_result as
     $$
@@ -1956,8 +1956,8 @@ create table account (
         END;
     $$ language plpgsql security definer;
     create function "account.update__internal" (
-        id character varying(63),
-        username character varying(255) default null,
+        id postgres_role,
+        username encrypted__jaaql_username default null,
         deletion_timestamp timestamptz default null,
         most_recent_password uuid default null,
         _index integer default null,
@@ -2001,8 +2001,8 @@ create table account (
 
     select * from plpgsql_check_function(
         '"account.update__internal"('
-            'character varying(63),'
-            'character varying(255),'
+            'postgres_role,'
+            'encrypted__jaaql_username,'
             'timestamptz,'
             'uuid,'
             'integer,'
@@ -2010,8 +2010,8 @@ create table account (
     );
 
     create function "account.update" (
-        id character varying(63),
-        username character varying(255) default null,
+        id postgres_role,
+        username encrypted__jaaql_username default null,
         deletion_timestamp timestamptz default null,
         most_recent_password uuid default null) returns _jaaql_procedure_result as
     $$
@@ -2031,7 +2031,7 @@ create table account (
         END;
     $$ language plpgsql security definer;
     create function "account.delete__internal" (
-        id character varying(63),
+        id postgres_role,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
     $$
@@ -2068,13 +2068,13 @@ create table account (
 
     select * from plpgsql_check_function(
         '"account.delete__internal"('
-            'character varying(63),'
+            'postgres_role,'
             'integer,'
             'boolean)'
     );
 
     create function "account.delete" (
-        id character varying(63)) returns _jaaql_procedure_result as
+        id postgres_role) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -2098,9 +2098,9 @@ create table account_password (
     unique (hash) );
     create function "account_password.insert__internal" (
         creation_timestamp timestamptz,
-        hash character varying(512),
+        hash encrypted__hash,
         uuid uuid,
-        account character varying(63),
+        account postgres_role,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
     $$
@@ -2174,18 +2174,18 @@ create table account_password (
     select * from plpgsql_check_function(
         '"account_password.insert__internal"('
             'timestamptz,'
-            'character varying(512),'
+            'encrypted__hash,'
             'uuid,'
-            'character varying(63),'
+            'postgres_role,'
             'integer,'
             'boolean)'
     );
 
     create function "account_password.insert" (
         creation_timestamp timestamptz,
-        hash character varying(512),
+        hash encrypted__hash,
         uuid uuid,
-        account character varying(63)) returns _jaaql_procedure_result as
+        account postgres_role) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -2205,8 +2205,8 @@ create table account_password (
     $$ language plpgsql security definer;
     create function "account_password.update__internal" (
         uuid uuid,
-        account character varying(63) default null,
-        hash character varying(512) default null,
+        account postgres_role default null,
+        hash encrypted__hash default null,
         creation_timestamp timestamptz default null,
         _index integer default null,
         _check_only boolean default false) returns _status_record as
@@ -2250,8 +2250,8 @@ create table account_password (
     select * from plpgsql_check_function(
         '"account_password.update__internal"('
             'uuid,'
-            'character varying(63),'
-            'character varying(512),'
+            'postgres_role,'
+            'encrypted__hash,'
             'timestamptz,'
             'integer,'
             'boolean)'
@@ -2259,8 +2259,8 @@ create table account_password (
 
     create function "account_password.update" (
         uuid uuid,
-        account character varying(63) default null,
-        hash character varying(512) default null,
+        account postgres_role default null,
+        hash encrypted__hash default null,
         creation_timestamp timestamptz default null) returns _jaaql_procedure_result as
     $$
         DECLARE
@@ -2348,9 +2348,9 @@ create table validated_ip_address (
     create function "validated_ip_address.insert__internal" (
         last_authentication_timestamp timestamptz,
         first_authentication_timestamp timestamptz,
-        encrypted_salted_ip_address character varying(256),
+        encrypted_salted_ip_address encrypted__salted_ip,
         uuid uuid,
-        account character varying(63),
+        account postgres_role,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
     $$
@@ -2434,9 +2434,9 @@ create table validated_ip_address (
         '"validated_ip_address.insert__internal"('
             'timestamptz,'
             'timestamptz,'
-            'character varying(256),'
+            'encrypted__salted_ip,'
             'uuid,'
-            'character varying(63),'
+            'postgres_role,'
             'integer,'
             'boolean)'
     );
@@ -2444,9 +2444,9 @@ create table validated_ip_address (
     create function "validated_ip_address.insert" (
         last_authentication_timestamp timestamptz,
         first_authentication_timestamp timestamptz,
-        encrypted_salted_ip_address character varying(256),
+        encrypted_salted_ip_address encrypted__salted_ip,
         uuid uuid,
-        account character varying(63)) returns _jaaql_procedure_result as
+        account postgres_role) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -2467,8 +2467,8 @@ create table validated_ip_address (
     $$ language plpgsql security definer;
     create function "validated_ip_address.update__internal" (
         uuid uuid,
-        account character varying(63) default null,
-        encrypted_salted_ip_address character varying(256) default null,
+        account postgres_role default null,
+        encrypted_salted_ip_address encrypted__salted_ip default null,
         first_authentication_timestamp timestamptz default null,
         last_authentication_timestamp timestamptz default null,
         _index integer default null,
@@ -2514,8 +2514,8 @@ create table validated_ip_address (
     select * from plpgsql_check_function(
         '"validated_ip_address.update__internal"('
             'uuid,'
-            'character varying(63),'
-            'character varying(256),'
+            'postgres_role,'
+            'encrypted__salted_ip,'
             'timestamptz,'
             'timestamptz,'
             'integer,'
@@ -2524,8 +2524,8 @@ create table validated_ip_address (
 
     create function "validated_ip_address.update" (
         uuid uuid,
-        account character varying(63) default null,
-        encrypted_salted_ip_address character varying(256) default null,
+        account postgres_role default null,
+        encrypted_salted_ip_address encrypted__salted_ip default null,
         first_authentication_timestamp timestamptz default null,
         last_authentication_timestamp timestamptz default null) returns _jaaql_procedure_result as
     $$
@@ -2619,15 +2619,15 @@ create table security_event (
     primary key (application, event_lock),
     check (wrong_key_attempt_count between 0 and 3) );
     create function "security_event.insert__internal" (
-        unlock_code character varying(10),
+        unlock_code unlock_code,
         unlock_key uuid,
-        email_template character varying(63),
-        wrong_key_attempt_count smallint,
+        email_template object_name,
+        wrong_key_attempt_count current_attempt_count,
         creation_timestamp timestamptz,
         event_lock uuid,
-        application character varying(63),
-        account character varying(63) default null,
-        fake_account character varying(255) default null,
+        application internet_name,
+        account postgres_role default null,
+        fake_account encrypted__jaaql_username default null,
         unlock_timestamp timestamptz default null,
         finish_timestamp timestamptz default null,
         _index integer default null,
@@ -2734,15 +2734,15 @@ create table security_event (
     $$ language plpgsql security definer;
     select * from plpgsql_check_function(
         '"security_event.insert__internal"('
-            'character varying(10),'
+            'unlock_code,'
             'uuid,'
-            'character varying(63),'
-            'smallint,'
+            'object_name,'
+            'current_attempt_count,'
             'timestamptz,'
             'uuid,'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(255),'
+            'internet_name,'
+            'postgres_role,'
+            'encrypted__jaaql_username,'
             'timestamptz,'
             'timestamptz,'
             'integer,'
@@ -2750,15 +2750,15 @@ create table security_event (
     );
 
     create function "security_event.insert" (
-        unlock_code character varying(10),
+        unlock_code unlock_code,
         unlock_key uuid,
-        email_template character varying(63),
-        wrong_key_attempt_count smallint,
+        email_template object_name,
+        wrong_key_attempt_count current_attempt_count,
         creation_timestamp timestamptz,
         event_lock uuid,
-        application character varying(63),
-        account character varying(63) default null,
-        fake_account character varying(255) default null,
+        application internet_name,
+        account postgres_role default null,
+        fake_account encrypted__jaaql_username default null,
         unlock_timestamp timestamptz default null,
         finish_timestamp timestamptz default null) returns _jaaql_procedure_result as
     $$
@@ -2786,15 +2786,15 @@ create table security_event (
         END;
     $$ language plpgsql security definer;
     create function "security_event.update__internal" (
-        application character varying(63),
+        application internet_name,
         event_lock uuid,
         creation_timestamp timestamptz default null,
-        wrong_key_attempt_count smallint default null,
-        email_template character varying(63) default null,
-        account character varying(63) default null,
-        fake_account character varying(255) default null,
+        wrong_key_attempt_count current_attempt_count default null,
+        email_template object_name default null,
+        account postgres_role default null,
+        fake_account encrypted__jaaql_username default null,
         unlock_key uuid default null,
-        unlock_code character varying(10) default null,
+        unlock_code unlock_code default null,
         unlock_timestamp timestamptz default null,
         finish_timestamp timestamptz default null,
         _index integer default null,
@@ -2846,15 +2846,15 @@ create table security_event (
 
     select * from plpgsql_check_function(
         '"security_event.update__internal"('
-            'character varying(63),'
+            'internet_name,'
             'uuid,'
             'timestamptz,'
-            'smallint,'
-            'character varying(63),'
-            'character varying(63),'
-            'character varying(255),'
+            'current_attempt_count,'
+            'object_name,'
+            'postgres_role,'
+            'encrypted__jaaql_username,'
             'uuid,'
-            'character varying(10),'
+            'unlock_code,'
             'timestamptz,'
             'timestamptz,'
             'integer,'
@@ -2862,15 +2862,15 @@ create table security_event (
     );
 
     create function "security_event.update" (
-        application character varying(63),
+        application internet_name,
         event_lock uuid,
         creation_timestamp timestamptz default null,
-        wrong_key_attempt_count smallint default null,
-        email_template character varying(63) default null,
-        account character varying(63) default null,
-        fake_account character varying(255) default null,
+        wrong_key_attempt_count current_attempt_count default null,
+        email_template object_name default null,
+        account postgres_role default null,
+        fake_account encrypted__jaaql_username default null,
         unlock_key uuid default null,
-        unlock_code character varying(10) default null,
+        unlock_code unlock_code default null,
         unlock_timestamp timestamptz default null,
         finish_timestamp timestamptz default null) returns _jaaql_procedure_result as
     $$
@@ -2897,7 +2897,7 @@ create table security_event (
         END;
     $$ language plpgsql security definer;
     create function "security_event.delete__internal" (
-        application character varying(63),
+        application internet_name,
         event_lock uuid,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
@@ -2937,14 +2937,14 @@ create table security_event (
 
     select * from plpgsql_check_function(
         '"security_event.delete__internal"('
-            'character varying(63),'
+            'internet_name,'
             'uuid,'
             'integer,'
             'boolean)'
     );
 
     create function "security_event.delete" (
-        application character varying(63),
+        application internet_name,
         event_lock uuid) returns _jaaql_procedure_result as
     $$
         DECLARE
@@ -2980,15 +2980,15 @@ create table handled_error (
     create function "handled_error.insert__internal" (
         description text,
         is_arrayed bool,
-        code numeric,
-        error_name character varying(45) default null,
-        table_name character varying(63) default null,
+        code error_code,
+        error_name error_name default null,
+        table_name object_name default null,
         table_name_required bool default null,
         table_possible bool default null,
         column_possible bool default null,
         has_associated_set bool default null,
-        column_name character varying(63) default null,
-        http_response_code numeric default null,
+        column_name object_name default null,
+        http_response_code http_response_code default null,
         message text default null,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
@@ -3067,15 +3067,15 @@ create table handled_error (
         '"handled_error.insert__internal"('
             'text,'
             'bool,'
-            'numeric,'
-            'character varying(45),'
-            'character varying(63),'
+            'error_code,'
+            'error_name,'
+            'object_name,'
             'bool,'
             'bool,'
             'bool,'
             'bool,'
-            'character varying(63),'
-            'numeric,'
+            'object_name,'
+            'http_response_code,'
             'text,'
             'integer,'
             'boolean)'
@@ -3084,15 +3084,15 @@ create table handled_error (
     create function "handled_error.insert" (
         description text,
         is_arrayed bool,
-        code numeric,
-        error_name character varying(45) default null,
-        table_name character varying(63) default null,
+        code error_code,
+        error_name error_name default null,
+        table_name object_name default null,
         table_name_required bool default null,
         table_possible bool default null,
         column_possible bool default null,
         has_associated_set bool default null,
-        column_name character varying(63) default null,
-        http_response_code numeric default null,
+        column_name object_name default null,
+        http_response_code http_response_code default null,
         message text default null) returns _jaaql_procedure_result as
     $$
         DECLARE
@@ -3120,16 +3120,16 @@ create table handled_error (
         END;
     $$ language plpgsql security definer;
     create function "handled_error.update__internal" (
-        code numeric,
-        error_name character varying(45) default null,
+        code error_code,
+        error_name error_name default null,
         is_arrayed bool default null,
-        table_name character varying(63) default null,
+        table_name object_name default null,
         table_name_required bool default null,
         table_possible bool default null,
         column_possible bool default null,
         has_associated_set bool default null,
-        column_name character varying(63) default null,
-        http_response_code numeric default null,
+        column_name object_name default null,
+        http_response_code http_response_code default null,
         message text default null,
         description text default null,
         _index integer default null,
@@ -3181,16 +3181,16 @@ create table handled_error (
 
     select * from plpgsql_check_function(
         '"handled_error.update__internal"('
-            'numeric,'
-            'character varying(45),'
+            'error_code,'
+            'error_name,'
             'bool,'
-            'character varying(63),'
-            'bool,'
-            'bool,'
+            'object_name,'
             'bool,'
             'bool,'
-            'character varying(63),'
-            'numeric,'
+            'bool,'
+            'bool,'
+            'object_name,'
+            'http_response_code,'
             'text,'
             'text,'
             'integer,'
@@ -3198,16 +3198,16 @@ create table handled_error (
     );
 
     create function "handled_error.update" (
-        code numeric,
-        error_name character varying(45) default null,
+        code error_code,
+        error_name error_name default null,
         is_arrayed bool default null,
-        table_name character varying(63) default null,
+        table_name object_name default null,
         table_name_required bool default null,
         table_possible bool default null,
         column_possible bool default null,
         has_associated_set bool default null,
-        column_name character varying(63) default null,
-        http_response_code numeric default null,
+        column_name object_name default null,
+        http_response_code http_response_code default null,
         message text default null,
         description text default null) returns _jaaql_procedure_result as
     $$
@@ -3235,7 +3235,7 @@ create table handled_error (
         END;
     $$ language plpgsql security definer;
     create function "handled_error.delete__internal" (
-        code numeric,
+        code error_code,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
     $$
@@ -3272,13 +3272,13 @@ create table handled_error (
 
     select * from plpgsql_check_function(
         '"handled_error.delete__internal"('
-            'numeric,'
+            'error_code,'
             'integer,'
             'boolean)'
     );
 
     create function "handled_error.delete" (
-        code numeric) returns _jaaql_procedure_result as
+        code error_code) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3317,10 +3317,10 @@ create table remote_procedure (
     access procedure_access_level not null,
     primary key (application, name) );
     create function "remote_procedure.insert__internal" (
-        access character varying(1),
+        access procedure_access_level,
         command text,
-        name character varying(63),
-        application character varying(63),
+        name object_name,
+        application internet_name,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
     $$
@@ -3390,19 +3390,19 @@ create table remote_procedure (
     $$ language plpgsql security definer;
     select * from plpgsql_check_function(
         '"remote_procedure.insert__internal"('
-            'character varying(1),'
+            'procedure_access_level,'
             'text,'
-            'character varying(63),'
-            'character varying(63),'
+            'object_name,'
+            'internet_name,'
             'integer,'
             'boolean)'
     );
 
     create function "remote_procedure.insert" (
-        access character varying(1),
+        access procedure_access_level,
         command text,
-        name character varying(63),
-        application character varying(63)) returns _jaaql_procedure_result as
+        name object_name,
+        application internet_name) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3421,10 +3421,10 @@ create table remote_procedure (
         END;
     $$ language plpgsql security definer;
     create function "remote_procedure.update__internal" (
-        application character varying(63),
-        name character varying(63),
+        application internet_name,
+        name object_name,
         command text default null,
-        access character varying(1) default null,
+        access procedure_access_level default null,
         _index integer default null,
         _check_only boolean default false) returns _status_record as
     $$
@@ -3467,19 +3467,19 @@ create table remote_procedure (
 
     select * from plpgsql_check_function(
         '"remote_procedure.update__internal"('
-            'character varying(63),'
-            'character varying(63),'
+            'internet_name,'
+            'object_name,'
             'text,'
-            'character varying(1),'
+            'procedure_access_level,'
             'integer,'
             'boolean)'
     );
 
     create function "remote_procedure.update" (
-        application character varying(63),
-        name character varying(63),
+        application internet_name,
+        name object_name,
         command text default null,
-        access character varying(1) default null) returns _jaaql_procedure_result as
+        access procedure_access_level default null) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3497,8 +3497,8 @@ create table remote_procedure (
         END;
     $$ language plpgsql security definer;
     create function "remote_procedure.delete__internal" (
-        application character varying(63),
-        name character varying(63),
+        application internet_name,
+        name object_name,
         _index integer default null,
         _check_only boolean default false ) returns _status_record as
     $$
@@ -3537,15 +3537,15 @@ create table remote_procedure (
 
     select * from plpgsql_check_function(
         '"remote_procedure.delete__internal"('
-            'character varying(63),'
-            'character varying(63),'
+            'internet_name,'
+            'object_name,'
             'integer,'
             'boolean)'
     );
 
     create function "remote_procedure.delete" (
-        application character varying(63),
-        name character varying(63)) returns _jaaql_procedure_result as
+        application internet_name,
+        name object_name) returns _jaaql_procedure_result as
     $$
         DECLARE
             _status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -3560,6 +3560,29 @@ create table remote_procedure (
         return _status.result::_jaaql_procedure_result;
         END;
     $$ language plpgsql security definer;
+
+-- (2) Create views
+-- (a) User Partition Columns and Username Columns
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- (b) User Partition Views
+
 
 -- (1a) Create view to give current date/time, possibly read from a table
 
@@ -3591,9 +3614,9 @@ grant select on "_current_date_parts" to public;
 
 create function "application_schema.insert+" (
     use_as_default jsonb,
-    database character varying(63),
-    name character varying(63),
-    application character varying(63)
+    database object_name,
+    name object_name,
+    application internet_name
 ) returns _jaaql_procedure_result as
 $$
     DECLARE
@@ -3612,14 +3635,14 @@ $$
             SELECT * INTO strict _returned_status FROM "application.insert__internal"(
                 name => "application_schema.insert+".application,
                 default_schema => "application_schema.insert+".name,
-                base_url => (_r->>'base_url')::character varying(256),
-                templates_source => (_r->>'templates_source')::character varying(256),
-                default_s_et => (_r->>'default_s_et')::character varying(63),
-                default_a_et => (_r->>'default_a_et')::character varying(63),
-                default_r_et => (_r->>'default_r_et')::character varying(63),
-                default_u_et => (_r->>'default_u_et')::character varying(63),
-                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
-                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                base_url => (_r->>'base_url')::url,
+                templates_source => (_r->>'templates_source')::location,
+                default_s_et => (_r->>'default_s_et')::object_name,
+                default_a_et => (_r->>'default_a_et')::object_name,
+                default_r_et => (_r->>'default_r_et')::object_name,
+                default_u_et => (_r->>'default_u_et')::object_name,
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
                 is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -3635,17 +3658,17 @@ $$ language plpgsql security definer;
 select * from plpgsql_check_function(
     '"application_schema.insert+"('
         'jsonb,'
-        'character varying(63),'
-        'character varying(63),'
-        'character varying(63))'
+        'object_name,'
+        'object_name,'
+        'internet_name)'
 );
 
 grant execute on function "application_schema.insert+" to registered;
 create function "application_schema.persist+" (
-    application character varying(63),
-    name character varying(63),
+    application internet_name,
+    name object_name,
     use_as_default jsonb,
-    database character varying(63) default null
+    database object_name default null
 ) returns _jaaql_procedure_result as
 $$
     DECLARE
@@ -3668,14 +3691,14 @@ $$
             SELECT * INTO strict _returned_status FROM "application.persist__internal"(
                 name => "application_schema.persist+".application,
                 default_schema => "application_schema.persist+".name,
-                base_url => (_r->>'base_url')::character varying(256),
-                templates_source => (_r->>'templates_source')::character varying(256),
-                default_s_et => (_r->>'default_s_et')::character varying(63),
-                default_a_et => (_r->>'default_a_et')::character varying(63),
-                default_r_et => (_r->>'default_r_et')::character varying(63),
-                default_u_et => (_r->>'default_u_et')::character varying(63),
-                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
-                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                base_url => (_r->>'base_url')::url,
+                templates_source => (_r->>'templates_source')::location,
+                default_s_et => (_r->>'default_s_et')::object_name,
+                default_a_et => (_r->>'default_a_et')::object_name,
+                default_r_et => (_r->>'default_r_et')::object_name,
+                default_u_et => (_r->>'default_u_et')::object_name,
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
                 is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -3690,18 +3713,18 @@ $$
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
     '"application_schema.persist+"('
-        'character varying(63),'
-        'character varying(63),'
+        'internet_name,'
+        'object_name,'
         'jsonb,'
-        'character varying(63))'
+        'object_name)'
 );
 
 grant execute on function "application_schema.persist+" to registered;
 create function "application_schema.update+" (
-    application character varying(63),
-    name character varying(63),
+    application internet_name,
+    name object_name,
     use_as_default jsonb,
-    database character varying(63) default null
+    database object_name default null
 ) returns _jaaql_procedure_result as
 $$
     DECLARE
@@ -3724,14 +3747,14 @@ $$
             SELECT * INTO strict _returned_status FROM "application.update__internal"(
                 name => "application_schema.update+".application,
                 default_schema => "application_schema.update+".name,
-                base_url => (_r->>'base_url')::character varying(256),
-                templates_source => (_r->>'templates_source')::character varying(256),
-                default_s_et => (_r->>'default_s_et')::character varying(63),
-                default_a_et => (_r->>'default_a_et')::character varying(63),
-                default_r_et => (_r->>'default_r_et')::character varying(63),
-                default_u_et => (_r->>'default_u_et')::character varying(63),
-                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
-                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                base_url => (_r->>'base_url')::url,
+                templates_source => (_r->>'templates_source')::location,
+                default_s_et => (_r->>'default_s_et')::object_name,
+                default_a_et => (_r->>'default_a_et')::object_name,
+                default_r_et => (_r->>'default_r_et')::object_name,
+                default_u_et => (_r->>'default_u_et')::object_name,
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
                 is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -3746,10 +3769,10 @@ $$
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
     '"application_schema.update+"('
-        'character varying(63),'
-        'character varying(63),'
+        'internet_name,'
+        'object_name,'
         'jsonb,'
-        'character varying(63))'
+        'object_name)'
 );
 
 grant execute on function "application_schema.update+" to registered;
@@ -3764,16 +3787,16 @@ create function "email_template.insert+" (
     use_as_default_already_signed_up jsonb,
     use_as_default_reset_password jsonb,
     use_as_default_unregisted_password_reset jsonb,
-    content_url character varying(255),
-    type character varying(1),
-    name character varying(63),
-    dispatcher character varying(63),
-    application character varying(63),
-    validation_schema character varying(63) default null,
-    base_relation character varying(63) default null,
-    dbms_user_column_name character varying(63) default null,
-    permissions_and_data_view character varying(63) default null,
-    dispatcher_domain_recipient character varying(64) default null,
+    content_url safe_path,
+    type email_template_type,
+    name object_name,
+    dispatcher object_name,
+    application internet_name,
+    validation_schema object_name default null,
+    base_relation object_name default null,
+    dbms_user_column_name object_name default null,
+    permissions_and_data_view object_name default null,
+    dispatcher_domain_recipient email_account_username default null,
     requires_confirmation bool default null,
     can_be_sent_anonymously bool default null
 ) returns _jaaql_procedure_result as
@@ -3803,14 +3826,14 @@ $$
             SELECT * INTO strict _returned_status FROM "application.insert__internal"(
                 name => "email_template.insert+".application,
                 default_s_et => "email_template.insert+".name,
-                base_url => (_r->>'base_url')::character varying(256),
-                templates_source => (_r->>'templates_source')::character varying(256),
-                default_schema => (_r->>'default_schema')::character varying(63),
-                default_a_et => (_r->>'default_a_et')::character varying(63),
-                default_r_et => (_r->>'default_r_et')::character varying(63),
-                default_u_et => (_r->>'default_u_et')::character varying(63),
-                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
-                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                base_url => (_r->>'base_url')::url,
+                templates_source => (_r->>'templates_source')::location,
+                default_schema => (_r->>'default_schema')::object_name,
+                default_a_et => (_r->>'default_a_et')::object_name,
+                default_r_et => (_r->>'default_r_et')::object_name,
+                default_u_et => (_r->>'default_u_et')::object_name,
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
                 is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -3820,14 +3843,14 @@ $$
             SELECT * INTO strict _returned_status FROM "application.insert__internal"(
                 name => "email_template.insert+".application,
                 default_a_et => "email_template.insert+".name,
-                base_url => (_r->>'base_url')::character varying(256),
-                templates_source => (_r->>'templates_source')::character varying(256),
-                default_schema => (_r->>'default_schema')::character varying(63),
-                default_s_et => (_r->>'default_s_et')::character varying(63),
-                default_r_et => (_r->>'default_r_et')::character varying(63),
-                default_u_et => (_r->>'default_u_et')::character varying(63),
-                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
-                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                base_url => (_r->>'base_url')::url,
+                templates_source => (_r->>'templates_source')::location,
+                default_schema => (_r->>'default_schema')::object_name,
+                default_s_et => (_r->>'default_s_et')::object_name,
+                default_r_et => (_r->>'default_r_et')::object_name,
+                default_u_et => (_r->>'default_u_et')::object_name,
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
                 is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -3837,14 +3860,14 @@ $$
             SELECT * INTO strict _returned_status FROM "application.insert__internal"(
                 name => "email_template.insert+".application,
                 default_r_et => "email_template.insert+".name,
-                base_url => (_r->>'base_url')::character varying(256),
-                templates_source => (_r->>'templates_source')::character varying(256),
-                default_schema => (_r->>'default_schema')::character varying(63),
-                default_s_et => (_r->>'default_s_et')::character varying(63),
-                default_a_et => (_r->>'default_a_et')::character varying(63),
-                default_u_et => (_r->>'default_u_et')::character varying(63),
-                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
-                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                base_url => (_r->>'base_url')::url,
+                templates_source => (_r->>'templates_source')::location,
+                default_schema => (_r->>'default_schema')::object_name,
+                default_s_et => (_r->>'default_s_et')::object_name,
+                default_a_et => (_r->>'default_a_et')::object_name,
+                default_u_et => (_r->>'default_u_et')::object_name,
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
                 is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -3854,14 +3877,14 @@ $$
             SELECT * INTO strict _returned_status FROM "application.insert__internal"(
                 name => "email_template.insert+".application,
                 default_u_et => "email_template.insert+".name,
-                base_url => (_r->>'base_url')::character varying(256),
-                templates_source => (_r->>'templates_source')::character varying(256),
-                default_schema => (_r->>'default_schema')::character varying(63),
-                default_s_et => (_r->>'default_s_et')::character varying(63),
-                default_a_et => (_r->>'default_a_et')::character varying(63),
-                default_r_et => (_r->>'default_r_et')::character varying(63),
-                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
-                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                base_url => (_r->>'base_url')::url,
+                templates_source => (_r->>'templates_source')::location,
+                default_schema => (_r->>'default_schema')::object_name,
+                default_s_et => (_r->>'default_s_et')::object_name,
+                default_a_et => (_r->>'default_a_et')::object_name,
+                default_r_et => (_r->>'default_r_et')::object_name,
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
                 is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -3880,36 +3903,36 @@ select * from plpgsql_check_function(
         'jsonb,'
         'jsonb,'
         'jsonb,'
-        'character varying(255),'
-        'character varying(1),'
-        'character varying(63),'
-        'character varying(63),'
-        'character varying(63),'
-        'character varying(63),'
-        'character varying(63),'
-        'character varying(63),'
-        'character varying(63),'
-        'character varying(64),'
+        'safe_path,'
+        'email_template_type,'
+        'object_name,'
+        'object_name,'
+        'internet_name,'
+        'object_name,'
+        'object_name,'
+        'object_name,'
+        'object_name,'
+        'email_account_username,'
         'bool,'
         'bool)'
 );
 
 grant execute on function "email_template.insert+" to registered;
 create function "email_template.persist+" (
-    application character varying(63),
-    name character varying(63),
+    application internet_name,
+    name object_name,
     use_as_default_sign_up jsonb,
     use_as_default_already_signed_up jsonb,
     use_as_default_reset_password jsonb,
     use_as_default_unregisted_password_reset jsonb,
-    dispatcher character varying(63) default null,
-    type character varying(1) default null,
-    content_url character varying(255) default null,
-    validation_schema character varying(63) default null,
-    base_relation character varying(63) default null,
-    dbms_user_column_name character varying(63) default null,
-    permissions_and_data_view character varying(63) default null,
-    dispatcher_domain_recipient character varying(64) default null,
+    dispatcher object_name default null,
+    type email_template_type default null,
+    content_url safe_path default null,
+    validation_schema object_name default null,
+    base_relation object_name default null,
+    dbms_user_column_name object_name default null,
+    permissions_and_data_view object_name default null,
+    dispatcher_domain_recipient email_account_username default null,
     requires_confirmation bool default null,
     can_be_sent_anonymously bool default null
 ) returns _jaaql_procedure_result as
@@ -3952,14 +3975,14 @@ $$
             SELECT * INTO strict _returned_status FROM "application.persist__internal"(
                 name => "email_template.persist+".application,
                 default_s_et => "email_template.persist+".name,
-                base_url => (_r->>'base_url')::character varying(256),
-                templates_source => (_r->>'templates_source')::character varying(256),
-                default_schema => (_r->>'default_schema')::character varying(63),
-                default_a_et => (_r->>'default_a_et')::character varying(63),
-                default_r_et => (_r->>'default_r_et')::character varying(63),
-                default_u_et => (_r->>'default_u_et')::character varying(63),
-                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
-                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                base_url => (_r->>'base_url')::url,
+                templates_source => (_r->>'templates_source')::location,
+                default_schema => (_r->>'default_schema')::object_name,
+                default_a_et => (_r->>'default_a_et')::object_name,
+                default_r_et => (_r->>'default_r_et')::object_name,
+                default_u_et => (_r->>'default_u_et')::object_name,
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
                 is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -3969,14 +3992,14 @@ $$
             SELECT * INTO strict _returned_status FROM "application.persist__internal"(
                 name => "email_template.persist+".application,
                 default_a_et => "email_template.persist+".name,
-                base_url => (_r->>'base_url')::character varying(256),
-                templates_source => (_r->>'templates_source')::character varying(256),
-                default_schema => (_r->>'default_schema')::character varying(63),
-                default_s_et => (_r->>'default_s_et')::character varying(63),
-                default_r_et => (_r->>'default_r_et')::character varying(63),
-                default_u_et => (_r->>'default_u_et')::character varying(63),
-                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
-                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                base_url => (_r->>'base_url')::url,
+                templates_source => (_r->>'templates_source')::location,
+                default_schema => (_r->>'default_schema')::object_name,
+                default_s_et => (_r->>'default_s_et')::object_name,
+                default_r_et => (_r->>'default_r_et')::object_name,
+                default_u_et => (_r->>'default_u_et')::object_name,
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
                 is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -3986,14 +4009,14 @@ $$
             SELECT * INTO strict _returned_status FROM "application.persist__internal"(
                 name => "email_template.persist+".application,
                 default_r_et => "email_template.persist+".name,
-                base_url => (_r->>'base_url')::character varying(256),
-                templates_source => (_r->>'templates_source')::character varying(256),
-                default_schema => (_r->>'default_schema')::character varying(63),
-                default_s_et => (_r->>'default_s_et')::character varying(63),
-                default_a_et => (_r->>'default_a_et')::character varying(63),
-                default_u_et => (_r->>'default_u_et')::character varying(63),
-                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
-                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                base_url => (_r->>'base_url')::url,
+                templates_source => (_r->>'templates_source')::location,
+                default_schema => (_r->>'default_schema')::object_name,
+                default_s_et => (_r->>'default_s_et')::object_name,
+                default_a_et => (_r->>'default_a_et')::object_name,
+                default_u_et => (_r->>'default_u_et')::object_name,
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
                 is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -4003,14 +4026,14 @@ $$
             SELECT * INTO strict _returned_status FROM "application.persist__internal"(
                 name => "email_template.persist+".application,
                 default_u_et => "email_template.persist+".name,
-                base_url => (_r->>'base_url')::character varying(256),
-                templates_source => (_r->>'templates_source')::character varying(256),
-                default_schema => (_r->>'default_schema')::character varying(63),
-                default_s_et => (_r->>'default_s_et')::character varying(63),
-                default_a_et => (_r->>'default_a_et')::character varying(63),
-                default_r_et => (_r->>'default_r_et')::character varying(63),
-                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
-                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                base_url => (_r->>'base_url')::url,
+                templates_source => (_r->>'templates_source')::location,
+                default_schema => (_r->>'default_schema')::object_name,
+                default_s_et => (_r->>'default_s_et')::object_name,
+                default_a_et => (_r->>'default_a_et')::object_name,
+                default_r_et => (_r->>'default_r_et')::object_name,
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
                 is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -4025,40 +4048,40 @@ $$
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
     '"email_template.persist+"('
-        'character varying(63),'
-        'character varying(63),'
+        'internet_name,'
+        'object_name,'
         'jsonb,'
         'jsonb,'
         'jsonb,'
         'jsonb,'
-        'character varying(63),'
-        'character varying(1),'
-        'character varying(255),'
-        'character varying(63),'
-        'character varying(63),'
-        'character varying(63),'
-        'character varying(63),'
-        'character varying(64),'
+        'object_name,'
+        'email_template_type,'
+        'safe_path,'
+        'object_name,'
+        'object_name,'
+        'object_name,'
+        'object_name,'
+        'email_account_username,'
         'bool,'
         'bool)'
 );
 
 grant execute on function "email_template.persist+" to registered;
 create function "email_template.update+" (
-    application character varying(63),
-    name character varying(63),
+    application internet_name,
+    name object_name,
     use_as_default_sign_up jsonb,
     use_as_default_already_signed_up jsonb,
     use_as_default_reset_password jsonb,
     use_as_default_unregisted_password_reset jsonb,
-    dispatcher character varying(63) default null,
-    type character varying(1) default null,
-    content_url character varying(255) default null,
-    validation_schema character varying(63) default null,
-    base_relation character varying(63) default null,
-    dbms_user_column_name character varying(63) default null,
-    permissions_and_data_view character varying(63) default null,
-    dispatcher_domain_recipient character varying(64) default null,
+    dispatcher object_name default null,
+    type email_template_type default null,
+    content_url safe_path default null,
+    validation_schema object_name default null,
+    base_relation object_name default null,
+    dbms_user_column_name object_name default null,
+    permissions_and_data_view object_name default null,
+    dispatcher_domain_recipient email_account_username default null,
     requires_confirmation bool default null,
     can_be_sent_anonymously bool default null
 ) returns _jaaql_procedure_result as
@@ -4101,14 +4124,14 @@ $$
             SELECT * INTO strict _returned_status FROM "application.update__internal"(
                 name => "email_template.update+".application,
                 default_s_et => "email_template.update+".name,
-                base_url => (_r->>'base_url')::character varying(256),
-                templates_source => (_r->>'templates_source')::character varying(256),
-                default_schema => (_r->>'default_schema')::character varying(63),
-                default_a_et => (_r->>'default_a_et')::character varying(63),
-                default_r_et => (_r->>'default_r_et')::character varying(63),
-                default_u_et => (_r->>'default_u_et')::character varying(63),
-                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
-                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                base_url => (_r->>'base_url')::url,
+                templates_source => (_r->>'templates_source')::location,
+                default_schema => (_r->>'default_schema')::object_name,
+                default_a_et => (_r->>'default_a_et')::object_name,
+                default_r_et => (_r->>'default_r_et')::object_name,
+                default_u_et => (_r->>'default_u_et')::object_name,
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
                 is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -4118,14 +4141,14 @@ $$
             SELECT * INTO strict _returned_status FROM "application.update__internal"(
                 name => "email_template.update+".application,
                 default_a_et => "email_template.update+".name,
-                base_url => (_r->>'base_url')::character varying(256),
-                templates_source => (_r->>'templates_source')::character varying(256),
-                default_schema => (_r->>'default_schema')::character varying(63),
-                default_s_et => (_r->>'default_s_et')::character varying(63),
-                default_r_et => (_r->>'default_r_et')::character varying(63),
-                default_u_et => (_r->>'default_u_et')::character varying(63),
-                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
-                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                base_url => (_r->>'base_url')::url,
+                templates_source => (_r->>'templates_source')::location,
+                default_schema => (_r->>'default_schema')::object_name,
+                default_s_et => (_r->>'default_s_et')::object_name,
+                default_r_et => (_r->>'default_r_et')::object_name,
+                default_u_et => (_r->>'default_u_et')::object_name,
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
                 is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -4135,14 +4158,14 @@ $$
             SELECT * INTO strict _returned_status FROM "application.update__internal"(
                 name => "email_template.update+".application,
                 default_r_et => "email_template.update+".name,
-                base_url => (_r->>'base_url')::character varying(256),
-                templates_source => (_r->>'templates_source')::character varying(256),
-                default_schema => (_r->>'default_schema')::character varying(63),
-                default_s_et => (_r->>'default_s_et')::character varying(63),
-                default_a_et => (_r->>'default_a_et')::character varying(63),
-                default_u_et => (_r->>'default_u_et')::character varying(63),
-                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
-                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                base_url => (_r->>'base_url')::url,
+                templates_source => (_r->>'templates_source')::location,
+                default_schema => (_r->>'default_schema')::object_name,
+                default_s_et => (_r->>'default_s_et')::object_name,
+                default_a_et => (_r->>'default_a_et')::object_name,
+                default_u_et => (_r->>'default_u_et')::object_name,
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
                 is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -4152,14 +4175,14 @@ $$
             SELECT * INTO strict _returned_status FROM "application.update__internal"(
                 name => "email_template.update+".application,
                 default_u_et => "email_template.update+".name,
-                base_url => (_r->>'base_url')::character varying(256),
-                templates_source => (_r->>'templates_source')::character varying(256),
-                default_schema => (_r->>'default_schema')::character varying(63),
-                default_s_et => (_r->>'default_s_et')::character varying(63),
-                default_a_et => (_r->>'default_a_et')::character varying(63),
-                default_r_et => (_r->>'default_r_et')::character varying(63),
-                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::integer END,
-                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::integer END,
+                base_url => (_r->>'base_url')::url,
+                templates_source => (_r->>'templates_source')::location,
+                default_schema => (_r->>'default_schema')::object_name,
+                default_s_et => (_r->>'default_s_et')::object_name,
+                default_a_et => (_r->>'default_a_et')::object_name,
+                default_r_et => (_r->>'default_r_et')::object_name,
+                unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
+                unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
                 is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -4174,20 +4197,20 @@ $$
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
     '"email_template.update+"('
-        'character varying(63),'
-        'character varying(63),'
+        'internet_name,'
+        'object_name,'
         'jsonb,'
         'jsonb,'
         'jsonb,'
         'jsonb,'
-        'character varying(63),'
-        'character varying(1),'
-        'character varying(255),'
-        'character varying(63),'
-        'character varying(63),'
-        'character varying(63),'
-        'character varying(63),'
-        'character varying(64),'
+        'object_name,'
+        'email_template_type,'
+        'safe_path,'
+        'object_name,'
+        'object_name,'
+        'object_name,'
+        'object_name,'
+        'email_account_username,'
         'bool,'
         'bool)'
 );
@@ -4201,8 +4224,8 @@ grant execute on function "email_template.update+" to registered;
 
 create function "account.insert+" (
     use_as_the_anonymous_user jsonb,
-    username character varying(255),
-    id character varying(63),
+    username encrypted__jaaql_username,
+    id postgres_role,
     deletion_timestamp timestamptz default null,
     most_recent_password uuid default null
 ) returns _jaaql_procedure_result as
@@ -4223,7 +4246,7 @@ $$
         for _r in SELECT * FROM jsonb_array_elements(use_as_the_anonymous_user) loop
             SELECT * INTO strict _returned_status FROM "jaaql.insert__internal"(
                 the_anonymous_user => "account.insert+".id,
-                security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::smallint END,
+                security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::attempt_count END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
             _status.errors = _status.errors || _returned_status.errors;
@@ -4238,17 +4261,17 @@ $$ language plpgsql security definer;
 select * from plpgsql_check_function(
     '"account.insert+"('
         'jsonb,'
-        'character varying(255),'
-        'character varying(63),'
+        'encrypted__jaaql_username,'
+        'postgres_role,'
         'timestamptz,'
         'uuid)'
 );
 
 grant execute on function "account.insert+" to registered;
 create function "account.persist+" (
-    id character varying(63),
+    id postgres_role,
     use_as_the_anonymous_user jsonb,
-    username character varying(255) default null,
+    username encrypted__jaaql_username default null,
     deletion_timestamp timestamptz default null,
     most_recent_password uuid default null
 ) returns _jaaql_procedure_result as
@@ -4272,7 +4295,7 @@ $$
         for _r in SELECT * FROM jsonb_array_elements(use_as_the_anonymous_user) loop
             SELECT * INTO strict _returned_status FROM "jaaql.persist__internal"(
                 the_anonymous_user => "account.persist+".id,
-                security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::smallint END,
+                security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::attempt_count END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
             _status.errors = _status.errors || _returned_status.errors;
@@ -4286,18 +4309,18 @@ $$
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
     '"account.persist+"('
-        'character varying(63),'
+        'postgres_role,'
         'jsonb,'
-        'character varying(255),'
+        'encrypted__jaaql_username,'
         'timestamptz,'
         'uuid)'
 );
 
 grant execute on function "account.persist+" to registered;
 create function "account.update+" (
-    id character varying(63),
+    id postgres_role,
     use_as_the_anonymous_user jsonb,
-    username character varying(255) default null,
+    username encrypted__jaaql_username default null,
     deletion_timestamp timestamptz default null,
     most_recent_password uuid default null
 ) returns _jaaql_procedure_result as
@@ -4321,7 +4344,7 @@ $$
         for _r in SELECT * FROM jsonb_array_elements(use_as_the_anonymous_user) loop
             SELECT * INTO strict _returned_status FROM "jaaql.update__internal"(
                 the_anonymous_user => "account.update+".id,
-                security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::smallint END,
+                security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::attempt_count END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
             _status.errors = _status.errors || _returned_status.errors;
@@ -4335,9 +4358,9 @@ $$
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
     '"account.update+"('
-        'character varying(63),'
+        'postgres_role,'
         'jsonb,'
-        'character varying(255),'
+        'encrypted__jaaql_username,'
         'timestamptz,'
         'uuid)'
 );
@@ -4348,9 +4371,9 @@ grant execute on function "account.update+" to registered;
 create function "account_password.insert+" (
     use_as_most_recent_password jsonb,
     creation_timestamp timestamptz,
-    hash character varying(512),
+    hash encrypted__hash,
     uuid uuid,
-    account character varying(63)
+    account postgres_role
 ) returns _jaaql_procedure_result as
 $$
     DECLARE
@@ -4369,8 +4392,8 @@ $$
         for _r in SELECT * FROM jsonb_array_elements(use_as_most_recent_password) loop
             SELECT * INTO strict _returned_status FROM "account.insert__internal"(
                 most_recent_password => "account_password.insert+".uuid,
-                id => (_r->>'id')::character varying(63),
-                username => (_r->>'username')::character varying(255),
+                id => (_r->>'id')::postgres_role,
+                username => (_r->>'username')::encrypted__jaaql_username,
                 deletion_timestamp => CASE WHEN _r->>'deletion_timestamp' = '' THEN null ELSE (_r->>'deletion_timestamp')::timestamptz END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -4387,17 +4410,17 @@ select * from plpgsql_check_function(
     '"account_password.insert+"('
         'jsonb,'
         'timestamptz,'
-        'character varying(512),'
+        'encrypted__hash,'
         'uuid,'
-        'character varying(63))'
+        'postgres_role)'
 );
 
 grant execute on function "account_password.insert+" to registered;
 create function "account_password.persist+" (
     uuid uuid,
     use_as_most_recent_password jsonb,
-    account character varying(63) default null,
-    hash character varying(512) default null,
+    account postgres_role default null,
+    hash encrypted__hash default null,
     creation_timestamp timestamptz default null
 ) returns _jaaql_procedure_result as
 $$
@@ -4420,8 +4443,8 @@ $$
         for _r in SELECT * FROM jsonb_array_elements(use_as_most_recent_password) loop
             SELECT * INTO strict _returned_status FROM "account.persist__internal"(
                 most_recent_password => "account_password.persist+".uuid,
-                id => (_r->>'id')::character varying(63),
-                username => (_r->>'username')::character varying(255),
+                id => (_r->>'id')::postgres_role,
+                username => (_r->>'username')::encrypted__jaaql_username,
                 deletion_timestamp => CASE WHEN _r->>'deletion_timestamp' = '' THEN null ELSE (_r->>'deletion_timestamp')::timestamptz END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -4438,8 +4461,8 @@ select * from plpgsql_check_function(
     '"account_password.persist+"('
         'uuid,'
         'jsonb,'
-        'character varying(63),'
-        'character varying(512),'
+        'postgres_role,'
+        'encrypted__hash,'
         'timestamptz)'
 );
 
@@ -4447,8 +4470,8 @@ grant execute on function "account_password.persist+" to registered;
 create function "account_password.update+" (
     uuid uuid,
     use_as_most_recent_password jsonb,
-    account character varying(63) default null,
-    hash character varying(512) default null,
+    account postgres_role default null,
+    hash encrypted__hash default null,
     creation_timestamp timestamptz default null
 ) returns _jaaql_procedure_result as
 $$
@@ -4471,8 +4494,8 @@ $$
         for _r in SELECT * FROM jsonb_array_elements(use_as_most_recent_password) loop
             SELECT * INTO strict _returned_status FROM "account.update__internal"(
                 most_recent_password => "account_password.update+".uuid,
-                id => (_r->>'id')::character varying(63),
-                username => (_r->>'username')::character varying(255),
+                id => (_r->>'id')::postgres_role,
+                username => (_r->>'username')::encrypted__jaaql_username,
                 deletion_timestamp => CASE WHEN _r->>'deletion_timestamp' = '' THEN null ELSE (_r->>'deletion_timestamp')::timestamptz END,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
@@ -4489,8 +4512,8 @@ select * from plpgsql_check_function(
     '"account_password.update+"('
         'uuid,'
         'jsonb,'
-        'character varying(63),'
-        'character varying(512),'
+        'postgres_role,'
+        'encrypted__hash,'
         'timestamptz)'
 );
 
@@ -4512,10 +4535,34 @@ grant execute on function "account_password.update+" to registered;
 
 
 -- (3) Populate tables
+-- handled_error...
+insert into handled_error (code, error_name, is_arrayed, table_name, table_name_required, table_possible, column_possible, has_associated_set, column_name, http_response_code, message, description)
+values (1001, 'account_already_exists', FALSE, 'account', NULL, NULL, NULL, NULL, 'username', NULL, 'A user with this username already exists', 'Returned if attempting to sign up without confirmation being required'),
+       (1002, 'database_operational_error', FALSE, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Returned if the base class of the postgres exception is OperationalError. We can be certain that an OperationalError will never have an associated table, hence this is different typed to an UnhandledQueryException'),
+       (1003, 'handled_procedure_error', TRUE, NULL, TRUE, NULL, TRUE, NULL, NULL, NULL, NULL, 'A database procedure can raise an error with custom sqlstate ''JQ000''. The contents of the exception message are loaded as JSON and set to the descriptor'),
+       (1004, 'unhandled_query_error', FALSE, NULL, NULL, TRUE, TRUE, TRUE, NULL, NULL, NULL, 'When sending a query to jaaql, if there is an error with the query, this will be returned. Uses information from the postgres diagnostic object and will be marked associated to a named input query'),
+       (1005, 'unhandled_procedure_error', FALSE, NULL, NULL, TRUE, TRUE, NULL, NULL, NULL, NULL, 'When executing a stored database procedure with jaaql, if there is an error with the procedure, this will be returned. Uses information from the postgres diagnostic object and unlike unhandled query error, there is no associated input set'),
+       (1006, 'account_already_confirmed', FALSE, 'security_event', NULL, NULL, NULL, NULL, 'finish_timestamp', NULL, 'Your account is already confirmed. You cannot request another confirmation.', 'If an attempt is made to resend the confirmation email for an account that has already confirmed their email address, this will be returned'),
+       (1007, 'password_already_used_before', FALSE, 'account_password', NULL, NULL, NULL, NULL, 'hash', NULL, 'You have used this password with your account before. Please enter a password you have never used.', 'Jaaql requires that passwords within an account are unique. When changing your password, if an attempt is made to re-use an old password, this will be raised.'),
+       (1008, 'too_many_sign_up_confirmation_requests', FALSE, 'email_template', NULL, NULL, NULL, NULL, 'type', NULL, 'You have made too many requests for sign up confirmation in the past 24 hours. Please wait', 'Jaaql limits the amount of sign up requests that can be made in a 24 hour period. If too many requests are made then this will be returned to the user'),
+       (1009, 'user_unauthorized', FALSE, NULL, NULL, NULL, NULL, NULL, NULL, 401, 'You are not permitted to access this resource', 'This may be returned for a number of reasons. Perhaps the user''s credentials are incorrect, perhaps the access token being used has been invalidated and needs to be refreshed or perhaps the refresh failed and the user must input their credentials again. This refers strictly to jaaql level authorization, rather than database level authorization. If a user is unpermitted to access a resource at the database level, a database exception will be thrown'),
+       (1010, 'unhandled_jaaql_server_error', FALSE, NULL, NULL, NULL, NULL, NULL, NULL, 500, 'An unhandled exception has occurred with JAAQL.', 'Will be raised if an unhandled exception occurs with JAAQL. Will not include any information about the exception as this is a potential security issue.'),
+       (1011, 'singleton_expected', FALSE, NULL, NULL, NULL, NULL, TRUE, NULL, NULL, 'A singleton was requested but this set does not contain exactly one row', 'Will be raised if a singleton is requested with an input query but the result set does not contain exactly 1 row'),
+       (1012, 'not_yet_installed', FALSE, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Jaaql has not yet performed it''s installation operation', 'Returned if jaaql has not finished it''s self setup. This process is automatic and occurs quickly so may indicate that jaaql has failed to boot'),
+       (1013, 'invalid_security_event_lock', FALSE, 'security_event', NULL, NULL, NULL, NULL, 'event_lock', NULL, 'Either security event does not exist, has already been used, has expired', 'When attempting to unlock a security event, this is returned if the event has expired, already been used or doesn''t exist. An example would be a user confirming their email address after sign up or being invited to the platform.'),
+       (1014, 'missing_parameter_in_query', FALSE, NULL, NULL, NULL, NULL, TRUE, NULL, NULL, NULL, 'When attempting to execute a query, if a parameter as not been provided that is expected, this will be raised'),
+       (1015, 'expected_parameter_in_query', FALSE, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'When attempting to process a database request, if a parameter is supplied that is not used, this will be raised'),
+       (1016, 'too_many_unlock_attempts', FALSE, 'security_event', NULL, NULL, NULL, NULL, 'unlock_code', NULL, 'Too many attempts have been made to unlock this security event', 'Security events have a maximum unlock attempt count set to 3. If more attempts than this are requested, then this is raised'),
+       (1017, 'too_many_password_reset_requests', FALSE, 'email_template', NULL, NULL, NULL, NULL, 'type', NULL, 'You have made too many requests to change your password in the past 24 hours. Please wait.', 'Jaaql limits the amount of password reset requests that can be made in a 24 hour period. If too many requests are made then this will be returned to the user'),
+       (1018, 'document_still_rendering', FALSE, 'document_request', NULL, NULL, NULL, NULL, 'render_timestamp', NULL, 'The document has not finished rendering yet, please wait before requesting again.', 'When a document is requested to be rendered, it is placed in a rendering queue. If the document has not completed it''s render yet, this will be returned'),
+       (1019, 'security_event_short_code_expired', FALSE, 'security_event', NULL, NULL, NULL, NULL, 'unlock_code', NULL, 'The short unlock code has expired. Please use the long link found in your email.', 'When attempting to unlock a security event such as resetting password or sign up where a confirmation is required, the user will be sent a link to follow or a short code. The short code is only valid for 15 minutes. This error will be returned if the short code is valid but has expired'),
+       (1020, 'security_event_incorrect_short_unlock_code', FALSE, 'security_event', NULL, NULL, NULL, NULL, 'unlock_code', NULL, 'Incorrect unlock code. Please try again.', 'When attempting to unlock a security event with the short unlock code, this is returned if the code is incorrect. The user can then retry up to the maximum amount of times (usually 3). The long unlock key sent via email acts as an alternate key so if that is incorrect, the ''invalid_security_event_lock'' error will be returned again');
+insert into handled_error (code, error_name, is_arrayed, table_name, table_name_required, table_possible, column_possible, has_associated_set, column_name, http_response_code, message, description)
+values (1021, 'unsatisfactory_password_complexity', FALSE, 'account_password', NULL, NULL, NULL, NULL, NULL, NULL, 'The supplied password is not complex enough! It must contain either a number, a special character or an upper case character and not consist entirely of numbers. It must also be at least length 8.', 'When supplying a new password to the account, either during changing a password, resetting a password or signing up, this will be returned if the password is not of suitable complexity'),
+       (1022, 'incorrect_password_verification', FALSE, 'account_password', NULL, NULL, NULL, NULL, 'hash', NULL, 'Verification password incorrect.', 'When going through an event that requires the re-verification of the current password, such as a request to change the password, this will be returned if the supplied password is incorrect. It is different to the user_unauthorized error, as it does not return a 401, making it easier to handle for clients. When calling an endpoint which makes use of re-verification, existing authentication can still fail at which point a ''user_unauthorized'' error will be thrown. This is separate and unrelated to this.'),
+       (1023, 'unhandled_remote_procedure_error', FALSE, NULL, NULL, NULL, NULL, NULL, NULL, 500, 'An unhandled exception has occurred with the remote procedure.', 'Will be raised if an unhandled exception occurs within a remote procedure. Will not include any information about the exception as this is a potential security issue.'),
+       (1024, 'cron_expression_error', FALSE, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Raised when there was an error with the supplied cron expression by the user');
 
--- jaaql...
-insert into jaaql (the_anonymous_user, security_event_attempt_limit)
-values (NULL, 3);
 
 -- pg_base_exception...
 insert into pg_base_exception (name)
@@ -4526,6 +4573,7 @@ values ('DatabaseError'),
        ('DataError'),
        ('IntegrityError'),
        ('InternalError');
+
 
 -- pg_error_class...
 insert into pg_error_class (code, name, description)
@@ -4838,6 +4886,7 @@ values ('HV', 'HV024', 'FdwInvalidAttributeValue', 'OperationalError'),
        ('P0', 'P0004', 'AssertFailure', 'ProgrammingError'),
        ('XX', 'XX000', 'InternalError_', 'InternalError'),
        ('XX', 'XX001', 'DataCorrupted', 'InternalError');
+
 
 
 

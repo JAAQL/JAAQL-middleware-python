@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.exceptions.fxli at 2024-04-30, 13:33:05
+This script was generated from jaaql.exceptions.fxli at 2024-09-19, 19:54:40
 """
 
 from jaaql.utilities.crypt_utils import get_repeatable_salt
@@ -205,7 +205,7 @@ QUERY__check_security_event_unlock = """
     WHERE
         S.application = A.name AND
         (S.event_lock = :event_lock OR S.unlock_key = :unlock_key) AND S.finish_timestamp is null AND
-        S.creation_timestamp + (A.unlock_code_validity_period || ' seconds')::interval > current_timestamp
+        S.creation_timestamp + (A.unlock_key_validity_period || ' seconds')::interval > current_timestamp
     RETURNING S.*, A.unlock_code_validity_period, (S.unlock_code = :unlock_code OR S.unlock_key = :unlock_key) as key_fits
 """
 

@@ -79,8 +79,8 @@ DOCUMENTATION__password = SwaggerDocumentation(
         method=REST__POST,
         name="Change password",
         description="Will change the logged in users password to the new one",
-        arguments=[
-            rename_arg(ARG_RES__username, KEY__old_password, "The old password for the user"),
+        body=[
+            rename_arg(ARG_RES__password, KEY__old_password, "The old password for the user"),
             ARG_RES__password
         ],
         response=RES__oauth_token

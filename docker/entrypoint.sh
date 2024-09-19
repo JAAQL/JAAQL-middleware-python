@@ -241,7 +241,7 @@ replace_config
 rm -rf /etc/nginx/sites-enabled/default
 sed 's/\\n/\
 /g' -i /etc/nginx/sites-available/jaaql
-grep -q "server_tokens" /etc/nginx/nginx.conf || sed -i 's/http {/http {\n        server_tokens off;\n        server_names_hash_bucket_size 128;\n/g' /etc/nginx/nginx.conf
+grep -q '^[[:space:]]*server_tokens' /etc/nginx/nginx.conf || sed -i 's/http {/http {\n        server_tokens off;\n        server_names_hash_bucket_size 128;\n/g' /etc/nginx/nginx.conf
 sed 's/\\n/\
 /g' -i /etc/nginx/nginx.conf
 service nginx restart || { echo "Failed to restart nginx. Reason: $(nginx -t 2>&1)"; exit 1; }

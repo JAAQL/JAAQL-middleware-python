@@ -184,12 +184,12 @@ class InvalidSecurityEventLock(JaaqlInterpretableHandledError):
 
 
 class MissingParameterInQuery(JaaqlInterpretableHandledError):
-    def __init__(self, _set, descriptor=None):
+    def __init__(self, message, _set, descriptor=None):
         super().__init__(
             error_code=1014,
             http_response_code=422,
             table_name=None,
-            message="A query has been sent that expects a parameter but this parameter has not been provided",
+            message=message,
             column_name=None,
             _set=_set,
             index=None,
@@ -198,12 +198,12 @@ class MissingParameterInQuery(JaaqlInterpretableHandledError):
 
 
 class ExpectedParameterInQuery(JaaqlInterpretableHandledError):
-    def __init__(self, descriptor=None):
+    def __init__(self, message, descriptor=None):
         super().__init__(
             error_code=1015,
             http_response_code=422,
             table_name=None,
-            message="A parameter has been sent to a query that has not been used",
+            message=message,
             column_name=None,
             _set=None,
             index=None,

@@ -850,7 +850,7 @@ WHERE
                 KG__security_event__fake_account: get_repeatable_salt(self.get_vault_repeatable_salt(), fake_account_username)})
 
         sign_up_perms_data_view = template[KG__email_template__permissions_and_data_view]
-        if re.match(REGEX__dmbs_object_name, sign_up_perms_data_view) is None:
+        if sign_up_perms_data_view is not None and re.match(REGEX__dmbs_object_name, sign_up_perms_data_view) is None:
             raise HttpStatusException("Unsafe data relation specified for sign up")
         reset_password_data = None
         try:
@@ -864,16 +864,20 @@ WHERE
                 reset_password_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, account_id,
                                              None, self.cached_canned_query_service, interface=account_db_interface, as_objects=False, singleton=True)
                 reset_password_data = objectify(reset_password_data, singleton=True)
-            else:
+            elif sign_up_perms_data_view is not None:
                 submit_data = {
                     KEY__application: inputs[KG__security_event__application],
                     KEY__schema: template[KG__email_template__validation_schema],
                     KEY_query: f'SELECT * FROM {sign_up_perms_data_view}'  # Ignore pycharm PEP issue
                 }
 
+                # Likely that we'll need to add a where clause to this!
+
                 reset_password_data = submit(self.vault, self.config, self.get_db_crypt_key(),
                                              self.jaaql_lookup_connection, submit_data, ROLE__jaaql,
                                              None, self.cached_canned_query_service, as_objects=True, singleton=True)
+            else:
+                reset_password_data = {}  # The common case where there is simply no data associated with the reset password
 
         except HttpSingletonStatusException:
             raise HttpSingletonStatusException("Multiple rows returned when selecting from reset password data view")
