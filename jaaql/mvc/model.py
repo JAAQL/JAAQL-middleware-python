@@ -916,6 +916,7 @@ WHERE
                                            account_id)
 
         email_data[EMAIL_PARAM__app_url] = app[KG__application__base_url]
+        email_data[EMAIL_PARAM__app_name] = app[KG__application__name]
         email_data[EMAIL_PARAM__email_address] = username
         email_data[EMAIL_PARAM__unlock_key] = reg_event[KG__security_event__unlock_key]
         email_data[EMAIL_PARAM__unlock_code] = unlock_code
