@@ -4563,6 +4563,8 @@ values (1021, 'unsatisfactory_password_complexity', FALSE, 'account_password', N
        (1023, 'unhandled_remote_procedure_error', FALSE, NULL, NULL, NULL, NULL, NULL, NULL, 500, 'An unhandled exception has occurred with the remote procedure.', 'Will be raised if an unhandled exception occurs within a remote procedure. Will not include any information about the exception as this is a potential security issue.'),
        (1024, 'cron_expression_error', FALSE, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Raised when there was an error with the supplied cron expression by the user');
 
+insert into jaaql (the_anonymous_user, security_event_attempt_limit)
+values (NULL, 3);
 
 -- pg_base_exception...
 insert into pg_base_exception (name)

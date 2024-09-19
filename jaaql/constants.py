@@ -180,5 +180,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.23.44"
+VERSION = "4.23.45"
 
