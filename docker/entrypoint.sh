@@ -9,9 +9,16 @@ mkdir -p $ARCHIVE_DIR
 WAS_EMPTY="false"
 if [ -z "$(ls -A /var/lib/postgresql/data)" ]; then
     WAS_EMPTY="true"
-    su - postgres -c "TZ=$TZ /usr/lib/postgresql/16/bin/initdb $POSTGRES_INITDB_ARGS /var/lib/postgresql/data"
+    su postgres -c "echo \"$POSTGRES_PASSWORD\" | TZ=\"$TZ\" /usr/lib/postgresql/16/bin/initdb -A scram-sha-256 --pwfile=/dev/stdin $POSTGRES_INITDB_ARGS /var/lib/postgresql/data"
     rm -f $ARCHIVE_DIR/basebackup
     cp -r /var/lib/postgresql/data $ARCHIVE_DIR/basebackup
+    echo "local   all             all                                     trust" > /var/lib/postgresql/data/pg_hba.conf
+    echo "host    all             all             127.0.0.1/32            trust" >> /var/lib/postgresql/data/pg_hba.conf
+    echo "host    all             all             ::1/128                 trust" >> /var/lib/postgresql/data/pg_hba.conf
+    echo "local   replication     all                                     trust" >> /var/lib/postgresql/data/pg_hba.conf
+    echo "host    replication     all             127.0.0.1/32            trust" >> /var/lib/postgresql/data/pg_hba.conf
+    echo "host    replication     all             ::1/128                 trust" >> /var/lib/postgresql/data/pg_hba.conf
+    echo "host all all all scram-sha-256" >> /var/lib/postgresql/data/pg_hba.conf
 fi
 
 if [ -z "${TZ}" ]; then
