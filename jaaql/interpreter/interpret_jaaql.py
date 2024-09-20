@@ -650,15 +650,13 @@ class InterpretJAAQL:
 
     def encrypt_literals(self, query, encryption_key: bytes = None, match_regex: str = REGEX_enc_literals):
         new_query = ""
-        last_start_match = 0
         last_end_match = 0
 
         for match in re.finditer(match_regex, query):
             start_pos = match.regs[0][0]
             end_pos = match.regs[0][1]
             match_str = query[start_pos + 2:end_pos - 1]
-            new_query += query[last_start_match:start_pos] + "'" + encrypt_raw(encryption_key, match_str) + "'"
-            last_start_match = start_pos
+            new_query += query[last_end_match:start_pos] + "'" + encrypt_raw(encryption_key, match_str) + "'"
             last_end_match = end_pos
 
         return new_query + query[last_end_match:]
