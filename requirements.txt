@@ -1,4 +1,4 @@
-jaaql-monitor==1.2.119
+jaaql-monitor==1.3.5
 psycopg[binary]==3.1.18
 Pillow==10.2.0
 cryptography==42.0.5
