@@ -165,6 +165,21 @@ class DBInterface(ABC):
         else:
             return ret
 
+    def read_utf8(self, filename):
+        with open(filename, 'rb') as file:
+            # Read the first few bytes to check for BOM
+            first_bytes = file.read(3)
+
+            # Check for UTF-8-SIG (BOM)
+            if first_bytes.startswith(b'\xef\xbb\xbf'):
+                # Reopen with 'utf-8-sig' to properly handle BOM
+                file = open(filename, FILE__read, encoding='utf-8-sig')
+            else:
+                # Reopen with 'utf-8' assuming no BOM
+                file = open(filename, FILE__read, encoding='utf-8')
+
+            return file
+
     def execute_script_file(self, conn, file_loc: str = None, as_content: str = None, as_individual=False, commit=True):
         ret = None
         err = None
@@ -176,7 +191,7 @@ class DBInterface(ABC):
             if as_content:
                 queries = as_content
             else:
-                with open(file_loc, FILE__read) as file:
+                with self.read_utf8(file_loc) as file:
                     queries = file.read()
 
             if as_individual:

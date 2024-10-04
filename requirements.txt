@@ -1,6 +1,6 @@
-jaaql-monitor==1.3.5
+jaaql-monitor==1.4.17
 psycopg[binary]==3.1.18
-Pillow==10.2.0
+Pillow==10.3.0
 cryptography==42.0.5
 flask==3.0.2
 coverage==7.4.3

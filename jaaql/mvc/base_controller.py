@@ -10,7 +10,7 @@ import json
 import requests
 from datetime import datetime, date
 from jaaql.exceptions.custom_http_status import CustomHTTPStatus
-from jaaql.exceptions.jaaql_interpretable_handled_errors import UnhandledJaaqlServerError
+from jaaql.exceptions.jaaql_interpretable_handled_errors import UnhandledJaaqlServerError, NotYetInstalled
 import sys
 import dataclasses
 import decimal
@@ -617,7 +617,7 @@ class BaseJAAQLController:
 
                         self.perform_profile(request_id, "Validate output")
                     except Exception as ex:
-                        if not self.is_prod:
+                        if not self.is_prod and not isinstance(ex, NotYetInstalled):
                             traceback.print_exc()  # Debugging
                         if not isinstance(ex, HttpStatusException):
                             ret_status = RESP__default_err_code

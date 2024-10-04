@@ -459,9 +459,7 @@ WHERE
         self.is_super_admin(connection)
 
         base_url = get_base_url(self.config, self.is_container)
-        run_migrations(base_url, self.local_super_access_key, self.local_jaaql_access_key, self.jaaql_lookup_connection, self.is_container,
-                       self.migration_project_name, migration_folder=self.migration_folder, config=self.config, options=self.options,
-                       key=self.get_db_crypt_key())
+        run_migrations(base_url, self.local_super_access_key, self.local_jaaql_access_key, self.jaaql_lookup_connection)
 
     def is_installed(self):
         if not self.has_installed:
@@ -752,9 +750,9 @@ WHERE
             KEY__schema: fetched_template[KG__email_template__validation_schema]
         }
 
-        data_relation = fetched_template[KG__email_template__permissions_and_data_view]
+        data_relation = fetched_template[KG__email_template__data_view]
         if re.match(REGEX__dmbs_object_name, data_relation) is None:
-            raise HttpStatusException("Unsafe " + KG__email_template__permissions_and_data_view + " specified for email template")
+            raise HttpStatusException("Unsafe " + KG__email_template__data_view + " specified for email template")
         safe_parameters = []
         for key, val in inputs[KEY__parameters].items():
             if re.match(REGEX__dmbs_object_name, key) is None:
@@ -849,30 +847,26 @@ WHERE
                                              account_id, fake_account_username, encryption_salts={
                 KG__security_event__fake_account: get_repeatable_salt(self.get_vault_repeatable_salt(), fake_account_username)})
 
-        sign_up_perms_data_view = template[KG__email_template__permissions_and_data_view]
-        if sign_up_perms_data_view is not None and re.match(REGEX__dmbs_object_name, sign_up_perms_data_view) is None:
+        data_view = template[KG__email_template__data_view]
+        if data_view is not None and re.match(REGEX__dmbs_object_name, data_view) is None:
             raise HttpStatusException("Unsafe data relation specified for sign up")
         reset_password_data = None
         try:
-            if account_existed:
+            submit_data = {}
+            if data_view is not None:
                 submit_data = {
                     KEY__application: inputs[KG__security_event__application],
-                    KEY_query: f"SELECT * FROM {sign_up_perms_data_view}",
+                    KEY_query: f"SELECT * FROM {data_view}",
                     KEY__schema: template[KG__email_template__validation_schema]
                 }
+
+            if account_existed:
                 account_db_interface = get_required_db(self.vault, self.config, self.jaaql_lookup_connection, submit_data, account_id)
                 reset_password_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, account_id,
                                              None, self.cached_canned_query_service, interface=account_db_interface, as_objects=False, singleton=True)
                 reset_password_data = objectify(reset_password_data, singleton=True)
-            elif sign_up_perms_data_view is not None:
-                submit_data = {
-                    KEY__application: inputs[KG__security_event__application],
-                    KEY__schema: template[KG__email_template__validation_schema],
-                    KEY_query: f'SELECT * FROM {sign_up_perms_data_view}'  # Ignore pycharm PEP issue
-                }
-
+            elif data_view is not None:
                 # Likely that we'll need to add a where clause to this!
-
                 reset_password_data = submit(self.vault, self.config, self.get_db_crypt_key(),
                                              self.jaaql_lookup_connection, submit_data, ROLE__jaaql,
                                              None, self.cached_canned_query_service, as_objects=True, singleton=True)
@@ -1063,23 +1057,40 @@ WHERE
             # An exception will be triggered here if the user does not have permissions
             where_clause = " AND ".join(['"' + key + '" = :' + key for key in ret.keys() if re.match(REGEX__dmbs_object_name, key) is not None])
             where_clause = " WHERE " + where_clause
-            sign_up_perms_data_view = sign_up_template[KG__email_template__permissions_and_data_view]
-            if re.match(REGEX__dmbs_object_name, sign_up_perms_data_view) is None:
+            permissions_view = sign_up_template[KG__email_template__permissions_view]
+            if re.match(REGEX__dmbs_object_name, permissions_view) is None:
                 raise HttpStatusException("Unsafe data relation specified for sign up")
-            sign_up_perms_data_query = f'SELECT * FROM "{sign_up_perms_data_view}"{where_clause}'  # Ignore pycharm pep issue
-            submit_data[KEY_query] = sign_up_perms_data_query
+            permissions_query = f'SELECT * FROM "{permissions_view}"{where_clause}'  # Ignore pycharm pep issue
+            submit_data[KEY_query] = permissions_query
             submit_data[KEY_parameters] = ret
 
             try:
-                sign_up_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, account_id,
-                                      None, self.cached_canned_query_service, keep_alive_conn=True, conn=conn,
-                                      interface=account_db_interface, as_objects=False, singleton=True)
+                perms_check = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, account_id,
+                                     None, self.cached_canned_query_service, keep_alive_conn=True, conn=conn,
+                                     interface=account_db_interface, as_objects=False, singleton=True)
+                perms_check = objectify(perms_check, singleton=True)
+                if dbms_user_column_name in perms_check:
+                    raise HttpStatusException("Security alert! Dbms user column name " + dbms_user_column_name + " cannot be present in view " +
+                                              permissions_view)
+            except HttpSingletonStatusException:
+                raise HttpSingletonStatusException("No or multiple rows returned from " + permissions_view + " with " + where_clause)
+
+            data_view = sign_up_template[KG__email_template__data_view]
+            data_query = f'SELECT * FROM "{data_view}"{where_clause}'  # Ignore pycharm pep issue
+            submit_data[KEY_query] = data_query
+            try:
+                sign_up_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, ROLE__jaaql,
+                                      None, self.cached_canned_query_service, keep_alive_conn=True, conn=conn, as_objects=False,
+                                      singleton=True)
                 sign_up_data = objectify(sign_up_data, singleton=True)
                 if dbms_user_column_name in sign_up_data:
-                    raise HttpStatusException("Security alert! Dbms user column name " + dbms_user_column_name + " cannot be present in view " +
-                                              sign_up_perms_data_view)
+                    del sign_up_data[dbms_user_column_name]  # Remove it. Not harmful that it's there as jaaql knows this already
             except HttpSingletonStatusException:
-                raise HttpSingletonStatusException("No or multiple rows returned from " + sign_up_perms_data_view + " with " + where_clause)
+                raise HttpSingletonStatusException("No or multiple rows returned from " + data_view + " with " + where_clause)
+
+            for key, val in sign_up_data:
+                perms_check[key] = val
+            sign_up_data = perms_check
 
             base_relation = sign_up_template[KG__email_template__base_relation]
             if re.match(REGEX__dmbs_object_name, base_relation) is None:
