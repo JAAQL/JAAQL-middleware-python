@@ -1059,7 +1059,7 @@ WHERE
             where_clause = " WHERE " + where_clause
             permissions_view = sign_up_template[KG__email_template__permissions_view]
             if re.match(REGEX__dmbs_object_name, permissions_view) is None:
-                raise HttpStatusException("Unsafe data relation specified for sign up")
+                raise HttpStatusException("Unsafe permissions relation specified for sign up: Found '" + str(permissions_view) + "' na did not match regex " + REGEX__dmbs_object_name)
             permissions_query = f'SELECT * FROM "{permissions_view}"{where_clause}'  # Ignore pycharm pep issue
             submit_data[KEY_query] = permissions_query
             submit_data[KEY_parameters] = ret
@@ -1075,46 +1075,36 @@ WHERE
             except HttpSingletonStatusException:
                 raise HttpSingletonStatusException("No or multiple rows returned from " + permissions_view + " with " + where_clause)
 
-            data_view = sign_up_template[KG__email_template__data_view]
-            data_query = f'SELECT * FROM "{data_view}"{where_clause}'  # Ignore pycharm pep issue
-            submit_data[KEY_query] = data_query
-            try:
-                sign_up_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, ROLE__jaaql,
-                                      None, self.cached_canned_query_service, keep_alive_conn=True, conn=conn, as_objects=False,
-                                      singleton=True)
-                sign_up_data = objectify(sign_up_data, singleton=True)
-                if dbms_user_column_name in sign_up_data:
-                    del sign_up_data[dbms_user_column_name]  # Remove it. Not harmful that it's there as jaaql knows this already
-            except HttpSingletonStatusException:
-                raise HttpSingletonStatusException("No or multiple rows returned from " + data_view + " with " + where_clause)
-
-            for key, val in sign_up_data:
-                perms_check[key] = val
-            sign_up_data = perms_check
-
             base_relation = sign_up_template[KG__email_template__base_relation]
             if re.match(REGEX__dmbs_object_name, base_relation) is None:
-                raise HttpStatusException("Unsafe data relation specified for sign up")
+                raise HttpStatusException("Unsafe base relation specified for sign up: Found '" + str(base_relation) + "' na did not match regex " + REGEX__dmbs_object_name)
 
-            if inputs.get(KEY__username) is None:
-                get_user_data = {
-                    KEY__application: inputs[KG__security_event__application],
-                    KEY__schema: sign_up_template[KG__email_template__validation_schema],
-                    KEY_parameters: ret,
-                    KEY_query: f'SELECT {dbms_user_column_name} FROM {base_relation}{where_clause}'  # Ignore pycharm PEP issue
-                }
+            found_username = None
+            get_user_data = {
+                KEY__application: inputs[KG__security_event__application],
+                KEY__schema: sign_up_template[KG__email_template__validation_schema],
+                KEY_parameters: ret,
+                KEY_query: f'SELECT {dbms_user_column_name} FROM {base_relation}{where_clause}'  # Ignore pycharm PEP issue
+            }
 
-                try:
-                    dbms_user = submit(self.vault, self.config, self.get_db_crypt_key(),
-                                       self.jaaql_lookup_connection, get_user_data,
-                                       ROLE__jaaql, None,
-                                       self.cached_canned_query_service, as_objects=True,
-                                       singleton=True)[dbms_user_column_name]
+            try:
+                dbms_user = submit(self.vault, self.config, self.get_db_crypt_key(),
+                                   self.jaaql_lookup_connection, get_user_data,
+                                   ROLE__jaaql, None,
+                                   self.cached_canned_query_service, as_objects=True,
+                                   singleton=True)[dbms_user_column_name]
 
-                    account = account__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), dbms_user)
-                    inputs[KEY__username] = account[KG__account__username]
-                except HttpSingletonStatusException:
-                    raise HttpSingletonStatusException("User with specified parameters could not be found!")
+                account = account__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), dbms_user)
+                found_username = account[KG__account__username]
+            except HttpSingletonStatusException:
+                if inputs[KEY__username] is None:
+                    raise HttpSingletonStatusException("User with specified parameters could not be found! It's likely you should supply a username!")
+
+            if found_username and inputs[KEY__username] is not None:
+                raise HttpStatusException("Did not expect username! User has already been created and associated in the base relation")
+
+            if inputs[KEY__username] is None:
+                inputs[KEY__username] = found_username
 
             # We now create the user if the user doesn't exist
             account_existed = False
@@ -1158,6 +1148,24 @@ WHERE
             reg_event = security_event__insert(self.jaaql_lookup_connection, self.get_db_crypt_key(),
                                                inputs[KG__security_event__application], template[KG__email_template__name], unlock_code,
                                                new_account_id)
+
+            data_view = sign_up_template[KG__email_template__data_view]
+            if re.match(REGEX__dmbs_object_name, data_view) is None:
+                raise HttpStatusException("Unsafe data view specified for sign up: Found '" + str(data_view) + "' na did not match regex " + REGEX__dmbs_object_name)
+            data_query = f'SELECT * FROM "{data_view}"'
+            submit_data[KEY_query] = data_query
+            try:
+                submit_data[KEY__parameters] = {}  # Might at some point have some data parameters but for now none
+                sign_up_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, new_account_id,
+                                      None, self.cached_canned_query_service, as_objects=False, singleton=True)
+                sign_up_data = objectify(sign_up_data, singleton=True)
+                if dbms_user_column_name in sign_up_data:
+                    del sign_up_data[dbms_user_column_name]  # Remove it. Not harmful that it's there as jaaql knows this already
+            except HttpSingletonStatusException:
+                raise HttpSingletonStatusException("No or multiple rows returned from " + data_view)
+            for key, val in sign_up_data.items():
+                perms_check[key] = val
+            sign_up_data = perms_check
 
             sign_up_data[EMAIL_PARAM__app_url] = app[KG__application__base_url]
             sign_up_data[EMAIL_PARAM__app_name] = app[KG__application__name]

@@ -291,7 +291,6 @@ DOCUMENTATION__invite = SwaggerDocumentation(
             body=[
                 set_nullable(ARG_RES__username, "Potentially if the user is not known"),
                 ARG_RES__parameters,
-                ARG_RES__query,
                 ARG_RES__event_application,
                 SwaggerArgumentResponse(
                     name=KEY__sign_up_template,

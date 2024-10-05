@@ -52,7 +52,7 @@ CRON_dayOfMonth = "dayOfMonth"
 CRON_month = "month"
 CRON_dayOfWeek = "dayOfWeek"
 
-REGEX__dmbs_object_name = r'^[0-9a-zA-Z_]{1,32}$'
+REGEX__dmbs_object_name = r'^[0-9a-zA-Z_]{1,63}$'
 
 SEPARATOR__comma_space = ", "
 SEPARATOR__comma = ","
@@ -180,5 +180,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.24.1"
+VERSION = "4.24.3"
 
