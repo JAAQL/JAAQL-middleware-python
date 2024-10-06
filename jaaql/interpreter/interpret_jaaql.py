@@ -6,6 +6,7 @@ import re
 from jaaql.utilities.crypt_utils import encrypt_raw, decrypt_raw_ex
 import uuid
 import queue
+import subprocess
 import json
 from jaaql.db.db_interface import DBInterface, ECHO__none
 from psycopg.errors import OperationalError, Error
@@ -116,7 +117,8 @@ class InterpretJAAQL:
 
     def transform(self, operation: Union[dict, str], conn=None, skip_commit: bool = False, wait_hook: queue.Queue = None,
                   encryption_key: bytes = None, autocommit: bool = False, canned_query_service=None, prevent_unused_parameters: bool = True,
-                  do_prepare_only: str = False, and_return_connection_mid_transaction: bool = False):
+                  do_prepare_only: str = False, and_return_connection_mid_transaction: bool = False, attempt_fetch_domain_types: bool = False,
+                  psql: list = None, pre_psql: str = None):
         if (not isinstance(operation, dict)) and (not isinstance(operation, str)):
             raise HttpStatusException(ERR_malformed_operation_type, HTTPStatus.BAD_REQUEST)
 
@@ -309,7 +311,7 @@ class InterpretJAAQL:
                     exc_row_number = cur_parameters.get(KEY__row_number)
                     last_query, found_parameter_dictionary = self.pre_prepare_statement(
                         cur_query, cur_parameters, for_prepare=do_prepare_only is not False and do_prepare_only is not None,
-                        skipped_singletons=skipped_singletons)
+                        skipped_singletons=skipped_singletons, replace_with_nulls=attempt_fetch_domain_types)
 
                     enc_parameter_dictionary = {}
 
@@ -319,12 +321,18 @@ class InterpretJAAQL:
                         last_query, enc_parameter_dictionary = self.pre_prepare_statement(
                             last_query, encrypt_parameters, match_regex=REGEX_enc_query_argument,
                             encryption_key=encryption_key, for_prepare=do_prepare_only is not False and do_prepare_only is not None,
-                            skipped_singletons=skipped_singletons)
+                            skipped_singletons=skipped_singletons, replace_with_nulls=attempt_fetch_domain_types)
 
                     last_query = self.encrypt_literals(last_query, encryption_key)
                     found_params = {**found_parameter_dictionary, **enc_parameter_dictionary}
 
-                    if do_prepare_only:
+                    if attempt_fetch_domain_types:
+                        last_query = "CREATE TEMP VIEW temp_view AS (" + last_query + ")"
+                        self.db_interface.execute_query_fetching_results(conn, last_query, found_params, wait_hook=wait_hook,
+                                                                         requires_dba_check=check_required and canned_query_service is not None)
+                        last_query = "SELECT column_name, data_type, udt_name, domain_name FROM information_schema.columns WHERE table_name = 'temp_view' ORDER BY ordinal_position;"
+                        found_params = {}
+                    elif do_prepare_only and not psql:
                         arg_open = "(" if len(found_params) != 0 else ""
                         arg_close = ")" if len(found_params) != 0 else ""
                         last_query = "PREPARE _jaaql_query_check_" + do_prepare_only + arg_open + ", ".join(
@@ -347,11 +355,25 @@ class InterpretJAAQL:
                         if cur_assert == ASSERT_one:
                             skipped_singletons.append(query_key)
 
+                    elif psql is not None:
+                        result = subprocess.run(
+                            psql,
+                            input=f"{pre_psql}\n{last_query}\n\\gdesc\n",
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True,
+                            check=True
+                        )
+                        res = {
+                            "columns": ["result"],
+                            "rows": [result.stdout],
+                            "type_codes": [""]
+                        }
                     else:
                         res = self.db_interface.execute_query_fetching_results(conn, last_query, found_params, wait_hook=wait_hook,
                                                                                requires_dba_check=check_required and canned_query_service is not None)
 
-                    if do_prepare_only:
+                    if do_prepare_only and not attempt_fetch_domain_types and not psql:
                         self.db_interface.execute_query_fetching_results(conn, "DEALLOCATE _jaaql_query_check_" + do_prepare_only, found_params,
                                                                          wait_hook=wait_hook,
                                                                          requires_dba_check=check_required and canned_query_service is not None)
@@ -662,7 +684,8 @@ class InterpretJAAQL:
         return new_query + query[last_end_match:]
 
     def pre_prepare_statement(self, query, parameters, match_regex: str = REGEX_query_argument, encryption_key: bytes = None,
-                              require_presence: bool = True, for_prepare: bool = False, skipped_singletons: list[str] = None):
+                              require_presence: bool = True, for_prepare: bool = False, skipped_singletons: list[str] = None,
+                              replace_with_nulls: bool = False):
         prepared = ""
         last_index = 0
         found_parameters = []
@@ -706,7 +729,10 @@ class InterpretJAAQL:
                 prepared += STATEMENT_null
             else:
                 if isinstance(parameters[match_str], MarkerPrepare):
-                    prepared += "$" + str(int(parameters[match_str].count) + 1)
+                    if replace_with_nulls:
+                        prepared += "NULL"
+                    else:
+                        prepared += "$" + str(int(parameters[match_str].count) + 1)
                 else:
                     the_type = self.get_format_type(match_str, parameters[match_str])
                     if is_skipped_default:

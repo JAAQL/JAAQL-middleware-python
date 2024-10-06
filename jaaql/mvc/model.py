@@ -168,7 +168,32 @@ class JAAQLModel(BaseJAAQLModel):
 
         queries.append(query)
 
+    def parse_gdesc_output(self, output):
+        """
+        Parse the output of \gdesc to extract column names and types.
+        """
+        lines = output.strip().split('\n')
+        columns = {}
+        parsing = False
+        for line in lines:
+            if line.strip().replace(" ", "") == "Column|Type":
+                # Found the header line
+                parsing = True
+                continue
+            if parsing:
+                if line.strip() == '':
+                    # End of table
+                    break
+                # Parse the line
+                parts = [part.strip() for part in line.strip().split('|')]
+                if len(parts) >= 2:
+                    column_name = parts[0]
+                    column_type = parts[1]
+                    columns[column_name] = column_type
+        return columns
+
     def prepare_queries(self, inputs: dict, account_id: str):
+        cost_only = inputs.get("cost_only", False)
         db_connection = create_interface_for_db(self.vault, self.config, account_id, inputs[KEY__database], None)
 
         self.is_dba(db_connection)
@@ -179,18 +204,50 @@ class JAAQLModel(BaseJAAQLModel):
             my_uuid = str(uuid.uuid4()).replace("-", "_")
             exc = None
             cost = None
+            type_resolution_method = None
+            columns = None
             try:
-                results = execute_supplied_statement(db_connection, query["query"].strip(), do_prepare_only=my_uuid)
+                results = execute_supplied_statement(db_connection, query["query"].strip(), do_prepare_only=my_uuid)  # Fetch cursor descriptors here too and then merge
                 cost = float(results["rows"][0][0].split("..")[1].split(" ")[0])
             except Exception as ex:
                 exc = str(ex).replace("PREPARE _jaaql_query_check_" + my_uuid + " as ", "").replace(
                     " ... _jaaql_query_check_" + my_uuid + " as ", "")
 
+            if exc is None and not cost_only:
+                try:
+                    domain_types = execute_supplied_statement(db_connection, query["query"].strip(), do_prepare_only=my_uuid, attempt_fetch_domain_types=True)
+                    type_resolution_method = "temp_view"
+                    temp_columns = [row[0] for row in domain_types['rows']]
+                    temp_types = [row[3] if row[3] is not None else row[2] for row in domain_types['rows']]
+                    columns = {
+                        col: temp_types[idx]
+                        for col, idx in zip(temp_columns, range(len(temp_columns)))
+                    }
+                except Exception as ex:
+                    pass  # This is fine
+
+                if columns is None:
+                    try:
+                        type_resolution_method = "gdesc"
+                        psql = [
+                            "psql",
+                            "-U", "postgres",
+                            "-d", inputs[KEY__database],
+                            "-q", "-X", "--pset", "pager=off", "-f", "-"
+                        ]
+                        results = execute_supplied_statement(db_connection, query["query"].strip(), do_prepare_only=my_uuid, psql=psql,
+                                                             pre_psql="SET SESSION AUTHORIZATION \"" + account_id + "\";")
+                        columns = self.parse_gdesc_output(results['rows'][0])
+                    except:
+                        type_resolution_method = "failed"
+
             res.append({
                 "location": query["file"] + ":" + str(query["line_number"]),
                 "name": query["name"],
                 "cost": cost,
+                "columns": columns,
                 "exception": exc,
+                "type_resolution_method": type_resolution_method
             })
 
         return sorted(res, key=lambda x: (x["exception"] if x["exception"] is not None else '', float('-inf') if x["cost"] is None else -x["cost"]))

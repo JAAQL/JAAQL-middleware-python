@@ -56,7 +56,9 @@ def execute_supplied_statement(db_interface, query: str, parameters: dict = None
                                as_objects: bool = False, encrypt_parameters: list = None,
                                decrypt_columns: list = None, encryption_key: bytes = None,
                                encryption_salts: dict = None, skip_commit: bool = False,
-                               autocommit: bool = False, do_prepare_only: str = None):
+                               autocommit: bool = False, do_prepare_only: str = None,
+                               attempt_fetch_domain_types: bool = False, psql: list = None,
+                               pre_psql: str = None):
     if parameters is None:
         parameters = {}
 
@@ -103,7 +105,8 @@ def execute_supplied_statement(db_interface, query: str, parameters: dict = None
     }
 
     data = InterpretJAAQL(db_interface).transform(statement, skip_commit=skip_commit, encryption_key=encryption_key, autocommit=autocommit,
-                                                  do_prepare_only=do_prepare_only)
+                                                  do_prepare_only=do_prepare_only, attempt_fetch_domain_types=attempt_fetch_domain_types,
+                                                  psql=psql, pre_psql=pre_psql)
 
     if as_objects:
         data = objectify(data)
