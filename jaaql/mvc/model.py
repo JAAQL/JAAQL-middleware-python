@@ -361,6 +361,7 @@ WHERE
                     return
 
             new_data = open(config_path, "r").read()
+            new_data = new_data.replace("{{JAAQL_INSTALL_LOCATION}}", os.environ.get("INSTALL_PATH"))
 
             # Read the file content
             with open(file_path, 'r') as file:
