@@ -189,8 +189,39 @@ class JAAQLModel(BaseJAAQLModel):
                 if len(parts) >= 2:
                     column_name = parts[0]
                     column_type = parts[1]
-                    columns[column_name] = column_type
+                    columns[column_name] = {
+                        "type": column_type,
+                        "is_nullable": True  # We can't figure this out with gdesc
+                    }
         return columns
+
+    def fetch_domains(self, inputs: dict, account_id: str):
+        db_connection = create_interface_for_db(self.vault, self.config, account_id, inputs[KEY__database], None)
+        self.is_dba(db_connection)
+
+        domains_query = """
+SELECT
+    t.typname AS type_name,
+    CASE
+        WHEN t.typtype = 'd' THEN bt.typname
+        ELSE t.typname
+    END AS base_type,
+    t.typtype
+FROM
+    pg_type t
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+    LEFT JOIN pg_type bt ON bt.oid = t.typbasetype
+WHERE
+    t.typtype IN ('b', 'd')
+    AND n.nspname NOT IN ('information_schema')
+    AND left(t.typname, 1) <> '_'
+    AND left(t.typname, 3) <> 'pg_'
+ORDER BY
+    n.nspname,
+    t.typname;
+"""
+
+        return execute_supplied_statement(db_connection, domains_query, as_objects=True)
 
     def prepare_queries(self, inputs: dict, account_id: str):
         cost_only = inputs.get("cost_only", False)
@@ -218,9 +249,13 @@ class JAAQLModel(BaseJAAQLModel):
                     domain_types = execute_supplied_statement(db_connection, query["query"].strip(), do_prepare_only=my_uuid, attempt_fetch_domain_types=True)
                     type_resolution_method = "temp_view"
                     temp_columns = [row[0] for row in domain_types['rows']]
+                    is_nullable = [row[4] for row in domain_types['rows']]
                     temp_types = [row[3] if row[3] is not None else row[2] for row in domain_types['rows']]
                     columns = {
-                        col: temp_types[idx]
+                        col: {
+                            "type": temp_types[idx],
+                            "is_nullable": is_nullable[idx]
+                        }
                         for col, idx in zip(temp_columns, range(len(temp_columns)))
                     }
                 except Exception as ex:

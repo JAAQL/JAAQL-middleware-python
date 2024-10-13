@@ -1,4 +1,6 @@
+import string
 import traceback
+import random
 
 from jaaql.exceptions.http_status_exception import *
 from datetime import datetime
@@ -327,10 +329,41 @@ class InterpretJAAQL:
                     found_params = {**found_parameter_dictionary, **enc_parameter_dictionary}
 
                     if attempt_fetch_domain_types:
-                        last_query = "CREATE TEMP VIEW temp_view AS (" + last_query + ")"
+                        temp_view_name = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+                        last_query = "CREATE TEMP VIEW \"temp_view__" + temp_view_name + "\" AS (" + last_query + ")"
                         self.db_interface.execute_query_fetching_results(conn, last_query, found_params, wait_hook=wait_hook,
                                                                          requires_dba_check=check_required and canned_query_service is not None)
-                        last_query = "SELECT column_name, data_type, udt_name, domain_name FROM information_schema.columns WHERE table_name = 'temp_view' ORDER BY ordinal_position;"
+                        last_query = """
+WITH RECURSIVE column_hierarchy AS (
+    -- Base case: Select columns from 'managed_service'
+    SELECT
+        C.column_name, C.data_type, C.udt_name, C.domain_name,
+        VC.table_catalog, VC.table_schema, VC.table_name,
+        true as is_nullable,
+        1 as level
+    FROM information_schema.columns C
+    LEFT JOIN information_schema.view_column_usage VC on VC.view_name = C.table_name AND VC.column_name = C.column_name
+    WHERE C.table_name = 'temp_view__""" + temp_view_name + """'
+
+    UNION ALL
+
+    SELECT
+        C.column_name, C.data_type, C.udt_name, C.domain_name,
+        VC.table_catalog, VC.table_schema, VC.table_name,
+        CASE WHEN C.is_nullable = 'NO' then false else true end as is_nullable,
+        CH.level + 1 as level
+    FROM information_schema.columns C
+    JOIN column_hierarchy CH ON C.column_name = CH.column_name
+    LEFT JOIN information_schema.view_column_usage VC on VC.view_name = C.table_name AND VC.column_name = C.column_name
+    WHERE C.table_name = CH.table_name AND C.table_schema = CH.table_schema AND C.table_catalog = CH.table_catalog
+)SELECT
+    MAX(CH.column_name) as column_name,
+    MAX(CH.data_type) as data_type,
+    MAX(CH.udt_name) as udt_name,
+    MAX(CH.domain_name) as domain_name,
+    NOT(bool_or(NOT(CH.is_nullable))) as is_nullable
+FROM column_hierarchy CH
+GROUP BY CH.column_name, CH.data_type, CH.udt_name, CH.domain_name;"""
                         found_params = {}
                     elif do_prepare_only and not psql:
                         arg_open = "(" if len(found_params) != 0 else ""

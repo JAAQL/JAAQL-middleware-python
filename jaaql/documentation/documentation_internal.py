@@ -207,6 +207,17 @@ DOCUMENTATION__prepare = SwaggerDocumentation(
     )
 )
 
+DOCUMENTATION__domains = SwaggerDocumentation(
+    tags="Prepare",
+    methods=SwaggerMethod(
+        name="Fetches domains",
+        description="Fetches database level domains",
+        method=REST__GET,
+        arguments=ARG_RESP__allow_all,
+        response=RES__allow_all
+    )
+)
+
 DOCUMENTATION__set_web_config = SwaggerDocumentation(
     tags="Web Config",
     methods=SwaggerMethod(
