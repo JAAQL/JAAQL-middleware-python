@@ -17,7 +17,7 @@ from jaaql.utilities.utils import get_jaaql_root, get_base_url
 from jaaql.db.db_utils import create_interface, jaaql__encrypt, create_interface_for_db
 from jaaql.db.db_utils_no_circ import submit, get_required_db, objectify
 from jaaql.utilities import crypt_utils
-from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_ATTR_EXPIRES
+from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_ATTR_EXPIRES, time_delta_ms
 from jaaql.mvc.response import *
 import threading
 from datetime import datetime, timedelta
@@ -191,7 +191,7 @@ class JAAQLModel(BaseJAAQLModel):
                     column_type = parts[1]
                     columns[column_name] = {
                         "type": column_type,
-                        "is_nullable": True  # We can't figure this out with gdesc
+                        "nullable": True  # We can't figure this out with gdesc
                     }
         return columns
 
@@ -249,12 +249,12 @@ ORDER BY
                     domain_types = execute_supplied_statement(db_connection, query["query"].strip(), do_prepare_only=my_uuid, attempt_fetch_domain_types=True)
                     type_resolution_method = "temp_view"
                     temp_columns = [row[0] for row in domain_types['rows']]
-                    is_nullable = [row[4] for row in domain_types['rows']]
+                    nullable = [row[4] for row in domain_types['rows']]
                     temp_types = [row[3] if row[3] is not None else row[2] for row in domain_types['rows']]
                     columns = {
                         col: {
                             "type": temp_types[idx],
-                            "is_nullable": is_nullable[idx]
+                            "nullable": nullable[idx]
                         }
                         for col, idx in zip(temp_columns, range(len(temp_columns)))
                     }
@@ -285,7 +285,10 @@ ORDER BY
                 "type_resolution_method": type_resolution_method
             })
 
-        return sorted(res, key=lambda x: (x["exception"] if x["exception"] is not None else '', float('-inf') if x["cost"] is None else -x["cost"]))
+        if inputs.get("sort_cost", True):
+            return sorted(res, key=lambda x: (x["exception"] if x["exception"] is not None else '', float('-inf') if x["cost"] is None else -x["cost"]))
+        else:
+            return res
 
     def prepare_queries__old(self, connection: DBInterface, account_id: str, inputs: dict):
         # Important! Permission check by checking that the user can in insert into the application table. This is equivalent of checking if the user

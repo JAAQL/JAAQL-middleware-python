@@ -410,6 +410,10 @@ GROUP BY CH.column_name, CH.data_type, CH.udt_name, CH.domain_name;"""
                         self.db_interface.execute_query_fetching_results(conn, "DEALLOCATE _jaaql_query_check_" + do_prepare_only, found_params,
                                                                          wait_hook=wait_hook,
                                                                          requires_dba_check=check_required and canned_query_service is not None)
+                    elif attempt_fetch_domain_types:
+                        self.db_interface.execute_query_fetching_results(conn, "DROP VIEW IF EXISTS \"temp_view__" + temp_view_name + "\"", found_params,
+                                                                         wait_hook=wait_hook,
+                                                                         requires_dba_check=check_required and canned_query_service is not None)
 
                     wait_hook = None  # We've already checked authentication, we don't need to do it again
                     check_required = False  # We've done the first check, if we have reached here without an exception, user does not need a DBA check

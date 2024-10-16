@@ -212,8 +212,13 @@ DOCUMENTATION__domains = SwaggerDocumentation(
     methods=SwaggerMethod(
         name="Fetches domains",
         description="Fetches database level domains",
-        method=REST__GET,
-        arguments=ARG_RESP__allow_all,
+        method=REST__POST,
+        body=SwaggerArgumentResponse(
+            name=KEY__database,
+            description="The database against which to fetch the domains",
+            arg_type=str,
+            example=["database"]
+        ),
         response=RES__allow_all
     )
 )
