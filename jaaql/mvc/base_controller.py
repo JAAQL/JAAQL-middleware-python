@@ -108,8 +108,13 @@ def json_serial(obj):
     if dataclasses and dataclasses.is_dataclass(obj):
         return dataclasses.asdict(obj)
 
+    if isinstance(obj, time):
+        return obj.isoformat()
+
     if hasattr(obj, "__html__"):
         return str(obj.__html__())
+
+    print(f"Object of type {type(obj).__name__} is not JSON serializable")
 
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
