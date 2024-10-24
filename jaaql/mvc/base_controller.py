@@ -8,7 +8,7 @@ from werkzeug.exceptions import InternalServerError, HTTPException
 import inspect
 import json
 import requests
-from datetime import datetime, date
+from datetime import datetime, date, time
 from jaaql.exceptions.custom_http_status import CustomHTTPStatus
 from jaaql.exceptions.jaaql_interpretable_handled_errors import UnhandledJaaqlServerError, NotYetInstalled
 import sys
