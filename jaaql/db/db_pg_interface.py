@@ -111,7 +111,7 @@ class DBPGInterface(DBInterface):
                     else:
                         return [desc[0] for desc in cursor.description], cursor.fetchall()
             except OperationalError as ex:
-                if ex.sqlstate.startswith("08"):
+                if ex.sqlstate is None or ex.sqlstate.startswith("08"):
                     traceback.print_exc()
                     self.pg_pool.putconn(conn)
                     self.pg_pool.check()
