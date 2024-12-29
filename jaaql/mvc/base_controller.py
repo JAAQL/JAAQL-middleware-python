@@ -370,7 +370,7 @@ class BaseJAAQLController:
         else:
             content_type = request.headers.get('Content-Type', '')
             if 'charset=' not in content_type and len(kwargs) == 0:
-                raise HttpStatusException(ERR__unexpected_request_body, HTTPStatus.BAD_REQUEST)
+                return {}
 
         if isinstance(data, list):
             combined_data = data

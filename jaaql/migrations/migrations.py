@@ -60,6 +60,7 @@ def run_migrations(host: str, bypass_super: str, bypass_jaaql: str, db_interface
     migration_from_version = "0.0.0"
     if KG__jaaql__migration_version in jaaql_singleton:
         migration_from_version = jaaql_singleton[KG__jaaql__migration_version]
+        print("Detected migration from version " + migration_from_version)
 
     script_files = sorted([script_file for script_file in listdir(migration_folder) if
                            script_file.endswith(EXTENSION_JAAQL)])

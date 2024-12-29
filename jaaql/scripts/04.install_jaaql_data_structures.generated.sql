@@ -110,11 +110,12 @@ create table _jaaql (
     the_anonymous_user postgres_role,
     security_event_attempt_limit attempt_count not null,
     migration_version semantic_version not null,
+    last_successful_build_time build_time not null,
     _singleton_key boolean PRIMARY KEY not null default true,
     check(_singleton_key is true),
     check (security_event_attempt_limit between 1 and 3) );
     create view jaaql as select
-        the_anonymous_user, security_event_attempt_limit, migration_version
+        the_anonymous_user, security_event_attempt_limit, migration_version, last_successful_build_time
     from _jaaql
     where _singleton_key;
 -- email_template...
@@ -938,6 +939,7 @@ $$
                 the_anonymous_user => "account.insert+".id,
                 security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::attempt_count END,
                 migration_version => (_r->>'migration_version')::semantic_version,
+                last_successful_build_time => (_r->>'last_successful_build_time')::build_time,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
             _status.errors = _status.errors || _returned_status.errors;
@@ -989,6 +991,7 @@ $$
                 the_anonymous_user => "account.persist+".id,
                 security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::attempt_count END,
                 migration_version => (_r->>'migration_version')::semantic_version,
+                last_successful_build_time => (_r->>'last_successful_build_time')::build_time,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
             _status.errors = _status.errors || _returned_status.errors;
@@ -1040,6 +1043,7 @@ $$
                 the_anonymous_user => "account.update+".id,
                 security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::attempt_count END,
                 migration_version => (_r->>'migration_version')::semantic_version,
+                last_successful_build_time => (_r->>'last_successful_build_time')::build_time,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
             _status.errors = _status.errors || _returned_status.errors;
@@ -4747,8 +4751,8 @@ drop function if exists "remote_procedure.delete";
 -- (3) Populate tables
 
 -- jaaql...
-insert into jaaql (the_anonymous_user, security_event_attempt_limit, migration_version)
-values (NULL, 3, '1.0.0');
+insert into jaaql (the_anonymous_user, security_event_attempt_limit, migration_version, last_successful_build_time)
+values (NULL, 3, '1.0.1', 0);
 
 ;
 -- pg_base_exception...

@@ -18,6 +18,7 @@ CREATE DOMAIN email_server_username AS character varying(255);
 CREATE DOMAIN postgres_role AS character varying(63);
 CREATE DOMAIN attempt_count AS smallint CHECK (VALUE between 1 and 3);
 CREATE DOMAIN semantic_version AS character varying(11) CHECK (VALUE ~* '^([0-9]|[1-9][0-9]{0,2}).([0-9]|[1-9][0-9]{0,2}).([0-9]|[1-9][0-9]{0,2})$');
+CREATE DOMAIN build_time AS bigint;
 CREATE DOMAIN email_template_type AS character varying(1);
 CREATE DOMAIN safe_path AS character varying(255) CHECK (VALUE ~* '^[a-z$0-9_\-\/]+(\.[a-zA-Z0-9_\-]+)?$');
 CREATE DOMAIN email_account_username AS character varying(64) CHECK (VALUE ~* '^[a-zA-Z0-9_\-\.]+$');

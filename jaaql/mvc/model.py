@@ -1403,6 +1403,16 @@ WHERE
             print(cron_command)
             print("Cron not supported in debugging mode", file=sys.stderr)
 
+    def get_last_successful_build_time(self):
+        if os.environ.get("JAAQL_DEBUGGING") == "TRUE":
+            return jaaql__select(self.jaaql_lookup_connection)[KG__jaaql__last_successful_build_time]
+        else:
+            return 0
+
+    def set_last_successful_build_time(self, http_inputs: dict):
+        if os.environ.get("JAAQL_DEBUGGING") == "TRUE":
+            jaaql__update(self.jaaql_lookup_connection, last_successful_build_time=http_inputs[KG__jaaql__last_successful_build_time])
+
     def submit(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
         return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
                       self.cached_canned_query_service, as_objects=as_objects, singleton=singleton)

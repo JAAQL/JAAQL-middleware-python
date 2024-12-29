@@ -131,6 +131,13 @@ class JAAQLController(BaseJAAQLController):
         def cron(connection: DBInterface, http_inputs: dict):
             self.model.add_cron_job_to_application(connection, http_inputs)
 
+        @self.publish_route('/build-time', DOCUMENTATION__last_successful_build_timestamp)
+        def cron(http_inputs: dict):
+            if self.is_post():
+                self.model.set_last_successful_build_time(http_inputs)
+            else:
+                return self.model.get_last_successful_build_time()
+
         @self.publish_route('/webhook/<application>/<name>', DOCUMENTATION__webhook)
         def handle_webhook(application: str, name: str, body: bytes, headers: dict, args: dict, response: JAAQLResponse):
             self.model.handle_webhook(application, name, body, headers, args, response)

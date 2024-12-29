@@ -232,6 +232,34 @@ DOCUMENTATION__set_web_config = SwaggerDocumentation(
     )
 )
 
+DOCUMENTATION__last_successful_build_timestamp = SwaggerDocumentation(
+    tags="Build Information",
+    security=False,
+    methods=[
+        SwaggerMethod(
+            name="Sets build time",
+            description="Updates the nginx configuration, including security headers",
+            method=REST__POST,
+            body=[
+                SwaggerArgumentResponse(
+                    name=KG__jaaql__last_successful_build_time,
+                    description="The build time",
+                    arg_type=int,
+                    example=[1735462031]
+                )
+            ]
+        ),
+        SwaggerMethod(
+            name="Gets build time",
+            description="Sets the time at which the last successful build happened",
+            method=REST__GET,
+            response=SwaggerFlatResponse(
+                description="The time that this build occurred, or 0 if unset"
+            )
+        )
+    ]
+)
+
 DOCUMENTATION__cron = SwaggerDocumentation(
     tags="Cron",
     methods=SwaggerMethod(

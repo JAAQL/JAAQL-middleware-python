@@ -375,6 +375,7 @@ def email_dispatcher__insert(
 KG__jaaql__the_anonymous_user = "the_anonymous_user"
 KG__jaaql__security_event_attempt_limit = "security_event_attempt_limit"
 KG__jaaql__migration_version = "migration_version"
+KG__jaaql__last_successful_build_time = "last_successful_build_time"
 
 # Generated queries for table 'jaaql'
 QG__jaaql_delete = "DELETE FROM jaaql"
@@ -390,7 +391,8 @@ QG__jaaql_update = """
     SET
         the_anonymous_user = COALESCE(:the_anonymous_user, the_anonymous_user),
         security_event_attempt_limit = COALESCE(:security_event_attempt_limit, security_event_attempt_limit),
-        migration_version = COALESCE(:migration_version, migration_version)
+        migration_version = COALESCE(:migration_version, migration_version),
+        last_successful_build_time = COALESCE(:last_successful_build_time, last_successful_build_time)
 """
 
 
@@ -404,7 +406,8 @@ def jaaql__delete(
 
 def jaaql__update(
     connection: DBInterface,
-    the_anonymous_user=None, security_event_attempt_limit=None, migration_version=None
+    the_anonymous_user=None, security_event_attempt_limit=None, migration_version=None,
+    last_successful_build_time=None
 ):
     execute_supplied_statement(
         connection, QG__jaaql_update,
@@ -412,7 +415,8 @@ def jaaql__update(
             # None Key Fields
             KG__jaaql__the_anonymous_user: the_anonymous_user,
             KG__jaaql__security_event_attempt_limit: security_event_attempt_limit,
-            KG__jaaql__migration_version: migration_version
+            KG__jaaql__migration_version: migration_version,
+            KG__jaaql__last_successful_build_time: last_successful_build_time
         }
     )
 

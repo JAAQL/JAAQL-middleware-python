@@ -683,6 +683,7 @@ $$
                 the_anonymous_user => "account.insert+".id,
                 security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::attempt_count END,
                 migration_version => (_r->>'migration_version')::semantic_version,
+                last_successful_build_time => (_r->>'last_successful_build_time')::build_time,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
             _status.errors = _status.errors || _returned_status.errors;
@@ -734,6 +735,7 @@ $$
                 the_anonymous_user => "account.persist+".id,
                 security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::attempt_count END,
                 migration_version => (_r->>'migration_version')::semantic_version,
+                last_successful_build_time => (_r->>'last_successful_build_time')::build_time,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
             _status.errors = _status.errors || _returned_status.errors;
@@ -785,6 +787,7 @@ $$
                 the_anonymous_user => "account.update+".id,
                 security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::attempt_count END,
                 migration_version => (_r->>'migration_version')::semantic_version,
+                last_successful_build_time => (_r->>'last_successful_build_time')::build_time,
                 _index => (_r->>'_index')::integer,
                 _check_only => cardinality(_status.errors) <> 0);
             _status.errors = _status.errors || _returned_status.errors;
