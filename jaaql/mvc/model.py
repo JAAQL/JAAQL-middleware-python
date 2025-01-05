@@ -449,11 +449,14 @@ WHERE
             if len(override) != 0:
                 override += "."
             config_path = f"nginx.{override}config"
-            if not os.path.exists(config_path):
-                config_path = "www/" + config_path
+            if os.path.exists("/nginx-mount/" + config_path):
+                config_path = "/nginx-mount/" + config_path
+            else:
                 if not os.path.exists(config_path):
-                    print("Could not find config file '" + config_path + "'")
-                    return
+                    config_path = "www/" + config_path
+                    if not os.path.exists(config_path):
+                        print("Could not find config file '" + config_path + "'")
+                        return
 
             new_data = open(config_path, "r").read()
             new_data = new_data.replace("{{JAAQL_INSTALL_LOCATION}}", os.environ.get("INSTALL_PATH"))
