@@ -258,7 +258,6 @@ class Constraints(Enum):
     ApplicationNameKey = "application_name_key"
     ApplicationSchemaApplicationNameKey = "application_schema_application_name_key"
     EmailDispatcherApplicationNameKey = "email_dispatcher_application_name_key"
-    PgReservedWordTextKey = "pg__reserved_word_text_key"
     EmailTemplateApplicationNameKey = "email_template_application_name_key"
     DocumentTemplateApplicationNameKey = "document_template_application_name_key"
     DocumentRequestUuidKey = "document_request_uuid_key"
@@ -271,9 +270,16 @@ class Constraints(Enum):
     PgErrorClassCodeKey = "pg_error_class_code_key"
     PgExceptionSqlstateKey = "pg_exception_sqlstate_key"
     RemoteProcedureApplicationNameKey = "remote_procedure_application_name_key"
+    FederationProcedureNameKey = "federation_procedure_name_key"
+    FederationProcedureParameterProcedureNameKey = "federation_procedure_parameter_procedure_name_key"
+    IdentityProviderServiceNameKey = "identity_provider_service_name_key"
+    UserRegistryProviderTenantKey = "user_registry_provider_tenant_key"
+    DatabaseUserRegistryProviderTenantDatabaseKey = "database_user_registry_provider_tenant_database_key"
     AccountUsernameKey = "account_username_key"
     AccountPasswordHashKey = "account_password_hash_key"
     ValidatedIpAddressEncryptedSaltedIpAddressKey = "validated_ip_address_encrypted_salted_ip_address_key"
+    UserRegistryDiscoveryUrlKey = "user_registry_discovery_url_key"
+    PgReservedWordTextKey = "pg__reserved_word_text_key"
 
 
 RESPONSE_CODE_LOOKUP = {
