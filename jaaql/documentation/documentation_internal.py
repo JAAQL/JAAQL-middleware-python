@@ -147,7 +147,7 @@ DOCUMENTATION__check_frozen = SwaggerDocumentation(
 )
 
 # Not unused. Used to generate html files
-from jaaql.documentation.documentation_shared import DOCUMENTATION__oauth_token, DOCUMENTATION__oauth_refresh
+from jaaql.documentation.documentation_shared import DOCUMENTATION__oauth_token, DOCUMENTATION__oauth_refresh, ARG_RES__tenant, ARG_RES__provider
 
 DOCUMENTATION__dispatchers = SwaggerDocumentation(
     tags="Dispatchers",
@@ -315,5 +315,108 @@ DOCUMENTATION__cron = SwaggerDocumentation(
                 condition="Is supplied"
             )
         ]
+    )
+)
+
+ARG_RES__application = SwaggerArgumentResponse(
+    name=KG__application_schema__application,
+    description="The name of the application",
+    arg_type=str,
+    example=["out-and-about"]
+)
+ARG_RES__schema = SwaggerArgumentResponse(
+    name=KEY__schema,
+    description="The schema of the application",
+    arg_type=str,
+    required=False,
+    condition="Whether to use the default schema",
+    example=["default"]
+)
+KEY__redirect_uri = "redirect_uri"
+ARG_RES__redirect_uri = SwaggerArgumentResponse(
+    name=KEY__redirect_uri,
+    description="The redirect uri that shall be used",
+    arg_type=str,
+    required=True,
+    example=["index.html"]
+)
+
+DOCUMENTATION__oidc_user_registries = SwaggerDocumentation(
+    tags="oidc",
+    security=False,
+    methods=SwaggerMethod(
+        name="Fetch OIDC registries",
+        description="Fetches OIDC registries for specified database and tenant",
+        method=REST__GET,
+        arguments=[
+            ARG_RES__tenant,
+            ARG_RES__application,
+            ARG_RES__schema
+        ],
+        response=SwaggerResponse(
+            description="Providers response",
+            response=[
+                ARG_RES__provider,
+                SwaggerArgumentResponse(
+                    name=KG__identity_provider_service__logo_url,
+                    description="The logo url for the provider",
+                    arg_type=str,
+                    example=["/identity-logos/azure.png"]
+                )
+            ]
+        )
+    )
+)
+
+DOCUMENTATION__oidc_redirect_url = SwaggerDocumentation(
+    tags="oidc",
+    security=False,
+    methods=SwaggerMethod(
+        name="Fetch OIDC base redirect",
+        description="Fetches OIDC base redirect URL",
+        method=REST__GET,
+        arguments=[
+            ARG_RES__tenant,
+            ARG_RES__provider,
+            ARG_RES__application,
+            ARG_RES__schema,
+            ARG_RES__redirect_uri
+        ],
+        response=SwaggerFlatResponse(
+            description="URL",
+            code=HTTPStatus.FOUND,
+            body="You are being redirected to the identity server..."
+        )
+    )
+)
+
+KEY__code = "code"
+KEY__state = "state"
+
+DOCUMENTATION__oidc_exchange_code = SwaggerDocumentation(
+    tags="oidc",
+    security=False,
+    methods=SwaggerMethod(
+        name="Fetch OIDC code",
+        description="Exchanges OIDC auth code for auth token, returns the token",
+        method=REST__POST,
+        arguments=[
+            SwaggerArgumentResponse(
+                name=KEY__code,
+                description="The OIDC Auth code",
+                arg_type=str,
+                example=["SplxlOBeZQQYbYS6WxSbIA"]
+            ),
+            SwaggerArgumentResponse(
+                name=KEY__state,
+                description="The state",
+                arg_type=str,
+                example=["SplxlOBeZQQYbYS6WxSbIA"]
+            )
+        ],
+        response=SwaggerFlatResponse(
+            description="Access token",
+            body="eyJ..."
+        )
     )
 )

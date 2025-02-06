@@ -1,8 +1,19 @@
-create function create_account(username text, attach_as postgres_role = null, already_exists boolean = false, is_the_anonymous_user boolean = false, allow_already_exists boolean = false) returns postgres_role as
+create function create_account(
+    username text, sub text, provider text = NULL, tenant text = NULL,
+    email text = NULL, api_key text = NULL, attach_as postgres_role = NULL,
+    already_exists boolean = false, allow_already_exists boolean = false
+) returns postgres_role as
 $$
 DECLARE
+    requires_email_verification boolean = false;
     account_id postgres_role;
 BEGIN
+    if create_account.provider is not null then
+        SELECT requires_email_verification INTO requires_email_verification
+        FROM identity_provider_service
+        WHERE name = create_account.provider;
+    end if;
+
     if attach_as is not null then
         if not already_exists then
             BEGIN
@@ -14,16 +25,25 @@ BEGIN
                 return 'account_already_existed';
             END;
         end if;
-        INSERT INTO account (id, username) VALUES (attach_as, create_account.username) RETURNING id INTO account_id;
+        INSERT INTO account
+        (id, username, sub, provider, tenant, email, email_verified, api_key)
+        VALUES (attach_as, create_account.username, create_account.sub, create_account.provider, create_account.tenant, create_account.email, not requires_email_verification, create_account.api_key)
+        RETURNING id INTO account_id;
     else
-        INSERT INTO account (id, username) VALUES (gen_random_uuid(), create_account.username) RETURNING id INTO account_id;
+        INSERT INTO account
+        (id, username, sub, provider, tenant, email, email_verified, api_key)
+        VALUES (gen_random_uuid(), create_account.username, create_account.sub, create_account.provider, create_account.tenant, create_account.email, not requires_email_verification, create_account.api_key)
+        RETURNING id INTO account_id;
+
         EXECUTE 'CREATE ROLE ' || quote_ident(account_id);
     end if;
-    if not is_the_anonymous_user then
+
+    IF requires_email_verification THEN
         EXECUTE 'GRANT unconfirmed TO ' || quote_ident(account_id);
-    else
-        UPDATE jaaql SET the_anonymous_user = account_id;
-    end if;
+    ELSE
+        EXECUTE 'GRANT registered TO ' || quote_ident(account_id);
+    END IF;
+
     return account_id;
 END
 $$ language plpgsql SECURITY DEFINER;

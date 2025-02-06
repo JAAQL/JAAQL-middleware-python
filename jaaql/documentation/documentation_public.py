@@ -4,7 +4,7 @@ from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
 from jaaql.mvc.generated_queries import *
 from jaaql.documentation.documentation_shared import (ARG_RES__username, set_nullable, ARG_RES__password, RES__oauth_token, rename_arg,
-                                                      ARG_RES__remember_me)
+                                                      ARG_RES__remember_me, ARG_RES__provider, ARG_RES__tenant)
 
 TITLE = "JAAQL API"
 DESCRIPTION = "Collection of methods in the JAAQL API"
@@ -52,7 +52,17 @@ DOCUMENTATION__create_account_batch = SwaggerDocumentation(
             description="A list of the accounts",
             arg_type=SwaggerList(
                 ARG_RES__username,
+                SwaggerArgumentResponse(
+                    name=KG__account__sub,
+                    description="The sub of the user (OIDC)",
+                    arg_type=str,
+                    required=False,
+                    condition="Are we federating the user",
+                    example="556c0002-40d2-4bd8-99ea-48c61de4acb9"
+                ),
                 set_nullable(ARG_RES__password, "Whether the user is given a password"),
+                set_nullable(ARG_RES__provider, "Whether this user is federated"),
+                set_nullable(ARG_RES__tenant, "Whether this user is federated"),
                 SwaggerArgumentResponse(
                     name=KEY__attach_as,
                     description="Whether the user will attach as a role",
@@ -60,13 +70,6 @@ DOCUMENTATION__create_account_batch = SwaggerDocumentation(
                     required=False,
                     condition="Defaults to false",
                     example="my-role"
-                ),
-                SwaggerArgumentResponse(
-                    name=KEY__registered,
-                    description="Whether or not the user is to be marked as registered. Defaults to true",
-                    arg_type=bool,
-                    required=False,
-                    condition="Defaults to true"
                 )
             )
         )

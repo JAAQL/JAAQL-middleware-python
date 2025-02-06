@@ -24,6 +24,7 @@ CONFIG_KEY_SECURITY__mfa_label = "mfa_label"
 CONFIG_KEY_SECURITY__mfa_issuer = "mfa_issuer"
 CONFIG_KEY_SECURITY__do_audit = "do_audit"
 CONFIG_KEY_SECURITY__token_expiry_ms = "token_expiry_ms"
+CONFIG_KEY_SECURITY__oidc_login_expiry_ms = "oidc_login_expiry_ms"
 CONFIG_KEY_SECURITY__token_refresh_expiry_ms = "token_refresh_expiry_ms"
 
 ERR__expected_matcher = "'like' or '='"
@@ -208,6 +209,7 @@ class BaseJAAQLModel:
         self.options = options
 
         self.token_expiry_ms = int(config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__token_expiry_ms])
+        self.oidc_login_expiry_ms = int(config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__oidc_login_expiry_ms])
         self.refresh_expiry_ms = int(config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__token_refresh_expiry_ms])
 
         if not self.vault.has_obj(VAULT_KEY__db_repeatable_salt):

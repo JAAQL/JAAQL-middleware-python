@@ -1,3 +1,4 @@
+from jaaql.mvc.generated_queries import KG__user_registry__provider, KG__user_registry__tenant
 from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, SwaggerArgumentResponse,\
     SwaggerFlatResponse, REST__POST, ARG_RESP__allow_all, RES__allow_all
 from jaaql.constants import *
@@ -40,6 +41,20 @@ def rename_arg(arg_res: SwaggerArgumentResponse, new_name: str = None, new_descr
 RES__oauth_token = SwaggerFlatResponse(
     description="A temporary JWT token that can be used to authenticate with the server",
     body=EXAMPLE__jwt
+)
+
+ARG_RES__provider = SwaggerArgumentResponse(
+    name=KG__user_registry__provider,
+    description="The provider",
+    arg_type=str,
+    example=["AzureAD"]
+)
+
+ARG_RES__tenant = SwaggerArgumentResponse(
+    name=KG__user_registry__tenant,
+    description="The associated tenant",
+    arg_type=str,
+    example=["relay"]
 )
 
 ARG_RES__username = SwaggerArgumentResponse(

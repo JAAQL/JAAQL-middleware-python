@@ -33,11 +33,7 @@ ALTER TABLE email_dispatcher DROP CONSTRAINT IF EXISTS email_dispatcher__applica
 alter table email_dispatcher add constraint email_dispatcher__application
 	foreign key (application)
 		references application (name) ON DELETE CASCADE ON UPDATE cascade; 
--- jaaql...
-ALTER TABLE _jaaql DROP CONSTRAINT IF EXISTS jaaql__the_anonymous_user;
-alter table _jaaql add constraint jaaql__the_anonymous_user
-	foreign key (the_anonymous_user)
-		references account (id) ON DELETE CASCADE ON UPDATE cascade; 
+
 -- email_template...
 ALTER TABLE email_template DROP CONSTRAINT IF EXISTS email_template__dispatcher;
 alter table email_template add constraint email_template__dispatcher
@@ -61,16 +57,32 @@ ALTER TABLE document_request DROP CONSTRAINT IF EXISTS document_request__templat
 alter table document_request add constraint document_request__template
 	foreign key (application, template)
 		references document_template (application, name) ON DELETE CASCADE ON UPDATE cascade; 
+
+-- federation_procedure_parameter...
+ALTER TABLE federation_procedure_parameter DROP CONSTRAINT IF EXISTS federation_procedure_parameter__federation_procedure;
+alter table federation_procedure_parameter add constraint federation_procedure_parameter__federation_procedure
+	foreign key (procedure)
+		references federation_procedure (name) ON DELETE CASCADE ON UPDATE cascade; 
+
+-- user_registry...
+ALTER TABLE user_registry DROP CONSTRAINT IF EXISTS user_registry__identity_provider_service;
+alter table user_registry add constraint user_registry__identity_provider_service
+	foreign key (provider)
+		references identity_provider_service (name) ON DELETE CASCADE ON UPDATE cascade; 
+-- database_user_registry...
+ALTER TABLE database_user_registry DROP CONSTRAINT IF EXISTS database_user_registry__user_registry;
+alter table database_user_registry add constraint database_user_registry__user_registry
+	foreign key (provider, tenant)
+		references user_registry (provider, tenant) ON DELETE CASCADE ON UPDATE cascade; 
+ALTER TABLE database_user_registry DROP CONSTRAINT IF EXISTS database_user_registry__federation_procedure;
+alter table database_user_registry add constraint database_user_registry__federation_procedure
+	foreign key (federation_procedure)
+		references federation_procedure (name) ON DELETE CASCADE ON UPDATE cascade; 
 -- account...
-ALTER TABLE account DROP CONSTRAINT IF EXISTS account__most_recent_password;
-alter table account add constraint account__most_recent_password
-	foreign key (most_recent_password)
-		references account_password (uuid) ON DELETE CASCADE ON UPDATE cascade; 
--- account_password...
-ALTER TABLE account_password DROP CONSTRAINT IF EXISTS account_password__account;
-alter table account_password add constraint account_password__account
-	foreign key (account)
-		references account (id) ON DELETE CASCADE ON UPDATE cascade; 
+ALTER TABLE account DROP CONSTRAINT IF EXISTS account__user_registry;
+alter table account add constraint account__user_registry
+	foreign key (provider, tenant)
+		references user_registry (provider, tenant) ON DELETE CASCADE ON UPDATE cascade; 
 -- validated_ip_address...
 ALTER TABLE validated_ip_address DROP CONSTRAINT IF EXISTS validated_ip_address__account;
 alter table validated_ip_address add constraint validated_ip_address__account
@@ -106,24 +118,3 @@ ALTER TABLE remote_procedure DROP CONSTRAINT IF EXISTS remote_procedure__applica
 alter table remote_procedure add constraint remote_procedure__application
 	foreign key (application)
 		references application (name) ON DELETE CASCADE ON UPDATE cascade; 
-
--- federation_procedure_parameter...
-ALTER TABLE federation_procedure_parameter DROP CONSTRAINT IF EXISTS federation_procedure_parameter__federation_procedure;
-alter table federation_procedure_parameter add constraint federation_procedure_parameter__federation_procedure
-	foreign key (procedure)
-		references federation_procedure (name) ON DELETE CASCADE ON UPDATE cascade; 
-
--- user_registry...
-ALTER TABLE user_registry DROP CONSTRAINT IF EXISTS user_registry__identity_provider_service;
-alter table user_registry add constraint user_registry__identity_provider_service
-	foreign key (provider)
-		references identity_provider_service (name) ON DELETE CASCADE ON UPDATE cascade; 
--- database_user_registry...
-ALTER TABLE database_user_registry DROP CONSTRAINT IF EXISTS database_user_registry__user_registry;
-alter table database_user_registry add constraint database_user_registry__user_registry
-	foreign key (provider, tenant)
-		references user_registry (provider, tenant) ON DELETE CASCADE ON UPDATE cascade; 
-ALTER TABLE database_user_registry DROP CONSTRAINT IF EXISTS database_user_registry__federation_procedure;
-alter table database_user_registry add constraint database_user_registry__federation_procedure
-	foreign key (federation_procedure)
-		references federation_procedure (name) ON DELETE CASCADE ON UPDATE cascade; 

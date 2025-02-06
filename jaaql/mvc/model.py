@@ -1,11 +1,20 @@
 import base64
+import hashlib
 import sys
+import tempfile
 import traceback
+import urllib.parse
 import uuid
+import secrets
 
 import re
+
+import jwt
+
+from jwt import PyJWKClient
+
+from jaaql.documentation.documentation_internal import KEY__code, KEY__redirect_uri, KEY__state
 from jaaql.exceptions.jaaql_interpretable_handled_errors import *
-from wsgiref.handlers import format_date_time
 from jaaql.db.db_pg_interface import DBPGInterface, QUERY__dba_query_external
 from jaaql.email.email_manager_service import EmailAttachment
 from jaaql.mvc.base_model import BaseJAAQLModel, VAULT_KEY__jwt_crypt_key
@@ -14,10 +23,10 @@ from os.path import join
 from jaaql.interpreter.interpret_jaaql import KEY_query, KEY_parameters
 from jaaql.constants import *
 from jaaql.utilities.utils import get_jaaql_root, get_base_url
-from jaaql.db.db_utils import create_interface, jaaql__encrypt, create_interface_for_db
+from jaaql.db.db_utils import create_interface, jaaql__encrypt, create_interface_for_db, jaaql__decrypt
 from jaaql.db.db_utils_no_circ import submit, get_required_db, objectify
 from jaaql.utilities import crypt_utils
-from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_ATTR_EXPIRES, time_delta_ms
+from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_ATTR_EXPIRES, time_delta_ms, COOKIE_OIDC
 from jaaql.mvc.response import *
 import threading
 from datetime import datetime, timedelta
@@ -97,6 +106,8 @@ SIGNUP__started = 1
 SIGNUP__already_registered = 2
 SIGNUP__completed = 3
 
+KEY__is_the_anonymous_user = "is_the_anonymous_user"
+
 
 class JAAQLModel(BaseJAAQLModel):
     VERIFICATION_QUEUE = None
@@ -104,21 +115,25 @@ class JAAQLModel(BaseJAAQLModel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.DISCOVERY_CACHE = {}
+        self.JWKS_CACHE = {}
+
     def redeploy(self, connection: DBInterface):
         raise HttpStatusException("Not yet implemented", response_code=HTTPStatus.NOT_IMPLEMENTED)
 
-    def create_account_with_potential_password(self, connection: DBInterface, username: str, attach_as: str = None, password: str = None,
-                                               already_exists: bool = False, is_the_anonymous_user: bool = False, allow_already_exists: bool = False,
-                                               registered: bool = False):
-        if password is not None:
-            crypt_utils.validate_password(password)  # Important that this is here so the password can be validated before creating the account
+    def create_account_with_potential_api_key(self, connection: DBInterface,
+                                              sub: str | None, provider: str = None, tenant: str = None,
+                                              username: str = None,
+                                              email: str = None, attach_as: str = None,
+                                              api_key: str = None, already_exists: bool = False, allow_already_exists: bool = False,
+                                              registered: bool = False):
+        if sub is None:
+            sub = username
 
         account_id = create_account(connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
-                                    username, attach_as, already_exists,
-                                    is_the_anonymous_user, allow_already_exists)
-
-        if password and account_id != "account_already_existed":
-            self.add_account_password(account_id, password)
+                                    username, sub, email, provider,
+                                    tenant, api_key,
+                                    attach_as, already_exists, allow_already_exists)
 
         if account_id == "account_already_existed":
             account_id = attach_as
@@ -128,14 +143,16 @@ class JAAQLModel(BaseJAAQLModel):
 
         return account_id
 
-    def create_account_batch_with_potential_password(self, connection: DBInterface, accounts: list):
+    def shallow_federate_batch_potential_with_api_key(self, connection: DBInterface, accounts: list):
         for cur_input in accounts:
-            registered = cur_input.get(KEY__registered, True)
-            if registered is None:
-                registered = True
-            self.create_account_with_potential_password(
-                connection, cur_input[KEY__username], cur_input[KEY__attach_as],
-                cur_input[KEY__password], allow_already_exists=True, registered=registered
+            # TODO SHORTCUT TAKEN
+            # The email is not set and registered is assumed to be true
+            # Should come from the OIDC scopes
+            self.create_account_with_potential_api_key(
+                connection,
+                cur_input[KG__account__sub], cur_input[KG__account__provider], cur_input[KG__account__tenant],
+                cur_input[KG__account__username], attach_as=cur_input[KEY__attach_as],
+                api_key=cur_input[KEY__password], allow_already_exists=True, registered=True
             )
 
     def validate_query(self, queries: list, query, allow_list=True):
@@ -170,7 +187,7 @@ class JAAQLModel(BaseJAAQLModel):
 
     def parse_gdesc_output(self, output):
         """
-        Parse the output of \gdesc to extract column names and types.
+        Parse the output of gdesc to extract column names and types.
         """
         lines = output.strip().split('\n')
         columns = {}
@@ -238,7 +255,8 @@ ORDER BY
             type_resolution_method = None
             columns = None
             try:
-                results = execute_supplied_statement(db_connection, query["query"].strip(), do_prepare_only=my_uuid)  # Fetch cursor descriptors here too and then merge
+                results = execute_supplied_statement(db_connection, query["query"].strip(),
+                                                     do_prepare_only=my_uuid)  # Fetch cursor descriptors here too and then merge
                 cost = float(results["rows"][0][0].split("..")[1].split(" ")[0])
             except Exception as ex:
                 exc = str(ex).replace("PREPARE _jaaql_query_check_" + my_uuid + " as ", "").replace(
@@ -439,6 +457,250 @@ WHERE
         return requests.post("http://127.0.0.1:" + str(PORT__shared_var_service) + ENDPOINT__get_shared_var,
                              json={ARG__variable: SHARED_VAR__frozen}).json()[ARG__value]
 
+    def fetch_user_registries_for_tenant(self, inputs: dict):
+        schema = inputs.get(KEY__schema, None)
+        if not schema:
+            schema = application__select(self.jaaql_lookup_connection, inputs[KEY__application])[KG__application_schema__name]
+
+        database = application_schema__select(self.jaaql_lookup_connection, inputs[KEY__application], schema)
+        providers = fetch_providers_from_tenant_and_database(self.jaaql_lookup_connection, inputs[KG__user_registry__tenant],
+                                                             database[KG__application_schema__database])
+
+        return [
+            {
+                KG__user_registry__provider: provider[KG__identity_provider_service__name],
+                KG__identity_provider_service__logo_url: provider[KG__identity_provider_service__logo_url]
+            }
+            for provider in providers
+        ]
+
+    def fetch_discovery_content(self, database: str, provider: str, tenant: str, discovery_url: str = None):
+        lookup = database + ":" + provider + ":" + tenant
+        discovery = self.DISCOVERY_CACHE.get(lookup)
+        if not discovery:
+            res = requests.get(discovery_url)
+            if res.status_code != 200:
+                raise Exception(f"Failed to fetch discovery document for {provider}, {tenant} with url {discovery_url}")
+            self.DISCOVERY_CACHE[lookup] = res.json()
+            discovery = self.DISCOVERY_CACHE[lookup]
+        return discovery
+
+    def fetch_jwks_client(self, database: str, provider: str, tenant: str, discovery):
+        jwks_url = discovery.get("jwks_uri")
+        if not jwks_url:
+            raise Exception(f"Discovery document for {provider}, {tenant} did not have JWKS url")
+        lookup = database + ":" + provider + ":" + tenant
+        jwks = self.JWKS_CACHE.get(lookup)
+        if not jwks:
+            self.JWKS_CACHE[lookup] = PyJWKClient(jwks_url)
+            jwks = self.JWKS_CACHE[lookup]
+        return jwks
+
+    def generate_code_challenge(self, code_verifier):
+        """
+        Generate a code challenge from the code verifier.
+        Uses SHA256 and then base64-url encodes the result.
+        """
+        # Compute SHA256 hash of the verifier (as ASCII bytes)
+        digest = hashlib.sha256(code_verifier.encode('ascii')).digest()
+        # Base64-url encode and strip off any trailing '=' characters
+        challenge = base64.urlsafe_b64encode(digest).decode('ascii').rstrip('=')
+        return challenge
+
+    def exchange_auth_code(self, inputs: dict, oidc_cookie: str, ip_address: str, response: JAAQLResponse):
+        response.delete_cookie(COOKIE_OIDC, self.is_https)
+        oidc_state = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), oidc_cookie, JWT_PURPOSE__oidc)
+        if inputs[KEY__state] != oidc_state.get('state'):
+            raise UserUnauthorized()
+
+        application = oidc_state[KEY__application]
+        provider = oidc_state[KG__user_registry__provider]
+        tenant = oidc_state[KG__user_registry__tenant]
+        database = jaaql__decrypt(oidc_state["database"], self.get_db_crypt_key())
+        code_verifier = jaaql__decrypt(oidc_state["code_verifier"], self.get_db_crypt_key())
+
+        user_registry = user_registry__select(self.jaaql_lookup_connection, provider, tenant)
+        database_user_registry = database_user_registry__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), provider, tenant, database)
+
+        discovery = self.fetch_discovery_content(database, provider, tenant, user_registry[KG__user_registry__discovery_url])
+        jwk_client = self.fetch_jwks_client(database, provider, tenant, discovery)
+
+        expected_issuer = discovery.get("issuer")
+        if not expected_issuer:
+            raise Exception(f"Failed to fetch issuer in discovery document for {provider}, {tenant}")
+
+        token_endpoint = discovery.get("token_endpoint")
+        if not token_endpoint:
+            raise Exception(f"No token endpoint for {provider}, {tenant}")
+        allowed_algs = discovery.get("id_token_signing_alg_values_supported")
+        if not allowed_algs:
+            raise Exception(f"No allowed algs for {provider}, {tenant}")
+
+        token_request_payload = {
+            'grant_type': 'authorization_code',
+            'code': inputs[KEY__code],
+            'redirect_uri': oidc_state["redirect_uri"],
+            'client_id': database_user_registry[KG__database_user_registry__client_id],
+            'code_verifier': code_verifier,
+        }
+        if database_user_registry[KG__database_user_registry__client_secret]:
+            token_request_payload["client_secret"] = database_user_registry[KG__database_user_registry__client_secret]
+
+        token_response = requests.post(
+            token_endpoint,
+            data=token_request_payload,
+        )
+        token_data = token_response.json()
+        id_token = token_data.get('id_token')
+
+        signing_key = jwk_client.get_signing_key_from_jwt(id_token)
+        try:
+            id_payload = jwt.decode(
+                id_token,
+                signing_key.key,
+                algorithms=allowed_algs,
+                audience=database_user_registry[KG__database_user_registry__client_id],
+                issuer=expected_issuer
+            )
+        except:
+            raise UserUnauthorized()
+
+        if id_payload.get("nonce") != oidc_state["nonce"]:
+            raise UserUnauthorized()
+
+        sub = id_payload.get("sub")
+
+        account = None
+        try:
+            account = fetch_account_from_sub(self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
+                                             sub, provider, tenant)
+            if not account[KG__account__email_verified]:
+                email_verified = id_payload.get('email_verified')
+                if email_verified:
+                    mark_account_registered(self.jaaql_lookup_connection, account[KG__account__id])
+
+        except HttpSingletonStatusException:
+            # User does not exist, federate it
+            email = id_payload.get('email')
+            email_verified = id_payload.get('email_verified')
+
+            account_id = self.create_account_with_potential_api_key(self.jaaql_lookup_connection,
+                                                                    sub, provider, tenant,
+                                                                    email, registered=email_verified)
+            account = account__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), account_id)
+            db_params = {"tenant": tenant, "application": application, "account_id": account_id}
+            parameters = fetch_parameters_for_federation_procedure(self.jaaql_lookup_connection,
+                                                                   database_user_registry[KG__database_user_registry__federation_procedure])
+            for claim in parameters:
+                claim_name = claim[KG__federation_procedure_parameter__name]
+                db_params[claim_name] = id_token.get(claim_name)
+
+            procedure_name = database_user_registry[KG__database_user_registry__federation_procedure]
+            if re.match(REGEX__dmbs_object_name, procedure_name) is None:
+                raise HttpStatusException("Unsafe data federation procedure")
+
+            procedure_params = []
+            for key, _ in db_params.items():
+                if re.match(REGEX__dmbs_object_name, procedure_name) is None:
+                    raise HttpStatusException("Unsafe data federation parameter " + key)
+                procedure_params.append(f"{key} => :{key}")
+
+            submit_data = {
+                KEY__application: application,
+                KEY_query: f"SELECT * FROM \"{procedure_name}\"({", ".join(procedure_params)});",
+                KEY__schema: oidc_state["schema"],
+                KEY__parameters: db_params
+            }
+
+            submit(self.vault, self.config, self.get_db_crypt_key(),
+                   self.jaaql_lookup_connection, submit_data, ROLE__jaaql,
+                   None, self.cached_canned_query_service, as_objects=True, singleton=True)
+
+        salt_user = self.get_repeatable_salt(account[KG__account__id])
+        encrypted_salted_ip_address = jaaql__encrypt(ip_address, self.get_db_crypt_key(), salt_user)  # An optimisation, it is used later twice
+        address = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
+                                                       QUERY___add_or_update_validated_ip_address,
+                                                       {KG__validated_ip_address__account: account[KG__account__id],
+                                                        KG__validated_ip_address__encrypted_salted_ip_address: encrypted_salted_ip_address},
+                                                       as_objects=True)[KG__validated_ip_address__uuid]
+
+        jwt_data = {
+            KEY__account_id: str(account[KG__account__id]),
+            KEY__username: sub,
+            KEY__password: str(account[KG__account__api_key]),
+            KEY__ip_address: ip_address,
+            KEY__ip_id: str(address),
+            KEY__created: datetime.now().isoformat(),
+            KEY__is_the_anonymous_user: False,
+            KEY__remember_me: True
+        }
+
+        if response is not None:
+            response.account_id = str(account[KG__account__id]),
+            response.ip_id = str(address)
+
+        jwt_token = crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), jwt_data, JWT_PURPOSE__oauth, expiry_ms=self.token_expiry_ms)
+
+        response.set_cookie(COOKIE_JAAQL_AUTH, value=jwt_token,
+                            attributes=get_cookie_attrs(self.vigilant_sessions, False, self.is_container),
+                            is_https=self.is_https)
+
+    def fetch_redirect_uri(self, inputs: dict, response: JAAQLResponse):
+        schema = inputs.get(KEY__schema, None)
+        application = application__select(self.jaaql_lookup_connection, inputs[KEY__application])
+        if not schema:
+            schema = application[KG__application_schema__name]
+
+        database = application_schema__select(self.jaaql_lookup_connection, inputs[KEY__application], schema)
+        user_registry = user_registry__select(self.jaaql_lookup_connection, inputs[KG__user_registry__provider], inputs[KG__user_registry__tenant])
+        database_user_registry = database_user_registry__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), inputs[KG__user_registry__provider],
+                                                                inputs[KG__user_registry__tenant], database[KG__application_schema__database])
+
+        discovery = self.fetch_discovery_content(database[KG__application_schema__database], inputs[
+            KG__user_registry__provider], inputs[KG__user_registry__tenant], user_registry[KG__user_registry__discovery_url])
+
+        auth_endpoint = discovery.get("authorization_endpoint")
+        if not auth_endpoint:
+            raise Exception("Authorization endpoint not found in discovery document")
+
+        parameters = fetch_parameters_for_federation_procedure(self.jaaql_lookup_connection,
+                                                               database_user_registry[KG__database_user_registry__federation_procedure])
+        scope_list = urllib.parse.quote(" ".join([parameter[KG__federation_procedure_parameter__name] for parameter in parameters]))
+        client_id = urllib.parse.quote(database_user_registry[KG__database_user_registry__client_id])
+
+        nonce = secrets.token_urlsafe(32)
+        state = secrets.token_urlsafe(32)
+        code_verifier = secrets.token_urlsafe(64)
+        code_challenge = self.generate_code_challenge(code_verifier)
+        redirect_uri = application[KG__application__base_url + "/" + inputs[KEY__redirect_uri]]
+
+        oidc_session = crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), {
+            "redirect_uri": redirect_uri,
+            "code_verifier": jaaql__encrypt(code_verifier, self.get_db_crypt_key()),
+            "nonce": nonce,
+            "state": state,
+            "tenant": inputs[KG__user_registry__tenant],
+            "provider": inputs[KG__user_registry__provider],
+            "application": inputs[KEY__application],
+            "schema": schema,
+            "database": jaaql__encrypt(database[KG__application_schema__database], self.get_db_crypt_key())
+        }, JWT_PURPOSE__oidc, expiry_ms=self.oidc_login_expiry_ms)
+
+        response.set_cookie(COOKIE_OIDC, value=oidc_session,
+                            attributes=get_cookie_attrs(True, False, self.is_container),
+                            is_https=self.is_https)
+
+        default_scopes = ["openid", "profile", "email"]
+        for scope in scope_list:
+            if scope not in default_scopes:
+                default_scopes.append(scope)
+
+        redirect = auth_endpoint + f"?client_id={client_id}&response_type=code&code_challenge_method=S256&nonce=&scope={default_scopes}&nonce={nonce}&state={
+            state}&code_challenge={code_challenge}&redirect_uri={urllib.parse.quote(redirect_uri)}"
+
+        response.response_code = HTTPStatus.FOUND
+        response.raw_headers["Location"] = redirect
+
     def set_web_config(self, connection: DBInterface):
         self.is_super_admin(connection)
 
@@ -513,7 +775,7 @@ WHERE
         else:
             subprocess.call("docker kill jaaql_pg")
             subprocess.call("docker rm jaaql_pg")
-            subprocess.Popen("docker run --name jaaql_pg -p 5434:5432 jaaql/jaaql_pg", start_new_session=True, creationflags=0x00000008)
+            subprocess.Popen("docker run --name jaaql_pg -p 5434:5432 --mount type=bind,source=" + tempfile.gettempdir().replace("\\", "/") + "/jaaql-debug-slurp-in,target=/slurp-in jaaql/jaaql_pg", start_new_session=True, creationflags=0x00000008)
             time.sleep(7.5)
             DBPGInterface.close_all_pools()
 
@@ -528,31 +790,6 @@ WHERE
             False,
             self.vault.get_obj(VAULT_KEY__jaaql_db_password)
         )
-
-    def add_account_password(self, account_id: str, password: str):
-        crypt_utils.validate_password(password)
-        salt = self.get_repeatable_salt(account_id)
-        try:
-            add_account_password(
-                self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
-                account_id, crypt_utils.hash_password(password, salt)
-            )
-        except UnhandledQueryError as hs:
-            if hs.descriptor["sqlstate"] == SQLState.UniqueViolation.value and hs.descriptor["constraint_name"] == Constraints.AccountPasswordHashKey.value:
-                raise PasswordAlreadyUsedBefore()
-            raise hs
-
-    def verify_current_password(self, account_id: str, password: str):
-        most_recent_password = fetch_most_recent_password(self.jaaql_lookup_connection, self.get_db_crypt_key(), account_id)
-        if not crypt_utils.verify_password_hash(most_recent_password, password, salt=self.get_repeatable_salt(account_id)):
-            raise IncorrectPasswordVerification()
-
-    def add_my_account_password(self, account_id: str, username: str, ip_address: str, is_the_anonymous_user: bool, old_password: str, password: str):
-        if is_the_anonymous_user:
-            raise HttpStatusException("Cannot change this user's password")
-        self.verify_current_password(account_id, old_password)
-        self.add_account_password(account_id, password)
-        return self.get_auth_token(password=password, ip_address=ip_address, username=username)
 
     def execute_migrations(self, connection: DBInterface):
         self.is_super_admin(connection)
@@ -606,17 +843,27 @@ WHERE
             conn = self.jaaql_lookup_connection.get_conn()
             self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts,
                                                                         "04.install_jaaql_data_structures.generated.sql"))
-            self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "05.install_jaaql.exceptions.sql"))
-            self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "06.install_jaaql.handwritten.sql"))
+            self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts,
+                                                                        "ZZZZ.reset_references.sql"))
+            self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts,
+                                                                        "ZZZZ.generated_functions_views_and_permissions.sql"))
+            self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "05.install_static_data.generated.sql"))
+            self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "06.install_jaaql.exceptions.sql"))
             self.jaaql_lookup_connection.commit(conn)
             self.jaaql_lookup_connection.put_conn(conn)
 
-            self.create_account_with_potential_password(self.jaaql_lookup_connection, USERNAME__jaaql, ROLE__jaaql, jaaql_password,
-                                                        already_exists=True)
-            self.create_account_with_potential_password(self.jaaql_lookup_connection, USERNAME__super_db, ROLE__postgres, super_db_password,
-                                                        already_exists=True)
-            self.create_account_with_potential_password(self.jaaql_lookup_connection, USERNAME__anonymous, password=PASSWORD__anonymous,
-                                                        is_the_anonymous_user=True)
+            self.create_account_with_potential_api_key(self.jaaql_lookup_connection,
+                                                       None, None, None,
+                                                       USERNAME__jaaql, None, ROLE__jaaql,
+                                                       jaaql_password, already_exists=True)
+            self.create_account_with_potential_api_key(self.jaaql_lookup_connection,
+                                                       None, None, None,
+                                                       USERNAME__super_db, None, ROLE__postgres,
+                                                       super_db_password, already_exists=True)
+            self.create_account_with_potential_api_key(self.jaaql_lookup_connection,
+                                                       None, None, None,
+                                                       USERNAME__anonymous, None, None,
+                                                       PASSWORD__anonymous)
 
             super_conn_str = PROTOCOL__postgres + username + ":" + db_password + "@" + address + ":" + str(port) + "/"
             self.vault.insert_obj(VAULT_KEY__super_db_credentials, super_conn_str)
@@ -651,7 +898,7 @@ WHERE
                 threading.Thread(target=self.verification_thread, args=[JAAQLModel.VERIFICATION_QUEUE], daemon=True).start()
             JAAQLModel.VERIFICATION_QUEUE.put((auth_token, ip_address, complete))
             payload = json.loads(base64url_decode(auth_token.split(".")[1].encode("UTF-8")).decode())
-            return payload[KEY__account_id], payload[KEY__username], payload[KEY__ip_address], payload[KEY__is_the_anonymous_user], \
+            return payload[KEY__account_id], payload[KEY__username], payload[KEY__ip_address], payload[KEY__username] == USERNAME__anonymous, \
                 payload[KEY__remember_me]
         except Exception:
             raise UserUnauthorized()
@@ -663,13 +910,16 @@ WHERE
                 print("IP not in ips_local: " + ip_address)
             raise UserUnauthorized()
 
-        try:
-            validate_is_most_recent_password(self.jaaql_lookup_connection, decoded[KEY__account_id], decoded[KEY__password],
-                                             singleton_message=ERR__invalid_token, singleton_code=HTTPStatus.UNAUTHORIZED)
-        except HttpSingletonStatusException:
-            raise UserUnauthorized()
+        if decoded[KEY__username] != USERNAME__anonymous:
+            try:
+                account = fetch_account_from_id(self.jaaql_lookup_connection, decoded[KEY__account_id], singleton_code=HTTPStatus.UNAUTHORIZED,
+                                                singleton_message=ERR__invalid_token)
+                if account[KG__account__api_key] != decoded[KEY__password]:
+                    raise HttpSingletonStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
+            except HttpSingletonStatusException:
+                raise UserUnauthorized()
 
-        return decoded[KEY__account_id], decoded[KEY__username], decoded[KEY__ip_address], decoded[KEY__is_the_anonymous_user], \
+        return decoded[KEY__account_id], decoded[KEY__username], decoded[KEY__ip_address], decoded[KEY__username] == USERNAME__anonymous, \
             decoded[KEY__remember_me]
 
     def refresh_auth_token(self, auth_token: str, ip_address: str, cookie: bool = False, response: JAAQLResponse = None):
@@ -685,9 +935,8 @@ WHERE
 
         return self.get_auth_token(decoded[KEY__username], ip_address, cookie=cookie, remember_me=remember_me, response=response)
 
-    def get_bypass_user(self, username: str, ip_address: str):
-        account = fetch_most_recent_password_from_username(self.jaaql_lookup_connection, self.get_db_crypt_key(),
-                                                           self.get_vault_repeatable_salt(), username, singleton_code=HTTPStatus.UNAUTHORIZED)
+    def get_bypass_user(self, username: str, ip_address: str, provider: str = None, tenant: str = None):
+        account = fetch_account_from_username(self.jaaql_lookup_connection, username, singleton_code=HTTPStatus.UNAUTHORIZED)
         salt_user = self.get_repeatable_salt(account[KG__account__id])
         encrypted_salted_ip_address = jaaql__encrypt(ip_address, self.get_db_crypt_key(), salt_user)
         address = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
@@ -699,17 +948,22 @@ WHERE
         return account[KG__account__id], address
 
     def logout_cookie(self, response: JAAQLResponse):
-        response.set_cookie(COOKIE_JAAQL_AUTH, "", attributes={COOKIE_ATTR_EXPIRES: format_date_time(0)}, is_https=self.is_https)
+        response.delete_cookie(COOKIE_JAAQL_AUTH, self.is_https)
 
-    def get_auth_token(self, username: str, ip_address: str, password: str = None, response: JAAQLResponse = None, cookie: bool = False,
-                       remember_me: bool = False):
+    def get_auth_token(
+        self,
+        username: str, ip_address: str, password: str = None,
+        response: JAAQLResponse = None, remember_me: bool = False, cookie: bool = False,
+    ):
         incorrect_credentials = False
         account = None
         encrypted_salted_ip_address = None
 
         try:
-            account = fetch_most_recent_password_from_username(self.jaaql_lookup_connection, self.get_db_crypt_key(),
-                                                               self.get_vault_repeatable_salt(), username, singleton_code=HTTPStatus.UNAUTHORIZED)
+            account = fetch_account_from_username(
+                self.jaaql_lookup_connection,
+                username,
+                singleton_code=HTTPStatus.UNAUTHORIZED)
         except HttpStatusException as exc:
             if exc.response_code == HTTPStatus.UNAUTHORIZED:
                 incorrect_credentials = True
@@ -722,8 +976,7 @@ WHERE
             encrypted_salted_ip_address = jaaql__encrypt(ip_address, self.get_db_crypt_key(), salt_user)  # An optimisation, it is used later twice
 
             if password is not None:
-                incorrect_credentials = not crypt_utils.verify_password_hash(account[KG__account_password__hash], password,
-                                                                             salt=self.get_repeatable_salt(account[KG__account__id]))
+                incorrect_credentials = jaaql__decrypt(account[KG__account__api_key], self.get_db_crypt_key()) != password
             else:
                 incorrect_credentials = not exists_matching_validated_ip_address(self.jaaql_lookup_connection, encrypted_salted_ip_address)
 
@@ -738,8 +991,8 @@ WHERE
 
         jwt_data = {
             KEY__account_id: str(account[KG__account__id]),
-            KEY__password: str(account[KG__account_password__uuid]),
             KEY__username: username,
+            KEY__password: str(account[KG__account__api_key]),  # This comes out encrypted, it's okay!
             KEY__ip_address: ip_address,
             KEY__ip_id: str(address),
             KEY__created: datetime.now().isoformat(),
@@ -1158,7 +1411,8 @@ WHERE
             where_clause = " WHERE " + where_clause
             permissions_view = sign_up_template[KG__email_template__permissions_view]
             if re.match(REGEX__dmbs_object_name, permissions_view) is None:
-                raise HttpStatusException("Unsafe permissions relation specified for sign up: Found '" + str(permissions_view) + "' na did not match regex " + REGEX__dmbs_object_name)
+                raise HttpStatusException("Unsafe permissions relation specified for sign up: Found '" + str(
+                    permissions_view) + "' na did not match regex " + REGEX__dmbs_object_name)
             permissions_query = f'SELECT * FROM "{permissions_view}"{where_clause}'  # Ignore pycharm pep issue
             submit_data[KEY_query] = permissions_query
             submit_data[KEY_parameters] = ret
@@ -1176,7 +1430,8 @@ WHERE
 
             base_relation = sign_up_template[KG__email_template__base_relation]
             if re.match(REGEX__dmbs_object_name, base_relation) is None:
-                raise HttpStatusException("Unsafe base relation specified for sign up: Found '" + str(base_relation) + "' na did not match regex " + REGEX__dmbs_object_name)
+                raise HttpStatusException(
+                    "Unsafe base relation specified for sign up: Found '" + str(base_relation) + "' na did not match regex " + REGEX__dmbs_object_name)
 
             found_username = None
             get_user_data = {
@@ -1250,7 +1505,8 @@ WHERE
 
             data_view = sign_up_template[KG__email_template__data_view]
             if re.match(REGEX__dmbs_object_name, data_view) is None:
-                raise HttpStatusException("Unsafe data view specified for sign up: Found '" + str(data_view) + "' na did not match regex " + REGEX__dmbs_object_name)
+                raise HttpStatusException(
+                    "Unsafe data view specified for sign up: Found '" + str(data_view) + "' na did not match regex " + REGEX__dmbs_object_name)
             data_query = f'SELECT * FROM "{data_view}"'
             submit_data[KEY_query] = data_query
             try:
@@ -1401,7 +1657,9 @@ WHERE
             try:
                 subprocess.run(cron_command, check=True, shell=True, timeout=5, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             except subprocess.CalledProcessError as e:
-                raise CronExpressionError("Error with the cron expression. Input: " + json.dumps(cron_input) + ", evaluated to cron expression: '" + cron_string + "', Stdout:\n" + (e.stdout.decode() if e.stdout else "None") + "\n\nStderr: " + (e.stderr.decode() if e.stderr else "None"))
+                raise CronExpressionError(
+                    "Error with the cron expression. Input: " + json.dumps(cron_input) + ", evaluated to cron expression: '" + cron_string + "', Stdout:\n" + (
+                        e.stdout.decode() if e.stdout else "None") + "\n\nStderr: " + (e.stderr.decode() if e.stderr else "None"))
         else:
             print(cron_command)
             print("Cron not supported in debugging mode", file=sys.stderr)

@@ -23,7 +23,6 @@
 
 
 
-
 -- (b) User Partition Views
 
 
@@ -629,296 +628,18 @@ grant execute on function "email_template.update+" to registered;
 
 -- document_request...
 
+-- federation_procedure...
+
+-- federation_procedure_parameter...
+
+-- identity_provider_service...
+
+-- user_registry...
+
+-- database_user_registry...
+
 -- account...
 
-drop function if exists "account.insert+";
-create function "account.insert+" (
-	username encrypted__jaaql_username,
-	id postgres_role,
-	deletion_timestamp timestamptz default null,
-	most_recent_password uuid default null,
-	use_as_the_anonymous_user jsonb default '[]'::jsonb
-) returns _jaaql_procedure_result as
-$$
-	DECLARE
-		_returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_r jsonb;
-	BEGIN
-		SELECT * INTO strict _returned_status FROM "account.insert__internal"(
-			id => "account.insert+".id,
-			username => "account.insert+".username,
-			deletion_timestamp => "account.insert+".deletion_timestamp,
-			most_recent_password => "account.insert+".most_recent_password );
-		_status.result = _returned_status.result;
-		_status.errors = _status.errors || _returned_status.errors;
-
-		for _r in SELECT * FROM jsonb_array_elements(use_as_the_anonymous_user) loop
-			SELECT * INTO strict _returned_status FROM "jaaql.insert__internal"(
-				the_anonymous_user => "account.insert+".id,
-				security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::attempt_count END,
-				migration_version => (_r->>'migration_version')::semantic_version,
-				last_successful_build_time => CASE WHEN _r->>'last_successful_build_time' = '' THEN null ELSE (_r->>'last_successful_build_time')::build_time END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-	END
-$$ language plpgsql security definer;
-select * from plpgsql_check_function(
-	'"account.insert+"('
-		'encrypted__jaaql_username,'
-		'postgres_role,'
-		'timestamptz,'
-		'uuid,'
-		'jsonb)'
-);
-
-grant execute on function "account.insert+" to registered;
-drop function if exists "account.persist+";
-create function "account.persist+" (
-	id postgres_role,
-	username encrypted__jaaql_username default null,
-	deletion_timestamp timestamptz default null,
-	most_recent_password uuid default null,
-	use_as_the_anonymous_user jsonb default '[]'::jsonb
-) returns _jaaql_procedure_result as
-$$
-	DECLARE
-		_returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_r jsonb;
-	BEGIN
-		DELETE FROM account_password A WHERE
-			A.account = "account.persist+".id;
-		DELETE FROM validated_ip_address V WHERE
-			V.account = "account.persist+".id;
-		DELETE FROM jaaql J WHERE
-			J.the_anonymous_user = "account.persist+".id;
-		DELETE FROM security_event S WHERE
-			S.account = "account.persist+".id;
-
-		for _r in SELECT * FROM jsonb_array_elements(use_as_the_anonymous_user) loop
-			SELECT * INTO strict _returned_status FROM "jaaql.persist__internal"(
-				the_anonymous_user => "account.persist+".id,
-				security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::attempt_count END,
-				migration_version => (_r->>'migration_version')::semantic_version,
-				last_successful_build_time => CASE WHEN _r->>'last_successful_build_time' = '' THEN null ELSE (_r->>'last_successful_build_time')::build_time END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-	END
-$$ language plpgsql security definer;
-select * from plpgsql_check_function(
-	'"account.persist+"('
-		'postgres_role,'
-		'encrypted__jaaql_username,'
-		'timestamptz,'
-		'uuid,'
-		'jsonb)'
-);
-
-grant execute on function "account.persist+" to registered;
-drop function if exists "account.update+";
-create function "account.update+" (
-	id postgres_role,
-	username encrypted__jaaql_username default null,
-	deletion_timestamp timestamptz default null,
-	most_recent_password uuid default null,
-	use_as_the_anonymous_user jsonb default '[]'::jsonb
-) returns _jaaql_procedure_result as
-$$
-	DECLARE
-		_returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_r jsonb;
-	BEGIN
-		DELETE FROM account_password A WHERE
-			A.account = "account.update+".id;
-		DELETE FROM validated_ip_address V WHERE
-			V.account = "account.update+".id;
-		DELETE FROM jaaql J WHERE
-			J.the_anonymous_user = "account.update+".id;
-		DELETE FROM security_event S WHERE
-			S.account = "account.update+".id;
-
-		for _r in SELECT * FROM jsonb_array_elements(use_as_the_anonymous_user) loop
-			SELECT * INTO strict _returned_status FROM "jaaql.update__internal"(
-				the_anonymous_user => "account.update+".id,
-				security_event_attempt_limit => CASE WHEN _r->>'security_event_attempt_limit' = '' THEN null ELSE (_r->>'security_event_attempt_limit')::attempt_count END,
-				migration_version => (_r->>'migration_version')::semantic_version,
-				last_successful_build_time => CASE WHEN _r->>'last_successful_build_time' = '' THEN null ELSE (_r->>'last_successful_build_time')::build_time END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-	END
-$$ language plpgsql security definer;
-select * from plpgsql_check_function(
-	'"account.update+"('
-		'postgres_role,'
-		'encrypted__jaaql_username,'
-		'timestamptz,'
-		'uuid,'
-		'jsonb)'
-);
-
-grant execute on function "account.update+" to registered;
--- account_password...
-
-drop function if exists "account_password.insert+";
-create function "account_password.insert+" (
-	creation_timestamp timestamptz,
-	hash encrypted__hash,
-	uuid uuid,
-	account postgres_role,
-	use_as_most_recent_password jsonb default '[]'::jsonb
-) returns _jaaql_procedure_result as
-$$
-	DECLARE
-		_returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_r jsonb;
-	BEGIN
-		SELECT * INTO strict _returned_status FROM "account_password.insert__internal"(
-			account => "account_password.insert+".account,
-			uuid => "account_password.insert+".uuid,
-			hash => "account_password.insert+".hash,
-			creation_timestamp => "account_password.insert+".creation_timestamp );
-		_status.result = _returned_status.result;
-		_status.errors = _status.errors || _returned_status.errors;
-
-		for _r in SELECT * FROM jsonb_array_elements(use_as_most_recent_password) loop
-			SELECT * INTO strict _returned_status FROM "account.insert__internal"(
-				most_recent_password => "account_password.insert+".uuid,
-				id => (_r->>'id')::postgres_role,
-				username => (_r->>'username')::encrypted__jaaql_username,
-				deletion_timestamp => CASE WHEN _r->>'deletion_timestamp' = '' THEN null ELSE (_r->>'deletion_timestamp')::timestamptz END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-	END
-$$ language plpgsql security definer;
-select * from plpgsql_check_function(
-	'"account_password.insert+"('
-		'timestamptz,'
-		'encrypted__hash,'
-		'uuid,'
-		'postgres_role,'
-		'jsonb)'
-);
-
-grant execute on function "account_password.insert+" to registered;
-drop function if exists "account_password.persist+";
-create function "account_password.persist+" (
-	uuid uuid,
-	account postgres_role default null,
-	hash encrypted__hash default null,
-	creation_timestamp timestamptz default null,
-	use_as_most_recent_password jsonb default '[]'::jsonb
-) returns _jaaql_procedure_result as
-$$
-	DECLARE
-		_returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_r jsonb;
-	BEGIN
-		DELETE FROM account A WHERE
-			A.most_recent_password = "account_password.persist+".uuid;
-
-		for _r in SELECT * FROM jsonb_array_elements(use_as_most_recent_password) loop
-			SELECT * INTO strict _returned_status FROM "account.persist__internal"(
-				most_recent_password => "account_password.persist+".uuid,
-				id => (_r->>'id')::postgres_role,
-				username => (_r->>'username')::encrypted__jaaql_username,
-				deletion_timestamp => CASE WHEN _r->>'deletion_timestamp' = '' THEN null ELSE (_r->>'deletion_timestamp')::timestamptz END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-	END
-$$ language plpgsql security definer;
-select * from plpgsql_check_function(
-	'"account_password.persist+"('
-		'uuid,'
-		'postgres_role,'
-		'encrypted__hash,'
-		'timestamptz,'
-		'jsonb)'
-);
-
-grant execute on function "account_password.persist+" to registered;
-drop function if exists "account_password.update+";
-create function "account_password.update+" (
-	uuid uuid,
-	account postgres_role default null,
-	hash encrypted__hash default null,
-	creation_timestamp timestamptz default null,
-	use_as_most_recent_password jsonb default '[]'::jsonb
-) returns _jaaql_procedure_result as
-$$
-	DECLARE
-		_returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_r jsonb;
-	BEGIN
-		DELETE FROM account A WHERE
-			A.most_recent_password = "account_password.update+".uuid;
-
-		for _r in SELECT * FROM jsonb_array_elements(use_as_most_recent_password) loop
-			SELECT * INTO strict _returned_status FROM "account.update__internal"(
-				most_recent_password => "account_password.update+".uuid,
-				id => (_r->>'id')::postgres_role,
-				username => (_r->>'username')::encrypted__jaaql_username,
-				deletion_timestamp => CASE WHEN _r->>'deletion_timestamp' = '' THEN null ELSE (_r->>'deletion_timestamp')::timestamptz END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-	END
-$$ language plpgsql security definer;
-select * from plpgsql_check_function(
-	'"account_password.update+"('
-		'uuid,'
-		'postgres_role,'
-		'encrypted__hash,'
-		'timestamptz,'
-		'jsonb)'
-);
-
-grant execute on function "account_password.update+" to registered;
 -- validated_ip_address...
 
 -- security_event...
@@ -932,16 +653,6 @@ grant execute on function "account_password.update+" to registered;
 -- pg_exception...
 
 -- remote_procedure...
-
--- federation_procedure...
-
--- federation_procedure_parameter...
-
--- identity_provider_service...
-
--- user_registry...
-
--- database_user_registry...
 
 
 
@@ -2715,14 +2426,1045 @@ drop function if exists "document_request.delete";
 		return _status.result::_jaaql_procedure_result;
 		END;
 	$$ language plpgsql security definer;
+-- federation_procedure...
+
+drop function if exists "federation_procedure.insert__internal";
+create function "federation_procedure.insert__internal" (
+	name object_name,
+	_index integer default null,
+	_check_only boolean default false ) returns _status_record as
+$$
+DECLARE
+	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+	_count integer not null = 0;
+BEGIN
+		-- (1) Coercion
+			if "federation_procedure.insert__internal".name is null then
+				"federation_procedure.insert__internal".name = '';
+			end if;
+		-- (A) Check that required values are present
+		-- (D) Check that there is no record in the table with the same prime key
+			SELECT COUNT(*) into _count
+			FROM federation_procedure F
+			WHERE
+				F.name = "federation_procedure.insert__internal".name;
+			if _count <> 0 then
+				_status.errors = _status.errors ||
+					ROW('federation_procedure', _index,
+						'Er is al een Federation Procedure geregistreed met '
+						'Name',
+						'name'
+					)::_error_record;
+			end if;
+			-- Get out quick if there are errors
+			if cardinality(_status.errors) <> 0 then
+				return _status;
+			end if;
+			-- Now do the work
+			if not "federation_procedure.insert__internal"._check_only then
+				INSERT INTO federation_procedure (
+					name
+				) VALUES (
+					"federation_procedure.insert__internal"."name" );
+				_status.result = 1;
+			end if;
+	return _status;
+END;
+$$ language plpgsql security definer;
+select * from plpgsql_check_function(
+	'"federation_procedure.insert__internal"('
+		'object_name,'
+		'integer,'
+		'boolean)'
+);
+
+drop function if exists "federation_procedure.insert";
+	create function "federation_procedure.insert" (
+		name object_name) returns _jaaql_procedure_result as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+		BEGIN
+			SELECT * INTO strict _status FROM "federation_procedure.insert__internal"(
+				name => "federation_procedure.insert".name);
+
+		-- Throw exception, which triggers a rollback if errors
+		if cardinality(_status.errors) <> 0 then
+			SELECT raise_jaaql_handled_query_exception(_status);
+		end if;
+		return _status.result::_jaaql_procedure_result;
+		END;
+	$$ language plpgsql security definer;
+drop function if exists "federation_procedure.delete__internal";
+	create function "federation_procedure.delete__internal" (
+		name object_name,
+		_index integer default null,
+		_check_only boolean default false ) returns _status_record as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+			_count integer not null = 0;
+		BEGIN
+		-- (D) Check that there is a record in the table with the same prime key
+			SELECT COUNT(*) into _count
+			FROM federation_procedure F
+			WHERE
+				F.name = "federation_procedure.delete__internal".name;
+			if _count <> 1 then
+				_status.errors = _status.errors ||
+					ROW('federation_procedure', _index,
+						'Er is geen Federation Procedure gevonden met '
+						'Name',
+						'name'
+					)::_error_record;
+			end if;			-- Get out quick if there are errors
+			if cardinality(_status.errors) <> 0 then
+				return _status;
+			end if;
+			if _check_only then
+				return _status;
+			end if;
+
+			DELETE FROM federation_procedure F
+			WHERE 
+				F.name = "federation_procedure.delete__internal".name;
+			return _status;
+		END;
+	$$ language plpgsql security definer;
+
+	select * from plpgsql_check_function(
+		'"federation_procedure.delete__internal"('
+			'object_name,'
+			'integer,'
+			'boolean)'
+	);
+
+drop function if exists "federation_procedure.delete";
+	create function "federation_procedure.delete" (
+		name object_name) returns _jaaql_procedure_result as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+		BEGIN
+			SELECT * INTO strict _status FROM "federation_procedure.delete__internal"(
+				name => "federation_procedure.delete".name);
+		-- Throw exception, which triggers a rollback if errors
+		if cardinality(_status.errors) <> 0 then
+			SELECT raise_jaaql_handled_query_exception(_status);
+		end if;
+		return _status.result::_jaaql_procedure_result;
+		END;
+	$$ language plpgsql security definer;
+-- federation_procedure_parameter...
+
+drop function if exists "federation_procedure_parameter.insert__internal";
+create function "federation_procedure_parameter.insert__internal" (
+	name scope_name,
+	procedure object_name,
+	_index integer default null,
+	_check_only boolean default false ) returns _status_record as
+$$
+DECLARE
+	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+	_count integer not null = 0;
+BEGIN
+		-- (1) Coercion
+			if "federation_procedure_parameter.insert__internal".procedure is null then
+				"federation_procedure_parameter.insert__internal".procedure = '';
+			end if;
+			if "federation_procedure_parameter.insert__internal".name is null then
+				"federation_procedure_parameter.insert__internal".name = '';
+			end if;
+		-- (A) Check that required values are present
+		-- (D) Check that there is no record in the table with the same prime key
+			SELECT COUNT(*) into _count
+			FROM federation_procedure_parameter F
+			WHERE
+				F.procedure = "federation_procedure_parameter.insert__internal".procedure AND
+				F.name = "federation_procedure_parameter.insert__internal".name;
+			if _count <> 0 then
+				_status.errors = _status.errors ||
+					ROW('federation_procedure_parameter', _index,
+						'Er is al een Federation Procedure Parameter geregistreed met '
+						'Procedure, Name',
+						'name'
+					)::_error_record;
+			end if;
+			-- Get out quick if there are errors
+			if cardinality(_status.errors) <> 0 then
+				return _status;
+			end if;
+			-- Now do the work
+			if not "federation_procedure_parameter.insert__internal"._check_only then
+				INSERT INTO federation_procedure_parameter (
+					procedure,
+					name
+				) VALUES (
+					"federation_procedure_parameter.insert__internal"."procedure",
+					"federation_procedure_parameter.insert__internal"."name" );
+				_status.result = 1;
+			end if;
+	return _status;
+END;
+$$ language plpgsql security definer;
+select * from plpgsql_check_function(
+	'"federation_procedure_parameter.insert__internal"('
+		'scope_name,'
+		'object_name,'
+		'integer,'
+		'boolean)'
+);
+
+drop function if exists "federation_procedure_parameter.insert";
+	create function "federation_procedure_parameter.insert" (
+		name scope_name,
+		procedure object_name) returns _jaaql_procedure_result as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+		BEGIN
+			SELECT * INTO strict _status FROM "federation_procedure_parameter.insert__internal"(
+				procedure => "federation_procedure_parameter.insert".procedure,
+				name => "federation_procedure_parameter.insert".name);
+
+		-- Throw exception, which triggers a rollback if errors
+		if cardinality(_status.errors) <> 0 then
+			SELECT raise_jaaql_handled_query_exception(_status);
+		end if;
+		return _status.result::_jaaql_procedure_result;
+		END;
+	$$ language plpgsql security definer;
+drop function if exists "federation_procedure_parameter.delete__internal";
+	create function "federation_procedure_parameter.delete__internal" (
+		procedure object_name,
+		name scope_name,
+		_index integer default null,
+		_check_only boolean default false ) returns _status_record as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+			_count integer not null = 0;
+		BEGIN
+		-- (D) Check that there is a record in the table with the same prime key
+			SELECT COUNT(*) into _count
+			FROM federation_procedure_parameter F
+			WHERE
+				F.procedure = "federation_procedure_parameter.delete__internal".procedure AND
+				F.name = "federation_procedure_parameter.delete__internal".name;
+			if _count <> 1 then
+				_status.errors = _status.errors ||
+					ROW('federation_procedure_parameter', _index,
+						'Er is geen Federation Procedure Parameter gevonden met '
+						'Procedure, Name',
+						'name'
+					)::_error_record;
+			end if;			-- Get out quick if there are errors
+			if cardinality(_status.errors) <> 0 then
+				return _status;
+			end if;
+			if _check_only then
+				return _status;
+			end if;
+
+			DELETE FROM federation_procedure_parameter F
+			WHERE 
+				F.procedure = "federation_procedure_parameter.delete__internal".procedure AND
+				F.name = "federation_procedure_parameter.delete__internal".name;
+			return _status;
+		END;
+	$$ language plpgsql security definer;
+
+	select * from plpgsql_check_function(
+		'"federation_procedure_parameter.delete__internal"('
+			'object_name,'
+			'scope_name,'
+			'integer,'
+			'boolean)'
+	);
+
+drop function if exists "federation_procedure_parameter.delete";
+	create function "federation_procedure_parameter.delete" (
+		procedure object_name,
+		name scope_name) returns _jaaql_procedure_result as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+		BEGIN
+			SELECT * INTO strict _status FROM "federation_procedure_parameter.delete__internal"(
+				procedure => "federation_procedure_parameter.delete".procedure,
+				name => "federation_procedure_parameter.delete".name);
+		-- Throw exception, which triggers a rollback if errors
+		if cardinality(_status.errors) <> 0 then
+			SELECT raise_jaaql_handled_query_exception(_status);
+		end if;
+		return _status.result::_jaaql_procedure_result;
+		END;
+	$$ language plpgsql security definer;
+-- identity_provider_service...
+
+drop function if exists "identity_provider_service.insert__internal";
+create function "identity_provider_service.insert__internal" (
+	requires_email_verification bool,
+	logo_url url,
+	name provider_name,
+	_index integer default null,
+	_check_only boolean default false ) returns _status_record as
+$$
+DECLARE
+	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+	_count integer not null = 0;
+BEGIN
+		-- (1) Coercion
+			if "identity_provider_service.insert__internal".name is null then
+				"identity_provider_service.insert__internal".name = '';
+			end if;
+			if "identity_provider_service.insert__internal".logo_url is null then
+				"identity_provider_service.insert__internal".logo_url = '';
+			end if;
+		-- (A) Check that required values are present
+			if "identity_provider_service.insert__internal".logo_url = '' then
+				_status.errors = _status.errors ||
+					ROW('identity_provider_service', _index,
+						'Er moet een waarde ingevuld worden voor Logo Url',
+						'logo_url'
+					)::_error_record;
+			end if;
+			if "identity_provider_service.insert__internal".requires_email_verification is null then
+				_status.errors = _status.errors ||
+					ROW('identity_provider_service', _index,
+						'Er moet een waarde ingevuld worden voor Requires Email Verification',
+						'requires_email_verification'
+					)::_error_record;
+			end if;
+		-- (D) Check that there is no record in the table with the same prime key
+			SELECT COUNT(*) into _count
+			FROM identity_provider_service I
+			WHERE
+				I.name = "identity_provider_service.insert__internal".name;
+			if _count <> 0 then
+				_status.errors = _status.errors ||
+					ROW('identity_provider_service', _index,
+						'Er is al een Identity Provider Service geregistreed met '
+						'Name',
+						'name'
+					)::_error_record;
+			end if;
+			-- Get out quick if there are errors
+			if cardinality(_status.errors) <> 0 then
+				return _status;
+			end if;
+			-- Now do the work
+			if not "identity_provider_service.insert__internal"._check_only then
+				INSERT INTO identity_provider_service (
+					name,
+					logo_url,
+					requires_email_verification
+				) VALUES (
+					"identity_provider_service.insert__internal"."name",
+					"identity_provider_service.insert__internal"."logo_url",
+					"identity_provider_service.insert__internal"."requires_email_verification" );
+				_status.result = 1;
+			end if;
+	return _status;
+END;
+$$ language plpgsql security definer;
+select * from plpgsql_check_function(
+	'"identity_provider_service.insert__internal"('
+		'bool,'
+		'url,'
+		'provider_name,'
+		'integer,'
+		'boolean)'
+);
+
+drop function if exists "identity_provider_service.insert";
+	create function "identity_provider_service.insert" (
+		requires_email_verification bool,
+		logo_url url,
+		name provider_name) returns _jaaql_procedure_result as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+		BEGIN
+			SELECT * INTO strict _status FROM "identity_provider_service.insert__internal"(
+				name => "identity_provider_service.insert".name,
+				logo_url => "identity_provider_service.insert".logo_url,
+				requires_email_verification => "identity_provider_service.insert".requires_email_verification);
+
+		-- Throw exception, which triggers a rollback if errors
+		if cardinality(_status.errors) <> 0 then
+			SELECT raise_jaaql_handled_query_exception(_status);
+		end if;
+		return _status.result::_jaaql_procedure_result;
+		END;
+	$$ language plpgsql security definer;
+drop function if exists "identity_provider_service.update__internal";
+	create function "identity_provider_service.update__internal" (
+		name provider_name,
+		logo_url url default null,
+		requires_email_verification bool default null,
+		_index integer default null,
+		_check_only boolean default false) returns _status_record as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+			_count integer not null = 0;
+		BEGIN
+		-- (D) Check that there is a record in the table with the same prime key
+			SELECT COUNT(*) into _count
+			FROM identity_provider_service I
+			WHERE
+				I.name = "identity_provider_service.update__internal".name;
+			if _count <> 1 then
+				_status.errors = _status.errors ||
+					ROW('identity_provider_service', _index,
+						'Er is geen Identity Provider Service gevonden met '
+						'Name',
+						'name'
+					)::_error_record;
+			end if;
+			-- Get out quick if there are errors
+			if cardinality(_status.errors) <> 0 then
+				return _status;
+			end if;
+			if _check_only then
+				return _status;
+			end if;
+
+			UPDATE identity_provider_service I
+			SET
+				logo_url = coalesce("identity_provider_service.update__internal".logo_url, I.logo_url),
+				requires_email_verification = coalesce("identity_provider_service.update__internal".requires_email_verification, I.requires_email_verification)
+			WHERE 
+				I.name = "identity_provider_service.update__internal".name;
+			return _status;
+		END;
+	$$ language plpgsql security definer;
+
+	select * from plpgsql_check_function(
+		'"identity_provider_service.update__internal"('
+			'provider_name,'
+			'url,'
+			'bool,'
+			'integer,'
+			'boolean)'
+	);
+
+drop function if exists "identity_provider_service.update";
+	create function "identity_provider_service.update" (
+		name provider_name,
+		logo_url url default null,
+		requires_email_verification bool default null) returns _jaaql_procedure_result as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+		BEGIN
+			SELECT * INTO strict _status FROM "identity_provider_service.update__internal"(
+				name => "identity_provider_service.update".name,
+				logo_url => "identity_provider_service.update".logo_url,
+				requires_email_verification => "identity_provider_service.update".requires_email_verification);
+		-- Throw exception, which triggers a rollback if errors
+		if cardinality(_status.errors) <> 0 then
+			SELECT raise_jaaql_handled_query_exception(_status);
+		end if;
+		return _status.result::_jaaql_procedure_result;
+		END;
+	$$ language plpgsql security definer;
+drop function if exists "identity_provider_service.delete__internal";
+	create function "identity_provider_service.delete__internal" (
+		name provider_name,
+		_index integer default null,
+		_check_only boolean default false ) returns _status_record as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+			_count integer not null = 0;
+		BEGIN
+		-- (D) Check that there is a record in the table with the same prime key
+			SELECT COUNT(*) into _count
+			FROM identity_provider_service I
+			WHERE
+				I.name = "identity_provider_service.delete__internal".name;
+			if _count <> 1 then
+				_status.errors = _status.errors ||
+					ROW('identity_provider_service', _index,
+						'Er is geen Identity Provider Service gevonden met '
+						'Name',
+						'name'
+					)::_error_record;
+			end if;			-- Get out quick if there are errors
+			if cardinality(_status.errors) <> 0 then
+				return _status;
+			end if;
+			if _check_only then
+				return _status;
+			end if;
+
+			DELETE FROM identity_provider_service I
+			WHERE 
+				I.name = "identity_provider_service.delete__internal".name;
+			return _status;
+		END;
+	$$ language plpgsql security definer;
+
+	select * from plpgsql_check_function(
+		'"identity_provider_service.delete__internal"('
+			'provider_name,'
+			'integer,'
+			'boolean)'
+	);
+
+drop function if exists "identity_provider_service.delete";
+	create function "identity_provider_service.delete" (
+		name provider_name) returns _jaaql_procedure_result as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+		BEGIN
+			SELECT * INTO strict _status FROM "identity_provider_service.delete__internal"(
+				name => "identity_provider_service.delete".name);
+		-- Throw exception, which triggers a rollback if errors
+		if cardinality(_status.errors) <> 0 then
+			SELECT raise_jaaql_handled_query_exception(_status);
+		end if;
+		return _status.result::_jaaql_procedure_result;
+		END;
+	$$ language plpgsql security definer;
+-- user_registry...
+
+drop function if exists "user_registry.insert__internal";
+create function "user_registry.insert__internal" (
+	discovery_url url,
+	tenant tenant_name,
+	provider provider_name,
+	_index integer default null,
+	_check_only boolean default false ) returns _status_record as
+$$
+DECLARE
+	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+	_count integer not null = 0;
+BEGIN
+		-- (1) Coercion
+			if "user_registry.insert__internal".provider is null then
+				"user_registry.insert__internal".provider = '';
+			end if;
+			if "user_registry.insert__internal".tenant is null then
+				"user_registry.insert__internal".tenant = '';
+			end if;
+			if "user_registry.insert__internal".discovery_url is null then
+				"user_registry.insert__internal".discovery_url = '';
+			end if;
+		-- (A) Check that required values are present
+			if "user_registry.insert__internal".discovery_url = '' then
+				_status.errors = _status.errors ||
+					ROW('user_registry', _index,
+						'Er moet een waarde ingevuld worden voor Discovery Url',
+						'discovery_url'
+					)::_error_record;
+			end if;
+		-- (D) Check that there is no record in the table with the same prime key
+			SELECT COUNT(*) into _count
+			FROM user_registry U
+			WHERE
+				U.provider = "user_registry.insert__internal".provider AND
+				U.tenant = "user_registry.insert__internal".tenant;
+			if _count <> 0 then
+				_status.errors = _status.errors ||
+					ROW('user_registry', _index,
+						'Er is al een User Registry geregistreed met '
+						'Provider, Tenant',
+						'tenant'
+					)::_error_record;
+			end if;
+			-- Get out quick if there are errors
+			if cardinality(_status.errors) <> 0 then
+				return _status;
+			end if;
+			-- Now do the work
+			if not "user_registry.insert__internal"._check_only then
+				INSERT INTO user_registry (
+					provider,
+					tenant,
+					discovery_url
+				) VALUES (
+					"user_registry.insert__internal"."provider",
+					"user_registry.insert__internal"."tenant",
+					"user_registry.insert__internal"."discovery_url" );
+				_status.result = 1;
+			end if;
+	return _status;
+END;
+$$ language plpgsql security definer;
+select * from plpgsql_check_function(
+	'"user_registry.insert__internal"('
+		'url,'
+		'tenant_name,'
+		'provider_name,'
+		'integer,'
+		'boolean)'
+);
+
+drop function if exists "user_registry.insert";
+	create function "user_registry.insert" (
+		discovery_url url,
+		tenant tenant_name,
+		provider provider_name) returns _jaaql_procedure_result as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+		BEGIN
+			SELECT * INTO strict _status FROM "user_registry.insert__internal"(
+				provider => "user_registry.insert".provider,
+				tenant => "user_registry.insert".tenant,
+				discovery_url => "user_registry.insert".discovery_url);
+
+		-- Throw exception, which triggers a rollback if errors
+		if cardinality(_status.errors) <> 0 then
+			SELECT raise_jaaql_handled_query_exception(_status);
+		end if;
+		return _status.result::_jaaql_procedure_result;
+		END;
+	$$ language plpgsql security definer;
+drop function if exists "user_registry.update__internal";
+	create function "user_registry.update__internal" (
+		provider provider_name,
+		tenant tenant_name,
+		discovery_url url default null,
+		_index integer default null,
+		_check_only boolean default false) returns _status_record as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+			_count integer not null = 0;
+		BEGIN
+		-- (D) Check that there is a record in the table with the same prime key
+			SELECT COUNT(*) into _count
+			FROM user_registry U
+			WHERE
+				U.provider = "user_registry.update__internal".provider AND
+				U.tenant = "user_registry.update__internal".tenant;
+			if _count <> 1 then
+				_status.errors = _status.errors ||
+					ROW('user_registry', _index,
+						'Er is geen User Registry gevonden met '
+						'Provider, Tenant',
+						'tenant'
+					)::_error_record;
+			end if;
+			-- Get out quick if there are errors
+			if cardinality(_status.errors) <> 0 then
+				return _status;
+			end if;
+			if _check_only then
+				return _status;
+			end if;
+
+			UPDATE user_registry U
+			SET
+				discovery_url = coalesce("user_registry.update__internal".discovery_url, U.discovery_url)
+			WHERE 
+				U.provider = "user_registry.update__internal".provider AND
+				U.tenant = "user_registry.update__internal".tenant;
+			return _status;
+		END;
+	$$ language plpgsql security definer;
+
+	select * from plpgsql_check_function(
+		'"user_registry.update__internal"('
+			'provider_name,'
+			'tenant_name,'
+			'url,'
+			'integer,'
+			'boolean)'
+	);
+
+drop function if exists "user_registry.update";
+	create function "user_registry.update" (
+		provider provider_name,
+		tenant tenant_name,
+		discovery_url url default null) returns _jaaql_procedure_result as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+		BEGIN
+			SELECT * INTO strict _status FROM "user_registry.update__internal"(
+				provider => "user_registry.update".provider,
+				tenant => "user_registry.update".tenant,
+				discovery_url => "user_registry.update".discovery_url);
+		-- Throw exception, which triggers a rollback if errors
+		if cardinality(_status.errors) <> 0 then
+			SELECT raise_jaaql_handled_query_exception(_status);
+		end if;
+		return _status.result::_jaaql_procedure_result;
+		END;
+	$$ language plpgsql security definer;
+drop function if exists "user_registry.delete__internal";
+	create function "user_registry.delete__internal" (
+		provider provider_name,
+		tenant tenant_name,
+		_index integer default null,
+		_check_only boolean default false ) returns _status_record as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+			_count integer not null = 0;
+		BEGIN
+		-- (D) Check that there is a record in the table with the same prime key
+			SELECT COUNT(*) into _count
+			FROM user_registry U
+			WHERE
+				U.provider = "user_registry.delete__internal".provider AND
+				U.tenant = "user_registry.delete__internal".tenant;
+			if _count <> 1 then
+				_status.errors = _status.errors ||
+					ROW('user_registry', _index,
+						'Er is geen User Registry gevonden met '
+						'Provider, Tenant',
+						'tenant'
+					)::_error_record;
+			end if;			-- Get out quick if there are errors
+			if cardinality(_status.errors) <> 0 then
+				return _status;
+			end if;
+			if _check_only then
+				return _status;
+			end if;
+
+			DELETE FROM user_registry U
+			WHERE 
+				U.provider = "user_registry.delete__internal".provider AND
+				U.tenant = "user_registry.delete__internal".tenant;
+			return _status;
+		END;
+	$$ language plpgsql security definer;
+
+	select * from plpgsql_check_function(
+		'"user_registry.delete__internal"('
+			'provider_name,'
+			'tenant_name,'
+			'integer,'
+			'boolean)'
+	);
+
+drop function if exists "user_registry.delete";
+	create function "user_registry.delete" (
+		provider provider_name,
+		tenant tenant_name) returns _jaaql_procedure_result as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+		BEGIN
+			SELECT * INTO strict _status FROM "user_registry.delete__internal"(
+				provider => "user_registry.delete".provider,
+				tenant => "user_registry.delete".tenant);
+		-- Throw exception, which triggers a rollback if errors
+		if cardinality(_status.errors) <> 0 then
+			SELECT raise_jaaql_handled_query_exception(_status);
+		end if;
+		return _status.result::_jaaql_procedure_result;
+		END;
+	$$ language plpgsql security definer;
+-- database_user_registry...
+
+drop function if exists "database_user_registry.insert__internal";
+create function "database_user_registry.insert__internal" (
+	client_id encrypted__oidc_client_id,
+	federation_procedure object_name,
+	database object_name,
+	tenant tenant_name,
+	provider provider_name,
+	client_secret encrypted__oidc_client_secret default null,
+	_index integer default null,
+	_check_only boolean default false ) returns _status_record as
+$$
+DECLARE
+	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+	_count integer not null = 0;
+BEGIN
+		-- (1) Coercion
+			if "database_user_registry.insert__internal".provider is null then
+				"database_user_registry.insert__internal".provider = '';
+			end if;
+			if "database_user_registry.insert__internal".tenant is null then
+				"database_user_registry.insert__internal".tenant = '';
+			end if;
+			if "database_user_registry.insert__internal".database is null then
+				"database_user_registry.insert__internal".database = '';
+			end if;
+			if "database_user_registry.insert__internal".federation_procedure is null then
+				"database_user_registry.insert__internal".federation_procedure = '';
+			end if;
+			if "database_user_registry.insert__internal".client_id is null then
+				"database_user_registry.insert__internal".client_id = '';
+			end if;
+		-- (A) Check that required values are present
+			if "database_user_registry.insert__internal".federation_procedure = '' then
+				_status.errors = _status.errors ||
+					ROW('database_user_registry', _index,
+						'Er moet een waarde ingevuld worden voor Federation Procedure',
+						'federation_procedure'
+					)::_error_record;
+			end if;
+			if "database_user_registry.insert__internal".client_id = '' then
+				_status.errors = _status.errors ||
+					ROW('database_user_registry', _index,
+						'Er moet een waarde ingevuld worden voor Client Id',
+						'client_id'
+					)::_error_record;
+			end if;
+		-- (D) Check that there is no record in the table with the same prime key
+			SELECT COUNT(*) into _count
+			FROM database_user_registry D
+			WHERE
+				D.provider = "database_user_registry.insert__internal".provider AND
+				D.tenant = "database_user_registry.insert__internal".tenant AND
+				D.database = "database_user_registry.insert__internal".database;
+			if _count <> 0 then
+				_status.errors = _status.errors ||
+					ROW('database_user_registry', _index,
+						'Er is al een Database User Registry geregistreed met '
+						'Provider, Tenant, Database',
+						'database'
+					)::_error_record;
+			end if;
+			-- Get out quick if there are errors
+			if cardinality(_status.errors) <> 0 then
+				return _status;
+			end if;
+			-- Now do the work
+			if not "database_user_registry.insert__internal"._check_only then
+				INSERT INTO database_user_registry (
+					provider,
+					tenant,
+					database,
+					federation_procedure,
+					client_id,
+					client_secret
+				) VALUES (
+					"database_user_registry.insert__internal"."provider",
+					"database_user_registry.insert__internal"."tenant",
+					"database_user_registry.insert__internal"."database",
+					"database_user_registry.insert__internal"."federation_procedure",
+					"database_user_registry.insert__internal"."client_id",
+					"database_user_registry.insert__internal"."client_secret" );
+				_status.result = 1;
+			end if;
+	return _status;
+END;
+$$ language plpgsql security definer;
+select * from plpgsql_check_function(
+	'"database_user_registry.insert__internal"('
+		'encrypted__oidc_client_id,'
+		'object_name,'
+		'object_name,'
+		'tenant_name,'
+		'provider_name,'
+		'encrypted__oidc_client_secret,'
+		'integer,'
+		'boolean)'
+);
+
+drop function if exists "database_user_registry.insert";
+	create function "database_user_registry.insert" (
+		client_id encrypted__oidc_client_id,
+		federation_procedure object_name,
+		database object_name,
+		tenant tenant_name,
+		provider provider_name,
+		client_secret encrypted__oidc_client_secret default null) returns _jaaql_procedure_result as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+		BEGIN
+			SELECT * INTO strict _status FROM "database_user_registry.insert__internal"(
+				provider => "database_user_registry.insert".provider,
+				tenant => "database_user_registry.insert".tenant,
+				database => "database_user_registry.insert".database,
+				federation_procedure => "database_user_registry.insert".federation_procedure,
+				client_id => "database_user_registry.insert".client_id,
+				client_secret => "database_user_registry.insert".client_secret);
+
+		-- Throw exception, which triggers a rollback if errors
+		if cardinality(_status.errors) <> 0 then
+			SELECT raise_jaaql_handled_query_exception(_status);
+		end if;
+		return _status.result::_jaaql_procedure_result;
+		END;
+	$$ language plpgsql security definer;
+drop function if exists "database_user_registry.update__internal";
+	create function "database_user_registry.update__internal" (
+		provider provider_name,
+		tenant tenant_name,
+		database object_name,
+		federation_procedure object_name default null,
+		client_id encrypted__oidc_client_id default null,
+		client_secret encrypted__oidc_client_secret default null,
+		_index integer default null,
+		_check_only boolean default false) returns _status_record as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+			_count integer not null = 0;
+		BEGIN
+		-- (D) Check that there is a record in the table with the same prime key
+			SELECT COUNT(*) into _count
+			FROM database_user_registry D
+			WHERE
+				D.provider = "database_user_registry.update__internal".provider AND
+				D.tenant = "database_user_registry.update__internal".tenant AND
+				D.database = "database_user_registry.update__internal".database;
+			if _count <> 1 then
+				_status.errors = _status.errors ||
+					ROW('database_user_registry', _index,
+						'Er is geen Database User Registry gevonden met '
+						'Provider, Tenant, Database',
+						'database'
+					)::_error_record;
+			end if;
+			-- Get out quick if there are errors
+			if cardinality(_status.errors) <> 0 then
+				return _status;
+			end if;
+			if _check_only then
+				return _status;
+			end if;
+
+			UPDATE database_user_registry D
+			SET
+				federation_procedure = coalesce("database_user_registry.update__internal".federation_procedure, D.federation_procedure),
+				client_id = coalesce("database_user_registry.update__internal".client_id, D.client_id),
+				client_secret = coalesce("database_user_registry.update__internal".client_secret, D.client_secret)
+			WHERE 
+				D.provider = "database_user_registry.update__internal".provider AND
+				D.tenant = "database_user_registry.update__internal".tenant AND
+				D.database = "database_user_registry.update__internal".database;
+			return _status;
+		END;
+	$$ language plpgsql security definer;
+
+	select * from plpgsql_check_function(
+		'"database_user_registry.update__internal"('
+			'provider_name,'
+			'tenant_name,'
+			'object_name,'
+			'object_name,'
+			'encrypted__oidc_client_id,'
+			'encrypted__oidc_client_secret,'
+			'integer,'
+			'boolean)'
+	);
+
+drop function if exists "database_user_registry.update";
+	create function "database_user_registry.update" (
+		provider provider_name,
+		tenant tenant_name,
+		database object_name,
+		federation_procedure object_name default null,
+		client_id encrypted__oidc_client_id default null,
+		client_secret encrypted__oidc_client_secret default null) returns _jaaql_procedure_result as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+		BEGIN
+			SELECT * INTO strict _status FROM "database_user_registry.update__internal"(
+				provider => "database_user_registry.update".provider,
+				tenant => "database_user_registry.update".tenant,
+				database => "database_user_registry.update".database,
+				federation_procedure => "database_user_registry.update".federation_procedure,
+				client_id => "database_user_registry.update".client_id,
+				client_secret => "database_user_registry.update".client_secret);
+		-- Throw exception, which triggers a rollback if errors
+		if cardinality(_status.errors) <> 0 then
+			SELECT raise_jaaql_handled_query_exception(_status);
+		end if;
+		return _status.result::_jaaql_procedure_result;
+		END;
+	$$ language plpgsql security definer;
+drop function if exists "database_user_registry.delete__internal";
+	create function "database_user_registry.delete__internal" (
+		provider provider_name,
+		tenant tenant_name,
+		database object_name,
+		_index integer default null,
+		_check_only boolean default false ) returns _status_record as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+			_count integer not null = 0;
+		BEGIN
+		-- (D) Check that there is a record in the table with the same prime key
+			SELECT COUNT(*) into _count
+			FROM database_user_registry D
+			WHERE
+				D.provider = "database_user_registry.delete__internal".provider AND
+				D.tenant = "database_user_registry.delete__internal".tenant AND
+				D.database = "database_user_registry.delete__internal".database;
+			if _count <> 1 then
+				_status.errors = _status.errors ||
+					ROW('database_user_registry', _index,
+						'Er is geen Database User Registry gevonden met '
+						'Provider, Tenant, Database',
+						'database'
+					)::_error_record;
+			end if;			-- Get out quick if there are errors
+			if cardinality(_status.errors) <> 0 then
+				return _status;
+			end if;
+			if _check_only then
+				return _status;
+			end if;
+
+			DELETE FROM database_user_registry D
+			WHERE 
+				D.provider = "database_user_registry.delete__internal".provider AND
+				D.tenant = "database_user_registry.delete__internal".tenant AND
+				D.database = "database_user_registry.delete__internal".database;
+			return _status;
+		END;
+	$$ language plpgsql security definer;
+
+	select * from plpgsql_check_function(
+		'"database_user_registry.delete__internal"('
+			'provider_name,'
+			'tenant_name,'
+			'object_name,'
+			'integer,'
+			'boolean)'
+	);
+
+drop function if exists "database_user_registry.delete";
+	create function "database_user_registry.delete" (
+		provider provider_name,
+		tenant tenant_name,
+		database object_name) returns _jaaql_procedure_result as
+	$$
+		DECLARE
+			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
+		BEGIN
+			SELECT * INTO strict _status FROM "database_user_registry.delete__internal"(
+				provider => "database_user_registry.delete".provider,
+				tenant => "database_user_registry.delete".tenant,
+				database => "database_user_registry.delete".database);
+		-- Throw exception, which triggers a rollback if errors
+		if cardinality(_status.errors) <> 0 then
+			SELECT raise_jaaql_handled_query_exception(_status);
+		end if;
+		return _status.result::_jaaql_procedure_result;
+		END;
+	$$ language plpgsql security definer;
 -- account...
 
 drop function if exists "account.insert__internal";
 create function "account.insert__internal" (
-	username encrypted__jaaql_username,
+	email_verified bool,
+	sub encrypted__oidc_sub,
 	id postgres_role,
+	username username default null,
+	email encrypted__email default null,
 	deletion_timestamp timestamptz default null,
-	most_recent_password uuid default null,
+	provider provider_name default null,
+	tenant tenant_name default null,
+	api_key api_key default null,
 	_index integer default null,
 	_check_only boolean default false ) returns _status_record as
 $$
@@ -2734,15 +3476,22 @@ BEGIN
 			if "account.insert__internal".id is null then
 				"account.insert__internal".id = '';
 			end if;
-			if "account.insert__internal".username is null then
-				"account.insert__internal".username = '';
+			if "account.insert__internal".sub is null then
+				"account.insert__internal".sub = '';
 			end if;
 		-- (A) Check that required values are present
-			if "account.insert__internal".username = '' then
+			if "account.insert__internal".sub = '' then
 				_status.errors = _status.errors ||
 					ROW('account', _index,
-						'Er moet een waarde ingevuld worden voor Username',
-						'username'
+						'Er moet een waarde ingevuld worden voor Sub',
+						'sub'
+					)::_error_record;
+			end if;
+			if "account.insert__internal".email_verified is null then
+				_status.errors = _status.errors ||
+					ROW('account', _index,
+						'Er moet een waarde ingevuld worden voor Email Verified',
+						'email_verified'
 					)::_error_record;
 			end if;
 		-- (D) Check that there is no record in the table with the same prime key
@@ -2766,14 +3515,24 @@ BEGIN
 			if not "account.insert__internal"._check_only then
 				INSERT INTO account (
 					id,
+					sub,
 					username,
+					email,
+					email_verified,
 					deletion_timestamp,
-					most_recent_password
+					provider,
+					tenant,
+					api_key
 				) VALUES (
 					"account.insert__internal"."id",
+					"account.insert__internal"."sub",
 					"account.insert__internal"."username",
+					"account.insert__internal"."email",
+					"account.insert__internal"."email_verified",
 					"account.insert__internal"."deletion_timestamp",
-					"account.insert__internal"."most_recent_password" );
+					"account.insert__internal"."provider",
+					"account.insert__internal"."tenant",
+					"account.insert__internal"."api_key" );
 				_status.result = 1;
 			end if;
 	return _status;
@@ -2781,29 +3540,44 @@ END;
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
 	'"account.insert__internal"('
-		'encrypted__jaaql_username,'
+		'bool,'
+		'encrypted__oidc_sub,'
 		'postgres_role,'
+		'username,'
+		'encrypted__email,'
 		'timestamptz,'
-		'uuid,'
+		'provider_name,'
+		'tenant_name,'
+		'api_key,'
 		'integer,'
 		'boolean)'
 );
 
 drop function if exists "account.insert";
 	create function "account.insert" (
-		username encrypted__jaaql_username,
+		email_verified bool,
+		sub encrypted__oidc_sub,
 		id postgres_role,
+		username username default null,
+		email encrypted__email default null,
 		deletion_timestamp timestamptz default null,
-		most_recent_password uuid default null) returns _jaaql_procedure_result as
+		provider provider_name default null,
+		tenant tenant_name default null,
+		api_key api_key default null) returns _jaaql_procedure_result as
 	$$
 		DECLARE
 			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 		BEGIN
 			SELECT * INTO strict _status FROM "account.insert__internal"(
 				id => "account.insert".id,
+				sub => "account.insert".sub,
 				username => "account.insert".username,
+				email => "account.insert".email,
+				email_verified => "account.insert".email_verified,
 				deletion_timestamp => "account.insert".deletion_timestamp,
-				most_recent_password => "account.insert".most_recent_password);
+				provider => "account.insert".provider,
+				tenant => "account.insert".tenant,
+				api_key => "account.insert".api_key);
 
 		-- Throw exception, which triggers a rollback if errors
 		if cardinality(_status.errors) <> 0 then
@@ -2815,9 +3589,14 @@ drop function if exists "account.insert";
 drop function if exists "account.update__internal";
 	create function "account.update__internal" (
 		id postgres_role,
-		username encrypted__jaaql_username default null,
+		sub encrypted__oidc_sub default null,
+		username username default null,
+		email encrypted__email default null,
+		email_verified bool default null,
 		deletion_timestamp timestamptz default null,
-		most_recent_password uuid default null,
+		provider provider_name default null,
+		tenant tenant_name default null,
+		api_key api_key default null,
 		_index integer default null,
 		_check_only boolean default false) returns _status_record as
 	$$
@@ -2848,9 +3627,14 @@ drop function if exists "account.update__internal";
 
 			UPDATE account A
 			SET
+				sub = coalesce("account.update__internal".sub, A.sub),
 				username = coalesce("account.update__internal".username, A.username),
+				email = coalesce("account.update__internal".email, A.email),
+				email_verified = coalesce("account.update__internal".email_verified, A.email_verified),
 				deletion_timestamp = coalesce("account.update__internal".deletion_timestamp, A.deletion_timestamp),
-				most_recent_password = coalesce("account.update__internal".most_recent_password, A.most_recent_password)
+				provider = coalesce("account.update__internal".provider, A.provider),
+				tenant = coalesce("account.update__internal".tenant, A.tenant),
+				api_key = coalesce("account.update__internal".api_key, A.api_key)
 			WHERE 
 				A.id = "account.update__internal".id;
 			return _status;
@@ -2860,9 +3644,14 @@ drop function if exists "account.update__internal";
 	select * from plpgsql_check_function(
 		'"account.update__internal"('
 			'postgres_role,'
-			'encrypted__jaaql_username,'
+			'encrypted__oidc_sub,'
+			'username,'
+			'encrypted__email,'
+			'bool,'
 			'timestamptz,'
-			'uuid,'
+			'provider_name,'
+			'tenant_name,'
+			'api_key,'
 			'integer,'
 			'boolean)'
 	);
@@ -2870,18 +3659,28 @@ drop function if exists "account.update__internal";
 drop function if exists "account.update";
 	create function "account.update" (
 		id postgres_role,
-		username encrypted__jaaql_username default null,
+		sub encrypted__oidc_sub default null,
+		username username default null,
+		email encrypted__email default null,
+		email_verified bool default null,
 		deletion_timestamp timestamptz default null,
-		most_recent_password uuid default null) returns _jaaql_procedure_result as
+		provider provider_name default null,
+		tenant tenant_name default null,
+		api_key api_key default null) returns _jaaql_procedure_result as
 	$$
 		DECLARE
 			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 		BEGIN
 			SELECT * INTO strict _status FROM "account.update__internal"(
 				id => "account.update".id,
+				sub => "account.update".sub,
 				username => "account.update".username,
+				email => "account.update".email,
+				email_verified => "account.update".email_verified,
 				deletion_timestamp => "account.update".deletion_timestamp,
-				most_recent_password => "account.update".most_recent_password);
+				provider => "account.update".provider,
+				tenant => "account.update".tenant,
+				api_key => "account.update".api_key);
 		-- Throw exception, which triggers a rollback if errors
 		if cardinality(_status.errors) <> 0 then
 			SELECT raise_jaaql_handled_query_exception(_status);
@@ -2942,254 +3741,6 @@ drop function if exists "account.delete";
 		BEGIN
 			SELECT * INTO strict _status FROM "account.delete__internal"(
 				id => "account.delete".id);
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-		END;
-	$$ language plpgsql security definer;
--- account_password...
-
-drop function if exists "account_password.insert__internal";
-create function "account_password.insert__internal" (
-	creation_timestamp timestamptz,
-	hash encrypted__hash,
-	uuid uuid,
-	account postgres_role,
-	_index integer default null,
-	_check_only boolean default false ) returns _status_record as
-$$
-DECLARE
-	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-	_count integer not null = 0;
-BEGIN
-		-- (1) Coercion
-			if "account_password.insert__internal".account is null then
-				"account_password.insert__internal".account = '';
-			end if;
-			if "account_password.insert__internal".hash is null then
-				"account_password.insert__internal".hash = '';
-			end if;
-		-- (A) Check that required values are present
-			if "account_password.insert__internal".account = '' then
-				_status.errors = _status.errors ||
-					ROW('account_password', _index,
-						'Er moet een waarde ingevuld worden voor Account',
-						'account'
-					)::_error_record;
-			end if;
-			if "account_password.insert__internal".hash = '' then
-				_status.errors = _status.errors ||
-					ROW('account_password', _index,
-						'Er moet een waarde ingevuld worden voor Hash',
-						'hash'
-					)::_error_record;
-			end if;
-			if "account_password.insert__internal".creation_timestamp is null then
-				_status.errors = _status.errors ||
-					ROW('account_password', _index,
-						'Er moet een waarde ingevuld worden voor Creation Timestamp',
-						'creation_timestamp'
-					)::_error_record;
-			end if;
-		-- (D) Check that there is no record in the table with the same prime key
-			SELECT COUNT(*) into _count
-			FROM account_password A
-			WHERE
-				A.uuid = "account_password.insert__internal".uuid;
-			if _count <> 0 then
-				_status.errors = _status.errors ||
-					ROW('account_password', _index,
-						'Er is al een Account Password geregistreed met '
-						'Uuid',
-						'uuid'
-					)::_error_record;
-			end if;
-			-- Get out quick if there are errors
-			if cardinality(_status.errors) <> 0 then
-				return _status;
-			end if;
-			-- Now do the work
-			if not "account_password.insert__internal"._check_only then
-				INSERT INTO account_password (
-					account,
-					uuid,
-					hash,
-					creation_timestamp
-				) VALUES (
-					"account_password.insert__internal"."account",
-					"account_password.insert__internal"."uuid",
-					"account_password.insert__internal"."hash",
-					"account_password.insert__internal"."creation_timestamp" );
-				_status.result = 1;
-			end if;
-	return _status;
-END;
-$$ language plpgsql security definer;
-select * from plpgsql_check_function(
-	'"account_password.insert__internal"('
-		'timestamptz,'
-		'encrypted__hash,'
-		'uuid,'
-		'postgres_role,'
-		'integer,'
-		'boolean)'
-);
-
-drop function if exists "account_password.insert";
-	create function "account_password.insert" (
-		creation_timestamp timestamptz,
-		hash encrypted__hash,
-		uuid uuid,
-		account postgres_role) returns _jaaql_procedure_result as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		BEGIN
-			SELECT * INTO strict _status FROM "account_password.insert__internal"(
-				account => "account_password.insert".account,
-				uuid => "account_password.insert".uuid,
-				hash => "account_password.insert".hash,
-				creation_timestamp => "account_password.insert".creation_timestamp);
-
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-		END;
-	$$ language plpgsql security definer;
-drop function if exists "account_password.update__internal";
-	create function "account_password.update__internal" (
-		uuid uuid,
-		account postgres_role default null,
-		hash encrypted__hash default null,
-		creation_timestamp timestamptz default null,
-		_index integer default null,
-		_check_only boolean default false) returns _status_record as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-			_count integer not null = 0;
-		BEGIN
-		-- (D) Check that there is a record in the table with the same prime key
-			SELECT COUNT(*) into _count
-			FROM account_password A
-			WHERE
-				A.uuid = "account_password.update__internal".uuid;
-			if _count <> 1 then
-				_status.errors = _status.errors ||
-					ROW('account_password', _index,
-						'Er is geen Account Password gevonden met '
-						'Uuid',
-						'uuid'
-					)::_error_record;
-			end if;
-			-- Get out quick if there are errors
-			if cardinality(_status.errors) <> 0 then
-				return _status;
-			end if;
-			if _check_only then
-				return _status;
-			end if;
-
-			UPDATE account_password A
-			SET
-				account = coalesce("account_password.update__internal".account, A.account),
-				hash = coalesce("account_password.update__internal".hash, A.hash),
-				creation_timestamp = coalesce("account_password.update__internal".creation_timestamp, A.creation_timestamp)
-			WHERE 
-				A.uuid = "account_password.update__internal".uuid;
-			return _status;
-		END;
-	$$ language plpgsql security definer;
-
-	select * from plpgsql_check_function(
-		'"account_password.update__internal"('
-			'uuid,'
-			'postgres_role,'
-			'encrypted__hash,'
-			'timestamptz,'
-			'integer,'
-			'boolean)'
-	);
-
-drop function if exists "account_password.update";
-	create function "account_password.update" (
-		uuid uuid,
-		account postgres_role default null,
-		hash encrypted__hash default null,
-		creation_timestamp timestamptz default null) returns _jaaql_procedure_result as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		BEGIN
-			SELECT * INTO strict _status FROM "account_password.update__internal"(
-				account => "account_password.update".account,
-				uuid => "account_password.update".uuid,
-				hash => "account_password.update".hash,
-				creation_timestamp => "account_password.update".creation_timestamp);
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-		END;
-	$$ language plpgsql security definer;
-drop function if exists "account_password.delete__internal";
-	create function "account_password.delete__internal" (
-		uuid uuid,
-		_index integer default null,
-		_check_only boolean default false ) returns _status_record as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-			_count integer not null = 0;
-		BEGIN
-		-- (D) Check that there is a record in the table with the same prime key
-			SELECT COUNT(*) into _count
-			FROM account_password A
-			WHERE
-				A.uuid = "account_password.delete__internal".uuid;
-			if _count <> 1 then
-				_status.errors = _status.errors ||
-					ROW('account_password', _index,
-						'Er is geen Account Password gevonden met '
-						'Uuid',
-						'uuid'
-					)::_error_record;
-			end if;			-- Get out quick if there are errors
-			if cardinality(_status.errors) <> 0 then
-				return _status;
-			end if;
-			if _check_only then
-				return _status;
-			end if;
-
-			DELETE FROM account_password A
-			WHERE 
-				A.uuid = "account_password.delete__internal".uuid;
-			return _status;
-		END;
-	$$ language plpgsql security definer;
-
-	select * from plpgsql_check_function(
-		'"account_password.delete__internal"('
-			'uuid,'
-			'integer,'
-			'boolean)'
-	);
-
-drop function if exists "account_password.delete";
-	create function "account_password.delete" (
-		uuid uuid) returns _jaaql_procedure_result as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		BEGIN
-			SELECT * INTO strict _status FROM "account_password.delete__internal"(
-				uuid => "account_password.delete".uuid);
 		-- Throw exception, which triggers a rollback if errors
 		if cardinality(_status.errors) <> 0 then
 			SELECT raise_jaaql_handled_query_exception(_status);
@@ -4394,1004 +4945,7 @@ drop function if exists "remote_procedure.delete";
 		return _status.result::_jaaql_procedure_result;
 		END;
 	$$ language plpgsql security definer;
--- federation_procedure...
 
-drop function if exists "federation_procedure.insert__internal";
-create function "federation_procedure.insert__internal" (
-	name object_name,
-	_index integer default null,
-	_check_only boolean default false ) returns _status_record as
-$$
-DECLARE
-	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-	_count integer not null = 0;
-BEGIN
-		-- (1) Coercion
-			if "federation_procedure.insert__internal".name is null then
-				"federation_procedure.insert__internal".name = '';
-			end if;
-		-- (A) Check that required values are present
-		-- (D) Check that there is no record in the table with the same prime key
-			SELECT COUNT(*) into _count
-			FROM federation_procedure F
-			WHERE
-				F.name = "federation_procedure.insert__internal".name;
-			if _count <> 0 then
-				_status.errors = _status.errors ||
-					ROW('federation_procedure', _index,
-						'Er is al een Federation Procedure geregistreed met '
-						'Name',
-						'name'
-					)::_error_record;
-			end if;
-			-- Get out quick if there are errors
-			if cardinality(_status.errors) <> 0 then
-				return _status;
-			end if;
-			-- Now do the work
-			if not "federation_procedure.insert__internal"._check_only then
-				INSERT INTO federation_procedure (
-					name
-				) VALUES (
-					"federation_procedure.insert__internal"."name" );
-				_status.result = 1;
-			end if;
-	return _status;
-END;
-$$ language plpgsql security definer;
-select * from plpgsql_check_function(
-	'"federation_procedure.insert__internal"('
-		'object_name,'
-		'integer,'
-		'boolean)'
-);
-
-drop function if exists "federation_procedure.insert";
-	create function "federation_procedure.insert" (
-		name object_name) returns _jaaql_procedure_result as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		BEGIN
-			SELECT * INTO strict _status FROM "federation_procedure.insert__internal"(
-				name => "federation_procedure.insert".name);
-
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-		END;
-	$$ language plpgsql security definer;
-drop function if exists "federation_procedure.delete__internal";
-	create function "federation_procedure.delete__internal" (
-		name object_name,
-		_index integer default null,
-		_check_only boolean default false ) returns _status_record as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-			_count integer not null = 0;
-		BEGIN
-		-- (D) Check that there is a record in the table with the same prime key
-			SELECT COUNT(*) into _count
-			FROM federation_procedure F
-			WHERE
-				F.name = "federation_procedure.delete__internal".name;
-			if _count <> 1 then
-				_status.errors = _status.errors ||
-					ROW('federation_procedure', _index,
-						'Er is geen Federation Procedure gevonden met '
-						'Name',
-						'name'
-					)::_error_record;
-			end if;			-- Get out quick if there are errors
-			if cardinality(_status.errors) <> 0 then
-				return _status;
-			end if;
-			if _check_only then
-				return _status;
-			end if;
-
-			DELETE FROM federation_procedure F
-			WHERE 
-				F.name = "federation_procedure.delete__internal".name;
-			return _status;
-		END;
-	$$ language plpgsql security definer;
-
-	select * from plpgsql_check_function(
-		'"federation_procedure.delete__internal"('
-			'object_name,'
-			'integer,'
-			'boolean)'
-	);
-
-drop function if exists "federation_procedure.delete";
-	create function "federation_procedure.delete" (
-		name object_name) returns _jaaql_procedure_result as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		BEGIN
-			SELECT * INTO strict _status FROM "federation_procedure.delete__internal"(
-				name => "federation_procedure.delete".name);
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-		END;
-	$$ language plpgsql security definer;
--- federation_procedure_parameter...
-
-drop function if exists "federation_procedure_parameter.insert__internal";
-create function "federation_procedure_parameter.insert__internal" (
-	name scope_name,
-	procedure object_name,
-	_index integer default null,
-	_check_only boolean default false ) returns _status_record as
-$$
-DECLARE
-	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-	_count integer not null = 0;
-BEGIN
-		-- (1) Coercion
-			if "federation_procedure_parameter.insert__internal".procedure is null then
-				"federation_procedure_parameter.insert__internal".procedure = '';
-			end if;
-			if "federation_procedure_parameter.insert__internal".name is null then
-				"federation_procedure_parameter.insert__internal".name = '';
-			end if;
-		-- (A) Check that required values are present
-		-- (D) Check that there is no record in the table with the same prime key
-			SELECT COUNT(*) into _count
-			FROM federation_procedure_parameter F
-			WHERE
-				F.procedure = "federation_procedure_parameter.insert__internal".procedure AND
-				F.name = "federation_procedure_parameter.insert__internal".name;
-			if _count <> 0 then
-				_status.errors = _status.errors ||
-					ROW('federation_procedure_parameter', _index,
-						'Er is al een Federation Procedure Parameter geregistreed met '
-						'Procedure, Name',
-						'name'
-					)::_error_record;
-			end if;
-			-- Get out quick if there are errors
-			if cardinality(_status.errors) <> 0 then
-				return _status;
-			end if;
-			-- Now do the work
-			if not "federation_procedure_parameter.insert__internal"._check_only then
-				INSERT INTO federation_procedure_parameter (
-					procedure,
-					name
-				) VALUES (
-					"federation_procedure_parameter.insert__internal"."procedure",
-					"federation_procedure_parameter.insert__internal"."name" );
-				_status.result = 1;
-			end if;
-	return _status;
-END;
-$$ language plpgsql security definer;
-select * from plpgsql_check_function(
-	'"federation_procedure_parameter.insert__internal"('
-		'scope_name,'
-		'object_name,'
-		'integer,'
-		'boolean)'
-);
-
-drop function if exists "federation_procedure_parameter.insert";
-	create function "federation_procedure_parameter.insert" (
-		name scope_name,
-		procedure object_name) returns _jaaql_procedure_result as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		BEGIN
-			SELECT * INTO strict _status FROM "federation_procedure_parameter.insert__internal"(
-				procedure => "federation_procedure_parameter.insert".procedure,
-				name => "federation_procedure_parameter.insert".name);
-
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-		END;
-	$$ language plpgsql security definer;
-drop function if exists "federation_procedure_parameter.delete__internal";
-	create function "federation_procedure_parameter.delete__internal" (
-		procedure object_name,
-		name scope_name,
-		_index integer default null,
-		_check_only boolean default false ) returns _status_record as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-			_count integer not null = 0;
-		BEGIN
-		-- (D) Check that there is a record in the table with the same prime key
-			SELECT COUNT(*) into _count
-			FROM federation_procedure_parameter F
-			WHERE
-				F.procedure = "federation_procedure_parameter.delete__internal".procedure AND
-				F.name = "federation_procedure_parameter.delete__internal".name;
-			if _count <> 1 then
-				_status.errors = _status.errors ||
-					ROW('federation_procedure_parameter', _index,
-						'Er is geen Federation Procedure Parameter gevonden met '
-						'Procedure, Name',
-						'name'
-					)::_error_record;
-			end if;			-- Get out quick if there are errors
-			if cardinality(_status.errors) <> 0 then
-				return _status;
-			end if;
-			if _check_only then
-				return _status;
-			end if;
-
-			DELETE FROM federation_procedure_parameter F
-			WHERE 
-				F.procedure = "federation_procedure_parameter.delete__internal".procedure AND
-				F.name = "federation_procedure_parameter.delete__internal".name;
-			return _status;
-		END;
-	$$ language plpgsql security definer;
-
-	select * from plpgsql_check_function(
-		'"federation_procedure_parameter.delete__internal"('
-			'object_name,'
-			'scope_name,'
-			'integer,'
-			'boolean)'
-	);
-
-drop function if exists "federation_procedure_parameter.delete";
-	create function "federation_procedure_parameter.delete" (
-		procedure object_name,
-		name scope_name) returns _jaaql_procedure_result as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		BEGIN
-			SELECT * INTO strict _status FROM "federation_procedure_parameter.delete__internal"(
-				procedure => "federation_procedure_parameter.delete".procedure,
-				name => "federation_procedure_parameter.delete".name);
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-		END;
-	$$ language plpgsql security definer;
--- identity_provider_service...
-
-drop function if exists "identity_provider_service.insert__internal";
-create function "identity_provider_service.insert__internal" (
-	logo_url url,
-	name provider_name,
-	_index integer default null,
-	_check_only boolean default false ) returns _status_record as
-$$
-DECLARE
-	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-	_count integer not null = 0;
-BEGIN
-		-- (1) Coercion
-			if "identity_provider_service.insert__internal".name is null then
-				"identity_provider_service.insert__internal".name = '';
-			end if;
-			if "identity_provider_service.insert__internal".logo_url is null then
-				"identity_provider_service.insert__internal".logo_url = '';
-			end if;
-		-- (A) Check that required values are present
-			if "identity_provider_service.insert__internal".logo_url = '' then
-				_status.errors = _status.errors ||
-					ROW('identity_provider_service', _index,
-						'Er moet een waarde ingevuld worden voor Logo Url',
-						'logo_url'
-					)::_error_record;
-			end if;
-		-- (D) Check that there is no record in the table with the same prime key
-			SELECT COUNT(*) into _count
-			FROM identity_provider_service I
-			WHERE
-				I.name = "identity_provider_service.insert__internal".name;
-			if _count <> 0 then
-				_status.errors = _status.errors ||
-					ROW('identity_provider_service', _index,
-						'Er is al een Identity Provider Service geregistreed met '
-						'Name',
-						'name'
-					)::_error_record;
-			end if;
-			-- Get out quick if there are errors
-			if cardinality(_status.errors) <> 0 then
-				return _status;
-			end if;
-			-- Now do the work
-			if not "identity_provider_service.insert__internal"._check_only then
-				INSERT INTO identity_provider_service (
-					name,
-					logo_url
-				) VALUES (
-					"identity_provider_service.insert__internal"."name",
-					"identity_provider_service.insert__internal"."logo_url" );
-				_status.result = 1;
-			end if;
-	return _status;
-END;
-$$ language plpgsql security definer;
-select * from plpgsql_check_function(
-	'"identity_provider_service.insert__internal"('
-		'url,'
-		'provider_name,'
-		'integer,'
-		'boolean)'
-);
-
-drop function if exists "identity_provider_service.insert";
-	create function "identity_provider_service.insert" (
-		logo_url url,
-		name provider_name) returns _jaaql_procedure_result as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		BEGIN
-			SELECT * INTO strict _status FROM "identity_provider_service.insert__internal"(
-				name => "identity_provider_service.insert".name,
-				logo_url => "identity_provider_service.insert".logo_url);
-
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-		END;
-	$$ language plpgsql security definer;
-drop function if exists "identity_provider_service.update__internal";
-	create function "identity_provider_service.update__internal" (
-		name provider_name,
-		logo_url url default null,
-		_index integer default null,
-		_check_only boolean default false) returns _status_record as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-			_count integer not null = 0;
-		BEGIN
-		-- (D) Check that there is a record in the table with the same prime key
-			SELECT COUNT(*) into _count
-			FROM identity_provider_service I
-			WHERE
-				I.name = "identity_provider_service.update__internal".name;
-			if _count <> 1 then
-				_status.errors = _status.errors ||
-					ROW('identity_provider_service', _index,
-						'Er is geen Identity Provider Service gevonden met '
-						'Name',
-						'name'
-					)::_error_record;
-			end if;
-			-- Get out quick if there are errors
-			if cardinality(_status.errors) <> 0 then
-				return _status;
-			end if;
-			if _check_only then
-				return _status;
-			end if;
-
-			UPDATE identity_provider_service I
-			SET
-				logo_url = coalesce("identity_provider_service.update__internal".logo_url, I.logo_url)
-			WHERE 
-				I.name = "identity_provider_service.update__internal".name;
-			return _status;
-		END;
-	$$ language plpgsql security definer;
-
-	select * from plpgsql_check_function(
-		'"identity_provider_service.update__internal"('
-			'provider_name,'
-			'url,'
-			'integer,'
-			'boolean)'
-	);
-
-drop function if exists "identity_provider_service.update";
-	create function "identity_provider_service.update" (
-		name provider_name,
-		logo_url url default null) returns _jaaql_procedure_result as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		BEGIN
-			SELECT * INTO strict _status FROM "identity_provider_service.update__internal"(
-				name => "identity_provider_service.update".name,
-				logo_url => "identity_provider_service.update".logo_url);
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-		END;
-	$$ language plpgsql security definer;
-drop function if exists "identity_provider_service.delete__internal";
-	create function "identity_provider_service.delete__internal" (
-		name provider_name,
-		_index integer default null,
-		_check_only boolean default false ) returns _status_record as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-			_count integer not null = 0;
-		BEGIN
-		-- (D) Check that there is a record in the table with the same prime key
-			SELECT COUNT(*) into _count
-			FROM identity_provider_service I
-			WHERE
-				I.name = "identity_provider_service.delete__internal".name;
-			if _count <> 1 then
-				_status.errors = _status.errors ||
-					ROW('identity_provider_service', _index,
-						'Er is geen Identity Provider Service gevonden met '
-						'Name',
-						'name'
-					)::_error_record;
-			end if;			-- Get out quick if there are errors
-			if cardinality(_status.errors) <> 0 then
-				return _status;
-			end if;
-			if _check_only then
-				return _status;
-			end if;
-
-			DELETE FROM identity_provider_service I
-			WHERE 
-				I.name = "identity_provider_service.delete__internal".name;
-			return _status;
-		END;
-	$$ language plpgsql security definer;
-
-	select * from plpgsql_check_function(
-		'"identity_provider_service.delete__internal"('
-			'provider_name,'
-			'integer,'
-			'boolean)'
-	);
-
-drop function if exists "identity_provider_service.delete";
-	create function "identity_provider_service.delete" (
-		name provider_name) returns _jaaql_procedure_result as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		BEGIN
-			SELECT * INTO strict _status FROM "identity_provider_service.delete__internal"(
-				name => "identity_provider_service.delete".name);
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-		END;
-	$$ language plpgsql security definer;
--- user_registry...
-
-drop function if exists "user_registry.insert__internal";
-create function "user_registry.insert__internal" (
-	discovery_url url,
-	tenant tenant_name,
-	provider provider_name,
-	_index integer default null,
-	_check_only boolean default false ) returns _status_record as
-$$
-DECLARE
-	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-	_count integer not null = 0;
-BEGIN
-		-- (1) Coercion
-			if "user_registry.insert__internal".provider is null then
-				"user_registry.insert__internal".provider = '';
-			end if;
-			if "user_registry.insert__internal".tenant is null then
-				"user_registry.insert__internal".tenant = '';
-			end if;
-			if "user_registry.insert__internal".discovery_url is null then
-				"user_registry.insert__internal".discovery_url = '';
-			end if;
-		-- (A) Check that required values are present
-			if "user_registry.insert__internal".discovery_url = '' then
-				_status.errors = _status.errors ||
-					ROW('user_registry', _index,
-						'Er moet een waarde ingevuld worden voor Discovery Url',
-						'discovery_url'
-					)::_error_record;
-			end if;
-		-- (D) Check that there is no record in the table with the same prime key
-			SELECT COUNT(*) into _count
-			FROM user_registry U
-			WHERE
-				U.provider = "user_registry.insert__internal".provider AND
-				U.tenant = "user_registry.insert__internal".tenant;
-			if _count <> 0 then
-				_status.errors = _status.errors ||
-					ROW('user_registry', _index,
-						'Er is al een User Registry geregistreed met '
-						'Provider, Tenant',
-						'tenant'
-					)::_error_record;
-			end if;
-			-- Get out quick if there are errors
-			if cardinality(_status.errors) <> 0 then
-				return _status;
-			end if;
-			-- Now do the work
-			if not "user_registry.insert__internal"._check_only then
-				INSERT INTO user_registry (
-					provider,
-					tenant,
-					discovery_url
-				) VALUES (
-					"user_registry.insert__internal"."provider",
-					"user_registry.insert__internal"."tenant",
-					"user_registry.insert__internal"."discovery_url" );
-				_status.result = 1;
-			end if;
-	return _status;
-END;
-$$ language plpgsql security definer;
-select * from plpgsql_check_function(
-	'"user_registry.insert__internal"('
-		'url,'
-		'tenant_name,'
-		'provider_name,'
-		'integer,'
-		'boolean)'
-);
-
-drop function if exists "user_registry.insert";
-	create function "user_registry.insert" (
-		discovery_url url,
-		tenant tenant_name,
-		provider provider_name) returns _jaaql_procedure_result as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		BEGIN
-			SELECT * INTO strict _status FROM "user_registry.insert__internal"(
-				provider => "user_registry.insert".provider,
-				tenant => "user_registry.insert".tenant,
-				discovery_url => "user_registry.insert".discovery_url);
-
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-		END;
-	$$ language plpgsql security definer;
-drop function if exists "user_registry.update__internal";
-	create function "user_registry.update__internal" (
-		provider provider_name,
-		tenant tenant_name,
-		discovery_url url default null,
-		_index integer default null,
-		_check_only boolean default false) returns _status_record as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-			_count integer not null = 0;
-		BEGIN
-		-- (D) Check that there is a record in the table with the same prime key
-			SELECT COUNT(*) into _count
-			FROM user_registry U
-			WHERE
-				U.provider = "user_registry.update__internal".provider AND
-				U.tenant = "user_registry.update__internal".tenant;
-			if _count <> 1 then
-				_status.errors = _status.errors ||
-					ROW('user_registry', _index,
-						'Er is geen User Registry gevonden met '
-						'Provider, Tenant',
-						'tenant'
-					)::_error_record;
-			end if;
-			-- Get out quick if there are errors
-			if cardinality(_status.errors) <> 0 then
-				return _status;
-			end if;
-			if _check_only then
-				return _status;
-			end if;
-
-			UPDATE user_registry U
-			SET
-				discovery_url = coalesce("user_registry.update__internal".discovery_url, U.discovery_url)
-			WHERE 
-				U.provider = "user_registry.update__internal".provider AND
-				U.tenant = "user_registry.update__internal".tenant;
-			return _status;
-		END;
-	$$ language plpgsql security definer;
-
-	select * from plpgsql_check_function(
-		'"user_registry.update__internal"('
-			'provider_name,'
-			'tenant_name,'
-			'url,'
-			'integer,'
-			'boolean)'
-	);
-
-drop function if exists "user_registry.update";
-	create function "user_registry.update" (
-		provider provider_name,
-		tenant tenant_name,
-		discovery_url url default null) returns _jaaql_procedure_result as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		BEGIN
-			SELECT * INTO strict _status FROM "user_registry.update__internal"(
-				provider => "user_registry.update".provider,
-				tenant => "user_registry.update".tenant,
-				discovery_url => "user_registry.update".discovery_url);
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-		END;
-	$$ language plpgsql security definer;
-drop function if exists "user_registry.delete__internal";
-	create function "user_registry.delete__internal" (
-		provider provider_name,
-		tenant tenant_name,
-		_index integer default null,
-		_check_only boolean default false ) returns _status_record as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-			_count integer not null = 0;
-		BEGIN
-		-- (D) Check that there is a record in the table with the same prime key
-			SELECT COUNT(*) into _count
-			FROM user_registry U
-			WHERE
-				U.provider = "user_registry.delete__internal".provider AND
-				U.tenant = "user_registry.delete__internal".tenant;
-			if _count <> 1 then
-				_status.errors = _status.errors ||
-					ROW('user_registry', _index,
-						'Er is geen User Registry gevonden met '
-						'Provider, Tenant',
-						'tenant'
-					)::_error_record;
-			end if;			-- Get out quick if there are errors
-			if cardinality(_status.errors) <> 0 then
-				return _status;
-			end if;
-			if _check_only then
-				return _status;
-			end if;
-
-			DELETE FROM user_registry U
-			WHERE 
-				U.provider = "user_registry.delete__internal".provider AND
-				U.tenant = "user_registry.delete__internal".tenant;
-			return _status;
-		END;
-	$$ language plpgsql security definer;
-
-	select * from plpgsql_check_function(
-		'"user_registry.delete__internal"('
-			'provider_name,'
-			'tenant_name,'
-			'integer,'
-			'boolean)'
-	);
-
-drop function if exists "user_registry.delete";
-	create function "user_registry.delete" (
-		provider provider_name,
-		tenant tenant_name) returns _jaaql_procedure_result as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		BEGIN
-			SELECT * INTO strict _status FROM "user_registry.delete__internal"(
-				provider => "user_registry.delete".provider,
-				tenant => "user_registry.delete".tenant);
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-		END;
-	$$ language plpgsql security definer;
--- database_user_registry...
-
-drop function if exists "database_user_registry.insert__internal";
-create function "database_user_registry.insert__internal" (
-	federation_procedure object_name,
-	database object_name,
-	tenant tenant_name,
-	provider provider_name,
-	client_id encrypted__oidc_client_id default null,
-	client_secret encrypted__oidc_client_secret default null,
-	_index integer default null,
-	_check_only boolean default false ) returns _status_record as
-$$
-DECLARE
-	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-	_count integer not null = 0;
-BEGIN
-		-- (1) Coercion
-			if "database_user_registry.insert__internal".provider is null then
-				"database_user_registry.insert__internal".provider = '';
-			end if;
-			if "database_user_registry.insert__internal".tenant is null then
-				"database_user_registry.insert__internal".tenant = '';
-			end if;
-			if "database_user_registry.insert__internal".database is null then
-				"database_user_registry.insert__internal".database = '';
-			end if;
-			if "database_user_registry.insert__internal".federation_procedure is null then
-				"database_user_registry.insert__internal".federation_procedure = '';
-			end if;
-		-- (A) Check that required values are present
-			if "database_user_registry.insert__internal".federation_procedure = '' then
-				_status.errors = _status.errors ||
-					ROW('database_user_registry', _index,
-						'Er moet een waarde ingevuld worden voor Federation Procedure',
-						'federation_procedure'
-					)::_error_record;
-			end if;
-		-- (D) Check that there is no record in the table with the same prime key
-			SELECT COUNT(*) into _count
-			FROM database_user_registry D
-			WHERE
-				D.provider = "database_user_registry.insert__internal".provider AND
-				D.tenant = "database_user_registry.insert__internal".tenant AND
-				D.database = "database_user_registry.insert__internal".database;
-			if _count <> 0 then
-				_status.errors = _status.errors ||
-					ROW('database_user_registry', _index,
-						'Er is al een Database User Registry geregistreed met '
-						'Provider, Tenant, Database',
-						'database'
-					)::_error_record;
-			end if;
-			-- Get out quick if there are errors
-			if cardinality(_status.errors) <> 0 then
-				return _status;
-			end if;
-			-- Now do the work
-			if not "database_user_registry.insert__internal"._check_only then
-				INSERT INTO database_user_registry (
-					provider,
-					tenant,
-					database,
-					federation_procedure,
-					client_id,
-					client_secret
-				) VALUES (
-					"database_user_registry.insert__internal"."provider",
-					"database_user_registry.insert__internal"."tenant",
-					"database_user_registry.insert__internal"."database",
-					"database_user_registry.insert__internal"."federation_procedure",
-					"database_user_registry.insert__internal"."client_id",
-					"database_user_registry.insert__internal"."client_secret" );
-				_status.result = 1;
-			end if;
-	return _status;
-END;
-$$ language plpgsql security definer;
-select * from plpgsql_check_function(
-	'"database_user_registry.insert__internal"('
-		'object_name,'
-		'object_name,'
-		'tenant_name,'
-		'provider_name,'
-		'encrypted__oidc_client_id,'
-		'encrypted__oidc_client_secret,'
-		'integer,'
-		'boolean)'
-);
-
-drop function if exists "database_user_registry.insert";
-	create function "database_user_registry.insert" (
-		federation_procedure object_name,
-		database object_name,
-		tenant tenant_name,
-		provider provider_name,
-		client_id encrypted__oidc_client_id default null,
-		client_secret encrypted__oidc_client_secret default null) returns _jaaql_procedure_result as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		BEGIN
-			SELECT * INTO strict _status FROM "database_user_registry.insert__internal"(
-				provider => "database_user_registry.insert".provider,
-				tenant => "database_user_registry.insert".tenant,
-				database => "database_user_registry.insert".database,
-				federation_procedure => "database_user_registry.insert".federation_procedure,
-				client_id => "database_user_registry.insert".client_id,
-				client_secret => "database_user_registry.insert".client_secret);
-
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-		END;
-	$$ language plpgsql security definer;
-drop function if exists "database_user_registry.update__internal";
-	create function "database_user_registry.update__internal" (
-		provider provider_name,
-		tenant tenant_name,
-		database object_name,
-		federation_procedure object_name default null,
-		client_id encrypted__oidc_client_id default null,
-		client_secret encrypted__oidc_client_secret default null,
-		_index integer default null,
-		_check_only boolean default false) returns _status_record as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-			_count integer not null = 0;
-		BEGIN
-		-- (D) Check that there is a record in the table with the same prime key
-			SELECT COUNT(*) into _count
-			FROM database_user_registry D
-			WHERE
-				D.provider = "database_user_registry.update__internal".provider AND
-				D.tenant = "database_user_registry.update__internal".tenant AND
-				D.database = "database_user_registry.update__internal".database;
-			if _count <> 1 then
-				_status.errors = _status.errors ||
-					ROW('database_user_registry', _index,
-						'Er is geen Database User Registry gevonden met '
-						'Provider, Tenant, Database',
-						'database'
-					)::_error_record;
-			end if;
-			-- Get out quick if there are errors
-			if cardinality(_status.errors) <> 0 then
-				return _status;
-			end if;
-			if _check_only then
-				return _status;
-			end if;
-
-			UPDATE database_user_registry D
-			SET
-				federation_procedure = coalesce("database_user_registry.update__internal".federation_procedure, D.federation_procedure),
-				client_id = coalesce("database_user_registry.update__internal".client_id, D.client_id),
-				client_secret = coalesce("database_user_registry.update__internal".client_secret, D.client_secret)
-			WHERE 
-				D.provider = "database_user_registry.update__internal".provider AND
-				D.tenant = "database_user_registry.update__internal".tenant AND
-				D.database = "database_user_registry.update__internal".database;
-			return _status;
-		END;
-	$$ language plpgsql security definer;
-
-	select * from plpgsql_check_function(
-		'"database_user_registry.update__internal"('
-			'provider_name,'
-			'tenant_name,'
-			'object_name,'
-			'object_name,'
-			'encrypted__oidc_client_id,'
-			'encrypted__oidc_client_secret,'
-			'integer,'
-			'boolean)'
-	);
-
-drop function if exists "database_user_registry.update";
-	create function "database_user_registry.update" (
-		provider provider_name,
-		tenant tenant_name,
-		database object_name,
-		federation_procedure object_name default null,
-		client_id encrypted__oidc_client_id default null,
-		client_secret encrypted__oidc_client_secret default null) returns _jaaql_procedure_result as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		BEGIN
-			SELECT * INTO strict _status FROM "database_user_registry.update__internal"(
-				provider => "database_user_registry.update".provider,
-				tenant => "database_user_registry.update".tenant,
-				database => "database_user_registry.update".database,
-				federation_procedure => "database_user_registry.update".federation_procedure,
-				client_id => "database_user_registry.update".client_id,
-				client_secret => "database_user_registry.update".client_secret);
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-		END;
-	$$ language plpgsql security definer;
-drop function if exists "database_user_registry.delete__internal";
-	create function "database_user_registry.delete__internal" (
-		provider provider_name,
-		tenant tenant_name,
-		database object_name,
-		_index integer default null,
-		_check_only boolean default false ) returns _status_record as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-			_count integer not null = 0;
-		BEGIN
-		-- (D) Check that there is a record in the table with the same prime key
-			SELECT COUNT(*) into _count
-			FROM database_user_registry D
-			WHERE
-				D.provider = "database_user_registry.delete__internal".provider AND
-				D.tenant = "database_user_registry.delete__internal".tenant AND
-				D.database = "database_user_registry.delete__internal".database;
-			if _count <> 1 then
-				_status.errors = _status.errors ||
-					ROW('database_user_registry', _index,
-						'Er is geen Database User Registry gevonden met '
-						'Provider, Tenant, Database',
-						'database'
-					)::_error_record;
-			end if;			-- Get out quick if there are errors
-			if cardinality(_status.errors) <> 0 then
-				return _status;
-			end if;
-			if _check_only then
-				return _status;
-			end if;
-
-			DELETE FROM database_user_registry D
-			WHERE 
-				D.provider = "database_user_registry.delete__internal".provider AND
-				D.tenant = "database_user_registry.delete__internal".tenant AND
-				D.database = "database_user_registry.delete__internal".database;
-			return _status;
-		END;
-	$$ language plpgsql security definer;
-
-	select * from plpgsql_check_function(
-		'"database_user_registry.delete__internal"('
-			'provider_name,'
-			'tenant_name,'
-			'object_name,'
-			'integer,'
-			'boolean)'
-	);
-
-drop function if exists "database_user_registry.delete";
-	create function "database_user_registry.delete" (
-		provider provider_name,
-		tenant tenant_name,
-		database object_name) returns _jaaql_procedure_result as
-	$$
-		DECLARE
-			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		BEGIN
-			SELECT * INTO strict _status FROM "database_user_registry.delete__internal"(
-				provider => "database_user_registry.delete".provider,
-				tenant => "database_user_registry.delete".tenant,
-				database => "database_user_registry.delete".database);
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-		END;
-	$$ language plpgsql security definer;
 
 -- (e) Grant access to functions
 
@@ -5413,12 +4967,18 @@ drop function if exists "database_user_registry.delete";
 	grant execute on function "document_request.insert" to registered;
 	grant execute on function "document_request.delete" to registered;
 	grant execute on function "document_request.update" to registered;
+	grant execute on function "identity_provider_service.insert" to registered;
+	grant execute on function "identity_provider_service.delete" to registered;
+	grant execute on function "identity_provider_service.update" to registered;
+	grant execute on function "user_registry.insert" to registered;
+	grant execute on function "user_registry.delete" to registered;
+	grant execute on function "user_registry.update" to registered;
+	grant execute on function "database_user_registry.insert" to registered;
+	grant execute on function "database_user_registry.delete" to registered;
+	grant execute on function "database_user_registry.update" to registered;
 	grant execute on function "account.insert" to registered;
 	grant execute on function "account.delete" to registered;
 	grant execute on function "account.update" to registered;
-	grant execute on function "account_password.insert" to registered;
-	grant execute on function "account_password.delete" to registered;
-	grant execute on function "account_password.update" to registered;
 	grant execute on function "validated_ip_address.insert" to registered;
 	grant execute on function "validated_ip_address.delete" to registered;
 	grant execute on function "validated_ip_address.update" to registered;
@@ -5431,15 +4991,7 @@ drop function if exists "database_user_registry.delete";
 	grant execute on function "remote_procedure.insert" to registered;
 	grant execute on function "remote_procedure.delete" to registered;
 	grant execute on function "remote_procedure.update" to registered;
-	grant execute on function "identity_provider_service.insert" to registered;
-	grant execute on function "identity_provider_service.delete" to registered;
-	grant execute on function "identity_provider_service.update" to registered;
-	grant execute on function "user_registry.insert" to registered;
-	grant execute on function "user_registry.delete" to registered;
-	grant execute on function "user_registry.update" to registered;
-	grant execute on function "database_user_registry.insert" to registered;
-	grant execute on function "database_user_registry.delete" to registered;
-	grant execute on function "database_user_registry.update" to registered;
+
 
 -- (f) Grant access to tables
 
@@ -5450,8 +5002,12 @@ drop function if exists "database_user_registry.delete";
 	grant select, insert, update, delete on email_template to registered;
 	grant select, insert, update, delete on document_template to registered;
 	grant select, insert, update, delete on document_request to registered;
+	grant select, insert, update, delete on federation_procedure to registered;
+	grant select, insert, update, delete on federation_procedure_parameter to registered;
+	grant select, insert, update, delete on identity_provider_service to registered;
+	grant select, insert, update, delete on user_registry to registered;
+	grant select, insert, update, delete on database_user_registry to registered;
 	grant select, insert, update, delete on account to registered;
-	grant select, insert, update, delete on account_password to registered;
 	grant select, insert, update, delete on validated_ip_address to registered;
 	grant select, insert, update, delete on security_event to registered;
 	grant select, insert, update, delete on handled_error to registered;
@@ -5459,8 +5015,3 @@ drop function if exists "database_user_registry.delete";
 	grant select, insert, update, delete on pg_error_class to registered;
 	grant select, insert, update, delete on pg_exception to registered;
 	grant select, insert, update, delete on remote_procedure to registered;
-	grant select, insert, update, delete on federation_procedure to registered;
-	grant select, insert, update, delete on federation_procedure_parameter to registered;
-	grant select, insert, update, delete on identity_provider_service to registered;
-	grant select, insert, update, delete on user_registry to registered;
-	grant select, insert, update, delete on database_user_registry to registered;

@@ -5,7 +5,10 @@ from jaaql.documentation.documentation_public import *
 from jaaql.documentation.documentation_shared import *
 from jaaql.mvc.response import JAAQLResponse
 from jaaql.db.db_interface import DBInterface
+from flask import request
 import queue
+
+from jaaql.utilities.utils_no_project_imports import COOKIE_OIDC
 
 
 class JAAQLController(BaseJAAQLController):
@@ -70,11 +73,13 @@ class JAAQLController(BaseJAAQLController):
                 http_inputs.pop(KEY__registered)
             if registered is None:
                 registered = True
-            self.model.create_account_with_potential_password(connection, **http_inputs, registered=registered)
+            self.model.create_account_with_potential_api_key(connection, username=http_inputs[KEY__username],
+                                                             api_key=http_inputs[KEY__password], attach_as=http_inputs[KEY__attach_as],
+                                                             registered=registered, sub=None)
 
         @self.publish_route('/accounts/batch', DOCUMENTATION__create_account_batch)
         def accounts(connection: DBInterface, http_inputs: dict):
-            self.model.create_account_batch_with_potential_password(connection, **http_inputs)
+            self.model.shallow_federate_batch_potential_with_api_key(connection, **http_inputs)
 
         @self.publish_route('/prepare', DOCUMENTATION__prepare)
         def prepare(http_inputs: dict, account_id: str):
@@ -149,3 +154,15 @@ class JAAQLController(BaseJAAQLController):
         @self.publish_route('/internal/set-web-config', DOCUMENTATION__set_web_config)
         def set_web_config(connection: DBInterface):
             self.model.set_web_config(connection)
+
+        @self.publish_route('/fetch-user-registries-for-tenant', DOCUMENTATION__oidc_user_registries)
+        def fetch_user_providers_for_tenant(http_inputs: dict):
+            return self.model.fetch_user_registries_for_tenant(http_inputs)
+
+        @self.publish_route('/oidc-redirect-url', DOCUMENTATION__oidc_redirect_url)
+        def fetch_redirect_url(http_inputs: dict, response: JAAQLResponse):
+            self.model.fetch_redirect_uri(http_inputs, response)
+
+        @self.publish_route('/exchange-auth-code', DOCUMENTATION__oidc_exchange_code)
+        def exchange_auth_code(http_inputs: dict, ip_address: str, response: JAAQLResponse):
+            self.model.exchange_auth_code(http_inputs, request.cookies.get(COOKIE_OIDC), ip_address, response)

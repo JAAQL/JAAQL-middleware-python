@@ -105,6 +105,7 @@ CONFIG_KEY__server = "SERVER"
 CONFIG_KEY_SERVER__port = "port"
 
 JWT_PURPOSE__oauth = "oauth"
+JWT_PURPOSE__oidc = "oidc"
 JWT_PURPOSE__pre_auth = "pre_auth"
 JWT_PURPOSE__connection = "connection"
 
@@ -180,5 +181,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.25.7"
+VERSION = "4.26.0"
 

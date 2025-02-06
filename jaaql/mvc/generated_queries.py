@@ -1,3 +1,7 @@
+"""
+This script was generated from build_and_run.fxls at 2025-02-06, 06:08:49
+"""
+
 from jaaql.db.db_interface import DBInterface
 from jaaql.db.db_utils import execute_supplied_statement, execute_supplied_statement_singleton
 
@@ -368,7 +372,6 @@ def email_dispatcher__insert(
 
 
 # Generated keys for table 'jaaql'
-KG__jaaql__the_anonymous_user = "the_anonymous_user"
 KG__jaaql__security_event_attempt_limit = "security_event_attempt_limit"
 KG__jaaql__migration_version = "migration_version"
 KG__jaaql__last_successful_build_time = "last_successful_build_time"
@@ -376,10 +379,8 @@ KG__jaaql__last_successful_build_time = "last_successful_build_time"
 # Generated queries for table 'jaaql'
 QG__jaaql_delete = "DELETE FROM jaaql"
 QG__jaaql_insert = """
-    INSERT INTO jaaql (the_anonymous_user, security_event_attempt_limit, migration_version,
-        last_successful_build_time)
-    VALUES (:the_anonymous_user, :security_event_attempt_limit, :migration_version,
-        :last_successful_build_time)
+    INSERT INTO jaaql (security_event_attempt_limit, migration_version, last_successful_build_time)
+    VALUES (:security_event_attempt_limit, :migration_version, :last_successful_build_time)
 """
 QG__jaaql_select_all = "SELECT * FROM jaaql"
 QG__jaaql_select = "SELECT * FROM jaaql"
@@ -387,7 +388,6 @@ QG__jaaql_update = """
     UPDATE
         jaaql
     SET
-        the_anonymous_user = COALESCE(:the_anonymous_user, the_anonymous_user),
         security_event_attempt_limit = COALESCE(:security_event_attempt_limit, security_event_attempt_limit),
         migration_version = COALESCE(:migration_version, migration_version),
         last_successful_build_time = COALESCE(:last_successful_build_time, last_successful_build_time)
@@ -404,14 +404,12 @@ def jaaql__delete(
 
 def jaaql__update(
     connection: DBInterface,
-    the_anonymous_user=None, security_event_attempt_limit=None, migration_version=None,
-    last_successful_build_time=None
+    security_event_attempt_limit=None, migration_version=None, last_successful_build_time=None
 ):
     execute_supplied_statement(
         connection, QG__jaaql_update,
         {
             # None Key Fields
-            KG__jaaql__the_anonymous_user: the_anonymous_user,
             KG__jaaql__security_event_attempt_limit: security_event_attempt_limit,
             KG__jaaql__migration_version: migration_version,
             KG__jaaql__last_successful_build_time: last_successful_build_time
@@ -440,13 +438,11 @@ def jaaql__select_all(
 
 def jaaql__insert(
     connection: DBInterface,
-    security_event_attempt_limit, migration_version, last_successful_build_time,
-    the_anonymous_user=None
+    security_event_attempt_limit, migration_version, last_successful_build_time
 ):
     execute_supplied_statement(
         connection, QG__jaaql_insert,
         {
-            KG__jaaql__the_anonymous_user: the_anonymous_user,
             KG__jaaql__security_event_attempt_limit: security_event_attempt_limit,
             KG__jaaql__migration_version: migration_version,
             KG__jaaql__last_successful_build_time: last_successful_build_time
@@ -835,19 +831,514 @@ def document_request__insert(
     )
 
 
+# Generated keys for table 'federation_procedure'
+KG__federation_procedure__name = "name"
+
+# Generated queries for table 'federation_procedure'
+QG__federation_procedure_delete = "DELETE FROM federation_procedure WHERE name = :name"
+QG__federation_procedure_insert = """
+    INSERT INTO federation_procedure (name)
+    VALUES (:name)
+"""
+QG__federation_procedure_select_all = "SELECT * FROM federation_procedure"
+QG__federation_procedure_select = "SELECT * FROM federation_procedure WHERE name = :name"
+QG__federation_procedure_update = """
+    UPDATE
+        federation_procedure
+    SET
+        
+    WHERE
+        name = :name
+"""
+
+
+# Generated methods for table 'federation_procedure'
+def federation_procedure__delete(
+    connection: DBInterface,
+    name
+):
+    execute_supplied_statement(
+        connection, QG__federation_procedure_delete,
+        {
+            # Key Fields
+            KG__federation_procedure__name: name
+        }
+    )
+
+
+def federation_procedure__update(
+    connection: DBInterface,
+    name
+):
+    execute_supplied_statement(
+        connection, QG__federation_procedure_update,
+        {
+            # Key Fields
+            KG__federation_procedure__name: name
+        }
+    )
+
+
+def federation_procedure__select(
+    connection: DBInterface,
+    name,
+    singleton_code: int = None, singleton_message: str = "federation_procedure does not exist"
+):
+    return execute_supplied_statement_singleton(
+        connection, QG__federation_procedure_select, 
+        {
+            # Key Fields
+            KG__federation_procedure__name: name
+        },
+        as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+    )
+
+
+def federation_procedure__select_all(
+    connection: DBInterface
+):
+    return execute_supplied_statement(
+        connection, QG__federation_procedure_select_all,
+        as_objects=True
+    )
+
+
+def federation_procedure__insert(
+    connection: DBInterface,
+    name
+):
+    execute_supplied_statement(
+        connection, QG__federation_procedure_insert,
+        {
+            KG__federation_procedure__name: name
+        }
+    )
+
+
+# Generated keys for table 'federation_procedure_parameter'
+KG__federation_procedure_parameter__procedure = "procedure"
+KG__federation_procedure_parameter__name = "name"
+
+# Generated queries for table 'federation_procedure_parameter'
+QG__federation_procedure_parameter_delete = "DELETE FROM federation_procedure_parameter WHERE procedure = :procedure AND name = :name"
+QG__federation_procedure_parameter_insert = """
+    INSERT INTO federation_procedure_parameter (procedure, name)
+    VALUES (:procedure, :name)
+"""
+QG__federation_procedure_parameter_select_all = "SELECT * FROM federation_procedure_parameter"
+QG__federation_procedure_parameter_select = "SELECT * FROM federation_procedure_parameter WHERE procedure = :procedure AND name = :name"
+QG__federation_procedure_parameter_update = """
+    UPDATE
+        federation_procedure_parameter
+    SET
+        
+    WHERE
+        procedure = :procedure AND name = :name
+"""
+
+
+# Generated methods for table 'federation_procedure_parameter'
+def federation_procedure_parameter__delete(
+    connection: DBInterface,
+    procedure, name
+):
+    execute_supplied_statement(
+        connection, QG__federation_procedure_parameter_delete,
+        {
+            # Key Fields
+            KG__federation_procedure_parameter__procedure: procedure,
+            KG__federation_procedure_parameter__name: name
+        }
+    )
+
+
+def federation_procedure_parameter__update(
+    connection: DBInterface,
+    procedure, name
+):
+    execute_supplied_statement(
+        connection, QG__federation_procedure_parameter_update,
+        {
+            # Key Fields
+            KG__federation_procedure_parameter__procedure: procedure,
+            KG__federation_procedure_parameter__name: name
+        }
+    )
+
+
+def federation_procedure_parameter__select(
+    connection: DBInterface,
+    procedure, name,
+    singleton_code: int = None, singleton_message: str = "federation_procedure_parameter does not exist"
+):
+    return execute_supplied_statement_singleton(
+        connection, QG__federation_procedure_parameter_select, 
+        {
+            # Key Fields
+            KG__federation_procedure_parameter__procedure: procedure,
+            KG__federation_procedure_parameter__name: name
+        },
+        as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+    )
+
+
+def federation_procedure_parameter__select_all(
+    connection: DBInterface
+):
+    return execute_supplied_statement(
+        connection, QG__federation_procedure_parameter_select_all,
+        as_objects=True
+    )
+
+
+def federation_procedure_parameter__insert(
+    connection: DBInterface,
+    procedure, name
+):
+    execute_supplied_statement(
+        connection, QG__federation_procedure_parameter_insert,
+        {
+            KG__federation_procedure_parameter__procedure: procedure,
+            KG__federation_procedure_parameter__name: name
+        }
+    )
+
+
+# Generated keys for table 'identity_provider_service'
+KG__identity_provider_service__name = "name"
+KG__identity_provider_service__logo_url = "logo_url"
+KG__identity_provider_service__requires_email_verification = "requires_email_verification"
+
+# Generated queries for table 'identity_provider_service'
+QG__identity_provider_service_delete = "DELETE FROM identity_provider_service WHERE name = :name"
+QG__identity_provider_service_insert = """
+    INSERT INTO identity_provider_service (name, logo_url, requires_email_verification)
+    VALUES (:name, :logo_url, :requires_email_verification)
+"""
+QG__identity_provider_service_select_all = "SELECT * FROM identity_provider_service"
+QG__identity_provider_service_select = "SELECT * FROM identity_provider_service WHERE name = :name"
+QG__identity_provider_service_update = """
+    UPDATE
+        identity_provider_service
+    SET
+        logo_url = COALESCE(:logo_url, logo_url),
+        requires_email_verification = COALESCE(:requires_email_verification, requires_email_verification)
+    WHERE
+        name = :name
+"""
+
+
+# Generated methods for table 'identity_provider_service'
+def identity_provider_service__delete(
+    connection: DBInterface,
+    name
+):
+    execute_supplied_statement(
+        connection, QG__identity_provider_service_delete,
+        {
+            # Key Fields
+            KG__identity_provider_service__name: name
+        }
+    )
+
+
+def identity_provider_service__update(
+    connection: DBInterface,
+    name,
+    logo_url=None, requires_email_verification=None
+):
+    execute_supplied_statement(
+        connection, QG__identity_provider_service_update,
+        {
+            # Key Fields
+            KG__identity_provider_service__name: name,
+
+            # None Key Fields
+            KG__identity_provider_service__logo_url: logo_url,
+            KG__identity_provider_service__requires_email_verification: requires_email_verification
+        }
+    )
+
+
+def identity_provider_service__select(
+    connection: DBInterface,
+    name,
+    singleton_code: int = None, singleton_message: str = "identity_provider_service does not exist"
+):
+    return execute_supplied_statement_singleton(
+        connection, QG__identity_provider_service_select, 
+        {
+            # Key Fields
+            KG__identity_provider_service__name: name
+        },
+        as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+    )
+
+
+def identity_provider_service__select_all(
+    connection: DBInterface
+):
+    return execute_supplied_statement(
+        connection, QG__identity_provider_service_select_all,
+        as_objects=True
+    )
+
+
+def identity_provider_service__insert(
+    connection: DBInterface,
+    name, logo_url, requires_email_verification
+):
+    execute_supplied_statement(
+        connection, QG__identity_provider_service_insert,
+        {
+            KG__identity_provider_service__name: name,
+            KG__identity_provider_service__logo_url: logo_url,
+            KG__identity_provider_service__requires_email_verification: requires_email_verification
+        }
+    )
+
+
+# Generated keys for table 'user_registry'
+KG__user_registry__provider = "provider"
+KG__user_registry__tenant = "tenant"
+KG__user_registry__discovery_url = "discovery_url"
+
+# Generated queries for table 'user_registry'
+QG__user_registry_delete = "DELETE FROM user_registry WHERE provider = :provider AND tenant = :tenant"
+QG__user_registry_insert = """
+    INSERT INTO user_registry (provider, tenant, discovery_url)
+    VALUES (:provider, :tenant, :discovery_url)
+"""
+QG__user_registry_select_all = "SELECT * FROM user_registry"
+QG__user_registry_select = "SELECT * FROM user_registry WHERE provider = :provider AND tenant = :tenant"
+QG__user_registry_update = """
+    UPDATE
+        user_registry
+    SET
+        discovery_url = COALESCE(:discovery_url, discovery_url)
+    WHERE
+        provider = :provider AND tenant = :tenant
+"""
+
+
+# Generated methods for table 'user_registry'
+def user_registry__delete(
+    connection: DBInterface,
+    provider, tenant
+):
+    execute_supplied_statement(
+        connection, QG__user_registry_delete,
+        {
+            # Key Fields
+            KG__user_registry__provider: provider,
+            KG__user_registry__tenant: tenant
+        }
+    )
+
+
+def user_registry__update(
+    connection: DBInterface,
+    provider, tenant,
+    discovery_url=None
+):
+    execute_supplied_statement(
+        connection, QG__user_registry_update,
+        {
+            # Key Fields
+            KG__user_registry__provider: provider,
+            KG__user_registry__tenant: tenant,
+
+            # None Key Fields
+            KG__user_registry__discovery_url: discovery_url
+        }
+    )
+
+
+def user_registry__select(
+    connection: DBInterface,
+    provider, tenant,
+    singleton_code: int = None, singleton_message: str = "user_registry does not exist"
+):
+    return execute_supplied_statement_singleton(
+        connection, QG__user_registry_select, 
+        {
+            # Key Fields
+            KG__user_registry__provider: provider,
+            KG__user_registry__tenant: tenant
+        },
+        as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+    )
+
+
+def user_registry__select_all(
+    connection: DBInterface
+):
+    return execute_supplied_statement(
+        connection, QG__user_registry_select_all,
+        as_objects=True
+    )
+
+
+def user_registry__insert(
+    connection: DBInterface,
+    provider, tenant, discovery_url
+):
+    execute_supplied_statement(
+        connection, QG__user_registry_insert,
+        {
+            KG__user_registry__provider: provider,
+            KG__user_registry__tenant: tenant,
+            KG__user_registry__discovery_url: discovery_url
+        }
+    )
+
+
+# Generated keys for table 'database_user_registry'
+KG__database_user_registry__provider = "provider"
+KG__database_user_registry__tenant = "tenant"
+KG__database_user_registry__database = "database"
+KG__database_user_registry__federation_procedure = "federation_procedure"
+KG__database_user_registry__client_id = "client_id"
+KG__database_user_registry__client_secret = "client_secret"
+
+# Generated queries for table 'database_user_registry'
+QG__database_user_registry_delete = "DELETE FROM database_user_registry WHERE provider = :provider AND tenant = :tenant AND database = :database"
+QG__database_user_registry_insert = """
+    INSERT INTO database_user_registry (provider, tenant, database,
+        federation_procedure, client_id, client_secret)
+    VALUES (:provider, :tenant, :database,
+        :federation_procedure, :client_id, :client_secret)
+"""
+QG__database_user_registry_select_all = "SELECT * FROM database_user_registry"
+QG__database_user_registry_select = "SELECT * FROM database_user_registry WHERE provider = :provider AND tenant = :tenant AND database = :database"
+QG__database_user_registry_update = """
+    UPDATE
+        database_user_registry
+    SET
+        federation_procedure = COALESCE(:federation_procedure, federation_procedure),
+        client_id = COALESCE(:client_id, client_id),
+        client_secret = COALESCE(:client_secret, client_secret)
+    WHERE
+        provider = :provider AND tenant = :tenant AND database = :database
+"""
+
+
+# Generated methods for table 'database_user_registry'
+def database_user_registry__delete(
+    connection: DBInterface,
+    provider, tenant, database
+):
+    execute_supplied_statement(
+        connection, QG__database_user_registry_delete,
+        {
+            # Key Fields
+            KG__database_user_registry__provider: provider,
+            KG__database_user_registry__tenant: tenant,
+            KG__database_user_registry__database: database
+        }
+    )
+
+
+def database_user_registry__update(
+    connection: DBInterface, encryption_key: bytes,
+    provider, tenant, database,
+    federation_procedure=None, client_id=None, client_secret=None,
+    encryption_salts=None
+):
+    execute_supplied_statement(
+        connection, QG__database_user_registry_update,
+        {
+            # Key Fields
+            KG__database_user_registry__provider: provider,
+            KG__database_user_registry__tenant: tenant,
+            KG__database_user_registry__database: database,
+
+            # None Key Fields
+            KG__database_user_registry__federation_procedure: federation_procedure,
+            KG__database_user_registry__client_id: client_id,
+            KG__database_user_registry__client_secret: client_secret
+        }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
+            KG__database_user_registry__client_id,
+            KG__database_user_registry__client_secret
+        ]
+    )
+
+
+def database_user_registry__select(
+    connection: DBInterface, encryption_key: bytes,
+    provider, tenant, database,
+    singleton_code: int = None, singleton_message: str = "database_user_registry does not exist"
+):
+    return execute_supplied_statement_singleton(
+        connection, QG__database_user_registry_select, 
+        {
+            # Key Fields
+            KG__database_user_registry__provider: provider,
+            KG__database_user_registry__tenant: tenant,
+            KG__database_user_registry__database: database
+        }, encryption_key=encryption_key, decrypt_columns=[
+            KG__database_user_registry__client_id,
+            KG__database_user_registry__client_secret
+        ],
+        as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+    )
+
+
+def database_user_registry__select_all(
+    connection: DBInterface, encryption_key: bytes
+):
+    return execute_supplied_statement(
+        connection, QG__database_user_registry_select_all, encryption_key=encryption_key, decrypt_columns=[
+            KG__database_user_registry__client_id,
+            KG__database_user_registry__client_secret
+        ],
+        as_objects=True
+    )
+
+
+def database_user_registry__insert(
+    connection: DBInterface, encryption_key: bytes,
+    provider, tenant, database,
+    federation_procedure, client_id,
+    client_secret=None,
+    encryption_salts=None
+):
+    execute_supplied_statement(
+        connection, QG__database_user_registry_insert,
+        {
+            KG__database_user_registry__provider: provider,
+            KG__database_user_registry__tenant: tenant,
+            KG__database_user_registry__database: database,
+            KG__database_user_registry__federation_procedure: federation_procedure,
+            KG__database_user_registry__client_id: client_id,
+            KG__database_user_registry__client_secret: client_secret
+        }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
+            KG__database_user_registry__client_id,
+            KG__database_user_registry__client_secret
+        ]
+    )
+
+
 # Generated keys for table 'account'
 KG__account__id = "id"
+KG__account__sub = "sub"
 KG__account__username = "username"
+KG__account__email = "email"
+KG__account__email_verified = "email_verified"
 KG__account__deletion_timestamp = "deletion_timestamp"
-KG__account__most_recent_password = "most_recent_password"
+KG__account__provider = "provider"
+KG__account__tenant = "tenant"
+KG__account__api_key = "api_key"
 
 # Generated queries for table 'account'
 QG__account_delete = "DELETE FROM account WHERE id = :id"
 QG__account_insert = """
-    INSERT INTO account (id, username, deletion_timestamp,
-        most_recent_password)
-    VALUES (:id, :username, :deletion_timestamp,
-        :most_recent_password)
+    INSERT INTO account (id, sub, username,
+        email, email_verified, deletion_timestamp,
+        provider, tenant, api_key)
+    VALUES (:id, :sub, :username,
+        :email, :email_verified, :deletion_timestamp,
+        :provider, :tenant, :api_key)
 """
 QG__account_select_all = "SELECT * FROM account"
 QG__account_select = "SELECT * FROM account WHERE id = :id"
@@ -855,9 +1346,14 @@ QG__account_update = """
     UPDATE
         account
     SET
+        sub = COALESCE(:sub, sub),
         username = COALESCE(:username, username),
+        email = COALESCE(:email, email),
+        email_verified = COALESCE(:email_verified, email_verified),
         deletion_timestamp = COALESCE(:deletion_timestamp, deletion_timestamp),
-        most_recent_password = COALESCE(:most_recent_password, most_recent_password)
+        provider = COALESCE(:provider, provider),
+        tenant = COALESCE(:tenant, tenant),
+        api_key = COALESCE(:api_key, api_key)
     WHERE
         id = :id
 """
@@ -880,7 +1376,9 @@ def account__delete(
 def account__update(
     connection: DBInterface, encryption_key: bytes,
     id,
-    username=None, deletion_timestamp=None, most_recent_password=None,
+    sub=None, username=None, email=None,
+    email_verified=None, deletion_timestamp=None, provider=None,
+    tenant=None, api_key=None,
     encryption_salts=None
 ):
     execute_supplied_statement(
@@ -890,11 +1388,17 @@ def account__update(
             KG__account__id: id,
 
             # None Key Fields
+            KG__account__sub: sub,
             KG__account__username: username,
+            KG__account__email: email,
+            KG__account__email_verified: email_verified,
             KG__account__deletion_timestamp: deletion_timestamp,
-            KG__account__most_recent_password: most_recent_password
+            KG__account__provider: provider,
+            KG__account__tenant: tenant,
+            KG__account__api_key: api_key
         }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
-            KG__account__username
+            KG__account__sub,
+            KG__account__email
         ]
     )
 
@@ -910,7 +1414,8 @@ def account__select(
             # Key Fields
             KG__account__id: id
         }, encryption_key=encryption_key, decrypt_columns=[
-            KG__account__username
+            KG__account__sub,
+            KG__account__email
         ],
         as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
     )
@@ -921,7 +1426,8 @@ def account__select_all(
 ):
     return execute_supplied_statement(
         connection, QG__account_select_all, encryption_key=encryption_key, decrypt_columns=[
-            KG__account__username
+            KG__account__sub,
+            KG__account__email
         ],
         as_objects=True
     )
@@ -929,127 +1435,27 @@ def account__select_all(
 
 def account__insert(
     connection: DBInterface, encryption_key: bytes,
-    id, username,
-    deletion_timestamp=None, most_recent_password=None,
+    id, sub, email_verified,
+    username=None, email=None, deletion_timestamp=None,
+    provider=None, tenant=None, api_key=None,
     encryption_salts=None
 ):
     execute_supplied_statement(
         connection, QG__account_insert,
         {
             KG__account__id: id,
+            KG__account__sub: sub,
             KG__account__username: username,
+            KG__account__email: email,
+            KG__account__email_verified: email_verified,
             KG__account__deletion_timestamp: deletion_timestamp,
-            KG__account__most_recent_password: most_recent_password
+            KG__account__provider: provider,
+            KG__account__tenant: tenant,
+            KG__account__api_key: api_key
         }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
-            KG__account__username
+            KG__account__sub,
+            KG__account__email
         ]
-    )
-
-
-# Generated keys for table 'account_password'
-KG__account_password__account = "account"
-KG__account_password__uuid = "uuid"
-KG__account_password__hash = "hash"
-KG__account_password__creation_timestamp = "creation_timestamp"
-
-# Generated queries for table 'account_password'
-QG__account_password_delete = "DELETE FROM account_password WHERE uuid = :uuid"
-QG__account_password_insert = """
-    INSERT INTO account_password (account, hash)
-    VALUES (:account, :hash)
-    RETURNING uuid, creation_timestamp
-"""
-QG__account_password_select_all = "SELECT * FROM account_password"
-QG__account_password_select = "SELECT * FROM account_password WHERE uuid = :uuid"
-QG__account_password_update = """
-    UPDATE
-        account_password
-    SET
-        account = COALESCE(:account, account),
-        hash = COALESCE(:hash, hash),
-        creation_timestamp = COALESCE(:creation_timestamp, creation_timestamp)
-    WHERE
-        uuid = :uuid
-"""
-
-
-# Generated methods for table 'account_password'
-def account_password__delete(
-    connection: DBInterface,
-    uuid
-):
-    execute_supplied_statement(
-        connection, QG__account_password_delete,
-        {
-            # Key Fields
-            KG__account_password__uuid: uuid
-        }
-    )
-
-
-def account_password__update(
-    connection: DBInterface, encryption_key: bytes,
-    uuid,
-    account=None, hash=None, creation_timestamp=None,
-    encryption_salts=None
-):
-    execute_supplied_statement(
-        connection, QG__account_password_update,
-        {
-            # Key Fields
-            KG__account_password__uuid: uuid,
-
-            # None Key Fields
-            KG__account_password__account: account,
-            KG__account_password__hash: hash,
-            KG__account_password__creation_timestamp: creation_timestamp
-        }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
-            KG__account_password__hash
-        ]
-    )
-
-
-def account_password__select(
-    connection: DBInterface, encryption_key: bytes,
-    uuid,
-    singleton_code: int = None, singleton_message: str = "account_password does not exist"
-):
-    return execute_supplied_statement_singleton(
-        connection, QG__account_password_select, 
-        {
-            # Key Fields
-            KG__account_password__uuid: uuid
-        }, encryption_key=encryption_key, decrypt_columns=[
-            KG__account_password__hash
-        ],
-        as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
-    )
-
-
-def account_password__select_all(
-    connection: DBInterface, encryption_key: bytes
-):
-    return execute_supplied_statement(
-        connection, QG__account_password_select_all, encryption_key=encryption_key, decrypt_columns=[
-            KG__account_password__hash
-        ],
-        as_objects=True
-    )
-
-
-def account_password__insert(
-    connection: DBInterface, encryption_key: bytes,
-    account, hash,
-    encryption_salts=None
-):
-    return execute_supplied_statement_singleton(
-        connection, QG__account_password_insert,
-        {
-            KG__account_password__account: account,
-            KG__account_password__hash: hash
-        }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
-            KG__account_password__hash
-        ], as_objects=True
     )
 
 
@@ -1829,488 +2235,4 @@ def remote_procedure__insert(
             KG__remote_procedure__command: command,
             KG__remote_procedure__access: access
         }
-    )
-
-
-# Generated keys for table 'federation_procedure'
-KG__federation_procedure__name = "name"
-
-# Generated queries for table 'federation_procedure'
-QG__federation_procedure_delete = "DELETE FROM federation_procedure WHERE name = :name"
-QG__federation_procedure_insert = """
-    INSERT INTO federation_procedure (name)
-    VALUES (:name)
-"""
-QG__federation_procedure_select_all = "SELECT * FROM federation_procedure"
-QG__federation_procedure_select = "SELECT * FROM federation_procedure WHERE name = :name"
-QG__federation_procedure_update = """
-    UPDATE
-        federation_procedure
-    SET
-        
-    WHERE
-        name = :name
-"""
-
-
-# Generated methods for table 'federation_procedure'
-def federation_procedure__delete(
-    connection: DBInterface,
-    name
-):
-    execute_supplied_statement(
-        connection, QG__federation_procedure_delete,
-        {
-            # Key Fields
-            KG__federation_procedure__name: name
-        }
-    )
-
-
-def federation_procedure__update(
-    connection: DBInterface,
-    name
-):
-    execute_supplied_statement(
-        connection, QG__federation_procedure_update,
-        {
-            # Key Fields
-            KG__federation_procedure__name: name
-        }
-    )
-
-
-def federation_procedure__select(
-    connection: DBInterface,
-    name,
-    singleton_code: int = None, singleton_message: str = "federation_procedure does not exist"
-):
-    return execute_supplied_statement_singleton(
-        connection, QG__federation_procedure_select, 
-        {
-            # Key Fields
-            KG__federation_procedure__name: name
-        },
-        as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
-    )
-
-
-def federation_procedure__select_all(
-    connection: DBInterface
-):
-    return execute_supplied_statement(
-        connection, QG__federation_procedure_select_all,
-        as_objects=True
-    )
-
-
-def federation_procedure__insert(
-    connection: DBInterface,
-    name
-):
-    execute_supplied_statement(
-        connection, QG__federation_procedure_insert,
-        {
-            KG__federation_procedure__name: name
-        }
-    )
-
-
-# Generated keys for table 'federation_procedure_parameter'
-KG__federation_procedure_parameter__procedure = "procedure"
-KG__federation_procedure_parameter__name = "name"
-
-# Generated queries for table 'federation_procedure_parameter'
-QG__federation_procedure_parameter_delete = "DELETE FROM federation_procedure_parameter WHERE procedure = :procedure AND name = :name"
-QG__federation_procedure_parameter_insert = """
-    INSERT INTO federation_procedure_parameter (procedure, name)
-    VALUES (:procedure, :name)
-"""
-QG__federation_procedure_parameter_select_all = "SELECT * FROM federation_procedure_parameter"
-QG__federation_procedure_parameter_select = "SELECT * FROM federation_procedure_parameter WHERE procedure = :procedure AND name = :name"
-QG__federation_procedure_parameter_update = """
-    UPDATE
-        federation_procedure_parameter
-    SET
-        
-    WHERE
-        procedure = :procedure AND name = :name
-"""
-
-
-# Generated methods for table 'federation_procedure_parameter'
-def federation_procedure_parameter__delete(
-    connection: DBInterface,
-    procedure, name
-):
-    execute_supplied_statement(
-        connection, QG__federation_procedure_parameter_delete,
-        {
-            # Key Fields
-            KG__federation_procedure_parameter__procedure: procedure,
-            KG__federation_procedure_parameter__name: name
-        }
-    )
-
-
-def federation_procedure_parameter__update(
-    connection: DBInterface,
-    procedure, name
-):
-    execute_supplied_statement(
-        connection, QG__federation_procedure_parameter_update,
-        {
-            # Key Fields
-            KG__federation_procedure_parameter__procedure: procedure,
-            KG__federation_procedure_parameter__name: name
-        }
-    )
-
-
-def federation_procedure_parameter__select(
-    connection: DBInterface,
-    procedure, name,
-    singleton_code: int = None, singleton_message: str = "federation_procedure_parameter does not exist"
-):
-    return execute_supplied_statement_singleton(
-        connection, QG__federation_procedure_parameter_select, 
-        {
-            # Key Fields
-            KG__federation_procedure_parameter__procedure: procedure,
-            KG__federation_procedure_parameter__name: name
-        },
-        as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
-    )
-
-
-def federation_procedure_parameter__select_all(
-    connection: DBInterface
-):
-    return execute_supplied_statement(
-        connection, QG__federation_procedure_parameter_select_all,
-        as_objects=True
-    )
-
-
-def federation_procedure_parameter__insert(
-    connection: DBInterface,
-    procedure, name
-):
-    execute_supplied_statement(
-        connection, QG__federation_procedure_parameter_insert,
-        {
-            KG__federation_procedure_parameter__procedure: procedure,
-            KG__federation_procedure_parameter__name: name
-        }
-    )
-
-
-# Generated keys for table 'identity_provider_service'
-KG__identity_provider_service__name = "name"
-KG__identity_provider_service__logo_url = "logo_url"
-
-# Generated queries for table 'identity_provider_service'
-QG__identity_provider_service_delete = "DELETE FROM identity_provider_service WHERE name = :name"
-QG__identity_provider_service_insert = """
-    INSERT INTO identity_provider_service (name, logo_url)
-    VALUES (:name, :logo_url)
-"""
-QG__identity_provider_service_select_all = "SELECT * FROM identity_provider_service"
-QG__identity_provider_service_select = "SELECT * FROM identity_provider_service WHERE name = :name"
-QG__identity_provider_service_update = """
-    UPDATE
-        identity_provider_service
-    SET
-        logo_url = COALESCE(:logo_url, logo_url)
-    WHERE
-        name = :name
-"""
-
-
-# Generated methods for table 'identity_provider_service'
-def identity_provider_service__delete(
-    connection: DBInterface,
-    name
-):
-    execute_supplied_statement(
-        connection, QG__identity_provider_service_delete,
-        {
-            # Key Fields
-            KG__identity_provider_service__name: name
-        }
-    )
-
-
-def identity_provider_service__update(
-    connection: DBInterface,
-    name,
-    logo_url=None
-):
-    execute_supplied_statement(
-        connection, QG__identity_provider_service_update,
-        {
-            # Key Fields
-            KG__identity_provider_service__name: name,
-
-            # None Key Fields
-            KG__identity_provider_service__logo_url: logo_url
-        }
-    )
-
-
-def identity_provider_service__select(
-    connection: DBInterface,
-    name,
-    singleton_code: int = None, singleton_message: str = "identity_provider_service does not exist"
-):
-    return execute_supplied_statement_singleton(
-        connection, QG__identity_provider_service_select, 
-        {
-            # Key Fields
-            KG__identity_provider_service__name: name
-        },
-        as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
-    )
-
-
-def identity_provider_service__select_all(
-    connection: DBInterface
-):
-    return execute_supplied_statement(
-        connection, QG__identity_provider_service_select_all,
-        as_objects=True
-    )
-
-
-def identity_provider_service__insert(
-    connection: DBInterface,
-    name, logo_url
-):
-    execute_supplied_statement(
-        connection, QG__identity_provider_service_insert,
-        {
-            KG__identity_provider_service__name: name,
-            KG__identity_provider_service__logo_url: logo_url
-        }
-    )
-
-
-# Generated keys for table 'user_registry'
-KG__user_registry__provider = "provider"
-KG__user_registry__tenant = "tenant"
-KG__user_registry__discovery_url = "discovery_url"
-
-# Generated queries for table 'user_registry'
-QG__user_registry_delete = "DELETE FROM user_registry WHERE provider = :provider AND tenant = :tenant"
-QG__user_registry_insert = """
-    INSERT INTO user_registry (provider, tenant, discovery_url)
-    VALUES (:provider, :tenant, :discovery_url)
-"""
-QG__user_registry_select_all = "SELECT * FROM user_registry"
-QG__user_registry_select = "SELECT * FROM user_registry WHERE provider = :provider AND tenant = :tenant"
-QG__user_registry_update = """
-    UPDATE
-        user_registry
-    SET
-        discovery_url = COALESCE(:discovery_url, discovery_url)
-    WHERE
-        provider = :provider AND tenant = :tenant
-"""
-
-
-# Generated methods for table 'user_registry'
-def user_registry__delete(
-    connection: DBInterface,
-    provider, tenant
-):
-    execute_supplied_statement(
-        connection, QG__user_registry_delete,
-        {
-            # Key Fields
-            KG__user_registry__provider: provider,
-            KG__user_registry__tenant: tenant
-        }
-    )
-
-
-def user_registry__update(
-    connection: DBInterface,
-    provider, tenant,
-    discovery_url=None
-):
-    execute_supplied_statement(
-        connection, QG__user_registry_update,
-        {
-            # Key Fields
-            KG__user_registry__provider: provider,
-            KG__user_registry__tenant: tenant,
-
-            # None Key Fields
-            KG__user_registry__discovery_url: discovery_url
-        }
-    )
-
-
-def user_registry__select(
-    connection: DBInterface,
-    provider, tenant,
-    singleton_code: int = None, singleton_message: str = "user_registry does not exist"
-):
-    return execute_supplied_statement_singleton(
-        connection, QG__user_registry_select, 
-        {
-            # Key Fields
-            KG__user_registry__provider: provider,
-            KG__user_registry__tenant: tenant
-        },
-        as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
-    )
-
-
-def user_registry__select_all(
-    connection: DBInterface
-):
-    return execute_supplied_statement(
-        connection, QG__user_registry_select_all,
-        as_objects=True
-    )
-
-
-def user_registry__insert(
-    connection: DBInterface,
-    provider, tenant, discovery_url
-):
-    execute_supplied_statement(
-        connection, QG__user_registry_insert,
-        {
-            KG__user_registry__provider: provider,
-            KG__user_registry__tenant: tenant,
-            KG__user_registry__discovery_url: discovery_url
-        }
-    )
-
-
-# Generated keys for table 'database_user_registry'
-KG__database_user_registry__provider = "provider"
-KG__database_user_registry__tenant = "tenant"
-KG__database_user_registry__database = "database"
-KG__database_user_registry__federation_procedure = "federation_procedure"
-KG__database_user_registry__client_id = "client_id"
-KG__database_user_registry__client_secret = "client_secret"
-
-# Generated queries for table 'database_user_registry'
-QG__database_user_registry_delete = "DELETE FROM database_user_registry WHERE provider = :provider AND tenant = :tenant AND database = :database"
-QG__database_user_registry_insert = """
-    INSERT INTO database_user_registry (provider, tenant, database,
-        federation_procedure, client_id, client_secret)
-    VALUES (:provider, :tenant, :database,
-        :federation_procedure, :client_id, :client_secret)
-"""
-QG__database_user_registry_select_all = "SELECT * FROM database_user_registry"
-QG__database_user_registry_select = "SELECT * FROM database_user_registry WHERE provider = :provider AND tenant = :tenant AND database = :database"
-QG__database_user_registry_update = """
-    UPDATE
-        database_user_registry
-    SET
-        federation_procedure = COALESCE(:federation_procedure, federation_procedure),
-        client_id = COALESCE(:client_id, client_id),
-        client_secret = COALESCE(:client_secret, client_secret)
-    WHERE
-        provider = :provider AND tenant = :tenant AND database = :database
-"""
-
-
-# Generated methods for table 'database_user_registry'
-def database_user_registry__delete(
-    connection: DBInterface,
-    provider, tenant, database
-):
-    execute_supplied_statement(
-        connection, QG__database_user_registry_delete,
-        {
-            # Key Fields
-            KG__database_user_registry__provider: provider,
-            KG__database_user_registry__tenant: tenant,
-            KG__database_user_registry__database: database
-        }
-    )
-
-
-def database_user_registry__update(
-    connection: DBInterface, encryption_key: bytes,
-    provider, tenant, database,
-    federation_procedure=None, client_id=None, client_secret=None,
-    encryption_salts=None
-):
-    execute_supplied_statement(
-        connection, QG__database_user_registry_update,
-        {
-            # Key Fields
-            KG__database_user_registry__provider: provider,
-            KG__database_user_registry__tenant: tenant,
-            KG__database_user_registry__database: database,
-
-            # None Key Fields
-            KG__database_user_registry__federation_procedure: federation_procedure,
-            KG__database_user_registry__client_id: client_id,
-            KG__database_user_registry__client_secret: client_secret
-        }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
-            KG__database_user_registry__client_id,
-            KG__database_user_registry__client_secret
-        ]
-    )
-
-
-def database_user_registry__select(
-    connection: DBInterface, encryption_key: bytes,
-    provider, tenant, database,
-    singleton_code: int = None, singleton_message: str = "database_user_registry does not exist"
-):
-    return execute_supplied_statement_singleton(
-        connection, QG__database_user_registry_select, 
-        {
-            # Key Fields
-            KG__database_user_registry__provider: provider,
-            KG__database_user_registry__tenant: tenant,
-            KG__database_user_registry__database: database
-        }, encryption_key=encryption_key, decrypt_columns=[
-            KG__database_user_registry__client_id,
-            KG__database_user_registry__client_secret
-        ],
-        as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
-    )
-
-
-def database_user_registry__select_all(
-    connection: DBInterface, encryption_key: bytes
-):
-    return execute_supplied_statement(
-        connection, QG__database_user_registry_select_all, encryption_key=encryption_key, decrypt_columns=[
-            KG__database_user_registry__client_id,
-            KG__database_user_registry__client_secret
-        ],
-        as_objects=True
-    )
-
-
-def database_user_registry__insert(
-    connection: DBInterface, encryption_key: bytes,
-    provider, tenant, database,
-    federation_procedure,
-    client_id=None, client_secret=None,
-    encryption_salts=None
-):
-    execute_supplied_statement(
-        connection, QG__database_user_registry_insert,
-        {
-            KG__database_user_registry__provider: provider,
-            KG__database_user_registry__tenant: tenant,
-            KG__database_user_registry__database: database,
-            KG__database_user_registry__federation_procedure: federation_procedure,
-            KG__database_user_registry__client_id: client_id,
-            KG__database_user_registry__client_secret: client_secret
-        }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
-            KG__database_user_registry__client_id,
-            KG__database_user_registry__client_secret
-        ]
     )

@@ -1,85 +1,113 @@
 """
-This script was generated from jaaql.exceptions.fxli at 2025-02-01, 21:45:49
+This script was generated from jaaql.exceptions.fxli at 2025-02-06, 06:08:49
 """
 
 from jaaql.utilities.crypt_utils import get_repeatable_salt
 from .generated_queries import *
 
 
-def add_account_password(
+QUERY__fetch_account_from_sub = "SELECT * FROM account WHERE sub = :sub AND provider = :provider AND tenant = :tenant"
+
+
+def fetch_account_from_sub(
     connection: DBInterface, encryption_key: bytes, vault_repeatable_salt: str,
-    account__id, account_password__hash
-):
-    account_password__uuid = account_password__insert(
-        connection, encryption_key, account__id, 
-        account_password__hash, 
-        encryption_salts={KG__account_password__hash: get_repeatable_salt(vault_repeatable_salt, account__id)}
-    )[KG__account_password__uuid]
-
-    account__update(
-        connection, encryption_key, account__id,
-        most_recent_password=account_password__uuid
-    )
-
-
-QUERY__fetch_most_recent_password = """
-    SELECT
-        A.id,
-        P.uuid,
-        P.hash
-    FROM account_password P
-    INNER JOIN account A ON P.uuid = A.most_recent_password
-    WHERE
-        A.id = :id
-"""
-
-
-def fetch_most_recent_password(
-    connection: DBInterface, encryption_key: bytes, account__id
+    sub, provider=None, tenant=None,
+    singleton_code: int = None, singleton_message: str = None
 ):
     return execute_supplied_statement_singleton(
-        connection, QUERY__fetch_most_recent_password, {KG__account__id: account__id},
-        decrypt_columns=[KG__account_password__hash], encryption_key=encryption_key, as_objects=True
-    )[KG__account_password__hash]
-
-
-QUERY__fetch_most_recent_password_from_username = """
-    SELECT
-        A.id,
-        P.uuid,
-        P.hash
-    FROM account_password P
-    INNER JOIN account A ON P.uuid = A.most_recent_password
-    WHERE
-        A.username = :username
-"""
-
-
-def fetch_most_recent_password_from_username(
-    connection: DBInterface, encryption_key: bytes, vault_repeatable_salt: str,
-    account__username, singleton_code: int = None, singleton_message: str = None
-):
-    return execute_supplied_statement_singleton(
-        connection, QUERY__fetch_most_recent_password_from_username, {KG__account__username: account__username},
-        encryption_key=encryption_key, encrypt_parameters=[KG__account__username], encryption_salts={
-            KG__account__username: get_repeatable_salt(vault_repeatable_salt)
+        connection, QUERY__fetch_account_from_sub, {
+            KG__account__sub: sub,
+            KG__account__provider: provider,
+            KG__account__tenant: tenant
         },
-        decrypt_columns=[KG__account_password__hash], as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+        encryption_key=encryption_key, encrypt_parameters=[KG__account__sub], encryption_salts={
+            KG__account__sub: get_repeatable_salt(vault_repeatable_salt, addition=None if provider is None else (provider + "__" + tenant))
+        }, as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
     )
 
 
-QUERY__fetch_account_from_username = "SELECT * FROM account WHERE username = :username"
+def fetch_encrypted_account_from_sub(
+    connection: DBInterface,
+    sub, provider=None, tenant=None,
+    singleton_code: int = None, singleton_message: str = None
+):
+    return execute_supplied_statement_singleton(
+        connection, QUERY__fetch_account_from_sub, {
+            KG__account__sub: sub,
+            KG__account__provider: provider,
+            KG__account__tenant: tenant
+        },
+        as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+    )
+
+
+def fetch_account_from_id(
+    connection: DBInterface, account,
+    singleton_code: int = None, singleton_message: str = None
+):
+    return execute_supplied_statement_singleton(
+        connection, QG__account_select, {
+            KG__account__id: account
+        },
+        as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+    )
 
 
 def fetch_account_from_username(
-    connection: DBInterface, encryption_key: bytes, vault_repeatable_salt: str,
-    username, singleton_code: int = None, singleton_message: str = None
+    connection: DBInterface, username,
+    singleton_code: int = None, singleton_message: str = None
 ):
     return execute_supplied_statement_singleton(
-        connection, QUERY__fetch_account_from_username, {KG__account__username: username},
-        encryption_key=encryption_key, encrypt_parameters=[KG__account__username], encryption_salts={
-            KG__account__username: get_repeatable_salt(vault_repeatable_salt)
-        }, as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+        connection, "SELECT * FROM account WHERE username = :username", {
+            KG__account__username: username
+        },
+        as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
+    )
+
+
+QUERY__fetch_providers_from_tenant_and_database = """
+    SELECT
+        IPS.name,
+        IPS.logo_url,
+        UR.discovery_url,
+        DUR.federation_procedure,
+        DUR.client_id,
+        DUR.client_secret,
+    FROM identity_provider_service IPS
+    INNER JOIN user_registry UR ON
+        IPS.name = UR.provider
+    INNER JOIN database_user_registry DUR ON
+        UR.provider = DUR.provider AND
+        UR.tenant = DUR.tenant
+    WHERE
+        DUR.database = :database AND
+        UR.tenant = :tenant
+"""
+
+
+def fetch_providers_from_tenant_and_database(
+    connection: DBInterface, tenant, database
+):
+    return execute_supplied_statement(
+        connection, QUERY__fetch_providers_from_tenant_and_database, {
+            KG__database_user_registry__database: database,
+            KG__user_registry__tenant: tenant
+        },
+        as_objects=True
+    )
+
+
+QUERY__fetch_parameters_for_federation_procedure = "SELECT name FROM federation_procedure_parameter WHERE procedure = :procedure"
+
+
+def fetch_parameters_for_federation_procedure(
+    connection: DBInterface, procedure
+):
+    return execute_supplied_statement(
+        connection, QUERY__fetch_parameters_for_federation_procedure, {
+            KG__federation_procedure_parameter__procedure: procedure
+        },
+        as_objects=True
     )
 
 
@@ -96,44 +124,48 @@ def mark_account_registered(
     )
 
 
-QUERY__create_account = "SELECT create_account(:username, :attach_as, :already_exists, :is_the_anonymous_user, :allow_already_exists) as account_id"
+QUERY__create_account = "SELECT create_account(:username, :sub, :provider, :tenant, :email, :api_key, :attach_as, :already_exists, :allow_already_exists) as account_id"
 KEY__attach_as = "attach_as"
 KEY__already_exists = "already_exists"
 KEY__allow_already_exists = "allow_already_exists"
-KEY__username = "username"
-KEY__is_the_anonymous_user = "is_the_anonymous_user"
 KEY__account_id = "account_id"
 
 
 def create_account(
     connection: DBInterface, encryption_key: bytes, vault_repeatable_salt: str,
-    username, attach_as=None, already_exists=False, is_the_anonymous_user=False,
+    username, sub, email=None, provider=None,
+    tenant=None, api_key=None,
+    attach_as=None, already_exists=False,
     allow_already_exists=False
 ):
     return execute_supplied_statement_singleton(
         connection, QUERY__create_account, {
-            KEY__username: username,
+            KG__account__username: username,
+            KG__account__sub: sub,
+            KG__account__provider: provider,
+            KG__account__tenant: tenant,
+            KG__account__email: email,
+            KG__account__api_key: api_key,
             KEY__attach_as: attach_as,
             KEY__already_exists: already_exists,
-            KEY__is_the_anonymous_user: is_the_anonymous_user,
             KEY__allow_already_exists: allow_already_exists
         }, encryption_salts={
-            KG__account__username: get_repeatable_salt(vault_repeatable_salt)
-        }, as_objects=True, encryption_key=encryption_key, encrypt_parameters=[KG__account__username]
+            KG__account__sub: get_repeatable_salt(vault_repeatable_salt, addition=None if provider is None else (provider + "__" + tenant))
+        }, as_objects=True, encryption_key=encryption_key, encrypt_parameters=[KG__account__sub, KG__account__email, KG__account__api_key]
     )[KEY__account_id]
 
 
-QUERY__validate_most_recent_password = "SELECT * FROM account WHERE id = :id AND most_recent_password = :most_recent_password"
+QUERY__validate_api_key = "SELECT * FROM account WHERE account = :id AND api_key = :api_key AND api_key is not null"
 
 
-def validate_is_most_recent_password(
+def validate_api_key_match(
     connection: DBInterface, account,
-    uuid, singleton_code: int = None, singleton_message: str = None
+    api_key, singleton_code: int = None, singleton_message: str = None
 ):
     return execute_supplied_statement_singleton(
-        connection, QUERY__validate_most_recent_password, {
-            KG__account__id: account,
-            KG__account__most_recent_password: uuid
+        connection, QUERY__validate_api_key, {
+            KG__validated_ip_address__account: account,
+            KG__account__api_key: api_key
         }, singleton_code=singleton_code, singleton_message=singleton_message, skip_commit=True
     )
 

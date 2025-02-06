@@ -7,8 +7,8 @@ class AccountAlreadyExists(JaaqlInterpretableHandledError):
             error_code=1001,
             http_response_code=422,
             table_name="account",
-            message="A user with this username already exists",
-            column_name="username",
+            message="A user like this already exists",
+            column_name="sub",
             _set=None,
             index=None,
             descriptor=descriptor
