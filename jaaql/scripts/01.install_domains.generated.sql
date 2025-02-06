@@ -4,7 +4,7 @@ CREATE DOMAIN encrypted__email_server_password AS character varying(256);
 CREATE DOMAIN encrypted__access_token AS character varying(64);
 CREATE DOMAIN encrypted__oidc_client_id AS character varying(200);
 CREATE DOMAIN encrypted__oidc_client_secret AS character varying(200);
-CREATE DOMAIN encrypted__oidc_sub AS character varying(63);
+CREATE DOMAIN encrypted__oidc_sub AS character varying(200);
 CREATE DOMAIN encrypted__email AS character varying(255);
 CREATE DOMAIN encrypted__salted_ip AS character varying(256);
 CREATE DOMAIN encrypted__jaaql_username AS character varying(128);

@@ -364,18 +364,22 @@ class BaseJAAQLController:
             if method.arguments[0] == ARG_RESP__allow_all:
                 was_allow_all = True
 
+        only_args = False
         if len(method.body) != 0 or was_allow_all:
             BaseJAAQLController.enforce_content_type_json()
             data = request.json
         else:
             content_type = request.headers.get('Content-Type', '')
             if 'charset=' not in content_type and len(kwargs) == 0:
-                return {}
+                only_args = True
 
         if isinstance(data, list):
             combined_data = data
         else:
-            combined_data = {**request.form, **request.args, **data, **kwargs}
+            if only_args:
+                combined_data = {**request.args}
+            else:
+                combined_data = {**request.form, **request.args, **data, **kwargs}
 
             if len(combined_data) != len(request.form) + len(request.args) + len(data) + len(kwargs):
                 raise HttpStatusException(ERR__duplicated_field, HTTPStatus.BAD_REQUEST)
@@ -663,8 +667,9 @@ class BaseJAAQLController:
                     if jaaql_resp.raw_response is not None:
                         resp = jaaql_resp.raw_response
                     resp = Response(resp, mimetype=jaaql_resp.response_type, status=jaaql_resp.response_code)
-                    for key, val in jaaql_resp.raw_headers.items():
-                        resp.headers.add(key, val)
+
+                for key, val in jaaql_resp.raw_headers.items():
+                    resp.headers.add(key, val)
 
                 if request.cookies.get(COOKIE_JAAQL_AUTH) is not None and COOKIE_JAAQL_AUTH not in jaaql_resp.cookies:
                     resp.headers.add("Set-Cookie", format_cookie(COOKIE_JAAQL_AUTH, request.cookies.get(COOKIE_JAAQL_AUTH),

@@ -355,15 +355,19 @@ DOCUMENTATION__oidc_user_registries = SwaggerDocumentation(
         ],
         response=SwaggerResponse(
             description="Providers response",
-            response=[
-                ARG_RES__provider,
-                SwaggerArgumentResponse(
-                    name=KG__identity_provider_service__logo_url,
-                    description="The logo url for the provider",
-                    arg_type=str,
-                    example=["/identity-logos/azure.png"]
+            response=SwaggerArgumentResponse(
+                name="providers",
+                description="A list of the providers",
+                arg_type=SwaggerList(
+                    ARG_RES__provider,
+                    SwaggerArgumentResponse(
+                        name=KG__identity_provider_service__logo_url,
+                        description="The logo url for the provider",
+                        arg_type=str,
+                        example=["/identity-logos/azure.png"]
+                    )
                 )
-            ]
+            )
         )
     )
 )
@@ -400,7 +404,7 @@ DOCUMENTATION__oidc_exchange_code = SwaggerDocumentation(
         name="Fetch OIDC code",
         description="Exchanges OIDC auth code for auth token, returns the token",
         method=REST__POST,
-        arguments=[
+        body=[
             SwaggerArgumentResponse(
                 name=KEY__code,
                 description="The OIDC Auth code",

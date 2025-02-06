@@ -9,8 +9,8 @@ DECLARE
     account_id postgres_role;
 BEGIN
     if create_account.provider is not null then
-        SELECT requires_email_verification INTO requires_email_verification
-        FROM identity_provider_service
+        SELECT X.requires_email_verification INTO requires_email_verification
+        FROM identity_provider_service X
         WHERE name = create_account.provider;
     end if;
 
@@ -76,5 +76,7 @@ BEGIN
     IF lacks_registered THEN
         EXECUTE 'GRANT registered TO ' || quote_ident(mark_account_registered.id);
     END IF;
+
+    UPDATE account A SET email_verified = true WHERE A.id = mark_account_registered.id;
 END
 $$ language plpgsql SECURITY DEFINER;

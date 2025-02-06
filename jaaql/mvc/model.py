@@ -460,19 +460,21 @@ WHERE
     def fetch_user_registries_for_tenant(self, inputs: dict):
         schema = inputs.get(KEY__schema, None)
         if not schema:
-            schema = application__select(self.jaaql_lookup_connection, inputs[KEY__application])[KG__application_schema__name]
+            schema = application__select(self.jaaql_lookup_connection, inputs[KEY__application])[KG__application__default_schema]
 
         database = application_schema__select(self.jaaql_lookup_connection, inputs[KEY__application], schema)
         providers = fetch_providers_from_tenant_and_database(self.jaaql_lookup_connection, inputs[KG__user_registry__tenant],
                                                              database[KG__application_schema__database])
 
-        return [
-            {
-                KG__user_registry__provider: provider[KG__identity_provider_service__name],
-                KG__identity_provider_service__logo_url: provider[KG__identity_provider_service__logo_url]
-            }
-            for provider in providers
-        ]
+        return {
+            "providers": [
+                {
+                    KG__user_registry__provider: provider[KG__identity_provider_service__name],
+                    KG__identity_provider_service__logo_url: provider[KG__identity_provider_service__logo_url]
+                }
+                for provider in providers
+            ]
+        }
 
     def fetch_discovery_content(self, database: str, provider: str, tenant: str, discovery_url: str = None):
         lookup = database + ":" + provider + ":" + tenant
@@ -486,7 +488,7 @@ WHERE
         return discovery
 
     def fetch_jwks_client(self, database: str, provider: str, tenant: str, discovery):
-        jwks_url = discovery.get("jwks_uri")
+        jwks_url = discovery.get("jwks_uri").replace("localhost", "host.docker.internal")
         if not jwks_url:
             raise Exception(f"Discovery document for {provider}, {tenant} did not have JWKS url")
         lookup = database + ":" + provider + ":" + tenant
@@ -547,9 +549,14 @@ WHERE
             token_request_payload["client_secret"] = database_user_registry[KG__database_user_registry__client_secret]
 
         token_response = requests.post(
-            token_endpoint,
+            token_endpoint.replace("localhost", "host.docker.internal"),
             data=token_request_payload,
         )
+
+        if os.environ.get("JAAQL_DEBUGGING") == "TRUE":
+            print(token_response.status_code)
+            print(token_response.text)
+
         token_data = token_response.json()
         id_token = token_data.get('id_token')
 
@@ -581,27 +588,28 @@ WHERE
 
         except HttpSingletonStatusException:
             # User does not exist, federate it
+            print("federating user")
             email = id_payload.get('email')
             email_verified = id_payload.get('email_verified')
-
             account_id = self.create_account_with_potential_api_key(self.jaaql_lookup_connection,
                                                                     sub, provider, tenant,
-                                                                    email, registered=email_verified)
+                                                                    None, email, registered=email_verified)
+            print("new federated user with account id " + account_id)
             account = account__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), account_id)
             db_params = {"tenant": tenant, "application": application, "account_id": account_id}
             parameters = fetch_parameters_for_federation_procedure(self.jaaql_lookup_connection,
                                                                    database_user_registry[KG__database_user_registry__federation_procedure])
             for claim in parameters:
                 claim_name = claim[KG__federation_procedure_parameter__name]
-                db_params[claim_name] = id_token.get(claim_name)
+                db_params[claim_name] = id_payload.get(claim_name)
 
             procedure_name = database_user_registry[KG__database_user_registry__federation_procedure]
-            if re.match(REGEX__dmbs_object_name, procedure_name) is None:
+            if re.match(REGEX__dmbs_procedure_name, procedure_name) is None:
                 raise HttpStatusException("Unsafe data federation procedure")
 
             procedure_params = []
             for key, _ in db_params.items():
-                if re.match(REGEX__dmbs_object_name, procedure_name) is None:
+                if re.match(REGEX__dmbs_object_name, key) is None:
                     raise HttpStatusException("Unsafe data federation parameter " + key)
                 procedure_params.append(f"{key} => :{key}")
 
@@ -612,9 +620,14 @@ WHERE
                 KEY__parameters: db_params
             }
 
+            print("Preparing federating procedure")
+
             submit(self.vault, self.config, self.get_db_crypt_key(),
                    self.jaaql_lookup_connection, submit_data, ROLE__jaaql,
                    None, self.cached_canned_query_service, as_objects=True, singleton=True)
+
+            print("Federated user")
+            print(submit_data)
 
         salt_user = self.get_repeatable_salt(account[KG__account__id])
         encrypted_salted_ip_address = jaaql__encrypt(ip_address, self.get_db_crypt_key(), salt_user)  # An optimisation, it is used later twice
@@ -627,7 +640,7 @@ WHERE
         jwt_data = {
             KEY__account_id: str(account[KG__account__id]),
             KEY__username: sub,
-            KEY__password: str(account[KG__account__api_key]),
+            KEY__password: None,
             KEY__ip_address: ip_address,
             KEY__ip_id: str(address),
             KEY__created: datetime.now().isoformat(),
@@ -649,7 +662,7 @@ WHERE
         schema = inputs.get(KEY__schema, None)
         application = application__select(self.jaaql_lookup_connection, inputs[KEY__application])
         if not schema:
-            schema = application[KG__application_schema__name]
+            schema = application[KG__application__default_schema]
 
         database = application_schema__select(self.jaaql_lookup_connection, inputs[KEY__application], schema)
         user_registry = user_registry__select(self.jaaql_lookup_connection, inputs[KG__user_registry__provider], inputs[KG__user_registry__tenant])
@@ -665,14 +678,14 @@ WHERE
 
         parameters = fetch_parameters_for_federation_procedure(self.jaaql_lookup_connection,
                                                                database_user_registry[KG__database_user_registry__federation_procedure])
-        scope_list = urllib.parse.quote(" ".join([parameter[KG__federation_procedure_parameter__name] for parameter in parameters]))
+        scope_list = [parameter[KG__federation_procedure_parameter__name] for parameter in parameters]
         client_id = urllib.parse.quote(database_user_registry[KG__database_user_registry__client_id])
 
         nonce = secrets.token_urlsafe(32)
         state = secrets.token_urlsafe(32)
         code_verifier = secrets.token_urlsafe(64)
         code_challenge = self.generate_code_challenge(code_verifier)
-        redirect_uri = application[KG__application__base_url + "/" + inputs[KEY__redirect_uri]]
+        redirect_uri = application[KG__application__base_url] + "/" + inputs[KEY__redirect_uri]
 
         oidc_session = crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), {
             "redirect_uri": redirect_uri,
@@ -695,8 +708,9 @@ WHERE
             if scope not in default_scopes:
                 default_scopes.append(scope)
 
-        redirect = auth_endpoint + f"?client_id={client_id}&response_type=code&code_challenge_method=S256&nonce=&scope={default_scopes}&nonce={nonce}&state={
-            state}&code_challenge={code_challenge}&redirect_uri={urllib.parse.quote(redirect_uri)}"
+        redirect = auth_endpoint + f"?client_id={client_id}&response_type=code&code_challenge_method=S256&scope={
+            urllib.parse.quote(" ".join(["openid"]))}&nonce={nonce}&state={
+            state}&code_challenge={code_challenge}&redirect_uri={urllib.parse.quote(redirect_uri, safe='')}"
 
         response.response_code = HTTPStatus.FOUND
         response.raw_headers["Location"] = redirect
@@ -914,7 +928,7 @@ WHERE
             try:
                 account = fetch_account_from_id(self.jaaql_lookup_connection, decoded[KEY__account_id], singleton_code=HTTPStatus.UNAUTHORIZED,
                                                 singleton_message=ERR__invalid_token)
-                if account[KG__account__api_key] != decoded[KEY__password]:
+                if decoded[KEY__password] is not None and account[KG__account__api_key] != decoded[KEY__password]:
                     raise HttpSingletonStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
             except HttpSingletonStatusException:
                 raise UserUnauthorized()
@@ -933,7 +947,7 @@ WHERE
         if datetime.fromisoformat(decoded[KEY__created]) + timedelta(milliseconds=self.refresh_expiry_ms) < datetime.now():
             raise UserUnauthorized()
 
-        return self.get_auth_token(decoded[KEY__username], ip_address, cookie=cookie, remember_me=remember_me, response=response)
+        return self.get_auth_token(decoded[KEY__username], ip_address, cookie=cookie, remember_me=remember_me, response=response, is_refresh=True)
 
     def get_bypass_user(self, username: str, ip_address: str, provider: str = None, tenant: str = None):
         account = fetch_account_from_username(self.jaaql_lookup_connection, username, singleton_code=HTTPStatus.UNAUTHORIZED)
@@ -954,6 +968,7 @@ WHERE
         self,
         username: str, ip_address: str, password: str = None,
         response: JAAQLResponse = None, remember_me: bool = False, cookie: bool = False,
+        is_refresh=False,
     ):
         incorrect_credentials = False
         account = None
@@ -975,10 +990,12 @@ WHERE
 
             encrypted_salted_ip_address = jaaql__encrypt(ip_address, self.get_db_crypt_key(), salt_user)  # An optimisation, it is used later twice
 
-            if password is not None:
+            if is_refresh:
+                incorrect_credentials = not exists_matching_validated_ip_address(self.jaaql_lookup_connection, encrypted_salted_ip_address)
+            elif password is not None:
                 incorrect_credentials = jaaql__decrypt(account[KG__account__api_key], self.get_db_crypt_key()) != password
             else:
-                incorrect_credentials = not exists_matching_validated_ip_address(self.jaaql_lookup_connection, encrypted_salted_ip_address)
+                incorrect_credentials = True
 
         if incorrect_credentials:
             raise UserUnauthorized()

@@ -20,11 +20,11 @@ class JAAQLController(BaseJAAQLController):
 
         @self.publish_route('/oauth/token', DOCUMENTATION__oauth_token)
         def fetch_oauth_token(http_inputs: dict, ip_address: str, response: JAAQLResponse):
-            return self.model.get_auth_token(**http_inputs, ip_address=ip_address, response=response)
+            return self.model.get_auth_token(**http_inputs, ip_address=ip_address, response=response, is_refresh=False)
 
         @self.publish_route('/oauth/cookie', DOCUMENTATION__oauth_cookie)
         def fetch_oauth_cookie(http_inputs: dict, ip_address: str, response: JAAQLResponse):
-            self.model.get_auth_token(**http_inputs, ip_address=ip_address, response=response, cookie=True)
+            self.model.get_auth_token(**http_inputs, ip_address=ip_address, response=response, cookie=True, is_refresh=False)
 
         @self.publish_route('/logout-cookie', DOCUMENTATION__logout_cookie)
         def fetch_oauth_cookie(response: JAAQLResponse):

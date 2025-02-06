@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.exceptions.fxli at 2025-02-06, 06:08:49
+This script was generated from jaaql.exceptions.fxli at 2025-02-06, 11:10:33
 """
 
 from jaaql.utilities.crypt_utils import get_repeatable_salt
@@ -72,7 +72,7 @@ QUERY__fetch_providers_from_tenant_and_database = """
         UR.discovery_url,
         DUR.federation_procedure,
         DUR.client_id,
-        DUR.client_secret,
+        DUR.client_secret
     FROM identity_provider_service IPS
     INNER JOIN user_registry UR ON
         IPS.name = UR.provider
