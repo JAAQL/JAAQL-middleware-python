@@ -6,6 +6,7 @@ import traceback
 import urllib.parse
 import uuid
 import secrets
+from cryptography.hazmat.primitives import hashes
 
 import re
 
@@ -26,7 +27,8 @@ from jaaql.utilities.utils import get_jaaql_root, get_base_url
 from jaaql.db.db_utils import create_interface, jaaql__encrypt, create_interface_for_db, jaaql__decrypt
 from jaaql.db.db_utils_no_circ import submit, get_required_db, objectify
 from jaaql.utilities import crypt_utils
-from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_ATTR_EXPIRES, time_delta_ms, COOKIE_OIDC
+from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_OIDC, COOKIE_LOGIN_MARKER, \
+    get_sloppy_cookie_attrs
 from jaaql.mvc.response import *
 import threading
 from datetime import datetime, timedelta
@@ -509,13 +511,19 @@ WHERE
         challenge = base64.urlsafe_b64encode(digest).decode('ascii').rstrip('=')
         return challenge
 
+    def fetch_jwks(self):
+        return self.jwks
+
+    def get_cert_thumbprint(self) -> str:
+        fingerprint = self.fapi_cert.fingerprint(hashes.SHA256())
+        return base64.urlsafe_b64encode(fingerprint).rstrip(b'=').decode('utf-8')
+
     def exchange_auth_code(self, inputs: dict, oidc_cookie: str, ip_address: str, response: JAAQLResponse):
         response.delete_cookie(COOKIE_OIDC, self.is_https)
         oidc_state = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), oidc_cookie, JWT_PURPOSE__oidc)
-        if inputs[KEY__state] != oidc_state.get('state'):
-            raise UserUnauthorized()
 
         application = oidc_state[KEY__application]
+        application_tuple = application__select(self.jaaql_lookup_connection, application)
         provider = oidc_state[KG__user_registry__provider]
         tenant = oidc_state[KG__user_registry__tenant]
         database = jaaql__decrypt(oidc_state["database"], self.get_db_crypt_key())
@@ -538,27 +546,57 @@ WHERE
         if not allowed_algs:
             raise Exception(f"No allowed algs for {provider}, {tenant}")
 
+        jarms_response = inputs["response"]
+        signing_key = jwk_client.get_signing_key_from_jwt(jarms_response)
+        try:
+            jarms_payload = jwt.decode(
+                jarms_response,
+                signing_key.key,
+                algorithms=allowed_algs,
+                audience=database_user_registry[KG__database_user_registry__client_id],
+                issuer=expected_issuer
+            )
+        except:
+            raise UserUnauthorized()
+
+        if jarms_payload[KEY__state] != oidc_state.get('state'):
+            raise UserUnauthorized()
+
         token_request_payload = {
             'grant_type': 'authorization_code',
-            'code': inputs[KEY__code],
-            'redirect_uri': oidc_state["redirect_uri"],
+            'code': jarms_payload[KEY__code],
+            'redirect_uri': application_tuple[KG__application__base_url] + "/api" + ENDPOINT__oidc_get_token,
             'client_id': database_user_registry[KG__database_user_registry__client_id],
-            'code_verifier': code_verifier,
+            'code_verifier': code_verifier
         }
-        if database_user_registry[KG__database_user_registry__client_secret]:
-            token_request_payload["client_secret"] = database_user_registry[KG__database_user_registry__client_secret]
 
-        token_response = requests.post(
+        kwargs = {}
+        if self.use_fapi_advanced:
+            kwargs["verify"] = True
+            kwargs["cert"] = (f"/etc/letsencrypt/live/{self.application_url}/fullchain.pem", f"/etc/letsencrypt/live/{self.application_url}/privkey.pem")
+        else:
+            payload = {
+                "iss": database_user_registry[KG__database_user_registry__client_id],
+                "sub": database_user_registry[KG__database_user_registry__client_id],
+                "aud": token_endpoint,
+                "jti": str(uuid.uuid4()),
+                "iat": int(time.time()),
+                "exp": int(time.time()) + 300  # Token valid for 5 minutes
+            }
+            token_request_payload["client_assertion_type"] = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+            token_request_payload["client_assertion"] = jwt.encode(payload, self.fapi_pem, algorithm="PS256", headers={
+                "kid": self.jwks["keys"][0]["kid"]
+            })
+
+        token_response = self.idp_session.post(
             token_endpoint.replace("localhost", "host.docker.internal"),
             data=token_request_payload,
+            **kwargs
         )
-
-        if os.environ.get("JAAQL_DEBUGGING") == "TRUE":
-            print(token_response.status_code)
-            print(token_response.text)
 
         token_data = token_response.json()
         id_token = token_data.get('id_token')
+        access_token = token_data.get('access_token')
 
         signing_key = jwk_client.get_signing_key_from_jwt(id_token)
         try:
@@ -574,6 +612,38 @@ WHERE
 
         if id_payload.get("nonce") != oidc_state["nonce"]:
             raise UserUnauthorized()
+
+        if self.use_fapi_advanced:
+            access_signing_key = jwk_client.get_signing_key_from_jwt(access_token)
+            try:
+                access_payload = jwt.decode(
+                    access_token,
+                    access_signing_key.key,
+                    algorithms=allowed_algs,
+                    audience=database_user_registry[KG__database_user_registry__client_id],
+                    issuer=expected_issuer
+                )
+            except:
+                raise UserUnauthorized()
+
+            # 2. Extract and check the cnf claim.
+            cnf_claim = access_payload.get("cnf")
+            if not cnf_claim:
+                raise UserUnauthorized()  # Access token is missing the 'cnf' claim.
+
+            expected_thumbprint = cnf_claim.get("x5t#S256")
+            if not expected_thumbprint:
+                raise UserUnauthorized()  # The 'cnf' claim does not contain the 'x5t#S256' field.
+
+            # 3. Compute the thumbprint of the certificate used for mTLS.
+            client_cert_thumbprint = self.get_cert_thumbprint()
+
+            # 4. Compare the thumbprints.
+            if client_cert_thumbprint != expected_thumbprint:
+                self.reload_fapi_cert()
+                client_cert_thumbprint = self.get_cert_thumbprint()
+                if client_cert_thumbprint != expected_thumbprint:
+                    raise UserUnauthorized()  # Access token 'cnf' claim does not match the client's certificate thumbprint.
 
         sub = id_payload.get("sub")
 
@@ -659,6 +729,11 @@ WHERE
                             attributes=get_cookie_attrs(self.vigilant_sessions, False, self.is_container),
                             is_https=self.is_https)
 
+        response.set_cookie(COOKIE_LOGIN_MARKER, value="true", is_https=True, attributes=get_sloppy_cookie_attrs())
+
+        response.response_code = HTTPStatus.FOUND
+        response.raw_headers["Location"] = oidc_state[KEY__redirect_uri]
+
     def fetch_redirect_uri(self, inputs: dict, response: JAAQLResponse):
         schema = inputs.get(KEY__schema, None)
         application = application__select(self.jaaql_lookup_connection, inputs[KEY__application])
@@ -686,10 +761,11 @@ WHERE
         state = secrets.token_urlsafe(32)
         code_verifier = secrets.token_urlsafe(64)
         code_challenge = self.generate_code_challenge(code_verifier)
-        redirect_uri = application[KG__application__base_url] + "/" + inputs[KEY__redirect_uri]
+        real_redirect_uri = application[KG__application__base_url] + "/" + inputs[KEY__redirect_uri]
+        oidc_redirect_uri = application[KG__application__base_url] + "/api" + ENDPOINT__oidc_get_token
 
         oidc_session = crypt_utils.jwt_encode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), {
-            "redirect_uri": redirect_uri,
+            "redirect_uri": real_redirect_uri,
             "code_verifier": jaaql__encrypt(code_verifier, self.get_db_crypt_key()),
             "nonce": nonce,
             "state": state,
@@ -709,12 +785,61 @@ WHERE
             if scope not in default_scopes:
                 default_scopes.append(scope)
 
-        redirect = auth_endpoint + f"?client_id={client_id}&response_type=code&code_challenge_method=S256&scope={
-            urllib.parse.quote(" ".join(["openid"]))}&nonce={nonce}&state={
-            state}&code_challenge={code_challenge}&redirect_uri={urllib.parse.quote(redirect_uri, safe='')}"
+        par_endpoint = discovery.get("pushed_authorization_request_endpoint")
+        if not par_endpoint:
+            raise Exception("Pushed Authorization Request endpoint not found in discovery document.")
+        par_endpoint = par_endpoint.replace("localhost", "host.docker.internal")
+
+        par_payload = {
+            "client_id": client_id,
+            "response_type": "code",
+            "code_challenge_method": "S256",
+            "scope": " ".join(["openid"]),  # should later be default scopes, may cause issues now
+            "nonce": nonce,
+            "state": state,
+            "code_challenge": code_challenge,
+            "redirect_uri": oidc_redirect_uri,
+        }
+
+        kwargs = {}
+        if self.use_fapi_advanced:
+            kwargs["verify"] = True
+            kwargs["cert"] = ("/tmp/client_cert.pem", "/tmp/client_key.pem")
+        else:
+            payload = {
+                "iss": database_user_registry[KG__database_user_registry__client_id],
+                "sub": database_user_registry[KG__database_user_registry__client_id],
+                "aud": discovery.get("pushed_authorization_request_endpoint"),
+                "jti": str(uuid.uuid4()),
+                "iat": int(time.time()),
+                "exp": int(time.time()) + 300  # Token valid for 5 minutes
+            }
+            par_payload["client_assertion_type"] = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+            par_payload["client_assertion"] = jwt.encode(payload, self.fapi_pem, algorithm="PS256", headers={
+                "kid": self.jwks["keys"][0]["kid"]
+            })
+
+        par_response = self.idp_session.post(
+            par_endpoint,
+            data=par_payload,
+            **kwargs
+        )
+
+        if par_response.status_code not in (200, 201):
+            print(par_response.status_code)
+            print(par_response.text)
+            raise Exception(f"PAR request failed with status {par_response.status_code}: {par_response.text}")
+
+        par_data = par_response.json()
+        request_uri = par_data.get("request_uri")
+        if not request_uri:
+            raise Exception("No request_uri returned from the PAR endpoint.")
+
+        redirect_url = auth_endpoint + "?request_uri=" + urllib.parse.quote(request_uri) + "&response_mode=query.jwt&client_id=" + client_id
+        print(request_uri)
 
         response.response_code = HTTPStatus.FOUND
-        response.raw_headers["Location"] = redirect
+        response.raw_headers["Location"] = redirect_url
 
     def set_web_config(self, connection: DBInterface):
         self.is_super_admin(connection)

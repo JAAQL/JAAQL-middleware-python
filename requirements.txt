@@ -1,4 +1,4 @@
-jaaql-monitor==1.4.17
+jaaql-monitor==1.6.3
 psycopg[binary]==3.1.18
 Pillow==10.3.0
 cryptography==42.0.5
@@ -11,11 +11,12 @@ werkzeug==3.0.1
 argon2-cffi==23.1.0
 pyotp==2.9.0
 qrcode==7.4.2
-gunicorn==21.2.0
+gunicorn==23.0.0
 gevent==24.2.1
-requests==2.31.0
+requests==2.32.3
 pyzbar==0.1.9
-parsys-requests-unixsocket==0.3.1
+parsys-requests-unixsocket==0.3.2
 selenium==4.18.1
 twine==5.0.0
-urllib3==2.2.1
+urllib3==2.3.0
+jwcrypto==1.5.6

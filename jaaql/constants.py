@@ -164,6 +164,7 @@ ENDPOINT__report_sentinel_error = "/sentinel/reporting/error"
 ENDPOINT__install = "/internal/install"
 ENDPOINT__set_shared_var = "/set-shared-var"
 ENDPOINT__get_shared_var = "/get-shared-var"
+ENDPOINT__oidc_get_token = "/exchange-auth-code"
 
 CONFIG__default = "Default config"
 CONFIG__default_desc = "Default config description"
@@ -182,5 +183,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.26.2"
+VERSION = "4.27.0"
 

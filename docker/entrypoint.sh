@@ -313,6 +313,11 @@ mv /JAAQL-middleware-python/docker/gunicorn_config.py.tmp /JAAQL-middleware-pyth
 echo "timeout = ${GUNICORN_TIMEOUT}" | cat - /JAAQL-middleware-python/docker/gunicorn_config.py > /JAAQL-middleware-python/docker/gunicorn_config.py.tmp
 mv /JAAQL-middleware-python/docker/gunicorn_config.py.tmp /JAAQL-middleware-python/docker/gunicorn_config.py
 
+mv docker/generate_jwks.py generate_jwks.py
+$PY_PATH generate_jwks.py
+
+openssl req -new -x509 -key /tmp/client_key.pem -out /tmp/client_cert.pem -days 3650 -subj "/CN=jaaql-key-$SERVER_ADDRESS"
+
 if [ $WAS_EMPTY = "true" ]; then
   until psql -U "postgres" -d "postgres" -c "select 1" > /dev/null 2>&1; do
     echo "Waiting for postgres server"

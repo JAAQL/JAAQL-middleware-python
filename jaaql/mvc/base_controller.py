@@ -15,7 +15,7 @@ import sys
 import dataclasses
 import decimal
 from queue import Queue
-from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH
+from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_LOGIN_MARKER, COOKIE_ATTR_PATH
 from jaaql.utilities.utils import time_delta_ms, Profiler
 from flask import Response, Flask, request, jsonify, current_app
 from flask.json.provider import DefaultJSONProvider
@@ -674,6 +674,11 @@ class BaseJAAQLController:
                 if request.cookies.get(COOKIE_JAAQL_AUTH) is not None and COOKIE_JAAQL_AUTH not in jaaql_resp.cookies:
                     resp.headers.add("Set-Cookie", format_cookie(COOKIE_JAAQL_AUTH, request.cookies.get(COOKIE_JAAQL_AUTH),
                                                                  get_cookie_attrs(self.model.vigilant_sessions, remember_me, self.model.is_container),
+                                                                 self.model.is_https))
+
+                if request.cookies.get(COOKIE_LOGIN_MARKER) is not None:
+                    resp.headers.add("Set-Cookie", format_cookie(COOKIE_LOGIN_MARKER, "",
+                                                                 {COOKIE_ATTR_EXPIRES: format_date_time(0), COOKIE_ATTR_PATH: "/"},
                                                                  self.model.is_https))
 
                 for _, cookie in jaaql_resp.cookies.items():

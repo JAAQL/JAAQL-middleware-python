@@ -403,24 +403,66 @@ DOCUMENTATION__oidc_exchange_code = SwaggerDocumentation(
     methods=SwaggerMethod(
         name="Fetch OIDC code",
         description="Exchanges OIDC auth code for auth token, returns the token",
-        method=REST__POST,
-        body=[
-            SwaggerArgumentResponse(
-                name=KEY__code,
-                description="The OIDC Auth code",
-                arg_type=str,
-                example=["SplxlOBeZQQYbYS6WxSbIA"]
-            ),
-            SwaggerArgumentResponse(
-                name=KEY__state,
-                description="The state",
-                arg_type=str,
-                example=["SplxlOBeZQQYbYS6WxSbIA"]
-            )
-        ],
+        method=REST__GET,
+        arguments=SwaggerArgumentResponse(
+            name="response",
+            description="The OIDC response JWT object",
+            arg_type=str,
+            example=["eyJ..."]
+        ),
         response=SwaggerFlatResponse(
-            description="Access token",
-            body="eyJ..."
+            description="URL",
+            code=HTTPStatus.FOUND,
+            body="You are being redirected back to your place in the app..."
+        )
+    )
+)
+
+DOCUMENTATION__jwks = SwaggerDocumentation(
+    tags="jwks",
+    security=False,
+    methods=SwaggerMethod(
+        name="Fetch JWKS",
+        description="Fetches the JWKS so that mTLS can be used with JAAQL",
+        method=REST__GET,
+        response=SwaggerResponse(
+            description="The Keys",
+            response=SwaggerArgumentResponse(
+                name="keys",
+                description="A list of keys",
+                arg_type=SwaggerList(
+                    SwaggerArgumentResponse(
+                        name="e",
+                        description="JWKS e",
+                        arg_type=str,
+                        example=["AQAB"]
+                    ),
+                    SwaggerArgumentResponse(
+                        name="kty",
+                        description="JWKS kty",
+                        arg_type=str,
+                        example=["RSA"]
+                    ),
+                    SwaggerArgumentResponse(
+                        name="n",
+                        description="The public key",
+                        arg_type=str,
+                        example=["tKiq..."]
+                    ),
+                    SwaggerArgumentResponse(
+                        name="kid",
+                        description="The unique id",
+                        arg_type=str,
+                        example=["tKiq..."]
+                    ),
+                    SwaggerArgumentResponse(
+                        name="alg",
+                        description="The algorithm",
+                        arg_type=str,
+                        example=["RS256"]
+                    )
+                )
+            )
         )
     )
 )

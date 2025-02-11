@@ -163,6 +163,10 @@ class JAAQLController(BaseJAAQLController):
         def fetch_redirect_url(http_inputs: dict, response: JAAQLResponse):
             self.model.fetch_redirect_uri(http_inputs, response)
 
-        @self.publish_route('/exchange-auth-code', DOCUMENTATION__oidc_exchange_code)
+        @self.publish_route(ENDPOINT__oidc_get_token, DOCUMENTATION__oidc_exchange_code)
         def exchange_auth_code(http_inputs: dict, ip_address: str, response: JAAQLResponse):
             self.model.exchange_auth_code(http_inputs, request.cookies.get(COOKIE_OIDC), ip_address, response)
+
+        @self.publish_route('/.well-known/jwks', DOCUMENTATION__jwks)
+        def fetch_jwks():
+            return self.model.fetch_jwks()

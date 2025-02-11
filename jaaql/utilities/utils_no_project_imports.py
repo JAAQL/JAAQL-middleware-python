@@ -71,6 +71,7 @@ def pull_from_dict(self, inputs: dict, keys: Union[list, str, dict]):
 
 
 COOKIE_JAAQL_AUTH = "jaaql_auth"
+COOKIE_LOGIN_MARKER = "jaaql_successful_auth"
 COOKIE_OIDC = "oidc"
 COOKIE_FLAG_HTTP_ONLY = "HttpOnly"
 COOKIE_FLAG_SECURE = "Secure"
@@ -99,8 +100,19 @@ def get_cookie_attrs(vigilant_sessions: bool, remember_me: bool, is_gunicorn: bo
     return cookie_attrs
 
 
+def get_sloppy_cookie_attrs():
+    cookie_attrs = {}
+    cookie_attrs[COOKIE_ATTR_PATH] = "/"
+
+    cookie_attrs[COOKIE_ATTR_EXPIRES] = format_date_time(mktime((datetime.now() + timedelta(minutes=15)).timetuple()))
+
+    return cookie_attrs
+
+
 def format_cookie(name, value, attributes, is_https: bool):
     cookie_flags = [COOKIE_FLAG_HTTP_ONLY]
+    if name == COOKIE_LOGIN_MARKER:
+        cookie_flags = []
     if is_https:
         cookie_flags.append(COOKIE_FLAG_SECURE)
 

@@ -1,5 +1,9 @@
 import sys
 
+import json
+import requests
+
+from cryptography import x509
 from jaaql.utilities.vault import Vault, DIR__vault
 from jaaql.db.db_interface import DBInterface
 import jaaql.utilities.crypt_utils as crypt_utils
@@ -202,6 +206,25 @@ class BaseJAAQLModel:
         self.force_mfa = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__force_mfa]
         self.do_audit = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__do_audit]
 
+        self.jwks = None
+        if self.is_container:
+            with open('/tmp/jwks.json', 'r') as f:
+                self.jwks = json.load(f)
+
+        self.application_url = os.environ.get("SERVER_ADDRESS", "")
+        self.use_fapi_advanced = os.environ.get("USE_FAPI_ADVANCED", "").lower() == "true"
+
+        self.fapi_pem = None
+        self.fapi_cert = None
+        if self.is_container:
+            with open('/tmp/client_key.pem', "rb") as f:
+                self.fapi_pem = f.read()
+
+            if self.use_fapi_advanced:
+                with open(f"/etc/letsencrypt/live/{self.application_url}/fullchain.pem", "rb") as f:
+                    self.fapi_cert = f.read()
+                    self.fapi_cert = x509.load_pem_x509_certificate(self.fapi_cert)
+
         self.vault = Vault(vault_key, DIR__vault)
         self.jaaql_lookup_connection = None
         self.email_manager = EmailManager(self.is_container)
@@ -260,8 +283,15 @@ class BaseJAAQLModel:
                 install_key_file.write(self.install_key)
             print("INSTALL KEY: " + self.install_key, file=sys.stderr)  # Print to stderr as unbuffered
 
+        self.idp_session = requests.Session()
+
     def get_db_crypt_key(self):
         return self.vault.get_obj(VAULT_KEY__db_crypt_key).encode(crypt_utils.ENCODING__ascii)
+
+    def reload_fapi_cert(self):
+        with open(f"/etc/letsencrypt/live/{self.application_url}/fullchain.pem", "rb") as f:
+            self.fapi_cert = f.read()
+            self.fapi_cert = x509.load_pem_x509_certificate(self.fapi_cert)
 
     def get_vault_repeatable_salt(self):
         return self.vault.get_obj(VAULT_KEY__db_repeatable_salt)
