@@ -572,6 +572,20 @@ WHERE
 
         kwargs = {}
         if self.use_fapi_advanced:
+            token_request_payload = {
+                **token_request_payload,
+                "iss": database_user_registry[KG__database_user_registry__client_id],
+                "aud": discovery.get("pushed_authorization_request_endpoint"),
+                "jti": str(uuid.uuid4()),
+                "iat": int(time.time()),
+                "exp": int(time.time()) + 300  # Token valid for 5 minutes
+            }
+            token_request_payload = {
+                "client_id": database_user_registry[KG__database_user_registry__client_id],
+                "request": jwt.encode(token_request_payload, self.fapi_pem, algorithm="PS256", headers={
+                    "kid": self.jwks["keys"][0]["kid"]
+                })
+            }
             kwargs["verify"] = True
             kwargs["cert"] = (f"/etc/letsencrypt/live/{self.application_url}/fullchain.pem", f"/etc/letsencrypt/live/{self.application_url}/privkey.pem")
         else:
@@ -791,7 +805,7 @@ WHERE
         par_endpoint = par_endpoint.replace("localhost", "host.docker.internal")
 
         par_payload = {
-            "client_id": client_id,
+            "client_id": database_user_registry[KG__database_user_registry__client_id],
             "response_type": "code",
             "code_challenge_method": "S256",
             "scope": " ".join(["openid"]),  # should later be default scopes, may cause issues now
@@ -803,8 +817,22 @@ WHERE
 
         kwargs = {}
         if self.use_fapi_advanced:
+            payload = {
+                **par_payload,
+                "iss": database_user_registry[KG__database_user_registry__client_id],
+                "aud": discovery.get("pushed_authorization_request_endpoint"),
+                "jti": str(uuid.uuid4()),
+                "iat": int(time.time()),
+                "exp": int(time.time()) + 300  # Token valid for 5 minutes
+            }
+            par_payload = {
+                "client_id": database_user_registry[KG__database_user_registry__client_id],
+                "request": jwt.encode(payload, self.fapi_pem, algorithm="PS256", headers={
+                    "kid": self.jwks["keys"][0]["kid"]
+                })
+            }
             kwargs["verify"] = True
-            kwargs["cert"] = ("/tmp/client_cert.pem", "/tmp/client_key.pem")
+            kwargs["cert"] = (f"/etc/letsencrypt/live/{self.application_url}/fullchain.pem", f"/etc/letsencrypt/live/{self.application_url}/privkey.pem")
         else:
             payload = {
                 "iss": database_user_registry[KG__database_user_registry__client_id],
