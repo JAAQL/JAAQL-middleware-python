@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives import hashes
 import re
 
 import jwt
+from jwcrypto import jwe
 
 from jwt import PyJWKClient
 
@@ -547,17 +548,22 @@ WHERE
             raise Exception(f"No allowed algs for {provider}, {tenant}")
 
         jarms_response = inputs["response"]
+        if self.use_fapi_advanced:
+            jwe_token = jwe.JWE()
+            jwe_token.deserialize(jarms_response)
+            jwe_token.decrypt(self.fapi_enc_key)
+            jarms_response = jwe_token.payload
+        else:
+            jarms_response = jarms_response.encode('utf-8')
+
         signing_key = jwk_client.get_signing_key_from_jwt(jarms_response)
-        try:
-            jarms_payload = jwt.decode(
-                jarms_response,
-                signing_key.key,
-                algorithms=allowed_algs,
-                audience=database_user_registry[KG__database_user_registry__client_id],
-                issuer=expected_issuer
-            )
-        except:
-            raise UserUnauthorized()
+        jarms_payload = jwt.decode(
+            jarms_response,
+            signing_key.key,
+            algorithms=allowed_algs,
+            audience=database_user_registry[KG__database_user_registry__client_id],
+            issuer=expected_issuer
+        )
 
         if jarms_payload[KEY__state] != oidc_state.get('state'):
             raise UserUnauthorized()
@@ -572,20 +578,6 @@ WHERE
 
         kwargs = {}
         if self.use_fapi_advanced:
-            token_request_payload = {
-                **token_request_payload,
-                "iss": database_user_registry[KG__database_user_registry__client_id],
-                "aud": discovery.get("pushed_authorization_request_endpoint"),
-                "jti": str(uuid.uuid4()),
-                "iat": int(time.time()),
-                "exp": int(time.time()) + 300  # Token valid for 5 minutes
-            }
-            token_request_payload = {
-                "client_id": database_user_registry[KG__database_user_registry__client_id],
-                "request": jwt.encode(token_request_payload, self.fapi_pem, algorithm="PS256", headers={
-                    "kid": self.jwks["keys"][0]["kid"]
-                })
-            }
             kwargs["verify"] = True
             kwargs["cert"] = (f"/etc/letsencrypt/live/{self.application_url}/fullchain.pem", f"/etc/letsencrypt/live/{self.application_url}/privkey.pem")
         else:
@@ -613,40 +605,38 @@ WHERE
         access_token = token_data.get('access_token')
 
         signing_key = jwk_client.get_signing_key_from_jwt(id_token)
-        try:
-            id_payload = jwt.decode(
-                id_token,
-                signing_key.key,
-                algorithms=allowed_algs,
-                audience=database_user_registry[KG__database_user_registry__client_id],
-                issuer=expected_issuer
-            )
-        except:
-            raise UserUnauthorized()
+        id_payload = jwt.decode(
+            id_token,
+            signing_key.key,
+            algorithms=allowed_algs,
+            audience=database_user_registry[KG__database_user_registry__client_id],
+            issuer=expected_issuer
+        )
 
         if id_payload.get("nonce") != oidc_state["nonce"]:
+            print("Nonce mismatch")
+            print(id_payload.get("nonce"))
+            print(oidc_state["nonce"])
             raise UserUnauthorized()
 
         if self.use_fapi_advanced:
             access_signing_key = jwk_client.get_signing_key_from_jwt(access_token)
-            try:
-                access_payload = jwt.decode(
-                    access_token,
-                    access_signing_key.key,
-                    algorithms=allowed_algs,
-                    audience=database_user_registry[KG__database_user_registry__client_id],
-                    issuer=expected_issuer
-                )
-            except:
-                raise UserUnauthorized()
+            access_payload = jwt.decode(
+                access_token,
+                access_signing_key.key,
+                algorithms=allowed_algs,
+                issuer=expected_issuer
+            )
 
             # 2. Extract and check the cnf claim.
             cnf_claim = access_payload.get("cnf")
             if not cnf_claim:
+                print("No cnf claim!")
                 raise UserUnauthorized()  # Access token is missing the 'cnf' claim.
 
             expected_thumbprint = cnf_claim.get("x5t#S256")
             if not expected_thumbprint:
+                print("No thumbprint!")
                 raise UserUnauthorized()  # The 'cnf' claim does not contain the 'x5t#S256' field.
 
             # 3. Compute the thumbprint of the certificate used for mTLS.
@@ -657,6 +647,9 @@ WHERE
                 self.reload_fapi_cert()
                 client_cert_thumbprint = self.get_cert_thumbprint()
                 if client_cert_thumbprint != expected_thumbprint:
+                    print("Thumbprint mismatch")
+                    print(client_cert_thumbprint)
+                    print(expected_thumbprint)
                     raise UserUnauthorized()  # Access token 'cnf' claim does not match the client's certificate thumbprint.
 
         sub = id_payload.get("sub")
@@ -817,18 +810,22 @@ WHERE
 
         kwargs = {}
         if self.use_fapi_advanced:
+            current_time = int(time.time())
             payload = {
                 **par_payload,
+                "response_mode": "jwt",
                 "iss": database_user_registry[KG__database_user_registry__client_id],
-                "aud": discovery.get("pushed_authorization_request_endpoint"),
+                "aud": discovery.get("issuer"),
                 "jti": str(uuid.uuid4()),
-                "iat": int(time.time()),
-                "exp": int(time.time()) + 300  # Token valid for 5 minutes
+                "iat": current_time,
+                "nbf": current_time - 1,
+                "exp": current_time + 300  # Token valid for 5 minutes
             }
             par_payload = {
                 "client_id": database_user_registry[KG__database_user_registry__client_id],
                 "request": jwt.encode(payload, self.fapi_pem, algorithm="PS256", headers={
-                    "kid": self.jwks["keys"][0]["kid"]
+                    "kid": self.jwks["keys"][0]["kid"],
+                    "typ": "oauth-authz-req+jwt"
                 })
             }
             kwargs["verify"] = True
@@ -863,8 +860,8 @@ WHERE
         if not request_uri:
             raise Exception("No request_uri returned from the PAR endpoint.")
 
-        redirect_url = auth_endpoint + "?request_uri=" + urllib.parse.quote(request_uri) + "&response_mode=query.jwt&client_id=" + client_id
-        print(request_uri)
+        redirect_url = auth_endpoint + "?request_uri=" + urllib.parse.quote(request_uri) + f"{"" if self.use_fapi_advanced else "&response_mode=query.jwt"
+            }&client_id=" + client_id
 
         response.response_code = HTTPStatus.FOUND
         response.raw_headers["Location"] = redirect_url

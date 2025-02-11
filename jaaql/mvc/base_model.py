@@ -3,6 +3,7 @@ import sys
 import json
 import requests
 
+from jwcrypto import jwk
 from cryptography import x509
 from jaaql.utilities.vault import Vault, DIR__vault
 from jaaql.db.db_interface import DBInterface
@@ -216,9 +217,16 @@ class BaseJAAQLModel:
 
         self.fapi_pem = None
         self.fapi_cert = None
+        self.fapi_enc = None
+        self.fapi_enc_key = None
         if self.is_container:
             with open('/tmp/client_key.pem', "rb") as f:
                 self.fapi_pem = f.read()
+
+            with open('/tmp/client_encryption_key.pem', "rb") as f:
+                self.fapi_enc = f.read()
+
+            self.fapi_enc_key = jwk.JWK.from_pem(self.fapi_enc)
 
             if self.use_fapi_advanced:
                 with open(f"/etc/letsencrypt/live/{self.application_url}/fullchain.pem", "rb") as f:

@@ -460,6 +460,12 @@ DOCUMENTATION__jwks = SwaggerDocumentation(
                         description="The algorithm",
                         arg_type=str,
                         example=["RS256"]
+                    ),
+                    SwaggerArgumentResponse(
+                        name="use",
+                        description="The use",
+                        arg_type=str,
+                        example=["SIG"]
                     )
                 )
             )
