@@ -132,6 +132,9 @@ RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini && \
     mv $INSTALL_PATH/docker/jaaql.sql /docker-entrypoint-initdb.d/01-jaaql.sql && \
     mv $INSTALL_PATH/docker/entrypoint.sh entrypoint.sh && \
     dos2unix entrypoint.sh && \
+    mv $INSTALL_PATH/docker/reboot.sh reboot.sh && \
+    dos2unix reboot.sh && \
+    chmod +x reboot.sh && \
     mv $INSTALL_PATH/docker/recover.sh recover.sh && \
     dos2unix recover.sh && \
     mv $INSTALL_PATH/docker/pg_reboot.sh pg_reboot.sh && \

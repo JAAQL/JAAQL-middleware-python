@@ -1098,7 +1098,8 @@ WHERE
         if datetime.fromisoformat(decoded[KEY__created]) + timedelta(milliseconds=self.refresh_expiry_ms) < datetime.now():
             raise UserUnauthorized()
 
-        return self.get_auth_token(decoded[KEY__username], ip_address, cookie=cookie, remember_me=remember_me, response=response, is_refresh=True)
+        return self.get_auth_token(decoded[KEY__username], ip_address, cookie=cookie, remember_me=remember_me, response=response, is_refresh=True, account_id=
+                                   decoded[KEY__account_id])
 
     def get_bypass_user(self, username: str, ip_address: str, provider: str = None, tenant: str = None):
         account = fetch_account_from_username(self.jaaql_lookup_connection, username, singleton_code=HTTPStatus.UNAUTHORIZED)
@@ -1119,17 +1120,23 @@ WHERE
         self,
         username: str, ip_address: str, password: str = None,
         response: JAAQLResponse = None, remember_me: bool = False, cookie: bool = False,
-        is_refresh=False,
+        is_refresh=False, account_id: str = None
     ):
         incorrect_credentials = False
         account = None
         encrypted_salted_ip_address = None
 
         try:
-            account = fetch_account_from_username(
-                self.jaaql_lookup_connection,
-                username,
-                singleton_code=HTTPStatus.UNAUTHORIZED)
+            if account_id is None:
+                account = fetch_account_from_username(
+                    self.jaaql_lookup_connection,
+                    username,
+                    singleton_code=HTTPStatus.UNAUTHORIZED)
+            else:
+                account = fetch_account_from_id(
+                    self.jaaql_lookup_connection,
+                    account_id,
+                    singleton_code=HTTPStatus.UNAUTHORIZED)
         except HttpStatusException as exc:
             if exc.response_code == HTTPStatus.UNAUTHORIZED:
                 incorrect_credentials = True
