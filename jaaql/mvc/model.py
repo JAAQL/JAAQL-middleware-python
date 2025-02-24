@@ -674,7 +674,7 @@ WHERE
             print("new federated user with account id " + account_id)
             account = account__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), account_id)
             db_params = {"tenant": tenant, "application": application, "account_id": account_id, "provider": provider,
-                         "email": email}
+                         "email": email, "sub": sub}
             parameters = fetch_parameters_for_federation_procedure(self.jaaql_lookup_connection,
                                                                    database_user_registry[KG__database_user_registry__federation_procedure])
             for claim in parameters:
