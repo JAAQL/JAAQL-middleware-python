@@ -311,10 +311,20 @@ if [ "$IS_HTTPS" = "TRUE" ] && [ ! -d "$CERT_DIR" ] ; then
   service nginx restart || { echo "Failed to restart nginx. Reason: $(nginx -t 2>&1)"; exit 1; }
 elif [ "$IS_HTTPS" = "TRUE" ] && [ -d "$CERT_DIR" ] ; then
   echo "Found existing certificates. Installing"
-  if [ "$HTTPS_WWW" = "TRUE" ] ; then
-    printf "1,2\n1\n" | $CERTBOT_PATH --nginx
+  if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
+    sed -i '/^[ \t]*# listen 443 ssl http2;/c\
+    listen 443 ssl http2;\
+    listen [::]:443 ssl http2;\
+    ssl_certificate /etc/letsencrypt/live/'"$SERVER_ADDRESS"'/fullchain.pem;\
+    ssl_certificate_key /etc/letsencrypt/live/'"$SERVER_ADDRESS"'/privkey.pem;\
+    include /etc/letsencrypt/options-ssl-nginx.conf;\
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;' /etc/nginx/sites-available/jaaql
   else
-    printf "1\n1\n" | $CERTBOT_PATH --nginx
+    if [ "$HTTPS_WWW" = "TRUE" ] ; then
+      printf "1,2\n1\n" | $CERTBOT_PATH --nginx
+    else
+      printf "1\n1\n" | $CERTBOT_PATH --nginx
+    fi
   fi
   service nginx restart || { echo "Failed to restart nginx. Reason: $(nginx -t 2>&1)"; exit 1; }
 fi
