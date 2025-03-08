@@ -112,7 +112,7 @@ SITE_FILE=/etc/nginx/sites-available/jaaql
 
 if [ -f "$SITE_FILE" ] ; then
   WAS_HTTPS=FALSE
-  if grep -lq "listen 443 ssl;" "$SITE_FILE"; then
+  if grep -lq "listen 443 ssl" "$SITE_FILE"; then
     WAS_HTTPS=TRUE
   fi
   if [ "$WAS_HTTPS" = "$IS_HTTPS" ] ; then
@@ -134,27 +134,45 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
       echo "server {" >> /etc/nginx/sites-available/jaaql
       echo "    listen 80;" >> /etc/nginx/sites-available/jaaql
       echo "    listen [::]:80;" >> /etc/nginx/sites-available/jaaql
-      echo "    server_name $SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
-      echo "    return 301 http://www.$SERVER_ADDRESS\$request_uri;" >> /etc/nginx/sites-available/jaaql
+      if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
+        echo "    server_name $SERVER_ADDRESS *.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+      else
+        echo "    server_name $SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+      fi
+      echo "    return 301 http://www.\$host\$request_uri;" >> /etc/nginx/sites-available/jaaql
       echo "}" >> /etc/nginx/sites-available/jaaql
       echo "" >> /etc/nginx/sites-available/jaaql
     else
       echo "server {" >> /etc/nginx/sites-available/jaaql
       echo "    listen 80;" >> /etc/nginx/sites-available/jaaql
       echo "    listen [::]:80;" >> /etc/nginx/sites-available/jaaql
-      echo "    server_name www.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
-      echo "    return 301 http://$SERVER_ADDRESS\$request_uri;" >> /etc/nginx/sites-available/jaaql
+      if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
+        echo "    server_name www.$SERVER_ADDRESS www.*.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+      else
+        echo "    server_name www.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+      fi
+      echo "    return 301 http://\$host\$request_uri;" >> /etc/nginx/sites-available/jaaql
       echo "}" >> /etc/nginx/sites-available/jaaql
       echo "" >> /etc/nginx/sites-available/jaaql
     fi
   fi
   echo "server {" >> /etc/nginx/sites-available/jaaql
-  echo "    listen 80;" >> /etc/nginx/sites-available/jaaql
-  echo "    listen [::]:80;" >> /etc/nginx/sites-available/jaaql
+  if [ "$IS_HTTPS_WILDCARD" != "TRUE" ]; then
+    echo "    listen 80;" >> /etc/nginx/sites-available/jaaql
+    echo "    listen [::]:80;" >> /etc/nginx/sites-available/jaaql
+  fi
   if [ "$IS_HTTPS" = "TRUE" ] && [ "$HTTPS_WWW" = "TRUE" ] ; then
-    echo "    server_name www.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+    if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
+      echo "    server_name www.$SERVER_ADDRESS www.*.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+    else
+      echo "    server_name www.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+    fi
   else
-    echo "    server_name $SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+    if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
+      echo "    server_name $SERVER_ADDRESS *.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+    else
+      echo "    server_name $SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+    fi
   fi
   echo "$SECURITY_HEADERS$HSTS_HEADER" >> /etc/nginx/sites-available/jaaql
   echo "    root $INSTALL_PATH/www;" >> /etc/nginx/sites-available/jaaql
@@ -184,6 +202,9 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
     echo "        return 503;"
   fi
   echo "    }" >> /etc/nginx/sites-available/jaaql
+  if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
+    echo "    # listen 443 ssl http2;" >> /etc/nginx/sites-available/jaaql
+  fi
   echo "}" >> /etc/nginx/sites-available/jaaql
   echo "" >> /etc/nginx/sites-available/jaaql
   # The following is needed to allow https-less access via 127.0.0.1 address
@@ -200,6 +221,15 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   echo "    location / {" >> /etc/nginx/sites-available/jaaql
   echo "    }" >> /etc/nginx/sites-available/jaaql
   echo "}" >> /etc/nginx/sites-available/jaaql
+
+  if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
+    echo "server {" >> /etc/nginx/sites-available/jaaql
+    echo "    listen 80;" >> /etc/nginx/sites-available/jaaql
+    echo "    listen [::]:80;" >> /etc/nginx/sites-available/jaaql
+    echo "    server_name $SERVER_ADDRESS *.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+    echo "    return 301 https://\$host\$request_uri;" >> /etc/nginx/sites-available/jaaql
+    echo "}" >> /etc/nginx/sites-available/jaaql
+  fi
 fi
 
 rm -rf /etc/nginx/sites-enabled/jaaql  # Not strictly necessary but helps stuck containers
@@ -257,10 +287,27 @@ CERT_DIR=/etc/letsencrypt/live/$SERVER_ADDRESS
 if [ "$IS_HTTPS" = "TRUE" ] && [ ! -d "$CERT_DIR" ] ; then
   echo "Initialising certbot"
   APPLY_URL="-d $SERVER_ADDRESS"
+  if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
+    APPLY_URL="$APPLY_URL -d *.$SERVER_ADDRESS"
+  fi
   if [ "$HTTPS_WWW" = "TRUE" ] ; then
     APPLY_URL="$APPLY_URL -d www.$SERVER_ADDRESS"
+    if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
+      APPLY_URL="$APPLY_URL -d www.*.$SERVER_ADDRESS"
+    fi
   fi
-  $CERTBOT_PATH --nginx $APPLY_URL --redirect --noninteractive --no-eff-email --email $HTTPS_EMAIL --agree-tos -w $INSTALL_PATH/www
+  if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
+    $CERTBOT_PATH certonly --manual --manual-auth-hook /certbot-dns-auth-hook.sh --manual-cleanup-hook /certbot-dns-cleanup-hook.sh --preferred-challenges dns $APPLY_URL --noninteractive --no-eff-email --email $HTTPS_EMAIL --agree-tos
+    sed -i '/^[ \t]*# listen 443 ssl http2;/c\
+    listen 443 ssl http2;\
+    listen [::]:443 ssl http2;\
+    ssl_certificate /etc/letsencrypt/live/'"$SERVER_ADDRESS"'/fullchain.pem;\
+    ssl_certificate_key /etc/letsencrypt/live/'"$SERVER_ADDRESS"'/privkey.pem;\
+    include /etc/letsencrypt/options-ssl-nginx.conf;\
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;' /etc/nginx/sites-available/jaaql
+  else
+    $CERTBOT_PATH --nginx $APPLY_URL --redirect --noninteractive --no-eff-email --email $HTTPS_EMAIL --agree-tos -w $INSTALL_PATH/www
+  fi
   service nginx restart || { echo "Failed to restart nginx. Reason: $(nginx -t 2>&1)"; exit 1; }
 elif [ "$IS_HTTPS" = "TRUE" ] && [ -d "$CERT_DIR" ] ; then
   echo "Found existing certificates. Installing"

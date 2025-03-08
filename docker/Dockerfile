@@ -131,6 +131,10 @@ RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini && \
     chown -R "$USER":www-data $INSTALL_PATH/www && \
     mv $INSTALL_PATH/docker/jaaql.sql /docker-entrypoint-initdb.d/01-jaaql.sql && \
     mv $INSTALL_PATH/docker/entrypoint.sh entrypoint.sh && \
+    mv $INSTALL_PATH/docker/certbot-dns-cleanup-hook.sh certbot-dns-cleanup-hook.sh && \
+    chmod +x certbot-dns-cleanup-hook.sh && \
+    mv $INSTALL_PATH/docker/certbot-dns-auth-hook.sh certbot-dns-auth-hook.sh && \
+    chmod +x certbot-dns-auth-hook.sh && \
     dos2unix entrypoint.sh && \
     mv $INSTALL_PATH/docker/reboot.sh reboot.sh && \
     dos2unix reboot.sh && \

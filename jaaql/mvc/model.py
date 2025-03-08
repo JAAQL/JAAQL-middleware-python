@@ -887,6 +887,7 @@ WHERE
 
             new_data = open(config_path, "r").read()
             new_data = new_data.replace("{{JAAQL_INSTALL_LOCATION}}", os.environ.get("INSTALL_PATH"))
+            new_data = new_data.replace("listen 443 ssl;", "listen 443 ssl http2; listen [::]:443 ssl http2;")  # Support for http2, can't be enabled by nginx
 
             # Read the file content
             with open(file_path, 'r') as file:
@@ -900,12 +901,12 @@ WHERE
                 if line.strip().startswith('charset'):
                     in_section = True
                     continue  # Skip to the next iteration
-                elif (line.startswith('}') or line.strip().startswith("listen 443 ssl")) and in_section:
+                elif (line.startswith('}') or line.strip().startswith("listen 443 ssl") or line.strip().startswith("# listen 443 ssl")) and in_section:
                     # Append new data before the end marker when in a section
                     updated_lines.append(new_data + "\n")
                     in_section = False
 
-                if not in_section or line.startswith('}') or line.strip().startswith("listen 443 ssl"):
+                if not in_section or line.startswith('}') or line.strip().startswith("listen 443 ssl") or line.strip().startswith("# listen 443 ssl"):
                     updated_lines.append(line)
 
             second_iteration_updated_lines = []
