@@ -1861,6 +1861,9 @@ WHERE
         os.kill(int(open("app.pid", "r").read()), signal.SIGUSR1)
 
     def execute(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
+        if self.query_caches is None:
+            self.reload_cache()
+
         if self.db_cache == 1:
             schemas = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_application_schemas, {
                 KG__application_schema__application: self.query_caches["application"]
