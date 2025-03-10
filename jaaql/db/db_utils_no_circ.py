@@ -1,5 +1,3 @@
-import os
-
 from jaaql.mvc.exception_queries import QUERY__fetch_application_schemas, KG__application_schema__application, KG__application__is_live, \
     KG__application_schema__name, KEY__is_default
 from queue import Queue
@@ -17,22 +15,24 @@ def get_jaaql_connection_to_db(vault, config, database: str, jaaql_connection: D
     return create_interface_for_db(vault, config, jaaql_connection.role, database)
 
 
-def get_required_db(vault, config, jaaql_connection: DBInterface, inputs: dict, account_id: str, conn=None, interface: DBInterface = None):
+def get_required_db(vault, config, jaaql_connection: DBInterface, inputs: dict, account_id: str, conn=None, interface: DBInterface = None, db_cache=None):
     if not isinstance(inputs, dict):
         raise HttpStatusException("Expected object or string input")
 
     if conn is None:
         if KEY__application in inputs:
-            schemas = execute_supplied_statement(jaaql_connection, QUERY__fetch_application_schemas, {
-                KG__application_schema__application: inputs[KEY__application]
-            }, as_objects=True)
-            if len(schemas) == 0:
-                application__select(jaaql_connection, inputs[KEY__application],
-                                    singleton_message=f"Application '{inputs[KEY__application]}' does not exist. Are you sure you have installed it?")
-                raise HttpStatusException("Application has no schemas!")
-            if not schemas[0][KG__application__is_live]:
-                raise HttpStatusException("Application is currently being deployed. Please wait a few minutes until deployment is complete")
-            schemas = {itm[KG__application_schema__name]: itm for itm in schemas}
+            schemas = db_cache
+            if schemas is None:
+                schemas = execute_supplied_statement(jaaql_connection, QUERY__fetch_application_schemas, {
+                    KG__application_schema__application: inputs[KEY__application]
+                }, as_objects=True)
+                if len(schemas) == 0:
+                    application__select(jaaql_connection, inputs[KEY__application],
+                                        singleton_message=f"Application '{inputs[KEY__application]}' does not exist. Are you sure you have installed it?")
+                    raise HttpStatusException("Application has no schemas!")
+                if not schemas[0][KG__application__is_live]:
+                    raise HttpStatusException("Application is currently being deployed. Please wait a few minutes until deployment is complete")
+                schemas = {itm[KG__application_schema__name]: itm for itm in schemas}
 
             found_db = None
             if KEY__schema in inputs and inputs[KEY__schema] is not None:
@@ -68,11 +68,11 @@ def get_required_db(vault, config, jaaql_connection: DBInterface, inputs: dict, 
 
 def submit(vault, config, db_crypt_key, jaaql_connection: DBInterface, inputs: dict, account_id: str, verification_hook: Queue = None,
            cached_canned_query_service=None, as_objects: bool = False, singleton: bool = False, keep_alive_conn: bool = False,
-           conn=None, interface: DBInterface = None):
+           conn=None, interface: DBInterface = None, db_cache=None):
     if not isinstance(inputs, dict):
         raise HttpStatusException("Expected object or string input")
 
-    required_db = get_required_db(vault, config, jaaql_connection, inputs, account_id, conn, interface)
+    required_db = get_required_db(vault, config, jaaql_connection, inputs, account_id, conn, interface, db_cache=db_cache)
 
     prevent_unused = inputs.pop(KEY__prevent_unused_parameters) if KEY__prevent_unused_parameters in inputs else True
 

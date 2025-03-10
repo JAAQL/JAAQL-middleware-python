@@ -11,7 +11,14 @@ has_checked_for_install = False
 
 
 def post_worker_init(worker):
+    import signal
+
     worker.wsgi.model.set_jaaql_lookup_connection()
+
+    def my_signal_handler(signum, frame):
+        worker.wsgi.model.reload_cache()
+
+    signal.signal(signal.SIGUSR1, my_signal_handler)
 
 
 def child_exit(server, worker):

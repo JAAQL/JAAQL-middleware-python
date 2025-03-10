@@ -1,10 +1,13 @@
 import sys
 
 import json
+import base64
 import requests
+import traceback
 
 from jwcrypto import jwk
 from cryptography import x509
+
 from jaaql.utilities.vault import Vault, DIR__vault
 from jaaql.db.db_interface import DBInterface
 import jaaql.utilities.crypt_utils as crypt_utils
@@ -181,6 +184,21 @@ class BaseJAAQLModel:
 
         return ret
 
+    def reload_cache(self):
+        print("Received cache flush instruction")
+        if os.path.exists("/queries/queries.json"):
+            try:
+                self.query_caches = json.loads(open("/queries/queries.json", "r").read())
+                for key, encoded_list in self.query_caches["queries"].items():
+                    # Replace each encoded string in the list with its decoded version.
+                    self.query_caches["queries"][key] = [
+                        base64.b64decode(encoded).decode('utf-8') for encoded in encoded_list
+                    ]
+                self.db_cache = 1
+                print("Loaded query cache")
+            except:
+                traceback.print_exc()
+
     def set_jaaql_lookup_connection(self):
         if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):
             jaaql_uri = self.vault.get_obj(VAULT_KEY__jaaql_lookup_connection)
@@ -196,6 +214,10 @@ class BaseJAAQLModel:
         self.migration_folder = migration_folder
         self.is_container = is_container
 
+        self.query_caches = {}
+        self.db_cache = None
+
+        self.prevent_arbitrary_queries = os.environ.get("PREVENT_ARBITRARY_QUERIES", "false") == "true"
         self.is_https = os.environ.get("IS_HTTPS", "false").lower().strip() == "true"
         self.vigilant_sessions = os.environ.get("VIGILANT_SESSIONS", "false").lower().strip() == "true"
 

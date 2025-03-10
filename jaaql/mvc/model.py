@@ -5,6 +5,7 @@ import tempfile
 import traceback
 import urllib.parse
 import uuid
+import signal
 import secrets
 from cryptography.hazmat.primitives import hashes
 
@@ -1846,10 +1847,79 @@ WHERE
         else:
             return 0
 
-    def set_last_successful_build_time(self, http_inputs: dict):
+    def set_last_successful_build_time(self, http_inputs: dict, ip_address: str):
+        if ip_address not in IPS__local:
+            raise UserUnauthorized()
+
         if os.environ.get("JAAQL_DEBUGGING") == "TRUE":
             jaaql__update(self.jaaql_lookup_connection, last_successful_build_time=http_inputs[KG__jaaql__last_successful_build_time])
 
-    def submit(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
+    def flush_cache(self, ip_address: str):
+        if ip_address not in IPS__local:
+            raise UserUnauthorized()
+
+        os.kill(int(open("app.pid", "r").read()), signal.SIGUSR1)
+
+    def execute(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
+        if self.db_cache == 1:
+            schemas = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_application_schemas, {
+                KG__application_schema__application: self.query_caches["application"]
+            }, as_objects=True)
+            if len(schemas) == 0:
+                print("Couldn't find application " + self.query_caches["application"])
+                raise Exception()
+            self.db_cache = {itm[KG__application_schema__name]: itm for itm in schemas}
+            print("Loaded DB Cache")
+
+        for key, val in inputs["query"].items():
+            if isinstance(val, dict):
+                trimmed = val["query"].strip()
+                val["query"] = self.query_caches["queries"][trimmed.split(":")[0]][int(trimmed.split(":")[1])]
+            else:
+                trimmed = val.strip()
+                inputs["query"][key] = self.query_caches["queries"][trimmed.split(":")[0]][int(trimmed.split(":")[1])]
+
+        return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
+                      self.cached_canned_query_service, as_objects=as_objects, singleton=singleton, db_cache=self.db_cache)
+
+    def call_proc(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
+        parameters = inputs["parameters"]
+        query = "SELECT * FROM \"" + inputs["query"] + "\"("
+
+        parameter_keys = list(parameters.keys())
+        introduced = False
+        explicit_types = inputs.get("explicit_types", {})
+
+        absent = ""
+
+        for parameter_key in parameter_keys:
+            if re.match(REGEX__dmbs_object_name, parameter_key) is None:
+                raise HttpStatusException("Unsafe parameter key " + parameter_key)
+            explicit_type = explicit_types.get(parameter_key)
+            parameter_value = parameters[parameter_key]
+
+            if introduced:
+                query += ","
+
+            if explicit_type and parameter_value is not None and explicit_type[0] != "_":
+                query += f"\n\t{parameter_key} => :{parameter_key}::{explicit_type}"
+            else:
+                query += f"\n\t{parameter_key} => :{parameter_key}{absent}"
+
+            introduced = True
+
+        query += " )"
+
+        inputs["query"] = {
+            "_jaaql_procedure": query
+        }
+
+        return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
+                      self.cached_canned_query_service, as_objects=as_objects, singleton=singleton, db_cache=self.db_cache)
+
+    def submit(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False, ip_address: str = None):
+        if ip_address not in IPS__local and self.prevent_arbitrary_queries:
+            raise UnhandledJaaqlServerError("Not allowed to send queries to server!")
+
         return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
                       self.cached_canned_query_service, as_objects=as_objects, singleton=singleton)

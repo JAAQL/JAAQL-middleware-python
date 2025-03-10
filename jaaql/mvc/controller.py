@@ -94,8 +94,16 @@ class JAAQLController(BaseJAAQLController):
             return self.model.add_my_account_password(account_id, username, ip_address, is_the_anonymous_user, **http_inputs)
 
         @self.publish_route('/submit', DOCUMENTATION__submit)
-        def submit(http_inputs: dict, account_id: str, verification_hook: queue.Queue):
-            return self.model.submit(http_inputs, account_id, verification_hook=verification_hook)
+        def submit(http_inputs: dict, account_id: str, verification_hook: queue.Queue, ip_address: str):
+            return self.model.submit(http_inputs, account_id, verification_hook=verification_hook, ip_address=ip_address)
+
+        @self.publish_route('/execute', DOCUMENTATION__execute)
+        def execute(http_inputs: dict, account_id: str, verification_hook: queue.Queue):
+            return self.model.execute(http_inputs, account_id, verification_hook=verification_hook)
+
+        @self.publish_route('/call-proc', DOCUMENTATION__execute)
+        def call_proc(http_inputs: dict, account_id: str, verification_hook: queue.Queue):
+            return self.model.call_proc(http_inputs, account_id, verification_hook=verification_hook)
 
         @self.publish_route('/internal/clean', DOCUMENTATION__clean)
         def clean(connection: DBInterface):
@@ -137,11 +145,15 @@ class JAAQLController(BaseJAAQLController):
             self.model.add_cron_job_to_application(connection, http_inputs)
 
         @self.publish_route('/build-time', DOCUMENTATION__last_successful_build_timestamp)
-        def cron(http_inputs: dict):
+        def build_time(http_inputs: dict, ip_address: str):
             if self.is_post():
-                self.model.set_last_successful_build_time(http_inputs)
+                self.model.set_last_successful_build_time(http_inputs, ip_address)
             else:
                 return self.model.get_last_successful_build_time()
+
+        @self.publish_route('/flush-cache', DOCUMENTATION__flush_cache)
+        def flush_cache(ip_address: str):
+            self.model.flush_cache(ip_address)
 
         @self.publish_route('/webhook/<application>/<name>', DOCUMENTATION__webhook)
         def handle_webhook(application: str, name: str, body: bytes, headers: dict, args: dict, response: JAAQLResponse):

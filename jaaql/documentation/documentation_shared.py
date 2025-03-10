@@ -169,3 +169,27 @@ DOCUMENTATION__submit = SwaggerDocumentation(
         parallel_verification=True
     )
 )
+
+DOCUMENTATION__execute = SwaggerDocumentation(
+    tags="Queries",
+    methods=SwaggerMethod(
+        name="Execute JAAQL pre-prepared query",
+        description="Executes a query from a list of pre-prepared queries. Returns results",
+        method=REST__POST,
+        arguments=ARG_RESP__allow_all,
+        response=RES__allow_all,
+        parallel_verification=True
+    )
+)
+
+DOCUMENTATION__call_proc = SwaggerDocumentation(
+    tags="Queries",
+    methods=SwaggerMethod(
+        name="Execute JAAQL database procedure",
+        description="Executes a procedure, returns results",
+        method=REST__POST,
+        arguments=ARG_RESP__allow_all,
+        response=RES__allow_all,
+        parallel_verification=True
+    )
+)

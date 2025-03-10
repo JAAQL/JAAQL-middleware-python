@@ -260,6 +260,16 @@ DOCUMENTATION__last_successful_build_timestamp = SwaggerDocumentation(
     ]
 )
 
+DOCUMENTATION__flush_cache = SwaggerDocumentation(
+    tags="Cache",
+    security=False,
+    methods=SwaggerMethod(
+        name="Flush JAAQL Cache",
+        description="Triggers a cache flush",
+        method=REST__GET,
+    )
+)
+
 DOCUMENTATION__cron = SwaggerDocumentation(
     tags="Cron",
     methods=SwaggerMethod(
