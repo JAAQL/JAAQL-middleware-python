@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css"
+          integrity="sha256-wLz3iY/cO4e6vKZ4zRmo4+9XDpMcgKOvv/zEU3OMlRo=" crossorigin="anonymous">
+    <title>Safety Check Report</title>
+</head>
+<body>
+<div class="container">
+
+
+
+    <h1 class="text-center mb-3 mt-5">Safety Scan Report</h1>
+    <h2 class="text-center mb-3 mt-5">JAAQL-middleware-python, Version: 4.30.4</h2>
+
+    <div class="row justify-content-center">
+        <div class="col-12">
+            <div class="card my-2">
+                <div class="card-body">
+                    <h4 class="card-title mb-3">Scan Summary</h4>
+                    <div class="row text-center">
+                        <div class="col-md-4">
+                            <div class="card bg-secondary bg-opacity-25 text-black">
+                                <div class="card-body">
+                                    <p class="card-text">Packages Found (<a href="#scanned-packages">details &#8595;</a>)</p>
+                                    <h5 class="card-title fs-3">25</h5>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-success  bg-opacity-25 text-black">
+                                <div class="card-body">
+                                    <p class="card-text">Vulnerabilities Reported (<a href="#vulnerabilities-found">details &#8595;</a>)</p>
+                                    <h5 class="card-title fs-3">0</h5>
+
+                                        <p>Found vulnerabilities that were ignored: 0</p>
+
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div class="mt-3 card bg-secondary bg-opacity-10">
+                        <div class="card-body fs-sm">
+                            <h5 class="mb-2">Meta-data</h5>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p class="my-1"><span class="fw-bold">Time</span>: 2025-03-10 23:13:05.174042</p>
+                                    <p class="my-1"><span class="fw-bold">Safety version</span>: 3.3.1</p>
+                                    <p class="my-1">
+
+                                            <span class="fw-bold">Token authentication using the Safety's proprietary vulnerability database</span>
+
+                                    </p>
+                                    <p class="my-1">
+                                        <span class="fw-bold">Configuration file: </span>
+
+                                            4e75c1b2-f43b-4279-b60b-1e875bb27cdd (source: Cloud)
+
+                                    </p>
+
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="my-1"><span class="fw-bold">Scan ecosystems</span>:</p>
+                                        <ul>
+
+                                            <li><span class="fw-bold">Python</span>: Python requirements files, Python poetry lock files, Python Pipfile lock files, Python environments, Python pyproject.toml files</li>
+
+                                        </ul>
+                                    <p class="my-1"><span class="fw-bold">Scan paths</span>: <br/></p>
+                                        <ul>
+
+                                            <li>JAAQL-middleware-python</li>
+
+                                        </ul>
+
+                                        <p class="my-1"><span class="fw-bold">Scan git context</span></p>
+                                        <p class="my-1"><span class="fw-bold"> &nbsp; origin: </span> https://github.com/JAAQL/JAAQL-middleware-python.git</p>
+                                        <p class="my-1"><span class="fw-bold"> &nbsp; branch: </span> main</p>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+        <div class="card mt-5">
+            <h2 class="mt-5 mb-3 px-4">Python requirement file: <small class="text-muted">JAAQL-middleware-python\requirements.txt</small></h2>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-12" id="scanned-packages">
+                        <h4 class="mt-2 mb-3 px-2">Scanned Packages [ <a href="#scanned-packages">#</a> ]</h4>
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                <tr>
+                                    <th>Package name</th>
+                                    <th>Found requirements</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+
+                                        <tr>
+                                            <td>jaaql-monitor</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>jaaql-monitor==1.6.3</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>psycopg</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>psycopg==3.1.18</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>pillow</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>Pillow==10.3.0</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>cryptography</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>cryptography==44.0.2</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>flask</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>flask==3.1.0</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>coverage</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>coverage==7.4.3</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>psycopg-pool</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>psycopg-pool==3.2.1</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>pyjwt</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>pyjwt==2.10.1</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>pyyaml</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>pyyaml==6.0.1</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>werkzeug</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>werkzeug==3.1.3</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>argon2-cffi</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>argon2-cffi==23.1.0</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>pyotp</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>pyotp==2.9.0</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>qrcode</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>qrcode==7.4.2</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>gunicorn</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>gunicorn==23.0.0</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>gevent</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>gevent==24.11.1</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>requests</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>requests==2.32.3</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>pyzbar</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>pyzbar==0.1.9</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>parsys-requests-unixsocket</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>parsys-requests-unixsocket==0.3.2</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>selenium</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>selenium==4.29.0</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>twine</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>twine==5.0.0</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>urllib3</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>urllib3==2.3.0</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>jwcrypto</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>jwcrypto==1.5.6</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>jinja2</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>jinja2==3.1.6</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>idna</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>idna==3.10</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <td>certifi</td>
+                                            <td>
+                                                <ul>
+
+                                                    <li>certifi==2025.1.31</li>
+
+                                                </ul>
+                                            </td>
+                                        </tr>
+
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-12" id="vulnerabilities-found">
+                        <h4 class="mt-2 mb-3 px-2">Vulnerabilities Reported [ <a href="#vulnerabilities-found">#</a> ]</h4>
+
+                            <p class="mx-2">
+                                No known security vulnerabilities were found.
+
+                            </p>
+
+                    </div>
+                </div>
+
+
+
+
+
+
+
+            </div>
+        </div>
+
+
+
+
+
+
+    <div class="my-5 text-center text-secondary fst-italic">
+        <p>Safety Scanner and vulnerability data proudly maintained by <a href="https://safetycli.com" target="_blank">Safety Cybersecurity</a></p>
+    </div>
+
+    <div style="height:400px;">
+        &nbsp;
+    </div>
+
+</div>
+</body>
+</html>

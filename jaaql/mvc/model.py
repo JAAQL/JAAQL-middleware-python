@@ -1887,7 +1887,10 @@ WHERE
 
     def call_proc(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
         parameters = inputs["parameters"]
-        query = "SELECT * FROM \"" + inputs["query"] + "\"("
+        query_name = inputs["query"]
+        if re.match(REGEX__dmbs_procedure_name, query_name) is None:
+            raise HttpStatusException("Unsafe procedure name " + query_name)
+        query = "SELECT * FROM \"" + query_name + "\"("
 
         parameter_keys = list(parameters.keys())
         introduced = False
