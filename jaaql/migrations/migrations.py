@@ -56,6 +56,10 @@ def run_migrations(host: str, bypass_super: str, bypass_jaaql: str, db_interface
     migration_folder = join(get_jaaql_root(), PATH_MIGRATIONS, PATH_SCRIPTS)
     print("Launching migration manager on folder: " + migration_folder)
 
+    if not os.path.exists(migration_folder):
+        print("Couldn't find migrations, this may be okay")
+        return
+
     jaaql_singleton = jaaql__select(db_interface)
     migration_from_version = "0.0.0"
     if KG__jaaql__migration_version in jaaql_singleton:
