@@ -128,6 +128,7 @@ create table email_template (
 	permissions_view object_name,
 	data_view object_name,
 	dispatcher_domain_recipient email_account_username,
+	fixed_address character varying(254),
 	requires_confirmation bool,
 	can_be_sent_anonymously bool,
 	primary key (application, name) );
@@ -147,6 +148,9 @@ create table document_request (
 	encrypted_access_token encrypted__access_token not null,
 	encrypted_parameters text,
 	render_timestamp timestamptz,
+	create_file bool not null,
+	file_name file_name,
+	content bytea,
 	primary key (uuid) );
 -- federation_procedure...
 create table federation_procedure (

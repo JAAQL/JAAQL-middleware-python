@@ -1262,6 +1262,9 @@ WHERE
         if is_the_anonymous_user and not fetched_template[KG__email_template__can_be_sent_anonymously]:
             raise HttpStatusException("Cannot send this template anonymously")
 
+        if fetched_template[KG__email_template__fixed_address]:
+            username = fetched_template[KG__email_template__fixed_address]
+
         # [25/10/23] The below code is disabled as send email allows only for sending to the current email
         # Anonymous email templates must be sent to the domain recipient
         # if fetched_template[KG__email_template__can_be_sent_anonymously]:

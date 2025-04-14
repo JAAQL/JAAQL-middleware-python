@@ -24,6 +24,7 @@ CREATE DOMAIN build_time AS bigint;
 CREATE DOMAIN email_template_type AS character varying(1);
 CREATE DOMAIN safe_path AS character varying(255) CHECK (VALUE ~* '^[a-z$0-9_\-\/]+(\.[a-zA-Z0-9_\-]+)?$');
 CREATE DOMAIN email_account_username AS character varying(64) CHECK (VALUE ~* '^[a-zA-Z0-9_\-\.]+$');
+CREATE DOMAIN file_name AS character varying(200);
 CREATE DOMAIN procedure_name AS character varying(127) CHECK (VALUE ~* '^[a-zA-Z_][a-zA-Z_0-9\.\$]*$');
 CREATE DOMAIN scope_name AS character varying(50) CHECK (VALUE ~* '^[A-Za-z0-9_\-.:]+$');
 CREATE DOMAIN provider_name AS character varying(63);

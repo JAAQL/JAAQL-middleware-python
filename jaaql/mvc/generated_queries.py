@@ -1,5 +1,5 @@
 """
-This script was generated from build_and_run.fxls at 2025-02-06, 11:10:33
+This script was generated from build_and_run.fxls at 2025-04-14, 14:08:43
 """
 
 from jaaql.db.db_interface import DBInterface
@@ -462,6 +462,7 @@ KG__email_template__dbms_user_column_name = "dbms_user_column_name"
 KG__email_template__permissions_view = "permissions_view"
 KG__email_template__data_view = "data_view"
 KG__email_template__dispatcher_domain_recipient = "dispatcher_domain_recipient"
+KG__email_template__fixed_address = "fixed_address"
 KG__email_template__requires_confirmation = "requires_confirmation"
 KG__email_template__can_be_sent_anonymously = "can_be_sent_anonymously"
 
@@ -471,13 +472,13 @@ QG__email_template_insert = """
     INSERT INTO email_template (application, dispatcher, name,
         type, content_url, validation_schema,
         base_relation, dbms_user_column_name, permissions_view,
-        data_view, dispatcher_domain_recipient, requires_confirmation,
-        can_be_sent_anonymously)
+        data_view, dispatcher_domain_recipient, fixed_address,
+        requires_confirmation, can_be_sent_anonymously)
     VALUES (:application, :dispatcher, :name,
         :type, :content_url, :validation_schema,
         :base_relation, :dbms_user_column_name, :permissions_view,
-        :data_view, :dispatcher_domain_recipient, :requires_confirmation,
-        :can_be_sent_anonymously)
+        :data_view, :dispatcher_domain_recipient, :fixed_address,
+        :requires_confirmation, :can_be_sent_anonymously)
 """
 QG__email_template_select_all = "SELECT * FROM email_template"
 QG__email_template_select = "SELECT * FROM email_template WHERE application = :application AND name = :name"
@@ -494,6 +495,7 @@ QG__email_template_update = """
         permissions_view = COALESCE(:permissions_view, permissions_view),
         data_view = COALESCE(:data_view, data_view),
         dispatcher_domain_recipient = COALESCE(:dispatcher_domain_recipient, dispatcher_domain_recipient),
+        fixed_address = COALESCE(:fixed_address, fixed_address),
         requires_confirmation = COALESCE(:requires_confirmation, requires_confirmation),
         can_be_sent_anonymously = COALESCE(:can_be_sent_anonymously, can_be_sent_anonymously)
     WHERE
@@ -522,7 +524,7 @@ def email_template__update(
     dispatcher=None, type=None, content_url=None,
     validation_schema=None, base_relation=None, dbms_user_column_name=None,
     permissions_view=None, data_view=None, dispatcher_domain_recipient=None,
-    requires_confirmation=None, can_be_sent_anonymously=None
+    fixed_address=None, requires_confirmation=None, can_be_sent_anonymously=None
 ):
     execute_supplied_statement(
         connection, QG__email_template_update,
@@ -541,6 +543,7 @@ def email_template__update(
             KG__email_template__permissions_view: permissions_view,
             KG__email_template__data_view: data_view,
             KG__email_template__dispatcher_domain_recipient: dispatcher_domain_recipient,
+            KG__email_template__fixed_address: fixed_address,
             KG__email_template__requires_confirmation: requires_confirmation,
             KG__email_template__can_be_sent_anonymously: can_be_sent_anonymously
         }
@@ -578,7 +581,7 @@ def email_template__insert(
     type, content_url,
     validation_schema=None, base_relation=None, dbms_user_column_name=None,
     permissions_view=None, data_view=None, dispatcher_domain_recipient=None,
-    requires_confirmation=None, can_be_sent_anonymously=None
+    fixed_address=None, requires_confirmation=None, can_be_sent_anonymously=None
 ):
     execute_supplied_statement(
         connection, QG__email_template_insert,
@@ -594,6 +597,7 @@ def email_template__insert(
             KG__email_template__permissions_view: permissions_view,
             KG__email_template__data_view: data_view,
             KG__email_template__dispatcher_domain_recipient: dispatcher_domain_recipient,
+            KG__email_template__fixed_address: fixed_address,
             KG__email_template__requires_confirmation: requires_confirmation,
             KG__email_template__can_be_sent_anonymously: can_be_sent_anonymously
         }
@@ -710,14 +714,19 @@ KG__document_request__request_timestamp = "request_timestamp"
 KG__document_request__encrypted_access_token = "encrypted_access_token"
 KG__document_request__encrypted_parameters = "encrypted_parameters"
 KG__document_request__render_timestamp = "render_timestamp"
+KG__document_request__create_file = "create_file"
+KG__document_request__file_name = "file_name"
+KG__document_request__content = "content"
 
 # Generated queries for table 'document_request'
 QG__document_request_delete = "DELETE FROM document_request WHERE uuid = :uuid"
 QG__document_request_insert = """
     INSERT INTO document_request (application, template, uuid,
-        encrypted_access_token, encrypted_parameters, render_timestamp)
+        encrypted_access_token, encrypted_parameters, render_timestamp,
+        create_file, file_name, content)
     VALUES (:application, :template, :uuid,
-        :encrypted_access_token, :encrypted_parameters, :render_timestamp)
+        :encrypted_access_token, :encrypted_parameters, :render_timestamp,
+        :create_file, :file_name, :content)
     RETURNING request_timestamp
 """
 QG__document_request_select_all = "SELECT * FROM document_request"
@@ -731,7 +740,10 @@ QG__document_request_update = """
         request_timestamp = COALESCE(:request_timestamp, request_timestamp),
         encrypted_access_token = COALESCE(:encrypted_access_token, encrypted_access_token),
         encrypted_parameters = COALESCE(:encrypted_parameters, encrypted_parameters),
-        render_timestamp = COALESCE(:render_timestamp, render_timestamp)
+        render_timestamp = COALESCE(:render_timestamp, render_timestamp),
+        create_file = COALESCE(:create_file, create_file),
+        file_name = COALESCE(:file_name, file_name),
+        content = COALESCE(:content, content)
     WHERE
         uuid = :uuid
 """
@@ -756,6 +768,7 @@ def document_request__update(
     uuid,
     application=None, template=None, request_timestamp=None,
     encrypted_access_token=None, encrypted_parameters=None, render_timestamp=None,
+    create_file=None, file_name=None, content=None,
     encryption_salts=None
 ):
     execute_supplied_statement(
@@ -770,7 +783,10 @@ def document_request__update(
             KG__document_request__request_timestamp: request_timestamp,
             KG__document_request__encrypted_access_token: encrypted_access_token,
             KG__document_request__encrypted_parameters: encrypted_parameters,
-            KG__document_request__render_timestamp: render_timestamp
+            KG__document_request__render_timestamp: render_timestamp,
+            KG__document_request__create_file: create_file,
+            KG__document_request__file_name: file_name,
+            KG__document_request__content: content
         }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
             KG__document_request__encrypted_access_token,
             KG__document_request__encrypted_parameters
@@ -811,8 +827,9 @@ def document_request__select_all(
 def document_request__insert(
     connection: DBInterface, encryption_key: bytes,
     application, template, uuid,
-    encrypted_access_token,
-    encrypted_parameters=None, render_timestamp=None,
+    encrypted_access_token, create_file,
+    encrypted_parameters=None, render_timestamp=None, file_name=None,
+    content=None,
     encryption_salts=None
 ):
     return execute_supplied_statement_singleton(
@@ -823,7 +840,10 @@ def document_request__insert(
             KG__document_request__uuid: uuid,
             KG__document_request__encrypted_access_token: encrypted_access_token,
             KG__document_request__encrypted_parameters: encrypted_parameters,
-            KG__document_request__render_timestamp: render_timestamp
+            KG__document_request__render_timestamp: render_timestamp,
+            KG__document_request__create_file: create_file,
+            KG__document_request__file_name: file_name,
+            KG__document_request__content: content
         }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
             KG__document_request__encrypted_access_token,
             KG__document_request__encrypted_parameters
