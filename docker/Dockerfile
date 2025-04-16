@@ -13,8 +13,8 @@ ENV JAAQL_DEPLOYED true
 ENV PIGGYBACK_LETSENCRYPT FALSE
 
 ARG CHROME_VERSION="109.0.5414.74-1"
-ARG PYTHON_MAJOR_VERSION="3.8"
-ARG PYTHON_VERSION="${PYTHON_MAJOR_VERSION}.16"
+ARG PYTHON_MAJOR_VERSION="3.11"
+ARG PYTHON_VERSION="${PYTHON_MAJOR_VERSION}.9"
 
 VOLUME /etc/letsencrypt
 VOLUME $INSTALL_PATH/vault
@@ -60,8 +60,9 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     apt-get install -y xvfb && \
     DEBIAN_FRONTEND=noninteractive apt-get -y install xorg xvfb gtk2-engines-pixbuf && \
     apt-get -y install dbus-x11 xfonts-base xfonts-100dpi xfonts-75dpi xfonts-cyrillic xfonts-scalable && \
-    apt-get -y install imagemagick x11-apps && \
-    $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt && \
+    apt-get -y install imagemagick x11-apps
+
+RUN $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt && \
     rm -rf /usr/local/lib/python${PYTHON_MAJOR_VERSION}/test && \
     rm -rf /Python-${PYTHON_VERSION} && \
     rm -rf /Python-${PYTHON_VERSION}.tar.xz && \
