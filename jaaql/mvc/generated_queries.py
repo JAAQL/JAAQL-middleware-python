@@ -1,5 +1,5 @@
 """
-This script was generated from build_and_run.fxls at 2025-04-04, 18:54:31
+This script was generated from build_and_run.fxls at 2025-05-21, 11:25:44
 """
 
 from jaaql.db.db_interface import DBInterface
@@ -717,17 +717,18 @@ KG__document_request__render_timestamp = "render_timestamp"
 KG__document_request__create_file = "create_file"
 KG__document_request__file_name = "file_name"
 KG__document_request__content = "content"
+KG__document_request__completed = "completed"
 
 # Generated queries for table 'document_request'
 QG__document_request_delete = "DELETE FROM document_request WHERE uuid = :uuid"
 QG__document_request_insert = """
-    INSERT INTO document_request (application, template, uuid,
-        encrypted_access_token, encrypted_parameters, render_timestamp,
-        create_file, file_name, content)
-    VALUES (:application, :template, :uuid,
-        :encrypted_access_token, :encrypted_parameters, :render_timestamp,
-        :create_file, :file_name, :content)
-    RETURNING request_timestamp
+    INSERT INTO document_request (application, template, encrypted_access_token,
+        encrypted_parameters, render_timestamp, create_file,
+        file_name, content, completed)
+    VALUES (:application, :template, :encrypted_access_token,
+        :encrypted_parameters, :render_timestamp, :create_file,
+        :file_name, :content, :completed)
+    RETURNING uuid, request_timestamp
 """
 QG__document_request_select_all = "SELECT * FROM document_request"
 QG__document_request_select = "SELECT * FROM document_request WHERE uuid = :uuid"
@@ -743,7 +744,8 @@ QG__document_request_update = """
         render_timestamp = COALESCE(:render_timestamp, render_timestamp),
         create_file = COALESCE(:create_file, create_file),
         file_name = COALESCE(:file_name, file_name),
-        content = COALESCE(:content, content)
+        content = COALESCE(:content, content),
+        completed = COALESCE(:completed, completed)
     WHERE
         uuid = :uuid
 """
@@ -769,6 +771,7 @@ def document_request__update(
     application=None, template=None, request_timestamp=None,
     encrypted_access_token=None, encrypted_parameters=None, render_timestamp=None,
     create_file=None, file_name=None, content=None,
+    completed=None,
     encryption_salts=None
 ):
     execute_supplied_statement(
@@ -786,7 +789,8 @@ def document_request__update(
             KG__document_request__render_timestamp: render_timestamp,
             KG__document_request__create_file: create_file,
             KG__document_request__file_name: file_name,
-            KG__document_request__content: content
+            KG__document_request__content: content,
+            KG__document_request__completed: completed
         }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
             KG__document_request__encrypted_access_token,
             KG__document_request__encrypted_parameters
@@ -826,10 +830,10 @@ def document_request__select_all(
 
 def document_request__insert(
     connection: DBInterface, encryption_key: bytes,
-    application, template, uuid,
-    encrypted_access_token, create_file,
+    application, template, encrypted_access_token,
+    create_file,
     encrypted_parameters=None, render_timestamp=None, file_name=None,
-    content=None,
+    content=None, completed=None,
     encryption_salts=None
 ):
     return execute_supplied_statement_singleton(
@@ -837,13 +841,13 @@ def document_request__insert(
         {
             KG__document_request__application: application,
             KG__document_request__template: template,
-            KG__document_request__uuid: uuid,
             KG__document_request__encrypted_access_token: encrypted_access_token,
             KG__document_request__encrypted_parameters: encrypted_parameters,
             KG__document_request__render_timestamp: render_timestamp,
             KG__document_request__create_file: create_file,
             KG__document_request__file_name: file_name,
-            KG__document_request__content: content
+            KG__document_request__content: content,
+            KG__document_request__completed: completed
         }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
             KG__document_request__encrypted_access_token,
             KG__document_request__encrypted_parameters

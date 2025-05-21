@@ -461,6 +461,12 @@ DOCUMENTATION__document = SwaggerDocumentation(
                     description="Whether or not to create the file. You will then be provided with a URL when it is ready which can be downloaded "
                                 "from. Otherwise you will be sent back a boolean",
                     arg_type=bool
+                ),
+                SwaggerArgumentResponse(
+                    name=KEY__application,
+                    description="The application of the document template",
+                    arg_type=str,
+                    example=["out-and-about"]
                 )
             ],
             response=SwaggerResponse(
@@ -472,7 +478,16 @@ DOCUMENTATION__document = SwaggerDocumentation(
             name="Download document",
             description="Downloads the document. Can also be used as a polling endpoint to see if the document is ready",
             method=REST__GET,
-            arguments=ARG_RES__document_id,
+            arguments=[
+                ARG_RES__document_id,
+                SwaggerArgumentResponse(
+                    name=KEY__as_attachment,
+                    description="Whether in the browser the 'Content-Disposition' header should be set as attachment",
+                    arg_type=bool,
+                    required=False,
+                    condition="Defaults to false"
+                )
+            ],
             response=[
                 SwaggerFlatResponse(
                     description="A link to the raw file data. This URL is called with GET and no security parameters. Can only be called once",

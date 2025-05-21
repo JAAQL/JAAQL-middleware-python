@@ -114,9 +114,9 @@ SIGNUP__completed = 3
 
 KEY__is_the_anonymous_user = "is_the_anonymous_user"
 
-QUERY__ins_rendered_document = "INSERT INTO rendered_document (encrypted_parameters, encrypted_access_token, document, create_file, application, configuration) VALUES (:parameters, :oauth_token, :name, :create_file, :application, :configuration) RETURNING document_id"
-QUERY__purge_rendered_document = "DELETE FROM rendered_document WHERE completed is not null and document_id = :document_id RETURNING content"
-QUERY__fetch_rendered_document = "SELECT rd.document_id, able.render_as, rd.filename, rd.create_file, rd.completed, rd.encrypted_access_token as oauth_token FROM rendered_document rd INNER JOIN renderable_document able ON rd.document = able.name WHERE rd.document_id = :document_id"
+QUERY__ins_rendered_document = "INSERT INTO document_request (encrypted_parameters, encrypted_access_token, template, create_file, application) VALUES (:parameters, :oauth_token, :name, :create_file, :application) RETURNING uuid as document_id"
+QUERY__purge_rendered_document = "DELETE FROM document_request WHERE completed is not null and uuid = :document_id RETURNING content"
+QUERY__fetch_rendered_document = "SELECT app.base_url, rd.uuid as document_id, 'pdf' as render_as, rd.file_name, rd.create_file, rd.completed, rd.encrypted_access_token as oauth_token FROM document_request rd INNER JOIN document_template able ON rd.template = able.name INNER JOIN application app ON app.name = rd.application WHERE rd.uuid = :document_id"
 
 
 class JAAQLModel(BaseJAAQLModel):
@@ -1273,9 +1273,9 @@ WHERE
             if inputs[KEY__as_attachment] is not None:
                 raise HttpStatusException(ERR__as_attachment_unexpected)
             response.response_code = HTTPStatus.CREATED
-            return self.url + "/" + DIR__render_template + "/" + res[KEY__document_id] + "." + res[KEY__render_as]
+            return res[KG__application__base_url] + "/" + DIR__render_template + "/" + str(res[KEY__document_id]) + "." + res[KEY__render_as]
         else:
-            return self.url + "/api/rendered_documents/" + res[KEY__document_id]
+            return res[KG__application__base_url] + "/api/rendered_documents/" + res[KEY__document_id]
 
     def fetch_document_stream(self, inputs: dict):
         res = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_rendered_document,
@@ -1302,6 +1302,8 @@ WHERE
 
     def render_document(self, inputs: dict, auth_token: str, ip_address: str):
         inputs[KEY__oauth_token] = self.refresh_auth_token(auth_token, ip_address)
+        if inputs[KEY__parameters] is not None:
+            inputs[KEY__parameters] = json.dumps(inputs[KEY__parameters])
         return execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__ins_rendered_document, inputs,
                                                     encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__parameters, KEY__oauth_token],
                                                     as_objects=True)

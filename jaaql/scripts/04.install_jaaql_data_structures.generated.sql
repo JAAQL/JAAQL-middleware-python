@@ -143,7 +143,7 @@ create table document_template (
 create table document_request (
 	application internet_name not null,
 	template object_name not null,
-	uuid uuid not null,
+	uuid uuid not null default gen_random_uuid(),
 	request_timestamp timestamptz not null default current_timestamp,
 	encrypted_access_token encrypted__access_token not null,
 	encrypted_parameters text,
@@ -151,6 +151,7 @@ create table document_request (
 	create_file bool not null,
 	file_name file_name,
 	content bytea,
+	completed timestamptz,
 	primary key (uuid) );
 -- federation_procedure...
 create table federation_procedure (

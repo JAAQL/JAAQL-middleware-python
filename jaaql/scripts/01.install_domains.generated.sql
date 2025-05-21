@@ -1,7 +1,7 @@
 --  This installation module was generated from ..\..\Packages/DBMS/Postgres/15/domains.jsql.fxlp for Postgres/15
 
 CREATE DOMAIN encrypted__email_server_password AS character varying(256);
-CREATE DOMAIN encrypted__access_token AS character varying(64);
+CREATE DOMAIN encrypted__access_token AS text;
 CREATE DOMAIN encrypted__oidc_client_id AS character varying(200);
 CREATE DOMAIN encrypted__oidc_client_secret AS character varying(200);
 CREATE DOMAIN encrypted__oidc_sub AS character varying(200);

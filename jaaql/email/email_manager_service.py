@@ -2,6 +2,7 @@ import os
 import traceback
 import uuid
 import time
+from http import HTTPStatus
 
 from selenium.common.exceptions import NoSuchElementException
 from datetime import datetime
@@ -67,10 +68,9 @@ KEY__attachment_application = "application"
 KEY__template_base = "template_base"
 
 
-QUERY__purge_rendered_documents = "DELETE FROM rendered_document rd USING renderable_document able WHERE rd.document = able.name AND completed is not null and completed > current_timestamp + interval '5 minutes' RETURNING rd.document_id, rd.create_file, able.render_as"
-QUERY__fetch_unrendered_document = "SELECT able.url, ac.artifact_base_url, able.render_as, rd.document_id, rd.encrypted_parameters as parameters, rd.create_file, rd.encrypted_access_token as oauth_token FROM rendered_document rd INNER JOIN renderable_document able ON rd.document = able.name INNER JOIN application a ON rd.application = a.name WHERE rd.completed is null ORDER BY rd.created LIMIT 1"
-QUERY__mark_rendered_document_completed = "UPDATE rendered_document SET completed = current_timestamp, filename = :filename, content = :content WHERE document_id = :document_id"
-
+QUERY__purge_rendered_documents = "DELETE FROM document_request rd USING document_template able WHERE rd.template = able.name AND completed is not null and completed > current_timestamp + interval '5 minutes' RETURNING rd.uuid as document_id, rd.create_file, 'pdf' as render_as"
+QUERY__fetch_unrendered_document = "SELECT able.content_path as url, a.base_url, 'pdf' as render_as, rd.uuid as document_id, rd.encrypted_parameters as parameters, rd.create_file, rd.encrypted_access_token as oauth_token FROM document_request rd INNER JOIN document_template able ON rd.template = able.name INNER JOIN application a ON rd.application = a.name WHERE rd.completed is null ORDER BY rd.request_timestamp LIMIT 1"
+QUERY__mark_rendered_document_completed = "UPDATE document_request SET completed = current_timestamp, file_name = :file_name, content = :content WHERE uuid = :document_id"
 
 class DrivenChrome:
     def __init__(self, db_interface: DBInterface, db_key: bytes, is_deployed: bool):
@@ -84,7 +84,18 @@ class DrivenChrome:
         self.db_key = db_key
         self.template_dir_path = os.path.join(DIR__www, DIR__render_template)
 
-        self.a4_params = {'landscape': False, 'paperWidth': 8.27, 'paperHeight': 11.69, 'printBackground': True}
+        self.a4_params = {
+            "landscape": False,
+            "paperWidth": 8.27,  # A-4 portrait
+            "paperHeight": 11.69,
+            "marginTop": 0,  # remove default 1 cm margins
+            "marginBottom": 0,
+            "marginLeft": 0,
+            "marginRight": 0,
+            "scale": 0.8,
+            "printBackground": True,  # keep gradient / images
+            "preferCSSPageSize": True  # honour @page { size:A4; margin:0 }
+        }
 
         threading.Thread(target=self.start_chrome, daemon=True).start()
         threading.Thread(target=self.purge_rendered_documents, daemon=True).start()
@@ -127,6 +138,12 @@ class DrivenChrome:
                         print("CHROMEFAILURE: " + (log if isinstance(log, str) else json.dumps(log)))
 
                     if time_delta_ms(start_time, datetime.now()) > TIMEOUT__attachment_render:
+                        print("Failed to render!")
+                        try:
+                            current_dom = self.driver.execute_script("return document.documentElement.outerHTML;")
+                            print("\nCURRENT <body> DOM (sanitised):\n\n\n" + current_dom)
+                        except Exception as exc:
+                            print(f"[chrome_page_to_pdf] Unable to capture DOM: {exc}")
                         raise HttpStatusException(ERR__attachment_timeout_render)
 
             return filename, base64.b64decode(self.driver.execute_cdp_cmd("Page.printToPDF", self.a4_params)["data"])
@@ -154,10 +171,11 @@ class DrivenChrome:
                 if resp[KEY__parameters]:
                     parameters = json.loads(resp[KEY__parameters])
 
-                base_url = EmailAttachment.static_format_attached_url(resp[KEY__artifact_base_url], self.is_deployed)
+                base_url = EmailAttachment.static_format_attached_url(resp[KG__application__base_url] + "/" + resp["url"], self.is_deployed)
+
                 filename, content = self.chrome_page_to_pdf(base_url, resp[KEY__oauth_token], parameters)
 
-                inputs = {KEY__document_id: resp[KEY__document_id], KEY__content: None, ATTR__filename: filename}
+                inputs = {KEY__document_id: resp[KEY__document_id], KEY__content: None, KG__document_request__file_name: filename}
                 if resp[KEY__create_file]:
                     if not os.path.exists(self.template_dir_path):
                         os.mkdir(self.template_dir_path)
@@ -177,6 +195,8 @@ class DrivenChrome:
     def start_chrome(self):
         options = Options()
         options.add_argument("--window-size=1920,1080")
+        options.add_argument("--force-color-profile=srgb")
+        options.add_argument("--font-render-hinting=none")
         options.headless = True
         service_args = []
 
