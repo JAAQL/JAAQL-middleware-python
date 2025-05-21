@@ -67,6 +67,11 @@ KEY__attachment_application = "application"
 KEY__template_base = "template_base"
 
 
+QUERY__purge_rendered_documents = "DELETE FROM rendered_document rd USING renderable_document able WHERE rd.document = able.name AND completed is not null and completed > current_timestamp + interval '5 minutes' RETURNING rd.document_id, rd.create_file, able.render_as"
+QUERY__fetch_unrendered_document = "SELECT able.url, ac.artifact_base_url, able.render_as, rd.document_id, rd.encrypted_parameters as parameters, rd.create_file, rd.encrypted_access_token as oauth_token FROM rendered_document rd INNER JOIN renderable_document able ON rd.document = able.name INNER JOIN application a ON rd.application = a.name WHERE rd.completed is null ORDER BY rd.created LIMIT 1"
+QUERY__mark_rendered_document_completed = "UPDATE rendered_document SET completed = current_timestamp, filename = :filename, content = :content WHERE document_id = :document_id"
+
+
 class DrivenChrome:
     def __init__(self, db_interface: DBInterface, db_key: bytes, is_deployed: bool):
         self.attachments = Queue()
