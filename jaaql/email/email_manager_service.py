@@ -82,6 +82,7 @@ class DrivenChrome:
         self.a4_params = {'landscape': False, 'paperWidth': 8.27, 'paperHeight': 11.69, 'printBackground': True}
 
         threading.Thread(target=self.start_chrome, daemon=True).start()
+        threading.Thread(target=self.purge_rendered_documents, daemon=True).start()
 
     def parameters_to_get_str(self, access_token: str, parameters: dict):
         if parameters is None:
@@ -125,6 +126,49 @@ class DrivenChrome:
 
             return filename, base64.b64decode(self.driver.execute_cdp_cmd("Page.printToPDF", self.a4_params)["data"])
 
+    def purge_rendered_documents(self):
+        while True:
+            resp = execute_supplied_statement(self.db_interface, QUERY__purge_rendered_documents, as_objects=True)
+            for to_purge in resp:
+                if to_purge[KEY__create_file]:
+                    try:
+                        os.remove(os.path.join(self.template_dir_path,
+                                               str(to_purge[KEY__document_id]) + "." + to_purge[KEY__render_as]))
+                    except FileNotFoundError:
+                        pass
+            time.sleep(5)
+
+    def render_document_requests(self):
+        while True:
+            try:
+                resp = execute_supplied_statement_singleton(self.db_interface, QUERY__fetch_unrendered_document,
+                                                            as_objects=True,
+                                                            decrypt_columns=[KEY__parameters, KEY__oauth_token],
+                                                            encryption_key=self.db_key)
+                parameters = {}
+                if resp[KEY__parameters]:
+                    parameters = json.loads(resp[KEY__parameters])
+
+                base_url = EmailAttachment.static_format_attached_url(resp[KEY__artifact_base_url], self.is_deployed)
+                filename, content = self.chrome_page_to_pdf(base_url, resp[KEY__oauth_token], parameters)
+
+                inputs = {KEY__document_id: resp[KEY__document_id], KEY__content: None, ATTR__filename: filename}
+                if resp[KEY__create_file]:
+                    if not os.path.exists(self.template_dir_path):
+                        os.mkdir(self.template_dir_path)
+                    with open(os.path.join(self.template_dir_path,
+                                           str(resp[KEY__document_id]) + "." + resp[KEY__render_as]), "wb") as f:
+                        f.write(content)
+                else:
+                    inputs[KEY__content] = content
+
+                execute_supplied_statement(self.db_interface, QUERY__mark_rendered_document_completed, inputs)
+            except HttpStatusException as ex:
+                if ex.response_code == HTTPStatus.UNPROCESSABLE_ENTITY:
+                    time.sleep(0.25)
+                else:
+                    traceback.print_exc()
+
     def start_chrome(self):
         options = Options()
         options.add_argument("--window-size=1920,1080")
@@ -136,6 +180,7 @@ class DrivenChrome:
 
         with webdriver.Chrome(options=options, service=Service(service_args=service_args)) as driver:
             self.driver = driver
+            threading.Thread(target=self.render_document_requests, daemon=True).start()
             while True:
                 current_attachment: 'EmailAttachment' = self.attachments.get()
                 try:
