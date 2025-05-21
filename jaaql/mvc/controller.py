@@ -182,3 +182,14 @@ class JAAQLController(BaseJAAQLController):
         @self.publish_route('/.well-known/jwks', DOCUMENTATION__jwks)
         def fetch_jwks():
             return self.model.fetch_jwks()
+
+        @self.publish_route('/documents', DOCUMENTATION__document)
+        def documents(http_inputs: dict, auth_token: str, ip_address: str, response: JAAQLResponse):
+            if self.is_get():
+                return self.model.fetch_document(http_inputs, response)
+            else:
+                return self.model.render_document(http_inputs, auth_token, ip_address)
+
+        @self.publish_route('/rendered_documents', DOCUMENTATION__rendered_document)
+        def documents(http_inputs: dict):
+            return self.model.fetch_document_stream(http_inputs)

@@ -13,6 +13,8 @@ import re
 
 import jwt
 from jwcrypto import jwe
+from io import BytesIO
+from flask import send_file
 
 from jwt import PyJWKClient
 
@@ -111,6 +113,10 @@ SIGNUP__already_registered = 2
 SIGNUP__completed = 3
 
 KEY__is_the_anonymous_user = "is_the_anonymous_user"
+
+QUERY__ins_rendered_document = "INSERT INTO rendered_document (encrypted_parameters, encrypted_access_token, document, create_file, application, configuration) VALUES (:parameters, :oauth_token, :name, :create_file, :application, :configuration) RETURNING document_id"
+QUERY__purge_rendered_document = "DELETE FROM rendered_document WHERE completed is not null and document_id = :document_id RETURNING content"
+QUERY__fetch_rendered_document = "SELECT rd.document_id, able.render_as, rd.filename, rd.create_file, rd.completed, rd.encrypted_access_token as oauth_token FROM rendered_document rd INNER JOIN renderable_document able ON rd.document = able.name WHERE rd.document_id = :document_id"
 
 
 class JAAQLModel(BaseJAAQLModel):
@@ -1254,6 +1260,51 @@ WHERE
             KEY__parameters: parameters,
             KEY__username: account[KG__account__username]
         }
+
+    def fetch_document(self, inputs: dict, response: JAAQLResponse):
+        res = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_rendered_document,
+                                                   {KEY__document_id: inputs[KEY__document_id]}, singleton_message=ERR__document_id_not_found,
+                                                   as_objects=True)
+
+        if not res[KEY__completed]:
+            raise HttpStatusException(ERR__document_still_rendering, HTTPStatus.TOO_EARLY)
+
+        if res[KEY__create_file]:
+            if inputs[KEY__as_attachment] is not None:
+                raise HttpStatusException(ERR__as_attachment_unexpected)
+            response.response_code = HTTPStatus.CREATED
+            return self.url + "/" + DIR__render_template + "/" + res[KEY__document_id] + "." + res[KEY__render_as]
+        else:
+            return self.url + "/api/rendered_documents/" + res[KEY__document_id]
+
+    def fetch_document_stream(self, inputs: dict):
+        res = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_rendered_document,
+                                                   {KEY__document_id: inputs[KEY__document_id]}, singleton_message=ERR__document_id_not_found,
+                                                   as_objects=True)
+
+        if not res[KEY__completed]:
+            raise HttpStatusException(ERR__document_still_rendering, HTTPStatus.TOO_EARLY)
+
+        if res[KEY__create_file]:
+            raise HttpStatusException(ERR__document_created_file)
+        else:
+            content = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__purge_rendered_document,
+                                                           {KEY__document_id: inputs[KEY__document_id]}, as_objects=True)[KEY__content]
+            as_attachment = False
+            if inputs[KEY__as_attachment]:
+                as_attachment = True
+
+            buffer = BytesIO()
+            buffer.write(content)
+            buffer.seek(0)
+
+            return send_file(buffer, as_attachment=as_attachment, download_name=res[KEY__filename])
+
+    def render_document(self, inputs: dict, auth_token: str, ip_address: str):
+        inputs[KEY__oauth_token] = self.refresh_auth_token(auth_token, ip_address)
+        return execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__ins_rendered_document, inputs,
+                                                    encryption_key=self.get_db_crypt_key(), encrypt_parameters=[KEY__parameters, KEY__oauth_token],
+                                                    as_objects=True)
 
     def send_email(self, is_the_anonymous_user: bool, account_id: str, inputs: dict, username: str, auth_token: str):
         app = application__select(self.jaaql_lookup_connection, inputs[KEY__application])

@@ -423,3 +423,98 @@ DOCUMENTATION__webhook = SwaggerDocumentation(
         )
     ]
 )
+
+EXAMPLE__document_id = "b47dc954-d608-4e1b-8a8c-d8b754ee554b"
+
+ARG_RES__document_id = SwaggerArgumentResponse(
+    name=KEY__document_id,
+    description="A document that can be used to fetch the document",
+    arg_type=str,
+    example=EXAMPLE__document_id
+)
+
+ARG_RES__renderable_document = [
+    SwaggerArgumentResponse(
+        name=KEY__attachment_name,
+        description="The name of the renderable document in the database",
+        arg_type=str,
+        example=["my_pdf_template"]
+    ),
+    SwaggerArgumentResponse(
+        name=KEY__parameters,
+        description="Any parameters to pass to the url as http GET parameters",
+        arg_type=ARG_RESP__allow_all
+    )
+]
+
+DOCUMENTATION__document = SwaggerDocumentation(
+    tags="Documents",
+    methods=[
+        SwaggerMethod(
+            name="Triggers a document render",
+            description="Triggers a render of a document which can then be downloaded. Document is available for 5 minutes after the document has "
+            "been rendered",
+            method=REST__POST,
+            body=ARG_RES__renderable_document + [
+                SwaggerArgumentResponse(
+                    name=KEY__create_file,
+                    description="Whether or not to create the file. You will then be provided with a URL when it is ready which can be downloaded "
+                                "from. Otherwise you will be sent back a boolean",
+                    arg_type=bool
+                )
+            ],
+            response=SwaggerResponse(
+                description="A document id",
+                response=ARG_RES__document_id
+            )
+        ),
+        SwaggerMethod(
+            name="Download document",
+            description="Downloads the document. Can also be used as a polling endpoint to see if the document is ready",
+            method=REST__GET,
+            arguments=ARG_RES__document_id,
+            response=[
+                SwaggerFlatResponse(
+                    description="A link to the raw file data. This URL is called with GET and no security parameters. Can only be called once",
+                    body="https://www.jaaql.io/api/rendered_documents/" + EXAMPLE__document_id + ".pdf"
+                ),
+                SwaggerFlatResponse(
+                    description="The url to the document. Will be deleted after 5 minutes",
+                    code=HTTPStatus.CREATED,
+                    body="https://www.jaaql.io/rendered_documents/" + EXAMPLE__document_id + ".pdf"
+                ),
+                SwaggerFlatResponse(
+                    description="Document still rendering",
+                    code=HTTPStatus.TOO_EARLY,
+                    body=ERR__document_still_rendering
+                ),
+                SwaggerFlatResponse(
+                    description="Document id not found. Either expired or did not exist",
+                    body=ERR__document_id_not_found,
+                    code=HTTPStatus.NOT_FOUND
+                )
+            ]
+        )
+    ]
+)
+
+DOCUMENTATION__rendered_document = SwaggerDocumentation(
+    tags="Documents",
+    security=False,
+    methods=SwaggerMethod(
+        name="Stream rendered document",
+        description="Streams a rendered document as a downlaod",
+        method=REST__GET,
+        arguments=[ARG_RES__document_id, SwaggerArgumentResponse(
+            name=KEY__as_attachment,
+            description="Whether in the browser the 'Content-Disposition' header should be set as attachment",
+            arg_type=bool,
+            required=False,
+            condition="Defaults to false"
+        )],
+        response=SwaggerFlatResponse(
+            description="The raw file data. Cannot be re-downloaded after this",
+            body=BODY__file
+        )
+    )
+)
