@@ -1,8 +1,8 @@
-import os
 import traceback
 import uuid
 import time
 from http import HTTPStatus
+from urllib.parse import urlparse
 
 from selenium.common.exceptions import NoSuchElementException
 from datetime import datetime
@@ -71,6 +71,11 @@ KEY__template_base = "template_base"
 QUERY__purge_rendered_documents = "DELETE FROM document_request rd USING document_template able WHERE rd.template = able.name AND completed is not null and completed > current_timestamp + interval '5 minutes' RETURNING rd.uuid as document_id, rd.create_file, 'pdf' as render_as"
 QUERY__fetch_unrendered_document = "SELECT able.content_path as url, a.base_url, 'pdf' as render_as, rd.uuid as document_id, rd.encrypted_parameters as parameters, rd.create_file, rd.encrypted_access_token as oauth_token FROM document_request rd INNER JOIN document_template able ON rd.template = able.name INNER JOIN application a ON rd.application = a.name WHERE rd.completed is null ORDER BY rd.request_timestamp LIMIT 1"
 QUERY__mark_rendered_document_completed = "UPDATE document_request SET completed = current_timestamp, file_name = :file_name, content = :content WHERE uuid = :document_id"
+QUERY__mark_rendered_document_completed_with_error = "UPDATE document_request SET completed = current_timestamp WHERE uuid = :document_id"
+
+
+CHROME_DEBUGGING = False
+
 
 class DrivenChrome:
     def __init__(self, db_interface: DBInterface, db_key: bytes, is_deployed: bool):
@@ -107,9 +112,25 @@ class DrivenChrome:
 
         return "?" + "&".join([key + "=" + quote(itm if isinstance(itm, bytes) else itm.encode("UTF-8")) for key, itm in parameters.items()])
 
-    def chrome_page_to_pdf(self, url: str, access_token: str, parameters: dict):
+    def chrome_page_to_pdf(self, url: str, access_token: str, parameters: dict, document_id: str):
         with self.chrome_lock:
-            self.driver.get(url + self.parameters_to_get_str(access_token, parameters))
+            origin = "{uri.scheme}://{uri.netloc}".format(uri=urlparse(url))
+            self.driver.execute_cdp_cmd(
+                "Storage.clearDataForOrigin",
+                {
+                    "origin": origin,
+                    "storageTypes": "local_storage,session_storage"
+                }
+            )
+
+            old_handle = self.driver.current_window_handle
+            self.driver.switch_to.new_window('tab')
+            self.driver.switch_to.window(old_handle)
+            self.driver.close()
+            survivor_handles = [h for h in self.driver.window_handles if h != old_handle]
+            self.driver.switch_to.window(survivor_handles[0])
+
+            self.driver.get(url + self.parameters_to_get_str(access_token, parameters) + "&BS_document_id=" + document_id)
             start_time = datetime.now()
             while True:
                 passed = False
@@ -138,15 +159,13 @@ class DrivenChrome:
                         print("CHROMEFAILURE: " + (log if isinstance(log, str) else json.dumps(log)))
 
                     if time_delta_ms(start_time, datetime.now()) > TIMEOUT__attachment_render:
-                        print("Failed to render!")
-                        try:
-                            current_dom = self.driver.execute_script("return document.documentElement.outerHTML;")
-                            print("\nCURRENT <body> DOM (sanitised):\n\n\n" + current_dom)
-                        except Exception as exc:
-                            print(f"[chrome_page_to_pdf] Unable to capture DOM: {exc}")
                         raise HttpStatusException(ERR__attachment_timeout_render)
+                    else:
+                        time.sleep(0.1)
 
-            return filename, base64.b64decode(self.driver.execute_cdp_cmd("Page.printToPDF", self.a4_params)["data"])
+            pdf_data = base64.b64decode(self.driver.execute_cdp_cmd("Page.printToPDF", self.a4_params)["data"])
+            self.driver.execute_cdp_cmd("HeapProfiler.collectGarbage", {})
+            return filename, pdf_data
 
     def purge_rendered_documents(self):
         while True:
@@ -162,6 +181,7 @@ class DrivenChrome:
 
     def render_document_requests(self):
         while True:
+            resp = None
             try:
                 resp = execute_supplied_statement_singleton(self.db_interface, QUERY__fetch_unrendered_document,
                                                             as_objects=True,
@@ -173,7 +193,7 @@ class DrivenChrome:
 
                 base_url = EmailAttachment.static_format_attached_url(resp[KG__application__base_url] + "/" + resp["url"], self.is_deployed)
 
-                filename, content = self.chrome_page_to_pdf(base_url, resp[KEY__oauth_token], parameters)
+                filename, content = self.chrome_page_to_pdf(base_url, resp[KEY__oauth_token], parameters, str(resp[KEY__document_id]))
 
                 inputs = {KEY__document_id: resp[KEY__document_id], KEY__content: None, KG__document_request__file_name: filename}
                 if resp[KEY__create_file]:
@@ -188,6 +208,10 @@ class DrivenChrome:
                 execute_supplied_statement(self.db_interface, QUERY__mark_rendered_document_completed, inputs)
             except HttpStatusException as ex:
                 if ex.response_code == HTTPStatus.UNPROCESSABLE_ENTITY:
+                    if resp is not None:
+                        execute_supplied_statement(self.db_interface,
+                            QUERY__mark_rendered_document_completed_with_error,
+                            { KEY__document_id: resp[KEY__document_id] })
                     time.sleep(0.25)
                 else:
                     traceback.print_exc()
@@ -197,7 +221,18 @@ class DrivenChrome:
         options.add_argument("--window-size=1920,1080")
         options.add_argument("--force-color-profile=srgb")
         options.add_argument("--font-render-hinting=none")
-        options.headless = True
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-dev-shm-usage")  # ✱ stop /dev/shm exhaustion
+        options.add_argument("--disable-extensions")
+        options.add_argument("--headless=new")
+        if CHROME_DEBUGGING:
+            options.add_argument("--enable-logging=stderr")
+            options.add_argument("--v=1")
+            options.set_capability(
+                "goog:loggingPrefs",
+                {"browser": "ALL", "performance": "ALL"}
+            )
+
         service_args = []
 
         if self.is_deployed:
@@ -214,7 +249,7 @@ class DrivenChrome:
                     if not content_path.endswith(".html"):
                         content_path += ".html"
                     content_path = current_attachment.template_base + "/" + content_path
-                    filename, content = self.chrome_page_to_pdf(content_path, current_attachment.access_token, current_attachment.parameters)
+                    filename, content = self.chrome_page_to_pdf(content_path, current_attachment.access_token, current_attachment.parameters, str(uuid.uuid4()))
                     current_attachment.content = content
                     current_attachment.filename = filename
                 except HttpStatusException as ex:
