@@ -158,8 +158,25 @@ def get_ipv6_address():
     return ip
 
 
+def get_ipv4_address() -> str:
+    """Return the primary IPv4 address the kernel would use for an outbound
+    connection.  Falls back to 127.0.0.1 if no IPv4 stack is present."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # The target doesn’t have to be reachable; we just want the
+        # kernel to pick an interface and tell us which source IP
+        # it would use.
+        s.connect(('8.8.8.8', 1))          # 1 = arbitrary port
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = '127.0.0.1'
+    finally:
+        s.close()
+    return ip
+
+
 IPS__local = [
-    "127.0.0.1", "localhost", "172.17.0.1", os.environ.get("SERVER_ADDRESS", "thisipcantexist"), get_ipv6_address(), "::1"
+    "127.0.0.1", "localhost", "172.17.0.1", os.environ.get("SERVER_ADDRESS", "thisipcantexist"), get_ipv6_address(), "::1", get_ipv4_address()
 ]
 
 ENDPOINT__send_email = "/send-email"
@@ -191,5 +208,5 @@ ROLE__postgres = "postgres"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "4.32.2"
+VERSION = "4.32.3"
 
