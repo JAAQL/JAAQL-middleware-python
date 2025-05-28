@@ -60,7 +60,7 @@ if [ "$IS_HTTPS" = "TRUE" ]; then
   UPGRADE_INSECURE_REQUESTS=" upgrade-insecure-requests;"
 fi
 
-CSP_HEADER="default-src 'self'; child-src 'none';$SCRIPT_SRC_ATTR$CSP_CONNECT_SRC frame-src 'self'; object-src 'none'; worker-src 'none'; form-action 'self'; frame-ancestors 'self'; style-src-attr 'unsafe-inline';$UPGRADE_INSECURE_REQUESTS"
+CSP_HEADER="default-src 'self'; child-src 'none';$SCRIPT_SRC_ATTR$CSP_CONNECT_SRC frame-src 'self'; object-src 'self'; worker-src 'none'; form-action 'self'; frame-ancestors 'self'; style-src-attr 'unsafe-inline';$UPGRADE_INSECURE_REQUESTS"
 
 SECURITY_HEADERS="    charset UTF-8;\n"
 if [ "$NO_CACHING" = "TRUE" ]; then
