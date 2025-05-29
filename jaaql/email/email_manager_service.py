@@ -137,6 +137,8 @@ class DrivenChrome:
                 filename = ""
                 try:
                     body = self.driver.find_element(By.TAG_NAME, "body")  # Sometimes the body is not yet present, in which case an exception will fire
+                    if body is None:
+                        raise NoSuchElementException()
                     finished = body.get_attribute(ATTR__finished_request)
                     finished_success = body.get_attribute(ATTR__finished_request_success)
                     if finished_success is not None:
