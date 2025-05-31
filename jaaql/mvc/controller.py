@@ -177,7 +177,11 @@ class JAAQLController(BaseJAAQLController):
 
         @self.publish_route(ENDPOINT__oidc_get_token, DOCUMENTATION__oidc_exchange_code)
         def exchange_auth_code(http_inputs: dict, ip_address: str, response: JAAQLResponse):
-            self.model.exchange_auth_code(http_inputs, request.cookies.get(COOKIE_OIDC), ip_address, response)
+            try:
+                self.model.exchange_auth_code(http_inputs, request.cookies.get(COOKIE_OIDC), ip_address, response)
+            except:  # Sometimes this can fail when the user didn't exist before
+                response.response_code = HTTPStatus.FOUND
+                response.raw_headers["Location"] = self.model.url.replace("_", "localhost")
 
         @self.publish_route('/.well-known/jwks', DOCUMENTATION__jwks)
         def fetch_jwks():
