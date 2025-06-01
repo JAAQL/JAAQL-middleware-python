@@ -1977,7 +1977,7 @@ WHERE
         }
 
         return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
-                      self.cached_canned_query_service, as_objects=as_objects, singleton=singleton, db_cache=self.db_cache)
+                      self.cached_canned_query_service, as_objects=as_objects, singleton=singleton, db_cache=None)
 
     def submit(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False, ip_address: str = None):
         if ip_address not in IPS__local and self.prevent_arbitrary_queries:
