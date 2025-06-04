@@ -1175,7 +1175,7 @@ WHERE
         jwt_data = {
             KEY__account_id: str(account[KG__account__id]),
             KEY__username: username,
-            KEY__password: str(account[KG__account__api_key]),  # This comes out encrypted, it's okay!
+            KEY__password: None if account[KG__account__api_key] is None else str(account[KG__account__api_key]),  # This comes out encrypted, it's okay!
             KEY__ip_address: ip_address,
             KEY__ip_id: str(address),
             KEY__created: datetime.now().isoformat(),
