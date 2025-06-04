@@ -1087,7 +1087,7 @@ WHERE
             try:
                 account = fetch_account_from_id(self.jaaql_lookup_connection, decoded[KEY__account_id], singleton_code=HTTPStatus.UNAUTHORIZED,
                                                 singleton_message=ERR__invalid_token)
-                if decoded[KEY__password] is not None and account[KG__account__api_key] != decoded[KEY__password]:
+                if (decoded[KEY__password] is not None and decoded[KEY__password] != "None") and account[KG__account__api_key] != decoded[KEY__password]:
                     raise HttpSingletonStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
             except HttpSingletonStatusException:
                 raise UserUnauthorized()
