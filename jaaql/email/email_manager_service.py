@@ -90,16 +90,17 @@ class DrivenChrome:
         self.template_dir_path = os.path.join(DIR__www, DIR__render_template)
 
         self.a4_params = {
-            "landscape": False,
-            "paperWidth": 8.27,  # A-4 portrait
+            "landscape": False,          # Portrait
+            "paperWidth": 8.27,          # A-4 inches
             "paperHeight": 11.69,
-            "marginTop": 0,  # remove default 1 cm margins
+            "marginTop": 0,
             "marginBottom": 0,
             "marginLeft": 0,
             "marginRight": 0,
-            "scale": 0.8,
-            "printBackground": True,  # keep gradient / images
-            "preferCSSPageSize": True  # honour @page { size:A4; margin:0 }
+            "scale": 0.8,                # 80 %
+            "printBackground": True,     # keep the dark frame
+            "preferCSSPageSize": True    # honour @page if you ever add one
+            # "displayHeaderFooter": False   # (default) – no extra header/footer
         }
 
         threading.Thread(target=self.start_chrome, daemon=True).start()
@@ -165,6 +166,10 @@ class DrivenChrome:
                     else:
                         time.sleep(0.1)
 
+            self.driver.execute_cdp_cmd(
+                "Emulation.setEmulatedMedia",
+                {"media": "print"}
+            )
             pdf_data = base64.b64decode(self.driver.execute_cdp_cmd("Page.printToPDF", self.a4_params)["data"])
             self.driver.execute_cdp_cmd("HeapProfiler.collectGarbage", {})
             return filename, pdf_data
