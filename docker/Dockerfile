@@ -54,7 +54,7 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     rm -rf /Python-${PYTHON_VERSION} && \
     $PY_PATH -m ensurepip --default-pip && \
     $PY_PATH -mpip install -U pip wheel && \
-    $PY_PATH -mpip install certbot-nginx==2.9.0 && \
+    $PY_PATH -mpip install certbot-nginx==4.1.1 && \
     apt-get install unzip && \
     wget --no-verbose -O /tmp/chrome.zip https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-linux64.zip && \
     unzip /tmp/chrome.zip -d /opt/ && \
