@@ -7,7 +7,7 @@ export DISPLAY=:99
 ARCHIVE_DIR=/var/lib/postgresql/archives
 mkdir -p $ARCHIVE_DIR
 WAS_EMPTY="false"
-if [ -z "$(ls -A /var/lib/postgresql/data)" ]; then
+if [ -z "$(ls -A /var/lib/postgresql/data)" ] && [ -z "$IS_RESTORING" ]; then
     WAS_EMPTY="true"
     su postgres -c "echo \"$POSTGRES_PASSWORD\" | TZ=\"$TZ\" /usr/lib/postgresql/16/bin/initdb -A scram-sha-256 --pwfile=/dev/stdin $POSTGRES_INITDB_ARGS /var/lib/postgresql/data"
     rm -f $ARCHIVE_DIR/basebackup
