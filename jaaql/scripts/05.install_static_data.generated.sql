@@ -4,7 +4,7 @@
 
 -- jaaql...
 insert into jaaql (security_event_attempt_limit, migration_version, last_successful_build_time)
-values (3, '1.0.2', 0);
+values (3, '1.0.3', 0);
 
 ;
 -- pg_base_exception...

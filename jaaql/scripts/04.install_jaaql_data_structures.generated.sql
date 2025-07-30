@@ -262,6 +262,7 @@ create table remote_procedure (
 	name object_name not null,
 	command text not null,
 	access procedure_access_level not null,
+	cron text,
 	primary key (application, name) );
 
 -- (1a) Create view to give current date/time, possibly read from a table

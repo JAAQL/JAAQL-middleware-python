@@ -35,7 +35,31 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     apt install -y libpq-dev && \
     apt-get install -y cron && \
     mkdir -p /etc/letsencrypt/live && \
-    apt -y install nginx && \
+    apt-get install -y --no-install-recommends \
+        curl gnupg2 ca-certificates lsb-release && \
+
+    ## import the signing key
+    curl -fsSL https://nginx.org/keys/nginx_signing.key \
+      | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg && \
+
+    ## add the *mainline* repo for Debian 12 (“bookworm”)
+    echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
+      http://nginx.org/packages/mainline/debian $(lsb_release -cs) nginx" \
+      > /etc/apt/sources.list.d/nginx.list && \
+
+    ## pin nginx.org above Debian’s copy so upgrades stay on the newer track
+    printf 'Package: *\nPin: origin nginx.org\nPin-Priority: 900\n' \
+      > /etc/apt/preferences.d/99nginx && \
+
+    ## refresh metadata
+    apt-get update && \
+
+    ## install *exactly* 1.29.0 (pattern allows the “‑1~bookworm” suffix)
+    apt-get install -y --no-install-recommends nginx=1.29.0* && \
+
+    ## show the version in the build log for sanity
+    nginx -v && \
+
     apt-get -y install libzbar0 && \
     apt-get -y install libbz2-dev && \
     apt-get install dos2unix && \

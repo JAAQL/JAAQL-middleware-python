@@ -4,8 +4,11 @@ import time
 from http import HTTPStatus
 from urllib.parse import urlparse
 
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from datetime import datetime
+
+from selenium.webdriver.support.wait import WebDriverWait
+
 from jaaql.constants import *
 from urllib.parse import quote
 from jaaql.exceptions.http_status_exception import HttpStatusException
@@ -57,7 +60,9 @@ EMAIL__message_id = "Message-ID"
 SPLIT__address = ", "
 
 TIMEOUT__attachment = 90000
-TIMEOUT__attachment_render = 30000
+TIMEOUT__attachment_render = 60000
+TIMEOUT__page_load = 20
+TIMEOUT__pdf_generation = 60
 
 REGEX__html_tags = r'<(\/[a-zA-Z]+|(!?[a-zA-Z]+((\s)*((\"?[^(\">)]*\"?)|[a-zA-Z]*\s*=\s*\"[^\"]*\"))*))>'
 
@@ -89,6 +94,12 @@ class DrivenChrome:
         self.db_key = db_key
         self.template_dir_path = os.path.join(DIR__www, DIR__render_template)
 
+        self.chrome_restart_lock = threading.Lock()
+        self.chrome_restart_count = 0
+        self.max_chrome_restarts = 5
+        self.chrome_restart_cooldown = {}
+        self.last_progress_log = None
+
         self.a4_params = {
             "landscape": False,          # Portrait
             "paperWidth": 8.27,          # A-4 inches
@@ -103,76 +114,273 @@ class DrivenChrome:
             # "displayHeaderFooter": False   # (default) – no extra header/footer
         }
 
+        self.page_load_timeout = TIMEOUT__page_load
+        self.pdf_generation_timeout = TIMEOUT__pdf_generation
+        self.render_timeout = TIMEOUT__attachment_render / 1000  # Convert to seconds
+
         threading.Thread(target=self.start_chrome, daemon=True).start()
         threading.Thread(target=self.purge_rendered_documents, daemon=True).start()
+
+    def initialize_chrome_driver(self):
+        """Initialize Chrome driver with all settings"""
+        options = Options()
+        options.add_argument("--window-size=1920,1080")
+        options.add_argument("--force-color-profile=srgb")
+        options.add_argument("--font-render-hinting=none")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--headless=new")
+
+        # Add options to handle long-running JavaScript
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-renderer-backgrounding")
+
+        if CHROME_DEBUGGING:
+            options.add_argument("--enable-logging=stderr")
+            options.add_argument("--v=1")
+            options.set_capability(
+                "goog:loggingPrefs",
+                {"browser": "ALL", "performance": "ALL"}
+            )
+
+        if self.is_deployed:
+            options.add_argument('--no-sandbox')
+
+        service_args = []
+
+        self.driver = webdriver.Chrome(options=options, service=Service(service_args=service_args))
+
+        self.driver.set_page_load_timeout(self.page_load_timeout)
+        self.driver.set_script_timeout(self.render_timeout)
+
+        print(
+            f"Chrome driver initialized with {self.page_load_timeout}s page load timeout, {self.render_timeout}s render timeout")
+
+    def restart_chrome(self, reason="unspecified"):
+        """Safely restart Chrome driver"""
+        with self.chrome_restart_lock:
+            # Check if we're restarting too frequently
+            current_time = datetime.now()
+            recent_restarts = [
+                t for t in self.chrome_restart_cooldown.values()
+                if (current_time - t).seconds < 300  # 5 minute window
+            ]
+
+            if len(recent_restarts) >= self.max_chrome_restarts:
+                print(f"ERROR: Too many Chrome restarts ({len(recent_restarts)}) in 5 minutes. Not restarting.")
+                raise Exception("Chrome restart limit exceeded")
+
+            print(f"Restarting Chrome driver. Reason: {reason}")
+
+            # Acquire the main chrome lock to ensure no operations are in progress
+            with self.chrome_lock:
+                # Try to quit existing driver
+                if hasattr(self, 'driver') and self.driver:
+                    try:
+                        self.driver.quit()
+                    except Exception as e:
+                        print(f"Error quitting Chrome driver: {e}")
+
+                    # Small delay to ensure Chrome process is fully terminated
+                    time.sleep(2)
+
+                # Initialize new Chrome instance
+                try:
+                    self.initialize_chrome_driver()
+                    self.chrome_restart_count += 1
+                    self.chrome_restart_cooldown[self.chrome_restart_count] = current_time
+
+                    # Clean old restart records
+                    self.chrome_restart_cooldown = {
+                        k: v for k, v in self.chrome_restart_cooldown.items()
+                        if (current_time - v).seconds < 3600  # Keep last hour
+                    }
+
+                except Exception as e:
+                    print(f"CRITICAL: Failed to restart Chrome: {e}")
+                    traceback.print_exc()
+                    raise
 
     def parameters_to_get_str(self, access_token: str, parameters: dict):
         if parameters is None:
             parameters = {}
         parameters[KEY__oauth_token] = access_token
 
-        return "?" + "&".join([key + "=" + quote(itm if isinstance(itm, bytes) else itm.encode("UTF-8")) for key, itm in parameters.items()])
+        return "?" + "&".join([key + "=" + quote(itm if isinstance(itm, bytes) else str(itm).encode("UTF-8")) for key, itm in parameters.items()])
 
     def chrome_page_to_pdf(self, url: str, access_token: str, parameters: dict, document_id: str):
         with self.chrome_lock:
-            origin = "{uri.scheme}://{uri.netloc}".format(uri=urlparse(url))
-            self.driver.execute_cdp_cmd(
-                "Storage.clearDataForOrigin",
-                {
-                    "origin": origin,
-                    "storageTypes": "local_storage,session_storage"
-                }
-            )
+            try:
+                origin = "{uri.scheme}://{uri.netloc}".format(uri=urlparse(url))
+                self.driver.execute_cdp_cmd(
+                    "Storage.clearDataForOrigin",
+                    {
+                        "origin": origin,
+                        "storageTypes": "local_storage,session_storage"
+                    }
+                )
 
-            old_handle = self.driver.current_window_handle
-            self.driver.switch_to.new_window('tab')
-            self.driver.switch_to.window(old_handle)
-            self.driver.close()
-            survivor_handles = [h for h in self.driver.window_handles if h != old_handle]
-            self.driver.switch_to.window(survivor_handles[0])
+                old_handle = self.driver.current_window_handle
+                self.driver.switch_to.new_window('tab')
+                self.driver.switch_to.window(old_handle)
+                self.driver.close()
+                survivor_handles = [h for h in self.driver.window_handles if h != old_handle]
+                self.driver.switch_to.window(survivor_handles[0])
 
-            self.driver.get(url + self.parameters_to_get_str(access_token, parameters) + "&BS_document_id=" + document_id)
-            start_time = datetime.now()
-            while True:
-                passed = False
-                filename = ""
+                full_url = url + self.parameters_to_get_str(access_token, parameters) + "&BS_document_id=" + document_id
                 try:
-                    body = self.driver.find_element(By.TAG_NAME, "body")  # Sometimes the body is not yet present, in which case an exception will fire
-                    if body is None:
-                        raise NoSuchElementException()
+                    self.driver.get(full_url)
+                except TimeoutException:
+                    raise Exception(
+                        f"Page load timeout after {self.page_load_timeout}s for document {document_id}")
+
+                start_time = datetime.now()
+                filename = ""
+                error_message = None
+
+                print(f"Waiting up to {self.render_timeout}s for document {document_id} to render...")
+
+                # Use explicit wait with custom condition
+                def check_render_completion(driver):
+                    try:
+                        # First check if body exists
+                        body = driver.find_element(By.TAG_NAME, "body")
+                        if body is None:
+                            return False
+
+                        finished = body.get_attribute(ATTR__finished_request)
+                        finished_success = body.get_attribute(ATTR__finished_request_success)
+
+                        if finished_success is not None:
+                            # Success case
+                            return True
+                        elif finished is not None:
+                            # Error case - also return True to stop waiting
+                            return True
+
+                        elapsed = time_delta_ms(start_time, datetime.now()) / 1000
+                        current_second = int(elapsed)
+
+                        # Only log every 10 seconds, and only once per second
+                        if current_second % 10 == 0 and current_second > 0:
+                            if self.last_progress_log is None or \
+                                    self.last_progress_log < current_second:
+                                print(f"Still waiting for document {document_id}... {elapsed:.0f}s elapsed")
+                                self.last_progress_log = current_second
+
+                        return False
+                    except NoSuchElementException:
+                        # Body not found yet
+                        return False
+                    except Exception as e:
+                        print(f"Error checking render completion: {e}")
+                        return False
+
+                try:
+                    # Wait up to render_timeout seconds
+                    wait = WebDriverWait(self.driver, self.render_timeout, poll_frequency=0.25)
+                    wait.until(check_render_completion)
+
+                    # Check what happened
+                    body = self.driver.find_element(By.TAG_NAME, "body")
                     finished = body.get_attribute(ATTR__finished_request)
                     finished_success = body.get_attribute(ATTR__finished_request_success)
+
                     if finished_success is not None:
-                        passed = True
+                        # Success
                         if finished_success != ATTR__finished_request_success:
                             filename = finished_success
-                    if finished is not None and not passed:
-                        raise HttpStatusException("Application level exception: '%s'" % base64.b64decode(finished).decode("UTF-8"))
-                except NoSuchElementException:
-                    pass
+                    elif finished is not None:
+                        # Error
+                        error_message = base64.b64decode(finished).decode("UTF-8")
+                        raise HttpStatusException(f"Application level exception: '{error_message}'")
 
-                if passed:
-                    if len(filename) == 0:
-                        filename = url.split("/")[-1].split(".html")[0]
-                    if not filename.endswith(".pdf"):
-                        filename += ".pdf"
-                    break
-                else:
+                    elapsed = time_delta_ms(start_time, datetime.now()) / 1000
+                    print(f"Document {document_id} rendered successfully in {elapsed:.1f}s")
+
+                except TimeoutException:
+                    elapsed = time_delta_ms(start_time, datetime.now()) / 1000
+                    # Log any console errors before failing
+                    print(f"Timeout after {elapsed:.1f}s waiting for document {document_id}")
                     for log in self.driver.get_log('browser'):
-                        print("CHROMEFAILURE: " + (log if isinstance(log, str) else json.dumps(log)))
+                        print(f"CHROMEFAILURE: {log if isinstance(log, str) else json.dumps(log)}")
+                    raise Exception(f"Render timeout after {elapsed:.1f}s (limit: {self.render_timeout}s)")
 
-                    if time_delta_ms(start_time, datetime.now()) > TIMEOUT__attachment_render:
-                        raise HttpStatusException(ERR__attachment_timeout_render)
-                    else:
-                        time.sleep(0.1)
+                # Process filename
+                if len(filename) == 0:
+                    filename = url.split("/")[-1].split(".html")[0]
+                if not filename.endswith(".pdf"):
+                    filename += ".pdf"
 
-            self.driver.execute_cdp_cmd(
-                "Emulation.setEmulatedMedia",
-                {"media": "print"}
-            )
-            pdf_data = base64.b64decode(self.driver.execute_cdp_cmd("Page.printToPDF", self.a4_params)["data"])
-            self.driver.execute_cdp_cmd("HeapProfiler.collectGarbage", {})
-            return filename, pdf_data
+                # Generate PDF with timeout
+                print(f"Generating PDF for document {document_id}...")
+                pdf_start = datetime.now()
+
+                try:
+                    # Set timeout for CDP commands
+                    self.driver.execute_cdp_cmd(
+                        "Emulation.setEmulatedMedia",
+                        {"media": "print"}
+                    )
+
+                    # Generate PDF - this can also take time for complex documents
+                    pdf_result = self.driver.execute_cdp_cmd("Page.printToPDF", self.a4_params)
+                    pdf_data = base64.b64decode(pdf_result["data"])
+
+                    pdf_elapsed = (datetime.now() - pdf_start).total_seconds()
+                    print(f"PDF generated for document {document_id} in {pdf_elapsed:.1f}s")
+
+                    if pdf_elapsed > self.pdf_generation_timeout:
+                        print(
+                            f"WARNING: PDF generation took {pdf_elapsed:.1f}s, exceeding timeout of {self.pdf_generation_timeout}s")
+
+                except Exception as e:
+                    pdf_elapsed = (datetime.now() - pdf_start).total_seconds()
+                    raise Exception(f"PDF generation failed after {pdf_elapsed:.1f}s: {str(e)}")
+
+                # Clean up
+                self.driver.execute_cdp_cmd("HeapProfiler.collectGarbage", {})
+
+                total_elapsed = time_delta_ms(start_time, datetime.now()) / 1000
+                print(f"Total time for document {document_id}: {total_elapsed:.1f}s")
+
+                return filename, pdf_data
+
+            except Exception as e:
+                if not isinstance(e, HttpStatusException):  # This is an application level error. Chrome is fine!
+                    # Try to recover the Chrome instance
+                    self.attempt_chrome_recovery()
+                raise
+
+    def attempt_chrome_recovery(self):
+        """Try to recover Chrome to a good state, restart if needed"""
+        try:
+            # First, try simple recovery
+            handles = self.driver.window_handles
+            if len(handles) > 1:
+                # Close all tabs except one
+                for handle in handles[1:]:
+                    try:
+                        self.driver.switch_to.window(handle)
+                        self.driver.close()
+                    except:
+                        pass  # Tab might already be closed
+
+                self.driver.switch_to.window(handles[0])
+
+            # Navigate to blank page to clear any bad state
+            self.driver.get("about:blank")
+
+            # Test if Chrome is responsive
+            test_result = self.driver.execute_script("return 1+1")
+            if test_result != 2:
+                raise Exception("Chrome JavaScript execution failed")
+
+        except Exception as e:
+            # Recovery failed, restart Chrome
+            print(f"Chrome recovery failed: {e}. Initiating restart...")
+            self.restart_chrome(reason=f"Recovery failed: {str(e)}")
 
     def purge_rendered_documents(self):
         while True:
@@ -187,13 +395,20 @@ class DrivenChrome:
             time.sleep(5)
 
     def render_document_requests(self):
+        consecutive_failures = 0
+        max_consecutive_failures = 5
+        last_resp = None
+
         while True:
             resp = None
+
             try:
-                resp = execute_supplied_statement_singleton(self.db_interface, QUERY__fetch_unrendered_document,
-                                                            as_objects=True,
-                                                            decrypt_columns=[KEY__parameters, KEY__oauth_token],
-                                                            encryption_key=self.db_key)
+                resp = last_resp if last_resp is not None else execute_supplied_statement_singleton(
+                    self.db_interface, QUERY__fetch_unrendered_document,
+                    as_objects=True,
+                    decrypt_columns=[KEY__parameters, KEY__oauth_token],
+                    encryption_key=self.db_key)
+                last_resp = None
                 parameters = {}
                 if resp[KEY__parameters]:
                     parameters = json.loads(resp[KEY__parameters])
@@ -213,60 +428,72 @@ class DrivenChrome:
                     inputs[KEY__content] = content
 
                 execute_supplied_statement(self.db_interface, QUERY__mark_rendered_document_completed, inputs)
+
+                consecutive_failures = 0
             except HttpStatusException as ex:
+                consecutive_failures = 0  # This is a properly handled exception
+
                 if ex.response_code == HTTPStatus.UNPROCESSABLE_ENTITY:
+                    # When there are no rendered documents, we end up here with a null resp
                     if resp is not None:
                         execute_supplied_statement(self.db_interface,
                             QUERY__mark_rendered_document_completed_with_error,
                             { KEY__document_id: resp[KEY__document_id] })
+
                     time.sleep(0.25)
                 else:
                     traceback.print_exc()
+            except Exception as ex:
+                consecutive_failures += 1
+                print(f"Error in render_document_requests: {ex}")
+
+                if consecutive_failures == 1:
+                    # We will now retry the same resp
+                    last_resp = resp
+
+                if consecutive_failures >= max_consecutive_failures:
+                    print(f"Too many consecutive failures ({consecutive_failures}), attempting Chrome restart")
+                    try:
+                        self.restart_chrome(reason=f"{consecutive_failures} consecutive failures")
+                        consecutive_failures = 0  # Reset after restart
+                    except Exception as restart_error:
+                        print(f"Failed to restart Chrome: {restart_error}")
+                        # Sleep longer if restart fails
+                        time.sleep(30)
+                else:
+                    # Regular error handling
+                    time.sleep(min(consecutive_failures * 2, 10))
 
     def start_chrome(self):
-        options = Options()
-        options.add_argument("--window-size=1920,1080")
-        options.add_argument("--force-color-profile=srgb")
-        options.add_argument("--font-render-hinting=none")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--disable-dev-shm-usage")  # ✱ stop /dev/shm exhaustion
-        options.add_argument("--disable-extensions")
-        options.add_argument("--headless=new")
-        if CHROME_DEBUGGING:
-            options.add_argument("--enable-logging=stderr")
-            options.add_argument("--v=1")
-            options.set_capability(
-                "goog:loggingPrefs",
-                {"browser": "ALL", "performance": "ALL"}
-            )
+        try:
+            self.initialize_chrome_driver()
+        except Exception as e:
+            print(f"Failed to start Chrome initially: {e}")
+            traceback.print_exc()
+            # Try once more after a delay
+            time.sleep(5)
+            self.initialize_chrome_driver()
 
-        service_args = []
+        # Start the document rendering thread
+        threading.Thread(target=self.render_document_requests, daemon=True).start()
 
-        if self.is_deployed:
-            options.add_argument('--no-sandbox')
-
-        with webdriver.Chrome(options=options, service=Service(service_args=service_args)) as driver:
-            self.driver = driver
-            threading.Thread(target=self.render_document_requests, daemon=True).start()
-            while True:
-                current_attachment: 'EmailAttachment' = self.attachments.get()
-                try:
-                    template = document_template__select(self.db_interface, current_attachment.application, current_attachment.name)
-                    content_path = template[KG__document_template__content_path]
-                    if not content_path.endswith(".html"):
-                        content_path += ".html"
-                    content_path = current_attachment.template_base + "/" + content_path
-                    filename, content = self.chrome_page_to_pdf(content_path, current_attachment.access_token, current_attachment.parameters, str(uuid.uuid4()))
-                    current_attachment.content = content
-                    current_attachment.filename = filename
-                except HttpStatusException as ex:
-                    self.errored_attachments[current_attachment.id] = str(ex)
-                    self.completed_attachments.add(current_attachment.id)
-                except Exception as ex:
-                    traceback.print_exc()
-                    self.errored_attachments[current_attachment.id] = str(ex)
-                    self.completed_attachments.add(current_attachment.id)
-                self.completed_attachments.add(current_attachment.id)
+        while True:
+            current_attachment: 'EmailAttachment' = self.attachments.get()
+            try:
+                template = document_template__select(self.db_interface, current_attachment.application, current_attachment.name)
+                content_path = template[KG__document_template__content_path]
+                if not content_path.endswith(".html"):
+                    content_path += ".html"
+                content_path = current_attachment.template_base + "/" + content_path
+                filename, content = self.chrome_page_to_pdf(content_path, current_attachment.access_token, current_attachment.parameters, str(uuid.uuid4()))
+                current_attachment.content = content
+                current_attachment.filename = filename
+            except HttpStatusException as ex:
+                self.errored_attachments[current_attachment.id] = str(ex)
+            except Exception as ex:
+                traceback.print_exc()
+                self.errored_attachments[current_attachment.id] = str(ex)
+            self.completed_attachments.add(current_attachment.id)
 
 
 class EmailAttachment:

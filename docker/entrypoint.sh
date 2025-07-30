@@ -30,6 +30,11 @@ fi
 
 service cron start
 
+CRON_FILE=/etc/cron.d/jaaql_cron
+echo "* * * * * root curl -fsS --retry 3 --max-time 20 http://127.0.0.1/api/cron >/dev/null 2>&1" > "$CRON_FILE"
+chmod 0644 "$CRON_FILE"
+service cron reload
+
 # We expect a backup here
 if [ -z "${IS_RESTORING}" ]; then
   echo "Creating JAAQL from scratch"
@@ -370,7 +375,7 @@ mv /JAAQL-middleware-python/docker/gunicorn_config.py.tmp /JAAQL-middleware-pyth
 echo "timeout = ${GUNICORN_TIMEOUT}" | cat - /JAAQL-middleware-python/docker/gunicorn_config.py > /JAAQL-middleware-python/docker/gunicorn_config.py.tmp
 mv /JAAQL-middleware-python/docker/gunicorn_config.py.tmp /JAAQL-middleware-python/docker/gunicorn_config.py
 
-mv /JAAQL-middleware-python/docker/generate_jwks.py generate_jwks.py
+cp -n /JAAQL-middleware-python/docker/generate_jwks.py generate_jwks.py
 $PY_PATH generate_jwks.py
 
 openssl req -new -x509 -key /tmp/client_key.pem -out /tmp/client_cert.pem -days 3650 -subj "/CN=jaaql-key-$SERVER_ADDRESS"

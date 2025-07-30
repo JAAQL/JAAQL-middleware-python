@@ -405,21 +405,7 @@ DOCUMENTATION__webhook = SwaggerDocumentation(
             name="Receive Webhook POST",
             description="Receives a webhook as a POST",
             method=REST__POST,
-            arguments=[
-                SwaggerArgumentResponse(
-                    name=KG__remote_procedure__application,
-                    description="The remote procedure application",
-                    arg_type=str,
-                    example="out-and-about"
-                ),
-                SwaggerArgumentResponse(
-                    name=KG__remote_procedure__name,
-                    description="The name of the remote procedure",
-                    arg_type=str,
-                    example="my_proc"
-                )
-            ],
-            body=ARG_RESP__allow_all
+            arguments=ARG_RESP__allow_all
         )
     ]
 )

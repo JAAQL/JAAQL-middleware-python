@@ -272,59 +272,11 @@ DOCUMENTATION__flush_cache = SwaggerDocumentation(
 
 DOCUMENTATION__cron = SwaggerDocumentation(
     tags="Cron",
+    security=False,
     methods=SwaggerMethod(
-        name="Set cron jobs for application",
-        description="Will add a cron jobs pertaining to an application",
-        method=REST__POST,
-        body=[
-            SwaggerArgumentResponse(
-                name=KEY__application,
-                description="The application of the cron job",
-                arg_type=str,
-                example=["out-and-about"]
-            ),
-            SwaggerArgumentResponse(
-                name=KEY__command,
-                description="The command to execute as root",
-                arg_type=str,
-                example=["node /path/to/my/script.js"]
-            ),
-            SwaggerArgumentResponse(
-                name=CRON_minute,
-                description="The minute of cron expression",
-                arg_type=ARG_RESP__allow_all,
-                required=False,
-                condition="Is supplied"
-            ),
-            SwaggerArgumentResponse(
-                name=CRON_hour,
-                description="The hour of cron expression",
-                arg_type=ARG_RESP__allow_all,
-                required=False,
-                condition="Is supplied"
-            ),
-            SwaggerArgumentResponse(
-                name=CRON_dayOfMonth,
-                description="The day of month of cron expression",
-                arg_type=ARG_RESP__allow_all,
-                required=False,
-                condition="Is supplied"
-            ),
-            SwaggerArgumentResponse(
-                name=CRON_month,
-                description="The month of cron expression",
-                arg_type=ARG_RESP__allow_all,
-                required=False,
-                condition="Is supplied"
-            ),
-            SwaggerArgumentResponse(
-                name=CRON_dayOfWeek,
-                description="The day of week of cron expression",
-                arg_type=ARG_RESP__allow_all,
-                required=False,
-                condition="Is supplied"
-            )
-        ]
+        name="Trigger cron jobs",
+        description="Internal only method that will trigger cron jobs",
+        method=REST__GET
     )
 )
 
@@ -480,5 +432,50 @@ DOCUMENTATION__jwks = SwaggerDocumentation(
                 )
             )
         )
+    )
+)
+
+
+DOCUMENTATION__procedures = SwaggerDocumentation(
+    tags="procedures",
+    methods=SwaggerMethod(
+        name="Set Procedures",
+        description="Sets the procedures",
+        method=REST__POST,
+        body=[
+            ARG_RES__application,
+            SwaggerArgumentResponse(
+                name="procs",
+                description="A list of procs",
+                arg_type=SwaggerList(
+                    SwaggerArgumentResponse(
+                        name=KG__remote_procedure__name,
+                        description="The name of the procedure",
+                        arg_type=str,
+                        example=["webhook$receive"]
+                    ),
+                    SwaggerArgumentResponse(
+                        name=KG__remote_procedure__command,
+                        description="The command used to execute the procedure",
+                        arg_type=str,
+                        example=["cd /procs && node 'some/file.js'"]
+                    ),
+                    SwaggerArgumentResponse(
+                        name=KG__remote_procedure__access,
+                        description="The access level of the procedure",
+                        arg_type=str,
+                        example=["P"]
+                    ),
+                    SwaggerArgumentResponse(
+                        name="cron",
+                        description="The cron expression",
+                        arg_type=str,
+                        required=False,
+                        condition="Only for system procedures",
+                        example=["16 17 * * WED"]
+                    )
+                )
+            )
+        ]
     )
 )

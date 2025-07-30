@@ -85,6 +85,10 @@ class JAAQLController(BaseJAAQLController):
         def prepare(http_inputs: dict, account_id: str):
             return self.model.prepare_queries(http_inputs, account_id)
 
+        @self.publish_route('/procedures', DOCUMENTATION__procedures)
+        def procedures(connection: DBInterface, http_inputs: dict):
+            self.model.set_procedures(http_inputs, connection)
+
         @self.publish_route('/domains', DOCUMENTATION__domains)
         def prepare(http_inputs: dict, account_id: str):
             return self.model.fetch_domains(http_inputs, account_id)
@@ -141,8 +145,8 @@ class JAAQLController(BaseJAAQLController):
                 return self.model.finish_security_event(http_inputs)
 
         @self.publish_route('/cron', DOCUMENTATION__cron)
-        def cron(connection: DBInterface, http_inputs: dict):
-            self.model.add_cron_job_to_application(connection, http_inputs)
+        def cron(ip_address: str):
+            self.model.execute_cron_jobs(ip_address)
 
         @self.publish_route('/build-time', DOCUMENTATION__last_successful_build_timestamp)
         def build_time(http_inputs: dict, ip_address: str):

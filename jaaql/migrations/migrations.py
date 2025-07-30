@@ -85,7 +85,8 @@ def run_migrations(host: str, bypass_super: str, bypass_jaaql: str, db_interface
                            [USERNAME__superuser, host, USERNAME__super_db, MARKER__bypass + bypass_super, DB__postgres]]
 
         start_time = datetime.now()
-        initialise(actual_file_name, configs=[], encoded_configs=encoded_configs, override_url=host)
+        initialise(None, configs=[], encoded_configs=encoded_configs, override_url=host,
+                   additional_args=["-i", actual_file_name])
 
         execution_time = time_delta_ms(start_time, datetime.now())
         print("Executed migration " + script_file + " in " + str(execution_time) + "ms")

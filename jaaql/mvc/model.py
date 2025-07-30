@@ -27,6 +27,7 @@ from jaaql.exceptions.http_status_exception import HttpStatusException, ERR__alr
 from os.path import join
 from jaaql.interpreter.interpret_jaaql import KEY_query, KEY_parameters
 from jaaql.constants import *
+from jaaql.utilities.cron import check_if_should_fire_cron
 from jaaql.utilities.utils import get_jaaql_root, get_base_url
 from jaaql.db.db_utils import create_interface, jaaql__encrypt, create_interface_for_db, jaaql__decrypt
 from jaaql.db.db_utils_no_circ import submit, get_required_db, objectify
@@ -117,7 +118,7 @@ KEY__is_the_anonymous_user = "is_the_anonymous_user"
 QUERY__ins_rendered_document = "INSERT INTO document_request (encrypted_parameters, encrypted_access_token, template, create_file, application) VALUES (:parameters, :oauth_token, :name, :create_file, :application) RETURNING uuid as document_id"
 QUERY__purge_rendered_document = "DELETE FROM document_request WHERE completed is not null and uuid = :document_id RETURNING content"
 QUERY__fetch_rendered_document = "SELECT app.base_url, rd.uuid as document_id, 'pdf' as render_as, rd.file_name, rd.create_file, rd.completed, rd.encrypted_access_token as oauth_token FROM document_request rd INNER JOIN document_template able ON rd.template = able.name INNER JOIN application app ON app.name = rd.application WHERE rd.uuid = :document_id"
-
+QUERY__fetch_cron_jobs = "SELECT * FROM remote_procedure WHERE access = 'S'";
 
 class JAAQLModel(BaseJAAQLModel):
     VERIFICATION_QUEUE = None
@@ -894,7 +895,6 @@ WHERE
 
             new_data = open(config_path, "r").read()
             new_data = new_data.replace("{{JAAQL_INSTALL_LOCATION}}", os.environ.get("INSTALL_PATH"))
-            new_data = new_data.replace("listen 443 ssl;", "listen 443 ssl http2; listen [::]:443 ssl http2;")  # Support for http2, can't be enabled by nginx
 
             # Read the file content
             with open(file_path, 'r') as file:
@@ -943,7 +943,6 @@ WHERE
             if not self.vault.get_obj(VAULT_KEY__allow_jaaql_uninstall):
                 raise HttpStatusException("JAAQL not permitted to uninstall itself")
             DBPGInterface.close_all_pools()
-            subprocess.run("crontab -l 2> /dev/null | grep -v '# jaaql__' | crontab -", check=True, shell=True)
             subprocess.call("./pg_reboot.sh", cwd="/")
         else:
             subprocess.call("docker kill jaaql_pg")
@@ -1158,6 +1157,8 @@ WHERE
 
             if is_refresh:
                 incorrect_credentials = not exists_matching_validated_ip_address(self.jaaql_lookup_connection, encrypted_salted_ip_address)
+            elif os.environ.get("JAAQL_ACCEPTANCE_PASSWORD") is not None:
+                incorrect_credentials = password != os.environ["JAAQL_ACCEPTANCE_PASSWORD"]
             elif password is not None:
                 incorrect_credentials = jaaql__decrypt(account[KG__account__api_key], self.get_db_crypt_key()) != password
             else:
@@ -1776,28 +1777,6 @@ WHERE
 
             raise err
 
-    @staticmethod
-    def cron_expression_to_string(cron: dict) -> str:
-        """
-        Converts a CronExpression object into a cron expression string.
-        """
-
-        def format_field(field):
-            if isinstance(field, list):
-                return ','.join(map(str, field))
-            elif field is None:
-                return '*'
-            return str(field)
-
-        parts = [
-            format_field(cron.get(CRON_minute)),
-            format_field(cron.get(CRON_hour)),
-            format_field(cron.get(CRON_dayOfMonth)),
-            format_field(cron.get(CRON_month)),
-            format_field(cron.get(CRON_dayOfWeek))
-        ]
-        return ' '.join(parts)
-
     def handle_procedure(self, http_inputs: dict, is_the_anonymous_user: bool, auth_token: str, username: str, ip_address: str, account_id: str):
         rpc = remote_procedure__select(self.jaaql_lookup_connection, http_inputs[KG__remote_procedure__application], http_inputs[KG__remote_procedure__name])
 
@@ -1877,25 +1856,37 @@ WHERE
             traceback.print_exc()
             raise HttpStatusException("Could not intepret webhook procedure result", HTTPStatus.INTERNAL_SERVER_ERROR)
 
-    def add_cron_job_to_application(self, connection: DBInterface, cron_input: dict):
-        self.is_super_admin(connection)
-        application = cron_input.pop(KEY__application)
-        application__select(connection, application)
-        command = cron_input.pop(KEY__command)
-        if '"' in command:
-            raise HttpStatusException("Please do not use double quotes in your cron expression!")
-        cron_string = self.cron_expression_to_string(cron_input)
-        cron_command = '(crontab -l 2> /dev/null; echo "' + cron_string + ' ' + command + '  # jaaql__' + application + '") | crontab -'
-        if self.is_container:
-            try:
-                subprocess.run(cron_command, check=True, shell=True, timeout=5, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            except subprocess.CalledProcessError as e:
-                raise CronExpressionError(
-                    "Error with the cron expression. Input: " + json.dumps(cron_input) + ", evaluated to cron expression: '" + cron_string + "', Stdout:\n" + (
-                        e.stdout.decode() if e.stdout else "None") + "\n\nStderr: " + (e.stderr.decode() if e.stderr else "None"))
-        else:
-            print(cron_command)
-            print("Cron not supported in debugging mode", file=sys.stderr)
+    def set_procedures(self, inputs: dict, connection: DBInterface):
+        execute_supplied_statement(
+            connection,
+            "DELETE FROM remote_procedure WHERE application = :application",
+            { KEY__application: inputs[KEY__application] })
+
+        for proc in inputs["procs"]:
+            execute_supplied_statement(
+                connection,
+                "INSERT INTO remote_procedure (application, name, command, access, cron) VALUES(:application, :name, :command, :access, :cron)",
+                { **proc, KG__remote_procedure__application: inputs[KEY__application] })
+
+
+    def execute_cron_jobs(self, ip_address: str):
+        if ip_address not in IPS__local:
+            raise UserUnauthorized()
+
+        print("Checking cron job execution status...")
+
+        crons = execute_supplied_statement(self.jaaql_lookup_connection, QUERY__fetch_cron_jobs,
+                                           as_objects=True)
+
+        for cron in crons:
+            if check_if_should_fire_cron(cron["cron"]):
+                print("Executing cron job " + cron["name"] + " for application " + cron[KEY__application])
+                subprocess.Popen(
+                    cron[KEY__command],
+                    shell=True,
+                    start_new_session=True,  # detach from gunicorn worker
+                    text=True
+                )
 
     def get_last_successful_build_time(self):
         if os.environ.get("JAAQL_DEBUGGING") == "TRUE":
