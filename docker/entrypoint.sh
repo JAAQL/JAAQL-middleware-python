@@ -113,7 +113,7 @@ if [ "$LOG_TO_OUTPUT" = "TRUE" ] ; then
 fi
 
 DO_OVERWRITE=TRUE
-SITE_FILE=/etc/nginx/sites-available/jaaql
+SITE_FILE=/etc/nginx/conf.d/jaaql.conf
 
 if [ -f "$SITE_FILE" ] ; then
   WAS_HTTPS=FALSE
@@ -123,7 +123,7 @@ if [ -f "$SITE_FILE" ] ; then
   if [ "$WAS_HTTPS" = "$IS_HTTPS" ] ; then
     DO_OVERWRITE=FALSE
   else
-    rm -rf /etc/nginx/sites-available/jaaql
+    rm -rf $SITE_FILE
   fi
 fi
 if [ "$DO_OVERWRITE" = "TRUE" ] ; then
@@ -131,114 +131,115 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   if [ "$ALLOW_UNLIMITED_REQUESTS" = "TRUE" ]; then
     echo "Allowing unlimited requests"
   else
-    echo "limit_req_zone \$binary_remote_addr zone=jaaqllimit:10m rate=3r/s;" >> /etc/nginx/sites-available/jaaql
-    echo "limit_req_zone \$binary_remote_addr zone=httplimit:10m rate=5r/s;" >> /etc/nginx/sites-available/jaaql
+    echo "limit_req_zone \$binary_remote_addr zone=jaaqllimit:10m rate=3r/s;" >> $SITE_FILE
+    echo "limit_req_zone \$binary_remote_addr zone=httplimit:10m rate=5r/s;" >> $SITE_FILE
   fi
   if [ "$IS_HTTPS" = "TRUE" ] ; then
     if [ "$HTTPS_WWW" = "TRUE" ] ; then
-      echo "server {" >> /etc/nginx/sites-available/jaaql
-      echo "    listen 80;" >> /etc/nginx/sites-available/jaaql
-      echo "    listen [::]:80;" >> /etc/nginx/sites-available/jaaql
+      echo "server {" >> $SITE_FILE
+      echo "    listen 80;" >> $SITE_FILE
+      echo "    listen [::]:80;" >> $SITE_FILE
       if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
-        echo "    server_name $SERVER_ADDRESS *.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+        echo "    server_name $SERVER_ADDRESS *.$SERVER_ADDRESS;" >> $SITE_FILE
       else
-        echo "    server_name $SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+        echo "    server_name $SERVER_ADDRESS;" >> $SITE_FILE
       fi
-      echo "    return 301 http://www.\$host\$request_uri;" >> /etc/nginx/sites-available/jaaql
-      echo "}" >> /etc/nginx/sites-available/jaaql
-      echo "" >> /etc/nginx/sites-available/jaaql
+      echo "    return 301 http://www.\$host\$request_uri;" >> $SITE_FILE
+      echo "}" >> $SITE_FILE
+      echo "" >> $SITE_FILE
     else
-      echo "server {" >> /etc/nginx/sites-available/jaaql
-      echo "    listen 80;" >> /etc/nginx/sites-available/jaaql
-      echo "    listen [::]:80;" >> /etc/nginx/sites-available/jaaql
+      echo "server {" >> $SITE_FILE
+      echo "    listen 80;" >> $SITE_FILE
+      echo "    listen [::]:80;" >> $SITE_FILE
       if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
-        echo "    server_name www.$SERVER_ADDRESS www.*.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+        echo "    server_name www.$SERVER_ADDRESS www.*.$SERVER_ADDRESS;" >> $SITE_FILE
       else
-        echo "    server_name www.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+        echo "    server_name www.$SERVER_ADDRESS;" >> $SITE_FILE
       fi
-      echo "    return 301 http://\$host\$request_uri;" >> /etc/nginx/sites-available/jaaql
-      echo "}" >> /etc/nginx/sites-available/jaaql
-      echo "" >> /etc/nginx/sites-available/jaaql
+      echo "    return 301 http://\$host\$request_uri;" >> $SITE_FILE
+      echo "}" >> $SITE_FILE
+      echo "" >> $SITE_FILE
     fi
   fi
-  echo "server {" >> /etc/nginx/sites-available/jaaql
+  echo "server {" >> $SITE_FILE
   if [ "$IS_HTTPS_WILDCARD" != "TRUE" ]; then
-    echo "    listen 80;" >> /etc/nginx/sites-available/jaaql
-    echo "    listen [::]:80;" >> /etc/nginx/sites-available/jaaql
+    echo "    listen 80;" >> $SITE_FILE
+    echo "    listen [::]:80;" >> $SITE_FILE
   fi
   if [ "$IS_HTTPS" = "TRUE" ] && [ "$HTTPS_WWW" = "TRUE" ] ; then
     if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
-      echo "    server_name www.$SERVER_ADDRESS www.*.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+      echo "    server_name www.$SERVER_ADDRESS www.*.$SERVER_ADDRESS;" >> $SITE_FILE
     else
-      echo "    server_name www.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+      echo "    server_name www.$SERVER_ADDRESS;" >> $SITE_FILE
     fi
   else
     if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
-      echo "    server_name $SERVER_ADDRESS *.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+      echo "    server_name $SERVER_ADDRESS *.$SERVER_ADDRESS;" >> $SITE_FILE
     else
-      echo "    server_name $SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
+      echo "    server_name $SERVER_ADDRESS;" >> $SITE_FILE
     fi
   fi
-  echo "$SECURITY_HEADERS$HSTS_HEADER" >> /etc/nginx/sites-available/jaaql
-  echo "    root $INSTALL_PATH/www;" >> /etc/nginx/sites-available/jaaql
-  echo "    index index.html;" >> /etc/nginx/sites-available/jaaql
-  echo "    location / {" >> /etc/nginx/sites-available/jaaql
+  echo "$SECURITY_HEADERS$HSTS_HEADER" >> $SITE_FILE
+  echo "    root $INSTALL_PATH/www;" >> $SITE_FILE
+  echo "    index index.html;" >> $SITE_FILE
+  echo "    location / {" >> $SITE_FILE
   if [ "$ALLOW_UNLIMITED_REQUESTS" = "TRUE" ]; then
     echo "Skipping httplimit as unlimited requests allowed"
   else
-    echo "        limit_req zone=httplimit burst=24 delay=16;" >> /etc/nginx/sites-available/jaaql
-    echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
+    echo "        limit_req zone=httplimit burst=24 delay=16;" >> $SITE_FILE
+    echo "        limit_req_status 429;" >> $SITE_FILE
   fi
   if [ "$IS_FROZEN" = "TRUE" ] ; then
     echo "        return 503;"
   fi
-  echo "    }" >> /etc/nginx/sites-available/jaaql
-  echo "    location /api {" >> /etc/nginx/sites-available/jaaql
+  echo "    }" >> $SITE_FILE
+  echo "    location /api/ {" >> $SITE_FILE
   if [ "$ALLOW_UNLIMITED_REQUESTS" = "TRUE" ]; then
     echo "Skipping jaaqllimit as unlimited requests allowed"
   else
-    echo "        limit_req zone=jaaqllimit burst=10 delay=7;" >> /etc/nginx/sites-available/jaaql
-    echo "        limit_req_status 429;" >> /etc/nginx/sites-available/jaaql
+    echo "        limit_req zone=jaaqllimit burst=10 delay=7;" >> $SITE_FILE
+    echo "        limit_req_status 429;" >> $SITE_FILE
   fi
-  echo "        include proxy_params;" >> /etc/nginx/sites-available/jaaql
-  echo "        proxy_pass http://unix:$INSTALL_PATH/jaaql.sock:/;" >> /etc/nginx/sites-available/jaaql
-  echo "        proxy_set_header X-Real-IP \$remote_addr;" >> /etc/nginx/sites-available/jaaql
+  echo "        proxy_pass http://unix:$INSTALL_PATH/jaaql.sock:/;" >> $SITE_FILE
+  echo "        proxy_set_header X-Real-IP         \$remote_addr;" >> $SITE_FILE
+  echo "        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;" >> $SITE_FILE
+  echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> $SITE_FILE
+  echo "        proxy_set_header Host              \$http_host;" >> $SITE_FILE
   if [ "$IS_FROZEN" = "TRUE" ] ; then
     echo "        return 503;"
   fi
-  echo "    }" >> /etc/nginx/sites-available/jaaql
+  echo "    }" >> $SITE_FILE
   if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
-    echo "    # listen 443 ssl http2;" >> /etc/nginx/sites-available/jaaql
+    echo "    # listen 443 ssl http2;" >> $SITE_FILE
   fi
-  echo "}" >> /etc/nginx/sites-available/jaaql
-  echo "" >> /etc/nginx/sites-available/jaaql
+  echo "}" >> $SITE_FILE
+  echo "" >> $SITE_FILE
   # The following is needed to allow https-less access via 127.0.0.1 address
-  echo "server {" >> /etc/nginx/sites-available/jaaql
-  echo "    server_name localhost;" >> /etc/nginx/sites-available/jaaql
-  echo "$SECURITY_HEADERS" >> /etc/nginx/sites-available/jaaql
-  echo "    root $INSTALL_PATH/www;" >> /etc/nginx/sites-available/jaaql
-  echo "    location /api {" >> /etc/nginx/sites-available/jaaql
-  echo "        include proxy_params;" >> /etc/nginx/sites-available/jaaql
-  echo "        proxy_pass http://unix:$INSTALL_PATH/jaaql.sock:/;" >> /etc/nginx/sites-available/jaaql
-  echo "        proxy_set_header X-Real-IP \$remote_addr;" >> /etc/nginx/sites-available/jaaql
-  echo "    }" >> /etc/nginx/sites-available/jaaql
-  echo "    index index.html;" >> /etc/nginx/sites-available/jaaql
-  echo "    location / {" >> /etc/nginx/sites-available/jaaql
-  echo "    }" >> /etc/nginx/sites-available/jaaql
-  echo "}" >> /etc/nginx/sites-available/jaaql
+  echo "server {" >> $SITE_FILE
+  echo "    server_name localhost;" >> $SITE_FILE
+  echo "$SECURITY_HEADERS" >> $SITE_FILE
+  echo "    root $INSTALL_PATH/www;" >> $SITE_FILE
+  echo "    location /api/ {" >> $SITE_FILE
+  echo "        proxy_pass http://unix:$INSTALL_PATH/jaaql.sock:/;" >> $SITE_FILE
+  echo "        proxy_set_header X-Real-IP         \$remote_addr;" >> $SITE_FILE
+  echo "        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;" >> $SITE_FILE
+  echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> $SITE_FILE
+  echo "        proxy_set_header Host              \$http_host;" >> $SITE_FILE
+  echo "    }" >> $SITE_FILE
+  echo "    index index.html;" >> $SITE_FILE
+  echo "    location / {" >> $SITE_FILE
+  echo "    }" >> $SITE_FILE
+  echo "}" >> $SITE_FILE
 
   if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
-    echo "server {" >> /etc/nginx/sites-available/jaaql
-    echo "    listen 80;" >> /etc/nginx/sites-available/jaaql
-    echo "    listen [::]:80;" >> /etc/nginx/sites-available/jaaql
-    echo "    server_name $SERVER_ADDRESS *.$SERVER_ADDRESS;" >> /etc/nginx/sites-available/jaaql
-    echo "    return 301 https://\$host\$request_uri;" >> /etc/nginx/sites-available/jaaql
-    echo "}" >> /etc/nginx/sites-available/jaaql
+    echo "server {" >> $SITE_FILE
+    echo "    listen 80;" >> $SITE_FILE
+    echo "    listen [::]:80;" >> $SITE_FILE
+    echo "    server_name $SERVER_ADDRESS *.$SERVER_ADDRESS;" >> $SITE_FILE
+    echo "    return 301 https://\$host\$request_uri;" >> $SITE_FILE
+    echo "}" >> $SITE_FILE
   fi
 fi
-
-rm -rf /etc/nginx/sites-enabled/jaaql  # Not strictly necessary but helps stuck containers
-ln -s $SITE_FILE /etc/nginx/sites-enabled
 
 SERVER_PROTOCOL="http:\/\/"
 if [ "$IS_HTTPS" = "TRUE" ] ; then
@@ -280,9 +281,9 @@ replace_config() {
 
 replace_config
 
-rm -rf /etc/nginx/sites-enabled/default
+rm -rf /etc/nginx/conf.d/default.conf
 sed 's/\\n/\
-/g' -i /etc/nginx/sites-available/jaaql
+/g' -i $SITE_FILE
 grep -q '^[[:space:]]*server_tokens' /etc/nginx/nginx.conf || sed -i 's/http {/http {\n        server_tokens off;\n        server_names_hash_bucket_size 128;\n/g' /etc/nginx/nginx.conf
 sed 's/\\n/\
 /g' -i /etc/nginx/nginx.conf
@@ -309,7 +310,7 @@ if [ "$IS_HTTPS" = "TRUE" ] && [ ! -d "$CERT_DIR" ] ; then
     ssl_certificate /etc/letsencrypt/live/'"$SERVER_ADDRESS"'/fullchain.pem;\
     ssl_certificate_key /etc/letsencrypt/live/'"$SERVER_ADDRESS"'/privkey.pem;\
     include /etc/letsencrypt/options-ssl-nginx.conf;\
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;' /etc/nginx/sites-available/jaaql
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;' $SITE_FILE
   else
     $CERTBOT_PATH --nginx $APPLY_URL --redirect --noninteractive --no-eff-email --email $HTTPS_EMAIL --agree-tos -w $INSTALL_PATH/www
   fi
@@ -323,7 +324,7 @@ elif [ "$IS_HTTPS" = "TRUE" ] && [ -d "$CERT_DIR" ] ; then
     ssl_certificate /etc/letsencrypt/live/'"$SERVER_ADDRESS"'/fullchain.pem;\
     ssl_certificate_key /etc/letsencrypt/live/'"$SERVER_ADDRESS"'/privkey.pem;\
     include /etc/letsencrypt/options-ssl-nginx.conf;\
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;' /etc/nginx/sites-available/jaaql
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;' $SITE_FILE
   else
     if [ "$HTTPS_WWW" = "TRUE" ] ; then
       printf "1,2\n1\n" | $CERTBOT_PATH --nginx

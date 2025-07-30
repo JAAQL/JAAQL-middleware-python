@@ -425,7 +425,7 @@ WHERE
                 raise HttpStatusException("JAAQL is already frozen")
 
             nginx_content = None
-            with open("/etc/nginx/sites-available/jaaql", "r") as site_file:
+            with open("/etc/nginx/conf.d/jaaql.conf", "r") as site_file:
                 nginx_content = site_file.read()
             if nginx_content is None:
                 raise HttpStatusException("Failed to open file for freezing")
@@ -433,7 +433,7 @@ WHERE
             nginx_content = nginx_content[:insert_index] + NGINX_INSERT__frozen + nginx_content[insert_index:]
             insert_index = nginx_content.index(NGINX_MARKER__second) + len(NGINX_MARKER__second)
             nginx_content = nginx_content[:insert_index] + NGINX_INSERT__frozen + nginx_content[insert_index:]
-            with open("/etc/nginx/sites-available/jaaql", "w") as site_file:
+            with open("/etc/nginx/conf.d/jaaql.conf", "w") as site_file:
                 site_file.write(nginx_content)
             subprocess.call("service nginx restart", shell=True)
 
@@ -450,12 +450,12 @@ WHERE
                 raise HttpStatusException("JAAQL is already defrosted")
 
             nginx_content = None
-            with open("/etc/nginx/sites-available/jaaql", "r") as site_file:
+            with open("/etc/nginx/conf.d/jaaql.conf", "r") as site_file:
                 nginx_content = site_file.read()
             if nginx_content is None:
                 raise HttpStatusException("Failed to open file for defrosting")
             nginx_content = nginx_content.replace("\n        return 503;", "")
-            with open("/etc/nginx/sites-available/jaaql", "w") as site_file:
+            with open("/etc/nginx/conf.d/jaaql.conf", "w") as site_file:
                 site_file.write(nginx_content)
             subprocess.call("service nginx restart", shell=True)
 
@@ -879,7 +879,7 @@ WHERE
 
         if self.is_container:
             # Define the path to your file
-            file_path = '/etc/nginx/sites-available/jaaql'
+            file_path = '/etc/nginx/conf.d/jaaql.conf'
             override = os.environ.get("SET_WEB_CONFIG_OVERRIDE", "")
             if len(override) != 0:
                 override += "."
