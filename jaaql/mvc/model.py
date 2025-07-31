@@ -928,6 +928,7 @@ WHERE
                 if line.strip().startswith("listen 443 ssl"):
                     second_iteration_updated_lines.append("    http3 on;")
                     second_iteration_updated_lines.append("    listen 443 quic reuseport;")
+                    second_iteration_updated_lines.append("    listen [::]:443 ssl;")
                     second_iteration_updated_lines.append("    listen [::]:443 quic reuseport ipv6only=on;")
                     second_iteration_updated_lines.append("    add_header Alt-Svc 'h3=\":443\"; ma=86400';")
 
