@@ -925,6 +925,12 @@ WHERE
                 if line.startswith("}"):
                     in_localhost = False
 
+                if line.strip().startswith("listen 443 ssl"):
+                    second_iteration_updated_lines.append("    http3 on;")
+                    second_iteration_updated_lines.append("    listen 443 quic reuseport;")
+                    second_iteration_updated_lines.append("    listen [::]:443 quic reuseport ipv6only=on;")
+                    second_iteration_updated_lines.append("    add_header Alt-Svc 'h3=\":443\"; ma=86400';")
+
                 if not in_localhost or not line.strip().startswith("limit_req"):  # Ignore limit req for local requests
                     second_iteration_updated_lines.append(line)
 
