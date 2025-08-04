@@ -904,7 +904,11 @@ WHERE
             in_section = False
             updated_lines = []
 
+            do_write = True
+
             for line in lines:
+                if "listen 443 quic" in line:
+                    do_write = False
                 if line.strip().startswith('charset'):
                     in_section = True
                     continue  # Skip to the next iteration
@@ -935,8 +939,9 @@ WHERE
                     second_iteration_updated_lines.append(line)
 
             # Write the updated content back to the file
-            with open(file_path, 'w') as file:
-                file.writelines(second_iteration_updated_lines)
+            if do_write:
+                with open(file_path, 'w') as file:
+                    file.writelines(second_iteration_updated_lines)
 
             subprocess.call(['nginx', '-s', 'reload'])
         else:
