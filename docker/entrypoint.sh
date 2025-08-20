@@ -135,49 +135,27 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
     echo "limit_req_zone \$binary_remote_addr zone=httplimit:10m rate=5r/s;" >> $SITE_FILE
   fi
   if [ "$IS_HTTPS" = "TRUE" ] ; then
-    if [ "$HTTPS_WWW" = "TRUE" ] ; then
-      echo "server {" >> $SITE_FILE
-      echo "    listen 80;" >> $SITE_FILE
-      echo "    listen [::]:80;" >> $SITE_FILE
-      if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
-        echo "    server_name $SERVER_ADDRESS *.$SERVER_ADDRESS;" >> $SITE_FILE
-      else
-        echo "    server_name $SERVER_ADDRESS;" >> $SITE_FILE
-      fi
-      echo "    return 301 http://www.\$host\$request_uri;" >> $SITE_FILE
-      echo "}" >> $SITE_FILE
-      echo "" >> $SITE_FILE
+    echo "server {" >> $SITE_FILE
+    echo "    listen 80;" >> $SITE_FILE
+    echo "    listen [::]:80;" >> $SITE_FILE
+    if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
+      echo "    server_name www.$SERVER_ADDRESS www.*.$SERVER_ADDRESS;" >> $SITE_FILE
     else
-      echo "server {" >> $SITE_FILE
-      echo "    listen 80;" >> $SITE_FILE
-      echo "    listen [::]:80;" >> $SITE_FILE
-      if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
-        echo "    server_name www.$SERVER_ADDRESS www.*.$SERVER_ADDRESS;" >> $SITE_FILE
-      else
-        echo "    server_name www.$SERVER_ADDRESS;" >> $SITE_FILE
-      fi
-      echo "    return 301 http://\$host\$request_uri;" >> $SITE_FILE
-      echo "}" >> $SITE_FILE
-      echo "" >> $SITE_FILE
+      echo "    server_name www.$SERVER_ADDRESS;" >> $SITE_FILE
     fi
+    echo "    return 301 https://$SERVER_ADDRESS\$request_uri;" >> $SITE_FILE
+    echo "}" >> $SITE_FILE
+    echo "" >> $SITE_FILE
   fi
   echo "server {" >> $SITE_FILE
   if [ "$IS_HTTPS_WILDCARD" != "TRUE" ]; then
     echo "    listen 80;" >> $SITE_FILE
     echo "    listen [::]:80;" >> $SITE_FILE
   fi
-  if [ "$IS_HTTPS" = "TRUE" ] && [ "$HTTPS_WWW" = "TRUE" ] ; then
-    if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
-      echo "    server_name www.$SERVER_ADDRESS www.*.$SERVER_ADDRESS;" >> $SITE_FILE
-    else
-      echo "    server_name www.$SERVER_ADDRESS;" >> $SITE_FILE
-    fi
+  if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
+    echo "    server_name $SERVER_ADDRESS *.$SERVER_ADDRESS;" >> $SITE_FILE
   else
-    if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
-      echo "    server_name $SERVER_ADDRESS *.$SERVER_ADDRESS;" >> $SITE_FILE
-    else
-      echo "    server_name $SERVER_ADDRESS;" >> $SITE_FILE
-    fi
+    echo "    server_name $SERVER_ADDRESS;" >> $SITE_FILE
   fi
   echo "$SECURITY_HEADERS$HSTS_HEADER" >> $SITE_FILE
   echo "    root $INSTALL_PATH/www;" >> $SITE_FILE
@@ -243,11 +221,7 @@ fi
 
 SERVER_PROTOCOL="http:\/\/"
 if [ "$IS_HTTPS" = "TRUE" ] ; then
-  if [ "$HTTPS_WWW" = "TRUE" ] ; then
-    SERVER_PROTOCOL="https:\/\/www."
-  else
-    SERVER_PROTOCOL="https:\/\/"
-  fi
+  SERVER_PROTOCOL="https:\/\/"
 fi
 
 replace_config() {
@@ -296,12 +270,13 @@ if [ "$IS_HTTPS" = "TRUE" ] && [ ! -d "$CERT_DIR" ] ; then
   if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
     APPLY_URL="$APPLY_URL -d *.$SERVER_ADDRESS"
   fi
-  if [ "$HTTPS_WWW" = "TRUE" ] ; then
+
+  if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
+    APPLY_URL="$APPLY_URL -d www.*.$SERVER_ADDRESS"
+  else
     APPLY_URL="$APPLY_URL -d www.$SERVER_ADDRESS"
-    if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
-      APPLY_URL="$APPLY_URL -d www.*.$SERVER_ADDRESS"
-    fi
   fi
+
   if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
     $CERTBOT_PATH certonly --manual --manual-auth-hook /certbot-dns-auth-hook.sh --manual-cleanup-hook /certbot-dns-cleanup-hook.sh --preferred-challenges dns $APPLY_URL --noninteractive --no-eff-email --email $HTTPS_EMAIL --agree-tos
     sed -i '/^[ \t]*# listen 443 ssl http2;/c\
@@ -326,11 +301,7 @@ elif [ "$IS_HTTPS" = "TRUE" ] && [ -d "$CERT_DIR" ] ; then
     include /etc/letsencrypt/options-ssl-nginx.conf;\
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;' $SITE_FILE
   else
-    if [ "$HTTPS_WWW" = "TRUE" ] ; then
-      printf "1,2\n1\n" | $CERTBOT_PATH --nginx
-    else
-      printf "1\n1\n" | $CERTBOT_PATH --nginx
-    fi
+    printf "1,2\n1\n" | $CERTBOT_PATH --nginx
   fi
   service nginx restart || { echo "Failed to restart nginx. Reason: $(nginx -t 2>&1)"; exit 1; }
 fi
