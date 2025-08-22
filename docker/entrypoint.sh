@@ -134,19 +134,6 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
     echo "limit_req_zone \$binary_remote_addr zone=jaaqllimit:10m rate=3r/s;" >> $SITE_FILE
     echo "limit_req_zone \$binary_remote_addr zone=httplimit:10m rate=5r/s;" >> $SITE_FILE
   fi
-  if [ "$IS_HTTPS" = "TRUE" ] ; then
-    echo "server {" >> $SITE_FILE
-    echo "    listen 80;" >> $SITE_FILE
-    echo "    listen [::]:80;" >> $SITE_FILE
-    if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
-      echo "    server_name www.$SERVER_ADDRESS www.*.$SERVER_ADDRESS;" >> $SITE_FILE
-    else
-      echo "    server_name www.$SERVER_ADDRESS;" >> $SITE_FILE
-    fi
-    echo "    return 301 https://$SERVER_ADDRESS\$request_uri;" >> $SITE_FILE
-    echo "}" >> $SITE_FILE
-    echo "" >> $SITE_FILE
-  fi
   echo "server {" >> $SITE_FILE
   if [ "$IS_HTTPS_WILDCARD" != "TRUE" ]; then
     echo "    listen 80;" >> $SITE_FILE
@@ -155,7 +142,10 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
     echo "    server_name $SERVER_ADDRESS *.$SERVER_ADDRESS;" >> $SITE_FILE
   else
-    echo "    server_name $SERVER_ADDRESS;" >> $SITE_FILE
+    echo "    server_name $SERVER_ADDRESS www.$SERVER_ADDRESS;" >> $SITE_FILE
+  fi
+  if [ "$IS_HTTPS" = "TRUE" ] ; then
+    echo "    if (\$host = www.$SERVER_ADDRESS) { return 301 https://$SERVER_ADDRESS\$request_uri; }"
   fi
   echo "$SECURITY_HEADERS$HSTS_HEADER" >> $SITE_FILE
   echo "    root $INSTALL_PATH/www;" >> $SITE_FILE
