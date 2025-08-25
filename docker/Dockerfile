@@ -31,6 +31,8 @@ VOLUME /etc/nginx/sites-available/
 COPY ./pgextension /pgextension
 COPY ./plpgsql_check /plpgsql_check
 
+COPY docker/75-emoji.conf /etc/fonts/conf.d/75-emoji.conf
+
 RUN apt-get update && apt-get install -y build-essential && apt update && \
     apt install -y libpq-dev && \
     apt-get install -y cron && \
@@ -53,6 +55,17 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
 
     ## refresh metadata
     apt-get update && \
+
+    apt-get install -y --no-install-recommends \
+        fontconfig \
+        fonts-dejavu-core \
+        fonts-liberation \
+        fonts-noto-core \
+        fonts-noto-cjk \
+        fonts-noto-color-emoji && \
+
+    mkdir -p /etc/fonts/conf.d && \
+    fc-cache -f && \
 
     ## install *exactly* 1.29.0 (pattern allows the “‑1~bookworm” suffix)
     apt-get install -y --no-install-recommends nginx=1.29.0* && \
