@@ -1987,3 +1987,121 @@ WHERE
 
         return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
                       self.cached_canned_query_service, as_objects=as_objects, singleton=singleton)
+
+
+    def begin_oidc_logout(self, inputs: dict, response: JAAQLResponse):
+        """
+		Start RP-initiated logout: clear app cookies, set logout state cookie, and 302 to OP end-session.
+		inputs requires:
+			- KEY__application
+			- KG__user_registry__provider
+			- KG__user_registry__tenant
+			- KEY__redirect_uri (final place in your app after logout, e.g. "logged-out" or "")
+			- optional: "id_token_hint" (if you persisted the ID token)
+		"""
+        # Resolve schema & app
+        schema = inputs.get(KEY__schema)
+        application = application__select(self.jaaql_lookup_connection, inputs[KEY__application])
+        if not schema:
+            schema = application[KG__application__default_schema]
+
+        # Resolve registry and discovery
+        database = application_schema__select(self.jaaql_lookup_connection, inputs[KEY__application], schema)
+        user_registry = user_registry__select(self.jaaql_lookup_connection, inputs[KG__user_registry__provider], inputs[KG__user_registry__tenant])
+        db_user_registry = database_user_registry__select(
+        	self.jaaql_lookup_connection, self.get_db_crypt_key(),
+        	inputs[KG__user_registry__provider], inputs[KG__user_registry__tenant],
+        	database[KG__application_schema__database]
+        )
+
+        discovery = self.fetch_discovery_content(
+        	database[KG__application_schema__database],
+        	inputs[KG__user_registry__provider],
+        	inputs[KG__user_registry__tenant],
+        	user_registry[KG__user_registry__discovery_url]
+        )
+
+        end_session = discovery.get("end_session_endpoint")
+        if not end_session:
+            # Fallback for older KC if discovery is missing the field
+            issuer = discovery.get("issuer", "").rstrip("/")
+            end_session = issuer + "/protocol/openid-connect/logout"
+
+        # Final hop inside YOUR app after KC returns
+        final_app_redirect = application[KG__application__base_url] + "/" + (inputs.get(KEY__redirect_uri) or "")
+        # The URL that KC will call after it logs the user out (your handler)
+        post_logout = application[KG__application__base_url] + "/api/oidc/post-logout"
+
+        # Store the logout round-trip state (re-using your OIDC cookie machinery)
+        state = secrets.token_urlsafe(32)
+        logout_session = crypt_utils.jwt_encode(
+        	self.vault.get_obj(VAULT_KEY__jwt_crypt_key),
+        	{
+        		"redirect_uri": final_app_redirect,
+        		"state": state,
+        		"tenant": inputs[KG__user_registry__tenant],
+        		"provider": inputs[KG__user_registry__provider],
+        		"application": inputs[KEY__application],
+        		"schema": schema
+        	},
+        	JWT_PURPOSE__oidc,
+        	expiry_ms=self.oidc_login_expiry_ms
+        )
+
+        response.set_cookie(
+        	COOKIE_OIDC,
+        	value=logout_session,
+        	attributes=get_cookie_attrs(True, False, self.is_container),
+        	is_https=self.is_https
+        )
+
+        # Kill your own app session immediately
+        response.delete_cookie(COOKIE_JAAQL_AUTH, self.is_https)
+        # Optional: clear the UI helper marker
+        response.set_cookie(COOKIE_LOGIN_MARKER, value="", is_https=True, attributes=get_sloppy_cookie_attrs())
+
+        # Build front-channel logout URL (Keycloak requires either id_token_hint OR client_id with post_logout_redirect_uri)
+        url = urllib.parse.urlsplit(end_session)
+        q = dict(urllib.parse.parse_qsl(url.query, keep_blank_values=True))
+
+        q["post_logout_redirect_uri"] = post_logout
+        q["state"] = state
+
+        id_token_hint = inputs.get("id_token_hint")
+        if id_token_hint:
+            q["id_token_hint"] = id_token_hint
+        else:
+            q["client_id"] = db_user_registry[KG__database_user_registry__client_id]  # KC >= 18 accepts this fallback
+
+        logout_url = urllib.parse.urlunsplit((
+            url.scheme, url.netloc, url.path,
+            urllib.parse.urlencode(q, doseq=False, safe="/:"), url.fragment
+        ))
+
+        response.response_code = HTTPStatus.FOUND
+        response.raw_headers["Location"] = logout_url
+
+    def finish_oidc_logout(self, inputs: dict, response: JAAQLResponse):
+        """
+        Handle the OP redirect after logout. Validates state, clears OIDC cookie, and 302 to your final URL.
+        Expect 'state' in inputs (query param).
+        """
+        # Read & clear the stored logout session
+        oidc_cookie = inputs.get("oidc_cookie")  # if your routing passes cookies in inputs; otherwise fetch from request in your framework
+        if not oidc_cookie:
+            # fall back to reading directly if your framework wires cookies differently
+            raise HttpStatusException("Missing logout state", HTTPStatus.BAD_REQUEST)
+
+        logout_state = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), oidc_cookie, JWT_PURPOSE__oidc)
+        if not logout_state:
+            raise HttpStatusException("Invalid logout state", HTTPStatus.BAD_REQUEST)
+
+        if inputs.get("state") != logout_state.get("state"):
+            raise HttpStatusException("Logout state mismatch", HTTPStatus.BAD_REQUEST)
+
+        # Remove the OIDC cookie now that we're done
+        response.delete_cookie(COOKIE_OIDC, self.is_https)
+
+        # Redirect to the place the app wanted to land after logout
+        response.response_code = HTTPStatus.FOUND
+        response.raw_headers["Location"] = logout_state["redirect_uri"]

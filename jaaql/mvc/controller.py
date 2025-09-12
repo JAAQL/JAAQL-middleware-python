@@ -201,3 +201,16 @@ class JAAQLController(BaseJAAQLController):
         @self.publish_route('/rendered_documents', DOCUMENTATION__rendered_document)
         def documents(http_inputs: dict):
             return self.model.fetch_document_stream(http_inputs)
+
+        @self.publish_route('/oidc/logout', DOCUMENTATION__oidc_begin_logout)
+        def begin_oidc_logout(http_inputs: dict, response: JAAQLResponse):
+            # inputs: application, tenant, provider, optional schema, redirect_uri, optional id_token_hint
+            self.model.begin_oidc_logout(http_inputs, response)
+
+        @self.publish_route('/oidc/post-logout', DOCUMENTATION__oidc_post_logout)
+        def finish_oidc_logout(http_inputs: dict, response: JAAQLResponse):
+            # KC returns ?state=... here; validate against cookie and bounce to final app URL
+            self.model.finish_oidc_logout(
+                {"state": http_inputs["state"], "oidc_cookie": request.cookies.get(COOKIE_OIDC)},
+                response
+            )

@@ -479,3 +479,56 @@ DOCUMENTATION__procedures = SwaggerDocumentation(
         ]
     )
 )
+
+ARG_RES__id_token_hint = SwaggerArgumentResponse(
+	name="id_token_hint",
+	description="Optional ID Token previously issued to the user; recommended for OIDC RP-initiated logout.",
+	arg_type=str,
+	required=False,
+    condition="Recommended",
+	example=["eyJ..."]
+)
+
+DOCUMENTATION__oidc_begin_logout = SwaggerDocumentation(
+	tags="oidc",
+	security=False,
+	methods=SwaggerMethod(
+		name="Begin OIDC logout",
+		description="Clears the app session, sets a logout state cookie, and redirects the browser to the OP end-session endpoint. After logout, the OP redirects to /api/oidc/post-logout.",
+		method=REST__GET,
+		arguments=[
+			ARG_RES__tenant,
+			ARG_RES__provider,
+			ARG_RES__application,
+			ARG_RES__schema,
+			ARG_RES__redirect_uri,
+			ARG_RES__id_token_hint
+		],
+		response=SwaggerFlatResponse(
+			description="Redirect",
+			code=HTTPStatus.FOUND,
+			body="You are being redirected to the identity server for logout..."
+		)
+	)
+)
+
+DOCUMENTATION__oidc_post_logout = SwaggerDocumentation(
+	tags="oidc",
+	security=False,
+	methods=SwaggerMethod(
+		name="OIDC post-logout redirect",
+		description="Receives the OP redirect after logout, validates state, clears the cookie, and redirects to the final app URL.",
+		method=REST__GET,
+		arguments=SwaggerArgumentResponse(
+			name="state",
+			description="Opaque state returned by the OP; must match the value set at logout start.",
+			arg_type=str,
+			example=["y3nvJ..."]
+		),
+		response=SwaggerFlatResponse(
+			description="Redirect",
+			code=HTTPStatus.FOUND,
+			body="You are being redirected back to your place in the app..."
+		)
+	)
+)
