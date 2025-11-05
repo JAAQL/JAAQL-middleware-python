@@ -268,7 +268,7 @@ class Constraints(Enum):
     DatabaseUserRegistryProviderTenantDatabaseKey = "database_user_registry_provider_tenant_database_key"
     AccountIdKey = "account_id_key"
     ValidatedIpAddressUuidKey = "validated_ip_address_uuid_key"
-    SecurityEventApplicationEventLockKey = "security_event_application_event_lock_key"
+    SecurityEventApplicationNameTypeKey = "security_event_application_name_type_key"
     HandledErrorCodeKey = "handled_error_code_key"
     PgBaseExceptionNameKey = "pg_base_exception_name_key"
     PgErrorClassCodeKey = "pg_error_class_code_key"

@@ -1,3 +1,5 @@
+from jaaql.mvc.exception_queries import SECURITY_EVENT_TYPE__create, SECURITY_EVENT_TYPE__delete, \
+    SECURITY_EVENT_TYPE__reset
 from jaaql.mvc.model import JAAQLModel
 from jaaql.mvc.base_controller import BaseJAAQLController
 from jaaql.documentation.documentation_internal import *
@@ -93,10 +95,6 @@ class JAAQLController(BaseJAAQLController):
         def prepare(http_inputs: dict, account_id: str):
             return self.model.fetch_domains(http_inputs, account_id)
 
-        @self.publish_route('/account/password', DOCUMENTATION__password)
-        def password(account_id: str, username: str, ip_address: str, is_the_anonymous_user: bool, http_inputs: dict):
-            return self.model.add_my_account_password(account_id, username, ip_address, is_the_anonymous_user, **http_inputs)
-
         @self.publish_route('/submit', DOCUMENTATION__submit)
         def submit(http_inputs: dict, account_id: str, verification_hook: queue.Queue, ip_address: str):
             return self.model.submit(http_inputs, account_id, verification_hook=verification_hook, ip_address=ip_address)
@@ -113,36 +111,28 @@ class JAAQLController(BaseJAAQLController):
         def clean(connection: DBInterface):
             self.model.clean(connection)
 
+        @self.publish_route('/security-event', DOCUMENTATION__security_event)
+        def security_event(http_inputs: dict, account_id: str):
+            security_event = security_event__select(self.model.jaaql_lookup_connection, http_inputs[KEY__application],
+                                                    name=http_inputs[KG__security_event__name],
+                                                    type=http_inputs[KG__security_event__type])
+            http_inputs["email"] = http_inputs[KEY__parameters]["email"]
+            if security_event[KG__security_event__type] == SECURITY_EVENT_TYPE__create:
+                return self.model.security_event__create_user(http_inputs, account_id, security_event)
+            elif security_event[KG__security_event__type] == SECURITY_EVENT_TYPE__delete:
+                return self.model.security_event__delete_user(http_inputs, account_id, security_event)
+            elif security_event[KG__security_event__type] == SECURITY_EVENT_TYPE__reset:
+                return self.model.security_event__reset_user_password(http_inputs, account_id, security_event)
+            else:
+                raise HttpStatusException("Invalid security event type")
+
         @self.publish_route('/internal/dispatchers', DOCUMENTATION__dispatchers)
         def dispatchers(connection: DBInterface, http_inputs: dict):
             self.model.attach_dispatcher_credentials(connection, http_inputs)
 
-        @self.publish_route('/invite', DOCUMENTATION__invite)
-        def invite(http_inputs: dict, account_id: str, is_the_anonymous_user: bool):
-            return self.model.invite(http_inputs, account_id, is_the_anonymous_user)
-
-        @self.publish_route('/sign-up', DOCUMENTATION__sign_up)
-        def sign_up(http_inputs: dict, ip_address: str, response: JAAQLResponse):
-            return self.model.sign_up(http_inputs, ip_address, response)
-
-        @self.publish_route('/sign-up-resend', DOCUMENTATION__resend_sign_up)
-        def sign_up_resend(http_inputs: dict, account_id: str, username: str):
-            return self.model.resend_signup_email(http_inputs, account_id, username)
-
         @self.publish_route('/email', DOCUMENTATION__emails)
         def send_email(is_the_anonymous_user: bool, account_id: str, http_inputs: dict, username: str, auth_token: str):
             return self.model.send_email(is_the_anonymous_user, account_id, http_inputs, username, auth_token)
-
-        @self.publish_route('/account/reset-password', DOCUMENTATION__reset_password)
-        def reset_password(http_inputs: dict):
-            return self.model.reset_password(http_inputs)
-
-        @self.publish_route('/security-event', DOCUMENTATION__security_event)
-        def security_event(http_inputs: dict):
-            if self.is_post():
-                return self.model.check_security_event_key_and_security_event_is_unlocked(http_inputs)
-            else:
-                return self.model.finish_security_event(http_inputs)
 
         @self.publish_route('/cron', DOCUMENTATION__cron)
         def cron(ip_address: str):

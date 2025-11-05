@@ -1,5 +1,5 @@
 """
-This script was generated from build_and_run.fxls at 2025-05-21, 11:25:44
+This script was generated from build_and_run.fxls at 2025-11-05, 14:24:08
 """
 
 from jaaql.db.db_interface import DBInterface
@@ -11,10 +11,6 @@ KG__application__name = "name"
 KG__application__base_url = "base_url"
 KG__application__templates_source = "templates_source"
 KG__application__default_schema = "default_schema"
-KG__application__default_s_et = "default_s_et"
-KG__application__default_a_et = "default_a_et"
-KG__application__default_r_et = "default_r_et"
-KG__application__default_u_et = "default_u_et"
 KG__application__unlock_key_validity_period = "unlock_key_validity_period"
 KG__application__unlock_code_validity_period = "unlock_code_validity_period"
 KG__application__is_live = "is_live"
@@ -23,11 +19,9 @@ KG__application__is_live = "is_live"
 QG__application_delete = "DELETE FROM application WHERE name = :name"
 QG__application_insert = """
     INSERT INTO application (name, base_url, templates_source,
-        default_schema, default_s_et, default_a_et,
-        default_r_et, default_u_et)
+        default_schema)
     VALUES (:name, :base_url, :templates_source,
-        :default_schema, :default_s_et, :default_a_et,
-        :default_r_et, :default_u_et)
+        :default_schema)
     RETURNING unlock_key_validity_period, unlock_code_validity_period, is_live
 """
 QG__application_select_all = "SELECT * FROM application"
@@ -39,10 +33,6 @@ QG__application_update = """
         base_url = COALESCE(:base_url, base_url),
         templates_source = COALESCE(:templates_source, templates_source),
         default_schema = COALESCE(:default_schema, default_schema),
-        default_s_et = COALESCE(:default_s_et, default_s_et),
-        default_a_et = COALESCE(:default_a_et, default_a_et),
-        default_r_et = COALESCE(:default_r_et, default_r_et),
-        default_u_et = COALESCE(:default_u_et, default_u_et),
         unlock_key_validity_period = COALESCE(:unlock_key_validity_period, unlock_key_validity_period),
         unlock_code_validity_period = COALESCE(:unlock_code_validity_period, unlock_code_validity_period),
         is_live = COALESCE(:is_live, is_live)
@@ -69,9 +59,7 @@ def application__update(
     connection: DBInterface,
     name,
     base_url=None, templates_source=None, default_schema=None,
-    default_s_et=None, default_a_et=None, default_r_et=None,
-    default_u_et=None, unlock_key_validity_period=None, unlock_code_validity_period=None,
-    is_live=None
+    unlock_key_validity_period=None, unlock_code_validity_period=None, is_live=None
 ):
     execute_supplied_statement(
         connection, QG__application_update,
@@ -83,10 +71,6 @@ def application__update(
             KG__application__base_url: base_url,
             KG__application__templates_source: templates_source,
             KG__application__default_schema: default_schema,
-            KG__application__default_s_et: default_s_et,
-            KG__application__default_a_et: default_a_et,
-            KG__application__default_r_et: default_r_et,
-            KG__application__default_u_et: default_u_et,
             KG__application__unlock_key_validity_period: unlock_key_validity_period,
             KG__application__unlock_code_validity_period: unlock_code_validity_period,
             KG__application__is_live: is_live
@@ -121,8 +105,7 @@ def application__select_all(
 def application__insert(
     connection: DBInterface,
     name, base_url,
-    templates_source=None, default_schema=None, default_s_et=None,
-    default_a_et=None, default_r_et=None, default_u_et=None
+    templates_source=None, default_schema=None
 ):
     return execute_supplied_statement_singleton(
         connection, QG__application_insert,
@@ -130,11 +113,7 @@ def application__insert(
             KG__application__name: name,
             KG__application__base_url: base_url,
             KG__application__templates_source: templates_source,
-            KG__application__default_schema: default_schema,
-            KG__application__default_s_et: default_s_et,
-            KG__application__default_a_et: default_a_et,
-            KG__application__default_r_et: default_r_et,
-            KG__application__default_u_et: default_u_et
+            KG__application__default_schema: default_schema
         }, as_objects=True
     )
 
@@ -372,15 +351,14 @@ def email_dispatcher__insert(
 
 
 # Generated keys for table 'jaaql'
-KG__jaaql__security_event_attempt_limit = "security_event_attempt_limit"
 KG__jaaql__migration_version = "migration_version"
 KG__jaaql__last_successful_build_time = "last_successful_build_time"
 
 # Generated queries for table 'jaaql'
 QG__jaaql_delete = "DELETE FROM jaaql"
 QG__jaaql_insert = """
-    INSERT INTO jaaql (security_event_attempt_limit, migration_version, last_successful_build_time)
-    VALUES (:security_event_attempt_limit, :migration_version, :last_successful_build_time)
+    INSERT INTO jaaql (migration_version, last_successful_build_time)
+    VALUES (:migration_version, :last_successful_build_time)
 """
 QG__jaaql_select_all = "SELECT * FROM jaaql"
 QG__jaaql_select = "SELECT * FROM jaaql"
@@ -388,7 +366,6 @@ QG__jaaql_update = """
     UPDATE
         jaaql
     SET
-        security_event_attempt_limit = COALESCE(:security_event_attempt_limit, security_event_attempt_limit),
         migration_version = COALESCE(:migration_version, migration_version),
         last_successful_build_time = COALESCE(:last_successful_build_time, last_successful_build_time)
 """
@@ -404,13 +381,12 @@ def jaaql__delete(
 
 def jaaql__update(
     connection: DBInterface,
-    security_event_attempt_limit=None, migration_version=None, last_successful_build_time=None
+    migration_version=None, last_successful_build_time=None
 ):
     execute_supplied_statement(
         connection, QG__jaaql_update,
         {
             # None Key Fields
-            KG__jaaql__security_event_attempt_limit: security_event_attempt_limit,
             KG__jaaql__migration_version: migration_version,
             KG__jaaql__last_successful_build_time: last_successful_build_time
         }
@@ -438,12 +414,11 @@ def jaaql__select_all(
 
 def jaaql__insert(
     connection: DBInterface,
-    security_event_attempt_limit, migration_version, last_successful_build_time
+    migration_version, last_successful_build_time
 ):
     execute_supplied_statement(
         connection, QG__jaaql_insert,
         {
-            KG__jaaql__security_event_attempt_limit: security_event_attempt_limit,
             KG__jaaql__migration_version: migration_version,
             KG__jaaql__last_successful_build_time: last_successful_build_time
         }
@@ -454,31 +429,26 @@ def jaaql__insert(
 KG__email_template__application = "application"
 KG__email_template__dispatcher = "dispatcher"
 KG__email_template__name = "name"
-KG__email_template__type = "type"
 KG__email_template__content_url = "content_url"
 KG__email_template__validation_schema = "validation_schema"
 KG__email_template__base_relation = "base_relation"
-KG__email_template__dbms_user_column_name = "dbms_user_column_name"
 KG__email_template__permissions_view = "permissions_view"
 KG__email_template__data_view = "data_view"
 KG__email_template__dispatcher_domain_recipient = "dispatcher_domain_recipient"
 KG__email_template__fixed_address = "fixed_address"
-KG__email_template__requires_confirmation = "requires_confirmation"
 KG__email_template__can_be_sent_anonymously = "can_be_sent_anonymously"
 
 # Generated queries for table 'email_template'
 QG__email_template_delete = "DELETE FROM email_template WHERE application = :application AND name = :name"
 QG__email_template_insert = """
     INSERT INTO email_template (application, dispatcher, name,
-        type, content_url, validation_schema,
-        base_relation, dbms_user_column_name, permissions_view,
-        data_view, dispatcher_domain_recipient, fixed_address,
-        requires_confirmation, can_be_sent_anonymously)
+        content_url, validation_schema, base_relation,
+        permissions_view, data_view, dispatcher_domain_recipient,
+        fixed_address, can_be_sent_anonymously)
     VALUES (:application, :dispatcher, :name,
-        :type, :content_url, :validation_schema,
-        :base_relation, :dbms_user_column_name, :permissions_view,
-        :data_view, :dispatcher_domain_recipient, :fixed_address,
-        :requires_confirmation, :can_be_sent_anonymously)
+        :content_url, :validation_schema, :base_relation,
+        :permissions_view, :data_view, :dispatcher_domain_recipient,
+        :fixed_address, :can_be_sent_anonymously)
 """
 QG__email_template_select_all = "SELECT * FROM email_template"
 QG__email_template_select = "SELECT * FROM email_template WHERE application = :application AND name = :name"
@@ -487,16 +457,13 @@ QG__email_template_update = """
         email_template
     SET
         dispatcher = COALESCE(:dispatcher, dispatcher),
-        type = COALESCE(:type, type),
         content_url = COALESCE(:content_url, content_url),
         validation_schema = COALESCE(:validation_schema, validation_schema),
         base_relation = COALESCE(:base_relation, base_relation),
-        dbms_user_column_name = COALESCE(:dbms_user_column_name, dbms_user_column_name),
         permissions_view = COALESCE(:permissions_view, permissions_view),
         data_view = COALESCE(:data_view, data_view),
         dispatcher_domain_recipient = COALESCE(:dispatcher_domain_recipient, dispatcher_domain_recipient),
         fixed_address = COALESCE(:fixed_address, fixed_address),
-        requires_confirmation = COALESCE(:requires_confirmation, requires_confirmation),
         can_be_sent_anonymously = COALESCE(:can_be_sent_anonymously, can_be_sent_anonymously)
     WHERE
         application = :application AND name = :name
@@ -521,10 +488,9 @@ def email_template__delete(
 def email_template__update(
     connection: DBInterface,
     application, name,
-    dispatcher=None, type=None, content_url=None,
-    validation_schema=None, base_relation=None, dbms_user_column_name=None,
-    permissions_view=None, data_view=None, dispatcher_domain_recipient=None,
-    fixed_address=None, requires_confirmation=None, can_be_sent_anonymously=None
+    dispatcher=None, content_url=None, validation_schema=None,
+    base_relation=None, permissions_view=None, data_view=None,
+    dispatcher_domain_recipient=None, fixed_address=None, can_be_sent_anonymously=None
 ):
     execute_supplied_statement(
         connection, QG__email_template_update,
@@ -535,16 +501,13 @@ def email_template__update(
 
             # None Key Fields
             KG__email_template__dispatcher: dispatcher,
-            KG__email_template__type: type,
             KG__email_template__content_url: content_url,
             KG__email_template__validation_schema: validation_schema,
             KG__email_template__base_relation: base_relation,
-            KG__email_template__dbms_user_column_name: dbms_user_column_name,
             KG__email_template__permissions_view: permissions_view,
             KG__email_template__data_view: data_view,
             KG__email_template__dispatcher_domain_recipient: dispatcher_domain_recipient,
             KG__email_template__fixed_address: fixed_address,
-            KG__email_template__requires_confirmation: requires_confirmation,
             KG__email_template__can_be_sent_anonymously: can_be_sent_anonymously
         }
     )
@@ -578,10 +541,10 @@ def email_template__select_all(
 def email_template__insert(
     connection: DBInterface,
     application, dispatcher, name,
-    type, content_url,
-    validation_schema=None, base_relation=None, dbms_user_column_name=None,
-    permissions_view=None, data_view=None, dispatcher_domain_recipient=None,
-    fixed_address=None, requires_confirmation=None, can_be_sent_anonymously=None
+    content_url,
+    validation_schema=None, base_relation=None, permissions_view=None,
+    data_view=None, dispatcher_domain_recipient=None, fixed_address=None,
+    can_be_sent_anonymously=None
 ):
     execute_supplied_statement(
         connection, QG__email_template_insert,
@@ -589,16 +552,13 @@ def email_template__insert(
             KG__email_template__application: application,
             KG__email_template__dispatcher: dispatcher,
             KG__email_template__name: name,
-            KG__email_template__type: type,
             KG__email_template__content_url: content_url,
             KG__email_template__validation_schema: validation_schema,
             KG__email_template__base_relation: base_relation,
-            KG__email_template__dbms_user_column_name: dbms_user_column_name,
             KG__email_template__permissions_view: permissions_view,
             KG__email_template__data_view: data_view,
             KG__email_template__dispatcher_domain_recipient: dispatcher_domain_recipient,
             KG__email_template__fixed_address: fixed_address,
-            KG__email_template__requires_confirmation: requires_confirmation,
             KG__email_template__can_be_sent_anonymously: can_be_sent_anonymously
         }
     )
@@ -1597,98 +1557,68 @@ def validated_ip_address__insert(
 
 # Generated keys for table 'security_event'
 KG__security_event__application = "application"
-KG__security_event__event_lock = "event_lock"
-KG__security_event__creation_timestamp = "creation_timestamp"
-KG__security_event__wrong_key_attempt_count = "wrong_key_attempt_count"
-KG__security_event__email_template = "email_template"
-KG__security_event__account = "account"
-KG__security_event__fake_account = "fake_account"
-KG__security_event__unlock_key = "unlock_key"
-KG__security_event__unlock_code = "unlock_code"
-KG__security_event__unlock_timestamp = "unlock_timestamp"
-KG__security_event__finish_timestamp = "finish_timestamp"
+KG__security_event__name = "name"
+KG__security_event__type = "type"
+KG__security_event__database_procedure = "database_procedure"
 
 # Generated queries for table 'security_event'
-QG__security_event_delete = "DELETE FROM security_event WHERE application = :application AND event_lock = :event_lock"
+QG__security_event_delete = "DELETE FROM security_event WHERE application = :application AND name = :name AND type = :type"
 QG__security_event_insert = """
-    INSERT INTO security_event (application, email_template, account,
-        fake_account, unlock_code, unlock_timestamp,
-        finish_timestamp)
-    VALUES (:application, :email_template, :account,
-        :fake_account, :unlock_code, :unlock_timestamp,
-        :finish_timestamp)
-    RETURNING event_lock, creation_timestamp, wrong_key_attempt_count,
-        unlock_key
+    INSERT INTO security_event (application, name, type,
+        database_procedure)
+    VALUES (:application, :name, :type,
+        :database_procedure)
 """
 QG__security_event_select_all = "SELECT * FROM security_event"
-QG__security_event_select = "SELECT * FROM security_event WHERE application = :application AND event_lock = :event_lock"
+QG__security_event_select = "SELECT * FROM security_event WHERE application = :application AND name = :name AND type = :type"
 QG__security_event_update = """
     UPDATE
         security_event
     SET
-        creation_timestamp = COALESCE(:creation_timestamp, creation_timestamp),
-        wrong_key_attempt_count = COALESCE(:wrong_key_attempt_count, wrong_key_attempt_count),
-        email_template = COALESCE(:email_template, email_template),
-        account = COALESCE(:account, account),
-        fake_account = COALESCE(:fake_account, fake_account),
-        unlock_key = COALESCE(:unlock_key, unlock_key),
-        unlock_code = COALESCE(:unlock_code, unlock_code),
-        unlock_timestamp = COALESCE(:unlock_timestamp, unlock_timestamp),
-        finish_timestamp = COALESCE(:finish_timestamp, finish_timestamp)
+        database_procedure = COALESCE(:database_procedure, database_procedure)
     WHERE
-        application = :application AND event_lock = :event_lock
+        application = :application AND name = :name AND type = :type
 """
 
 
 # Generated methods for table 'security_event'
 def security_event__delete(
     connection: DBInterface,
-    application, event_lock
+    application, name, type
 ):
     execute_supplied_statement(
         connection, QG__security_event_delete,
         {
             # Key Fields
             KG__security_event__application: application,
-            KG__security_event__event_lock: event_lock
+            KG__security_event__name: name,
+            KG__security_event__type: type
         }
     )
 
 
 def security_event__update(
-    connection: DBInterface, encryption_key: bytes,
-    application, event_lock,
-    creation_timestamp=None, wrong_key_attempt_count=None, email_template=None,
-    account=None, fake_account=None, unlock_key=None,
-    unlock_code=None, unlock_timestamp=None, finish_timestamp=None,
-    encryption_salts=None
+    connection: DBInterface,
+    application, name, type,
+    database_procedure=None
 ):
     execute_supplied_statement(
         connection, QG__security_event_update,
         {
             # Key Fields
             KG__security_event__application: application,
-            KG__security_event__event_lock: event_lock,
+            KG__security_event__name: name,
+            KG__security_event__type: type,
 
             # None Key Fields
-            KG__security_event__creation_timestamp: creation_timestamp,
-            KG__security_event__wrong_key_attempt_count: wrong_key_attempt_count,
-            KG__security_event__email_template: email_template,
-            KG__security_event__account: account,
-            KG__security_event__fake_account: fake_account,
-            KG__security_event__unlock_key: unlock_key,
-            KG__security_event__unlock_code: unlock_code,
-            KG__security_event__unlock_timestamp: unlock_timestamp,
-            KG__security_event__finish_timestamp: finish_timestamp
-        }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
-            KG__security_event__fake_account
-        ]
+            KG__security_event__database_procedure: database_procedure
+        }
     )
 
 
 def security_event__select(
-    connection: DBInterface, encryption_key: bytes,
-    application, event_lock,
+    connection: DBInterface,
+    application, name, type,
     singleton_code: int = None, singleton_message: str = "security_event does not exist"
 ):
     return execute_supplied_statement_singleton(
@@ -1696,45 +1626,35 @@ def security_event__select(
         {
             # Key Fields
             KG__security_event__application: application,
-            KG__security_event__event_lock: event_lock
-        }, encryption_key=encryption_key, decrypt_columns=[
-            KG__security_event__fake_account
-        ],
+            KG__security_event__name: name,
+            KG__security_event__type: type
+        },
         as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
     )
 
 
 def security_event__select_all(
-    connection: DBInterface, encryption_key: bytes
+    connection: DBInterface
 ):
     return execute_supplied_statement(
-        connection, QG__security_event_select_all, encryption_key=encryption_key, decrypt_columns=[
-            KG__security_event__fake_account
-        ],
+        connection, QG__security_event_select_all,
         as_objects=True
     )
 
 
 def security_event__insert(
-    connection: DBInterface, encryption_key: bytes,
-    application, email_template, unlock_code,
-    account=None, fake_account=None, unlock_timestamp=None,
-    finish_timestamp=None,
-    encryption_salts=None
+    connection: DBInterface,
+    application, name, type,
+    database_procedure
 ):
-    return execute_supplied_statement_singleton(
+    execute_supplied_statement(
         connection, QG__security_event_insert,
         {
             KG__security_event__application: application,
-            KG__security_event__email_template: email_template,
-            KG__security_event__account: account,
-            KG__security_event__fake_account: fake_account,
-            KG__security_event__unlock_code: unlock_code,
-            KG__security_event__unlock_timestamp: unlock_timestamp,
-            KG__security_event__finish_timestamp: finish_timestamp
-        }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
-            KG__security_event__fake_account
-        ], as_objects=True
+            KG__security_event__name: name,
+            KG__security_event__type: type,
+            KG__security_event__database_procedure: database_procedure
+        }
     )
 
 
@@ -2165,14 +2085,15 @@ KG__remote_procedure__application = "application"
 KG__remote_procedure__name = "name"
 KG__remote_procedure__command = "command"
 KG__remote_procedure__access = "access"
+KG__remote_procedure__cron = "cron"
 
 # Generated queries for table 'remote_procedure'
 QG__remote_procedure_delete = "DELETE FROM remote_procedure WHERE application = :application AND name = :name"
 QG__remote_procedure_insert = """
     INSERT INTO remote_procedure (application, name, command,
-        access)
+        access, cron)
     VALUES (:application, :name, :command,
-        :access)
+        :access, :cron)
 """
 QG__remote_procedure_select_all = "SELECT * FROM remote_procedure"
 QG__remote_procedure_select = "SELECT * FROM remote_procedure WHERE application = :application AND name = :name"
@@ -2181,7 +2102,8 @@ QG__remote_procedure_update = """
         remote_procedure
     SET
         command = COALESCE(:command, command),
-        access = COALESCE(:access, access)
+        access = COALESCE(:access, access),
+        cron = COALESCE(:cron, cron)
     WHERE
         application = :application AND name = :name
 """
@@ -2205,7 +2127,7 @@ def remote_procedure__delete(
 def remote_procedure__update(
     connection: DBInterface,
     application, name,
-    command=None, access=None
+    command=None, access=None, cron=None
 ):
     execute_supplied_statement(
         connection, QG__remote_procedure_update,
@@ -2216,7 +2138,8 @@ def remote_procedure__update(
 
             # None Key Fields
             KG__remote_procedure__command: command,
-            KG__remote_procedure__access: access
+            KG__remote_procedure__access: access,
+            KG__remote_procedure__cron: cron
         }
     )
 
@@ -2249,7 +2172,8 @@ def remote_procedure__select_all(
 def remote_procedure__insert(
     connection: DBInterface,
     application, name, command,
-    access
+    access,
+    cron=None
 ):
     execute_supplied_statement(
         connection, QG__remote_procedure_insert,
@@ -2257,6 +2181,7 @@ def remote_procedure__insert(
             KG__remote_procedure__application: application,
             KG__remote_procedure__name: name,
             KG__remote_procedure__command: command,
-            KG__remote_procedure__access: access
+            KG__remote_procedure__access: access,
+            KG__remote_procedure__cron: cron
         }
     )

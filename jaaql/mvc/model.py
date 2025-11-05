@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import string
 import sys
 import tempfile
 import traceback
@@ -7,6 +8,8 @@ import urllib.parse
 import uuid
 import signal
 import secrets
+from typing import Dict, Any
+
 from cryptography.hazmat.primitives import hashes
 
 import re
@@ -1214,65 +1217,6 @@ WHERE
     def gen_security_event_unlock_code(self, codeset: str, length: int):
         return "".join([codeset[random.randint(0, len(codeset) - 1)] for _ in range(length)])
 
-    def check_security_event_key_and_security_event_is_unlocked(self, inputs: dict, returning: bool = False):
-        try:
-            evt = check_security_event_unlock(
-                self.jaaql_lookup_connection, inputs[KG__security_event__event_lock], inputs[KG__security_event__unlock_code],
-                inputs[KG__security_event__unlock_key], singleton_message=ERR__invalid_lock
-            )
-        except HttpSingletonStatusException:
-            raise InvalidSecurityEventLock()
-
-        if evt[KG__security_event__wrong_key_attempt_count] >= CODE__max_attempts:
-            raise TooManyUnlockAttempts()
-
-        timezone = evt[KG__security_event__creation_timestamp].tzinfo
-        add_seconds = timedelta(seconds=evt[KG__application__unlock_code_validity_period])
-        if evt[KG__security_event__creation_timestamp] + add_seconds < datetime.now(timezone):
-            raise SecurityEventShortCodeExpired()
-
-        if not evt[KEY__key_fits]:
-            raise SecurityEventIncorrectShortUnlockCode()
-
-        if evt[KG__security_event__unlock_timestamp] is None:
-            security_event__update(self.jaaql_lookup_connection, self.get_db_crypt_key(), evt[KG__security_event__application],
-                                   evt[KG__security_event__event_lock], unlock_timestamp=datetime.now())
-
-        if returning:
-            return evt
-        else:
-            template = email_template__select(self.jaaql_lookup_connection, evt[KG__security_event__application],
-                                              evt[KG__security_event__email_template])
-            return template[KG__email_template__type]
-
-    def finish_security_event(self, inputs: dict):
-        sec_evt = self.check_security_event_key_and_security_event_is_unlocked({
-            KG__security_event__event_lock: inputs[KG__security_event__event_lock],
-            KG__security_event__unlock_code: inputs[KG__security_event__unlock_code],
-            KG__security_event__unlock_key: inputs[KG__security_event__unlock_key]
-        }, returning=True)
-
-        template = email_template__select(self.jaaql_lookup_connection, sec_evt[KG__security_event__application],
-                                          sec_evt[KG__security_event__email_template])
-        account = account__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), sec_evt[KG__security_event__account])
-
-        parameters = None
-
-        if template[KG__email_template__type] in [EMAIL_TYPE__signup, EMAIL_TYPE__reset_password, EMAIL_TYPE__unregistered_password_reset]:
-            if template[KG__email_template__requires_confirmation]:
-                self.add_account_password(sec_evt[KG__security_event__account], inputs[KEY__password])
-
-        # Anything where we follow an email link confirms the account
-        mark_account_registered(self.jaaql_lookup_connection, account[KG__account__id])
-
-        security_event__update(self.jaaql_lookup_connection, self.get_db_crypt_key(), sec_evt[KG__security_event__application],
-                               sec_evt[KG__security_event__event_lock], finish_timestamp=datetime.now())
-
-        return {
-            KEY__parameters: parameters,
-            KEY__username: account[KG__account__username]
-        }
-
     def fetch_document(self, inputs: dict, response: JAAQLResponse):
         res = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_rendered_document,
                                                    {KEY__document_id: inputs[KEY__document_id]}, singleton_message=ERR__document_id_not_found,
@@ -1384,409 +1328,276 @@ WHERE
                                                     attachments=attachments, attachment_access_token=auth_token,
                                                     attachment_base_url=attachment_base_url)
 
-    def reset_password(self, inputs: dict):
-        app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
-        if inputs[KEY__reset_password_template] is None:
-            inputs[KEY__reset_password_template] = app[KG__application__default_r_et]
-        if inputs[KEY__unregistered_user_reset_password_template] is None:
-            inputs[KEY__unregistered_user_reset_password_template] = app[KG__application__default_u_et]
+    from typing import Any, Dict
 
-        if inputs[KEY__reset_password_template] is None:
-            raise HttpStatusException("Missing reset password template for application. Either supply one in the reset call or set a default")
+    def _kc_get_token(self) -> str:
+        kc_base = os.environ.get("KEYCLOAK_URL", "http://localhost:8080").rstrip("/")
+        kc_client_id = os.environ.get("KEYCLOAK_REALM_ADMIN_ID", "admin")
+        kc_client_secret = os.environ.get("KEYCLOAK_REALM_ADMIN_SECRET", "admin")
+        resp = requests.post(
+            f"{kc_base}/realms/master/protocol/openid-connect/token",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data={
+                "grant_type": "client_credentials",
+                "client_id": kc_client_id,
+                "client_secret": kc_client_secret,
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+        return resp.json()["access_token"]
 
-        if inputs[KEY__unregistered_user_reset_password_template] is None:
-            raise HttpStatusException("Missing unregistered user template for application. Either supply one in the reset call or set a default")
+    def _kc_find_user_id_by_username(self, access_token: str, username: str) -> str | None:
+        kc_base = os.environ.get("KEYCLOAK_URL", "http://localhost:8080").rstrip("/")
+        kc_realm = os.environ["KEYCLOAK_REALM"]
+        r = requests.get(
+            f"{kc_base}/admin/realms/{kc_realm}/users",
+            headers={"Authorization": f"Bearer {access_token}"},
+            params={"username": username, "exact": "true"},
+            timeout=20,
+        )
+        r.raise_for_status()
+        for u in r.json() or []:
+            if u.get("username") == username:
+                return u.get("id")
+        return None
 
-        reset_template = email_template__select(self.jaaql_lookup_connection, inputs[KG__security_event__application],
-                                                inputs[KEY__reset_password_template])
-        if reset_template[KG__email_template__type] != EMAIL_TYPE__reset_password:
-            raise HttpStatusException(ERR__template_not_reset)
+    def _kc_delete_pw_and_passkeys(self, access_token: str, user_id: str) -> None:
+        kc_base = os.environ.get("KEYCLOAK_URL", "http://localhost:8080").rstrip("/")
+        kc_realm = os.environ["KEYCLOAK_REALM"]
+        creds = requests.get(
+            f"{kc_base}/admin/realms/{kc_realm}/users/{user_id}/credentials",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=20,
+        )
+        creds.raise_for_status()
+        for c in creds.json():
+            ctype = (c.get("type") or "").lower()
+            cid = c.get("id")
+            if not cid:
+                continue
+            if ctype == "password" or ctype.startswith("webauthn"):
+                d = requests.delete(
+                    f"{kc_base}/admin/realms/{kc_realm}/users/{user_id}/credentials/{cid}",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    timeout=20,
+                )
+                if d.status_code != HTTPStatus.NO_CONTENT:
+                    d.raise_for_status()
 
-        unregistered_template = email_template__select(self.jaaql_lookup_connection, inputs[KG__security_event__application],
-                                                       inputs[KEY__unregistered_user_reset_password_template])
-        if unregistered_template[KG__email_template__type] != EMAIL_TYPE__unregistered_password_reset:
-            raise HttpStatusException(ERR__template_not_unregistered)
+    def _kc_set_temp_password(self, access_token: str, user_id: str, temp_pw: str) -> None:
+        kc_base = os.environ.get("KEYCLOAK_URL", "http://localhost:8080").rstrip("/")
+        kc_realm = os.environ["KEYCLOAK_REALM"]
+        r = requests.put(
+            f"{kc_base}/admin/realms/{kc_realm}/users/{user_id}/reset-password",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            json={"type": "password", "value": temp_pw, "temporary": True},
+            timeout=20,
+        )
+        r.raise_for_status()
 
-        account_existed = False
+    def _kc_create_user_if_missing(self, access_token: str, username: str) -> str:
+        kc_base = os.environ.get("KEYCLOAK_URL", "http://localhost:8080").rstrip("/")
+        kc_realm = os.environ["KEYCLOAK_REALM"]
+        uid = self._kc_find_user_id_by_username(access_token, username)
+        if uid:
+            return uid
+        r = requests.post(
+            f"{kc_base}/admin/realms/{kc_realm}/users",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            json={"username": username, "email": username, "enabled": True, "emailVerified": True},
+            timeout=20,
+        )
+        if r.status_code == HTTPStatus.CONFLICT.value:
+            # Race with another creator: fetch id again
+            uid = self._kc_find_user_id_by_username(access_token, username)
+            if not uid:
+                r.raise_for_status()
+            return uid
+        r.raise_for_status()
+        loc = r.headers.get("Location", "").rstrip("/")
+        return loc.split("/")[-1] if loc else self._kc_find_user_id_by_username(access_token, username)
 
-        # TODO allow create account here under example
-        # You don't have an account with us, would you like one?
-        # Think about how that might impact fake account
+    def _gen_alnum_16(self) -> str:
+        alnum = string.ascii_letters + string.digits
+        return "".join(secrets.choice(alnum) for _ in range(16))
 
-        account_id = None
-        fake_account_username = None
+    def _gate_run_singleton(self, inputs: dict, account_id: str, security_event: dict) -> Any:
+        # Fetch configured procedure
+        proc_name = security_event[KG__security_event__database_procedure]
+        if re.match(REGEX__dmbs_procedure_name, proc_name) is None:
+            raise HttpStatusException(
+                "Unsafe " + KG__security_event__database_procedure + " specified for security event"
+            )
 
-        try:
-            account = fetch_account_from_username(self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
-                                                  inputs[KEY__username])
-            account_id = account[KG__account__id]
-            if account[KG__account__most_recent_password] is not None:
-                account_existed = True
+        # Validate parameter keys
+        params = inputs[KEY__parameters]
+        explicit_types = inputs.get("explicit_types", {})
+        for k in params.keys():
+            if re.match(REGEX__dmbs_object_name, k) is None:
+                raise HttpStatusException("Unsafe parameter specified for database procedure")
 
-            jaaql_singleton = jaaql__select(self.jaaql_lookup_connection)
+        # Build SELECT * FROM proc(arg => :arg::<type>, ...)
+        introduced = False
+        query = f"SELECT * FROM \"{proc_name}\"("
+        for k in params.keys():
+            explicit_type = explicit_types.get(k)
+            v = params[k]
 
-            if account == jaaql_singleton[KG__jaaql__the_anonymous_user]:
-                raise HttpStatusException("Cannot change this user's password as this user is the anonymous user")
-        except HttpSingletonStatusException:
-            fake_account_username = inputs[KEY__username]
+            if introduced:
+                query += ","
 
-        count = count_for_security_event(self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
-                                         EMAIL_TYPE__reset_password, EMAIL_TYPE__unregistered_password_reset,
-                                         account_id, fake_account_username)
-
-        if count >= RESEND__reset_max:
-            raise TooManyPasswordResetRequests()
-
-        template = reset_template if account_existed else unregistered_template
-        unlock_code = self.gen_security_event_unlock_code(CODE__letters, CODE__reset_length)
-        reg_env_ins = security_event__insert(self.jaaql_lookup_connection, self.get_db_crypt_key(),
-                                             inputs[KG__security_event__application], template[KG__email_template__name], unlock_code,
-                                             account_id, fake_account_username, encryption_salts={
-                KG__security_event__fake_account: get_repeatable_salt(self.get_vault_repeatable_salt(), fake_account_username)})
-
-        data_view = template[KG__email_template__data_view]
-        if data_view is not None and re.match(REGEX__dmbs_object_name, data_view) is None:
-            raise HttpStatusException("Unsafe data relation specified for sign up")
-        reset_password_data = None
-        try:
-            submit_data = {}
-            if data_view is not None:
-                submit_data = {
-                    KEY__application: inputs[KG__security_event__application],
-                    KEY_query: f"SELECT * FROM {data_view}",
-                    KEY__schema: template[KG__email_template__validation_schema]
-                }
-
-            if account_existed:
-                account_db_interface = get_required_db(self.vault, self.config, self.jaaql_lookup_connection, submit_data, account_id)
-                reset_password_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, account_id,
-                                             None, self.cached_canned_query_service, interface=account_db_interface, as_objects=False, singleton=True)
-                reset_password_data = objectify(reset_password_data, singleton=True)
-            elif data_view is not None:
-                # Likely that we'll need to add a where clause to this!
-                reset_password_data = submit(self.vault, self.config, self.get_db_crypt_key(),
-                                             self.jaaql_lookup_connection, submit_data, ROLE__jaaql,
-                                             None, self.cached_canned_query_service, as_objects=True, singleton=True)
+            if explicit_type and v is not None and explicit_type[0] != "_":
+                query += f"\n\t{k} => :{k}::{explicit_type}"
             else:
-                reset_password_data = {}  # The common case where there is simply no data associated with the reset password
+                query += f"\n\t{k} => :{k}"
 
-        except HttpSingletonStatusException:
-            raise HttpSingletonStatusException("Multiple rows returned when selecting from reset password data view")
+            introduced = True
 
-        reset_password_data[EMAIL_PARAM__app_url] = app[KG__application__base_url]
-        reset_password_data[EMAIL_PARAM__app_name] = app[KG__application__name]
-        reset_password_data[EMAIL_PARAM__email_address] = inputs[KEY__username]
-        reset_password_data[EMAIL_PARAM__unlock_key] = reg_env_ins[KG__security_event__unlock_key]
-        reset_password_data[EMAIL_PARAM__unlock_code] = unlock_code
+        query += "\n)" if introduced else "()"
 
-        self.email_manager.construct_and_send_email(app[KG__application__templates_source], template[KG__email_template__dispatcher], template,
-                                                    inputs[KEY__username], reset_password_data)
-
-        return {
-            KG__security_event__event_lock: reg_env_ins[KG__security_event__event_lock]
+        submit_data = {
+            KEY__application: inputs[KG__security_event__application],
+            KEY__parameters: params,
+            KEY_query: query,
         }
 
-    def _send_signup_email(self, sign_up_template, account_id, app, username):
-        count = count_for_security_event(self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
-                                         EMAIL_TYPE__signup, EMAIL_TYPE__already_signed_up, account_id)
-        if count >= RESEND__invite_max:
-            raise TooManySignUpConfirmationRequests()
+        # Must return exactly one row (singleton=True enforces this)
+        return submit(
+            self.vault,
+            self.config,
+            self.get_db_crypt_key(),
+            self.jaaql_lookup_connection,
+            submit_data,
+            account_id,
+            None,
+            self.cached_canned_query_service,
+            as_objects=True,
+            singleton=True,
+        )
 
-        sign_up_data_view = sign_up_template[KG__email_template__base_relation]
-        if re.match(REGEX__dmbs_object_name, sign_up_data_view) is None:
-            raise HttpStatusException("Unsafe data relation specified for sign up")
-        email_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, {
-            KEY_query: f"SELECT * FROM {sign_up_data_view}",
-            KEY__application: app[KG__application__name]
-        }, account_id, None, self.cached_canned_query_service, singleton=True, as_objects=True)
+    def security_event__reset_user_password(
+            self,
+            inputs: dict,
+            account_id: str,
+            security_event: dict
+    ) -> Dict[str, Any]:
+        """
+        Gate via DB procedure (must return exactly one row), then:
+        - remove all password and passkey credentials,
+        - set a new 16-char alphanumeric TEMPORARY password,
+        - return { temporary_password, response }.
+        """
+        # 1) Gate (throws if fails)
+        response_obj = self._gate_run_singleton(inputs, account_id, security_event)
 
-        unlock_code = self.gen_security_event_unlock_code(CODE__letters, CODE__invite_length)
+        # 2) Keycloak ops
+        username = inputs["email"]  # username == email
+        access_token = self._kc_get_token()
+        user_id = self._kc_find_user_id_by_username(access_token, username)
+        if not user_id:
+            # If you want to enforce existence only, raise; otherwise create:
+            user_id = self._kc_create_user_if_missing(access_token, username)
 
-        reg_event = security_event__insert(self.jaaql_lookup_connection, self.get_db_crypt_key(),
-                                           app[KG__application__name], sign_up_template[KG__email_template__name], unlock_code,
-                                           account_id)
+        self._kc_delete_pw_and_passkeys(access_token, user_id)
 
-        email_data[EMAIL_PARAM__app_url] = app[KG__application__base_url]
-        email_data[EMAIL_PARAM__app_name] = app[KG__application__name]
-        email_data[EMAIL_PARAM__email_address] = username
-        email_data[EMAIL_PARAM__unlock_key] = reg_event[KG__security_event__unlock_key]
-        email_data[EMAIL_PARAM__unlock_code] = unlock_code
+        temp_pw = self._gen_alnum_16()
+        self._kc_set_temp_password(access_token, user_id, temp_pw)
 
-        self.email_manager.construct_and_send_email(app[KG__application__templates_source], sign_up_template[KG__email_template__dispatcher], sign_up_template,
-                                                    username, email_data)
+        return {
+            "temporary_password": temp_pw,
+            "response": response_obj,
+        }
 
-    def resend_signup_email(self, inputs, account_id, username):
-        if len(count_succeeded_for_security_event(self.jaaql_lookup_connection, EMAIL_TYPE__signup, EMAIL_TYPE__already_signed_up,
-                                                  account_id)) != 0:
-            raise AccountAlreadyConfirmed()
+    def security_event__delete_user(
+            self,
+            inputs: dict,
+            account_id: str,
+            security_event: dict
+    ) -> Dict[str, Any]:
+        """
+        Gate via DB procedure (must return exactly one row), then delete the Keycloak user.
+        Returns { response } (the singleton row from the gate).
+        """
+        # 1) Gate (throws if fails)
+        response_obj = self._gate_run_singleton(inputs, account_id, security_event)
 
-        app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
+        # 2) Keycloak delete
+        username = inputs["email"]  # username == email
+        access_token = self._kc_get_token()
+        user_id = self._kc_find_user_id_by_username(access_token, username)
+        if not user_id:
+            raise HttpStatusException("Keycloak user not found for delete")
 
-        if inputs[KEY__sign_up_template] is None:
-            inputs[KEY__sign_up_template] = app[KG__application__default_s_et]
-        if inputs[KEY__already_signed_up_template] is None:
-            inputs[KEY__already_signed_up_template] = app[KG__application__default_a_et]
+        kc_base = os.environ["KEYCLOAK_URL"].rstrip("/")
+        kc_realm = os.environ["KEYCLOAK_REALM"]
+        d = requests.delete(
+            f"{kc_base}/admin/realms/{kc_realm}/users/{user_id}",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=20,
+        )
+        if d.status_code not in (HTTPStatus.NO_CONTENT,):
+            d.raise_for_status()
 
-        sign_up_template = email_template__select(self.jaaql_lookup_connection, inputs[KG__security_event__application],
-                                                  inputs[KEY__sign_up_template])
+        return response_obj
 
-        self._send_signup_email(sign_up_template, account_id, app, username)
+    def security_event__create_user(
+            self,
+            inputs: dict,
+            account_id: str,
+            security_event: dict,
+    ) -> Dict[str, Any]:
+        """
+        Executes the configured database function for the security event (must return exactly 1 row),
+        then ensures a Keycloak user exists for inputs["email"] with a newly-set TEMPORARY password.
 
-    def sign_up(self, inputs, ip_address: str, response: JAAQLResponse):
-        app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
-
-        if inputs[KEY__sign_up_template] is None:
-            inputs[KEY__sign_up_template] = app[KG__application__default_s_et]
-        if inputs[KEY__already_signed_up_template] is None:
-            inputs[KEY__already_signed_up_template] = app[KG__application__default_a_et]
-
-        if inputs[KEY__sign_up_template] is None:
-            raise HttpStatusException("Missing sign up template for application. Either supply one in the sign up call or set a default")
-
-        sign_up_template = email_template__select(self.jaaql_lookup_connection, inputs[KG__security_event__application],
-                                                  inputs[KEY__sign_up_template])
-        if sign_up_template[KG__email_template__type] != EMAIL_TYPE__signup:
-            raise HttpStatusException(ERR__template_not_signup)
-
-        password = inputs[KEY__password]
-        requires_confirmation = sign_up_template[KG__email_template__requires_confirmation]
-
-        if not requires_confirmation and not password:
-            raise HttpStatusException("The password must be supplied if unconfirmed signup is allowed")
-        elif requires_confirmation and password:
-            raise HttpStatusException("The password cannot be supplied if confirmed signup is required")
-
-        if inputs[KEY__already_signed_up_template] is None and requires_confirmation:
-            raise HttpStatusException("Missing already signed up template for application (required when requires_confirmation is set to true!). "
-                                      "Either supply one in the sign up call or set a default")
-        elif inputs[KEY__already_signed_up_template] is not None and not requires_confirmation:
-            raise HttpStatusException("You cannot have an already signed up email template when requires confirmation is set to false! "
-                                      "The purpose of this email template is to prevent username enumeration and that makes no sense when no "
-                                      "confirmation is required.")
-
-        if inputs[KEY__already_signed_up_template]:
-            already_signed_up_template = email_template__select(self.jaaql_lookup_connection, inputs[KG__security_event__application],
-                                                                inputs[KEY__already_signed_up_template])
-            if already_signed_up_template[KG__email_template__type] != EMAIL_TYPE__already_signed_up:
-                raise HttpStatusException(ERR__template_not_already)
-
-        try:
-            new_account_id = self.create_account_with_potential_password(self.jaaql_lookup_connection, inputs[KEY__username], password=password)
-        except UnhandledQueryError as hs:
-            if hs.descriptor["sqlstate"] == SQLState.UniqueViolation.value and hs.descriptor["constraint_name"] == Constraints.AccountUsernameKey.value:
-                # TODO this allows username enumeration. Requires confirmation needs to be handled
-                raise AccountAlreadyExists()
-
-            # Unrelated exception
-            raise hs
-
-        res = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, {
-            KEY_query: inputs[KEY__query],
-            KEY__application: app[KG__application__name],
-            KEY_parameters: inputs[KEY__parameters]
-        }, new_account_id, None, self.cached_canned_query_service, singleton=True)
-
-        self._send_signup_email(sign_up_template, new_account_id, app, inputs[KEY__username])
-
-        if not requires_confirmation:
-            self.get_auth_token(inputs[KEY__username], ip_address, password, response, True)
-
-        return res
-
-    def invite(self, inputs: dict, account_id: str, is_the_anonymous_user: bool):
-        if is_the_anonymous_user:
-            raise HttpStatusException("Cannot invite users as the anonymous user")
-
-        app = application__select(self.jaaql_lookup_connection, inputs[KG__security_event__application])
-
-        if inputs[KEY__sign_up_template] is None:
-            inputs[KEY__sign_up_template] = app[KG__application__default_s_et]
-        if inputs[KEY__already_signed_up_template] is None:
-            inputs[KEY__already_signed_up_template] = app[KG__application__default_a_et]
-
-        if inputs[KEY__sign_up_template] is None:
-            raise HttpStatusException("Missing sign up template for application. Either supply one in the sign up call or set a default")
-
-        if inputs[KEY__already_signed_up_template] is None:
-            raise HttpStatusException("Missing already signed up template for application. Either supply one in the sign up call or set a default")
-
-        sign_up_template = email_template__select(self.jaaql_lookup_connection, inputs[KG__security_event__application],
-                                                  inputs[KEY__sign_up_template])
-        if sign_up_template[KG__email_template__type] != EMAIL_TYPE__signup:
-            raise HttpStatusException(ERR__template_not_signup)
-
-        dbms_user_column_name = sign_up_template[KG__email_template__dbms_user_column_name]
-
-        already_signed_up_template = email_template__select(self.jaaql_lookup_connection, inputs[KG__security_event__application],
-                                                            inputs[KEY__already_signed_up_template])
-        if already_signed_up_template[KG__email_template__type] != EMAIL_TYPE__already_signed_up:
-            raise HttpStatusException(ERR__template_not_already)
-
-        conn = None
-        account_db_interface = None
-
-        try:
-            submit_data = {
-                KEY__application: inputs[KG__security_event__application],
-                KEY__parameters: inputs[KEY__parameters],
-                KEY_query: inputs.get(KEY_query),
-                KEY__schema: sign_up_template[KG__email_template__validation_schema]
+        Returns:
+            {
+                "temporary_password": "<16-char alphanumeric>",
+                "response": <single row/object from the DB function>
             }
+        Raises:
+            - Any exception from the submit() call (bubbles up).
+            - HTTP errors from Keycloak (bubbles up).
+        """
 
-            account_db_interface = get_required_db(self.vault, self.config, self.jaaql_lookup_connection, submit_data, account_id)
-            conn = account_db_interface.get_conn()
+        # 1) Gate: run the configured DB procedure and require exactly one row
+        response_obj = self._gate_run_singleton(inputs, account_id, security_event)
 
-            pre_ret = None
+        # 2) Keycloak ops
+        username = inputs["email"]  # username == email
+        access_token = self._kc_get_token()
 
-            if inputs.get(KEY_query):
-                # For public sign up perform this query as the public user
-                ret = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, account_id,
-                             None,
-                             self.cached_canned_query_service, as_objects=False, singleton=True, keep_alive_conn=True, conn=conn,
-                             interface=account_db_interface)
-                pre_ret = ret
-                ret = objectify(ret[list(ret.keys())[0]], singleton=True)
-            else:
-                # For public sign up be careful about this
-                ret = inputs[KEY__parameters]
+        # Policy: if exactly one local account row -> reset password; if 0 or >1 -> create user
+        should_create_user = False
+        try:
+            _ = fetch_account_from_username(self.jaaql_lookup_connection, username)
+            should_create_user = False
+        except HttpSingletonStatusException:
+            should_create_user = True
 
-            # This is the permissions check. It is an update that returns something that is ignored
-            # An exception will be triggered here if the user does not have permissions
-            where_clause = " AND ".join(['"' + key + '" = :' + key for key in ret.keys() if re.match(REGEX__dmbs_object_name, key) is not None])
-            where_clause = " WHERE " + where_clause
-            permissions_view = sign_up_template[KG__email_template__permissions_view]
-            if re.match(REGEX__dmbs_object_name, permissions_view) is None:
-                raise HttpStatusException("Unsafe permissions relation specified for sign up: Found '" + str(
-                    permissions_view) + "' na did not match regex " + REGEX__dmbs_object_name)
-            permissions_query = f'SELECT * FROM "{permissions_view}"{where_clause}'  # Ignore pycharm pep issue
-            submit_data[KEY_query] = permissions_query
-            submit_data[KEY_parameters] = ret
+        if should_create_user:
+            user_id = self._kc_create_user_if_missing(access_token, username)
+        else:
+            user_id = self._kc_find_user_id_by_username(access_token, username)
+            if not user_id:
+                # Local account exists but KC user missing -> create it
+                user_id = self._kc_create_user_if_missing(access_token, username)
 
-            try:
-                perms_check = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, account_id,
-                                     None, self.cached_canned_query_service, keep_alive_conn=True, conn=conn,
-                                     interface=account_db_interface, as_objects=False, singleton=True)
-                perms_check = objectify(perms_check, singleton=True)
-                if dbms_user_column_name in perms_check:
-                    raise HttpStatusException("Security alert! Dbms user column name " + dbms_user_column_name + " cannot be present in view " +
-                                              permissions_view)
-            except HttpSingletonStatusException:
-                raise HttpSingletonStatusException("No or multiple rows returned from " + permissions_view + " with " + where_clause)
+        # Set a new 16-char alphanumeric temporary password
+        temp_pw = self._gen_alnum_16()
+        self._kc_set_temp_password(access_token, user_id, temp_pw)
 
-            base_relation = sign_up_template[KG__email_template__base_relation]
-            if re.match(REGEX__dmbs_object_name, base_relation) is None:
-                raise HttpStatusException(
-                    "Unsafe base relation specified for sign up: Found '" + str(base_relation) + "' na did not match regex " + REGEX__dmbs_object_name)
-
-            found_username = None
-            get_user_data = {
-                KEY__application: inputs[KG__security_event__application],
-                KEY__schema: sign_up_template[KG__email_template__validation_schema],
-                KEY_parameters: ret,
-                KEY_query: f'SELECT {dbms_user_column_name} FROM {base_relation}{where_clause}'  # Ignore pycharm PEP issue
-            }
-
-            try:
-                dbms_user = submit(self.vault, self.config, self.get_db_crypt_key(),
-                                   self.jaaql_lookup_connection, get_user_data,
-                                   ROLE__jaaql, None,
-                                   self.cached_canned_query_service, as_objects=True,
-                                   singleton=True)[dbms_user_column_name]
-
-                account = account__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), dbms_user)
-                found_username = account[KG__account__username]
-            except HttpSingletonStatusException:
-                if inputs[KEY__username] is None:
-                    raise HttpSingletonStatusException("User with specified parameters could not be found! It's likely you should supply a username!")
-
-            if found_username and inputs[KEY__username] is not None:
-                raise HttpStatusException("Did not expect username! User has already been created and associated in the base relation")
-
-            if inputs[KEY__username] is None:
-                inputs[KEY__username] = found_username
-
-            # We now create the user if the user doesn't exist
-            account_existed = False
-            try:
-                new_account_id = self.create_account_with_potential_password(self.jaaql_lookup_connection, inputs[KEY__username])
-            except UnhandledQueryError as hs:
-                if not hs.descriptor['sqlstate'] == SQLState.UniqueViolation.value:
-                    raise hs  # Unrelated exception, raise it
-
-                account = fetch_account_from_username(self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
-                                                      inputs[KEY__username])
-                new_account_id = account[KG__account__id]
-                if account[KG__account__most_recent_password] is not None:
-                    account_existed = True
-
-                jaaql_singleton = jaaql__select(self.jaaql_lookup_connection)
-
-                if account == jaaql_singleton[KG__jaaql__the_anonymous_user]:
-                    raise HttpStatusException("Cannot re-invite the anonymous user")
-
-            # We abort if there have been too many requests. Everything is rolled back
-            count = count_for_security_event(self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
-                                             EMAIL_TYPE__signup, EMAIL_TYPE__already_signed_up, new_account_id)
-            if count >= RESEND__invite_max:
-                raise HttpStatusException(ERR__too_many_signup_attempts, HTTPStatus.TOO_MANY_REQUESTS)
-
-            # Now for the only leap of faith in this algorithm. We have to commit as otherwise the jaaql user cannot access the data
-            # If this fails we are unfortunately up shit creek without a paddle but this can't fail if the application is designed correctly
-            account_db_interface.put_conn_handle_error(conn, None)  # No errors. This will commit
-
-            # We set the dbms user in the application. This can potentially cause an index clash due to a unique index on the dbms_user column
-            # This is desirable in many situations but will allow username enumeration
-            submit_data[KEY_query] = f"UPDATE {base_relation} SET {dbms_user_column_name} = :{dbms_user_column_name}{where_clause}"
-            submit_data[KEY__parameters][dbms_user_column_name] = new_account_id
-            submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, ROLE__jaaql,
-                   None, self.cached_canned_query_service)
-
-            template = already_signed_up_template if account_existed else sign_up_template
-            unlock_code = self.gen_security_event_unlock_code(CODE__letters, CODE__invite_length)
-
-            reg_event = security_event__insert(self.jaaql_lookup_connection, self.get_db_crypt_key(),
-                                               inputs[KG__security_event__application], template[KG__email_template__name], unlock_code,
-                                               new_account_id)
-
-            data_view = sign_up_template[KG__email_template__data_view]
-            if re.match(REGEX__dmbs_object_name, data_view) is None:
-                raise HttpStatusException(
-                    "Unsafe data view specified for sign up: Found '" + str(data_view) + "' na did not match regex " + REGEX__dmbs_object_name)
-            data_query = f'SELECT * FROM "{data_view}"'
-            submit_data[KEY_query] = data_query
-            try:
-                submit_data[KEY__parameters] = {}  # Might at some point have some data parameters but for now none
-                sign_up_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, submit_data, new_account_id,
-                                      None, self.cached_canned_query_service, as_objects=False, singleton=True)
-                sign_up_data = objectify(sign_up_data, singleton=True)
-                if dbms_user_column_name in sign_up_data:
-                    del sign_up_data[dbms_user_column_name]  # Remove it. Not harmful that it's there as jaaql knows this already
-            except HttpSingletonStatusException:
-                raise HttpSingletonStatusException("No or multiple rows returned from " + data_view)
-            for key, val in sign_up_data.items():
-                perms_check[key] = val
-            sign_up_data = perms_check
-
-            sign_up_data[EMAIL_PARAM__app_url] = app[KG__application__base_url]
-            sign_up_data[EMAIL_PARAM__app_name] = app[KG__application__name]
-            sign_up_data[EMAIL_PARAM__email_address] = inputs[KEY__username]
-            sign_up_data[EMAIL_PARAM__unlock_key] = reg_event[KG__security_event__unlock_key]
-            sign_up_data[EMAIL_PARAM__unlock_code] = unlock_code
-
-            self.email_manager.construct_and_send_email(app[KG__application__templates_source], template[KG__email_template__dispatcher], template,
-                                                        inputs[KEY__username], sign_up_data)
-
-            if pre_ret is not None:
-                return pre_ret
-            else:
-                return {
-                    KG__security_event__event_lock: reg_event[KG__security_event__event_lock]
-                }
-        except Exception as err:
-            if conn is not None:
-                account_db_interface.put_conn_handle_error(conn, err)
-
-            raise err
+        return {
+            "temporary_password": temp_pw,
+            "response": response_obj,
+        }
 
     def handle_procedure(self, http_inputs: dict, is_the_anonymous_user: bool, auth_token: str, username: str, ip_address: str, account_id: str):
         rpc = remote_procedure__select(self.jaaql_lookup_connection, http_inputs[KG__remote_procedure__application], http_inputs[KG__remote_procedure__name])

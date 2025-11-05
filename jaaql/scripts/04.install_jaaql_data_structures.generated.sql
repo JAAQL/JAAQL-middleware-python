@@ -74,10 +74,6 @@ create table application (
 	base_url url not null,
 	templates_source location,
 	default_schema object_name,
-	default_s_et object_name,
-	default_a_et object_name,
-	default_r_et object_name,
-	default_u_et object_name,
 	unlock_key_validity_period validity_period not null default 1209600,
 	unlock_code_validity_period short_validity_period not null default 900,
 	is_live bool not null default FALSE,
@@ -105,14 +101,12 @@ create table email_dispatcher (
 	check (port between 1 and 65536) );
 -- jaaql...
 create table _jaaql (
-	security_event_attempt_limit attempt_count not null,
 	migration_version semantic_version not null,
 	last_successful_build_time build_time not null,
 	_singleton_key boolean PRIMARY KEY not null default true,
-	check(_singleton_key is true),
-	check (security_event_attempt_limit between 1 and 3) );
+	check(_singleton_key is true) );
 	create view jaaql as select
-		security_event_attempt_limit, migration_version, last_successful_build_time
+		migration_version, last_successful_build_time
 	from _jaaql
 	where _singleton_key;
 -- email_template...
@@ -120,16 +114,13 @@ create table email_template (
 	application internet_name not null,
 	dispatcher object_name not null,
 	name object_name not null,
-	type email_template_type not null,
 	content_url safe_path not null,
 	validation_schema object_name,
 	base_relation object_name,
-	dbms_user_column_name object_name,
 	permissions_view object_name,
 	data_view object_name,
 	dispatcher_domain_recipient email_account_username,
 	fixed_address character varying(254),
-	requires_confirmation bool,
 	can_be_sent_anonymously bool,
 	primary key (application, name) );
 -- document_template...
@@ -210,18 +201,10 @@ create table validated_ip_address (
 -- security_event...
 create table security_event (
 	application internet_name not null,
-	event_lock uuid not null default gen_random_uuid(),
-	creation_timestamp timestamptz not null default current_timestamp,
-	wrong_key_attempt_count current_attempt_count not null default 0,
-	email_template object_name not null,
-	account postgres_role,
-	fake_account encrypted__jaaql_username,
-	unlock_key uuid not null default gen_random_uuid(),
-	unlock_code unlock_code not null,
-	unlock_timestamp timestamptz,
-	finish_timestamp timestamptz,
-	primary key (application, event_lock),
-	check (wrong_key_attempt_count between 0 and 3) );
+	name security_event_name not null,
+	type security_event_type not null,
+	database_procedure procedure_name not null,
+	primary key (application, name, type) );
 -- handled_error...
 create table handled_error (
 	code error_code not null,

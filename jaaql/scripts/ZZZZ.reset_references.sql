@@ -7,22 +7,6 @@ ALTER TABLE application DROP CONSTRAINT IF EXISTS application__default_schema;
 alter table application add constraint application__default_schema
 	foreign key (name, default_schema)
 		references application_schema (application, name) ON DELETE CASCADE ON UPDATE cascade; 
-ALTER TABLE application DROP CONSTRAINT IF EXISTS application__default_sign_up_email_template;
-alter table application add constraint application__default_sign_up_email_template
-	foreign key (name, default_s_et)
-		references email_template (application, name) ON DELETE CASCADE ON UPDATE cascade; 
-ALTER TABLE application DROP CONSTRAINT IF EXISTS application__default_already_signed_up_email_template;
-alter table application add constraint application__default_already_signed_up_email_template
-	foreign key (name, default_a_et)
-		references email_template (application, name) ON DELETE CASCADE ON UPDATE cascade; 
-ALTER TABLE application DROP CONSTRAINT IF EXISTS application__default_reset_password_email_template;
-alter table application add constraint application__default_reset_password_email_template
-	foreign key (name, default_r_et)
-		references email_template (application, name) ON DELETE CASCADE ON UPDATE cascade; 
-ALTER TABLE application DROP CONSTRAINT IF EXISTS application__default_unregistered_password_reset_email_template;
-alter table application add constraint application__default_unregistered_password_reset_email_template
-	foreign key (name, default_u_et)
-		references email_template (application, name) ON DELETE CASCADE ON UPDATE cascade; 
 -- application_schema...
 ALTER TABLE application_schema DROP CONSTRAINT IF EXISTS application_schema__application;
 alter table application_schema add constraint application_schema__application
@@ -93,14 +77,6 @@ ALTER TABLE security_event DROP CONSTRAINT IF EXISTS security_event__application
 alter table security_event add constraint security_event__application
 	foreign key (application)
 		references application (name) ON DELETE CASCADE ON UPDATE cascade; 
-ALTER TABLE security_event DROP CONSTRAINT IF EXISTS security_event__email_template;
-alter table security_event add constraint security_event__email_template
-	foreign key (application, email_template)
-		references email_template (application, name) ON DELETE CASCADE ON UPDATE cascade; 
-ALTER TABLE security_event DROP CONSTRAINT IF EXISTS security_event__account;
-alter table security_event add constraint security_event__account
-	foreign key (account)
-		references account (id) ON DELETE CASCADE ON UPDATE cascade; 
 
 
 
@@ -118,3 +94,8 @@ ALTER TABLE remote_procedure DROP CONSTRAINT IF EXISTS remote_procedure__applica
 alter table remote_procedure add constraint remote_procedure__application
 	foreign key (application)
 		references application (name) ON DELETE CASCADE ON UPDATE cascade; 
+
+
+-- (5) TL References
+
+-- No tables have timelines

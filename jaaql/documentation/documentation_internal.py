@@ -1,3 +1,4 @@
+from jaaql.documentation.documentation_public import ARG_RES__query
 from jaaql.openapi.swagger_documentation import *
 from jaaql.constants import *
 from jaaql.mvc.generated_queries import *
@@ -531,4 +532,39 @@ DOCUMENTATION__oidc_post_logout = SwaggerDocumentation(
 			body="You are being redirected back to your place in the app..."
 		)
 	)
+)
+
+DOCUMENTATION__security_event = SwaggerDocumentation(
+    tags="security",
+    methods=SwaggerMethod(
+        name="Action security event",
+        description="Executes a security event",
+        method=REST__POST,
+        body=[
+            ARG_RES__application,
+            SwaggerArgumentResponse(
+                name=KG__security_event__name,
+                description="The name of the security event",
+                arg_type=str,
+                example=["add-user"]
+            ),
+            SwaggerArgumentResponse(
+                name=KG__security_event__type,
+                description="The name of the security event",
+                arg_type=str,
+                example=["add-user"]
+            ),
+            SwaggerArgumentResponse(
+                name=KEY__parameters,
+                description="Any parameters to pass to the underlying function",
+                arg_type=ARG_RESP__allow_all
+            ),
+            SwaggerArgumentResponse(
+                name="explicit_types",
+                description="Explicit types for parameters",
+                arg_type=ARG_RESP__allow_all
+            )
+        ],
+        response=RES__allow_all
+    )
 )

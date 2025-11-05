@@ -1,0 +1,39 @@
+ALTER TABLE application DROP COLUMN default_s_et CASCADE;
+ALTER TABLE application DROP COLUMN default_a_et CASCADE;
+ALTER TABLE application DROP COLUMN default_r_et CASCADE;
+ALTER TABLE application DROP COLUMN default_u_et CASCADE;
+
+DROP TABLE security_event CASCADE;
+
+ALTER TABLE _jaaql DROP COLUMN security_event_attempt_limit CASCADE;
+
+ALTER TABLE email_template DROP COLUMN type CASCADE;
+ALTER TABLE email_template DROP COLUMN dbms_user_column_name CASCADE;
+ALTER TABLE email_template DROP COLUMN requires_confirmation CASCADE;
+
+DROP DOMAIN encrypted__jaaql_username CASCADE;
+DROP DOMAIN attempt_count CASCADE;
+DROP DOMAIN email_template_type CASCADE;
+DROP DOMAIN current_attempt_count CASCADE;
+DROP DOMAIN unlock_code CASCADE;
+
+create view jaaql as select
+	migration_version, last_successful_build_time
+from _jaaql
+where _singleton_key;
+
+CREATE DOMAIN security_event_name AS character varying(64);
+CREATE DOMAIN security_event_type AS character varying(1);
+
+create table security_event (
+	application internet_name not null,
+	name security_event_name not null,
+	type security_event_type not null,
+	database_procedure procedure_name not null,
+	primary key (application, name),
+	unique (type, database_procedure) );
+
+\import ../../scripts/ZZZZ.reset_references.sql
+\import ../../scripts/ZZZZ.generated_functions_views_and_permissions.sql
+
+\g

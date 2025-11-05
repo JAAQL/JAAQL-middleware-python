@@ -1,5 +1,5 @@
 """
-This script was generated from jaaql.exceptions.fxli at 2025-05-21, 11:25:44
+This script was generated from jaaql.exceptions.fxli at 2025-11-05, 14:24:08
 """
 
 from jaaql.utilities.crypt_utils import get_repeatable_salt
@@ -190,69 +190,19 @@ QUERY___add_or_update_validated_ip_address = "INSERT INTO validated_ip_address (
 QUERY__fetch_application_schemas = "SELECT S.name, S.database, (A.default_schema = S.name) as is_default, A.is_live FROM application_schema S INNER JOIN application A ON A.name = S.application WHERE S.application = :application"
 KEY__is_default = "is_default"
 
-QUERY__count_security_events_of_type_in_24hr_window = """
-    SELECT
-        COUNT(*) as count
-    FROM security_event S
-    INNER JOIN email_template E ON E.name = S.email_template AND E.application = S.application
-    WHERE E.type IN (:type_one, :type_two) AND ((:account::postgres_role is not null AND account = :account) OR (:fake_account::encrypted__jaaql_username is not null AND fake_account = :fake_account)) AND (creation_timestamp + interval '24 hour') > current_timestamp
-"""
-
-
-def count_for_security_event(
-    connection: DBInterface, encryption_key: bytes, vault_repeatable_salt: str,
-    type_one: str, type_two: str,
-    account, fake_account=None
-):
-    return execute_supplied_statement_singleton(
-        connection, QUERY__count_security_events_of_type_in_24hr_window, {
-            "type_one": type_one, "type_two": type_two,
-            KG__security_event__account: account,
-            KG__security_event__fake_account: fake_account
-        }, as_objects=True, encryption_key=encryption_key, encrypt_parameters=[KG__security_event__fake_account],
-        encryption_salts={KG__security_event__fake_account: get_repeatable_salt(vault_repeatable_salt, fake_account)}
-    )[KEY__count]
-
 
 RPC_ACCESS__private = "P"
 RPC_ACCESS__public = "U"
 RPC_ACCESS__webhook = "W"
 
+SECURITY_EVENT_TYPE__create = "C"
+SECURITY_EVENT_TYPE__delete = "D"
+SECURITY_EVENT_TYPE__reset = "R"
+
 KEY__type_one = "type_one"
 KEY__type_two = "type_two"
 
-EMAIL_TYPE__signup = "S"
-EMAIL_TYPE__already_signed_up = "A"
-EMAIL_TYPE__reset_password = "R"
-EMAIL_TYPE__unregistered_password_reset = "U"
-EMAIL_TYPE__general = "G"
 
-KEY__key_fits = "key_fits"
-QUERY__check_security_event_unlock = """
-    UPDATE
-        security_event S
-    SET
-        wrong_key_attempt_count = S.wrong_key_attempt_count + (case when (S.unlock_code = :unlock_code OR S.unlock_key = :unlock_key OR S.wrong_key_attempt_count >= 3) then 0 else 1 end)
-    FROM application A
-    WHERE
-        S.application = A.name AND
-        (S.event_lock = :event_lock OR S.unlock_key = :unlock_key) AND S.finish_timestamp is null AND
-        S.creation_timestamp + (A.unlock_key_validity_period || ' seconds')::interval > current_timestamp
-    RETURNING S.*, A.unlock_code_validity_period, (S.unlock_code = :unlock_code OR S.unlock_key = :unlock_key) as key_fits
-"""
-
-
-def check_security_event_unlock(
-    connection: DBInterface, event_lock, unlock_code,
-    unlock_key, singleton_code: int = None, singleton_message: str = None
-):
-    return execute_supplied_statement_singleton(
-        connection, QUERY__check_security_event_unlock, {
-            KG__security_event__event_lock: event_lock,
-            KG__security_event__unlock_code: unlock_code,
-            KG__security_event__unlock_key: unlock_key
-        }, as_objects=True, singleton_code=singleton_code, singleton_message=singleton_message
-    )
 
 
 QUERY__fetch_document_templates_for_email_template = """

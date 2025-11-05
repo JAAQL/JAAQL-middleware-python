@@ -61,10 +61,6 @@ $$
 				default_schema => "application_schema.insert+".name,
 				base_url => (_r->>'base_url')::url,
 				templates_source => (_r->>'templates_source')::location,
-				default_s_et => (_r->>'default_s_et')::object_name,
-				default_a_et => (_r->>'default_a_et')::object_name,
-				default_r_et => (_r->>'default_r_et')::object_name,
-				default_u_et => (_r->>'default_u_et')::object_name,
 				unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
 				unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
 				is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
@@ -114,10 +110,6 @@ $$
 				default_schema => "application_schema.persist+".name,
 				base_url => (_r->>'base_url')::url,
 				templates_source => (_r->>'templates_source')::location,
-				default_s_et => (_r->>'default_s_et')::object_name,
-				default_a_et => (_r->>'default_a_et')::object_name,
-				default_r_et => (_r->>'default_r_et')::object_name,
-				default_u_et => (_r->>'default_u_et')::object_name,
 				unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
 				unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
 				is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
@@ -167,10 +159,6 @@ $$
 				default_schema => "application_schema.update+".name,
 				base_url => (_r->>'base_url')::url,
 				templates_source => (_r->>'templates_source')::location,
-				default_s_et => (_r->>'default_s_et')::object_name,
-				default_a_et => (_r->>'default_a_et')::object_name,
-				default_r_et => (_r->>'default_r_et')::object_name,
-				default_u_et => (_r->>'default_u_et')::object_name,
 				unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
 				unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
 				is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
@@ -200,430 +188,6 @@ grant execute on function "application_schema.update+" to registered;
 
 -- email_template...
 
-drop function if exists "email_template.insert+";
-create function "email_template.insert+" (
-	content_url safe_path,
-	type email_template_type,
-	name object_name,
-	dispatcher object_name,
-	application internet_name,
-	validation_schema object_name default null,
-	base_relation object_name default null,
-	dbms_user_column_name object_name default null,
-	permissions_view object_name default null,
-	data_view object_name default null,
-	dispatcher_domain_recipient email_account_username default null,
-	requires_confirmation bool default null,
-	can_be_sent_anonymously bool default null,
-	use_as_default_sign_up jsonb default '[]'::jsonb,
-	use_as_default_already_signed_up jsonb default '[]'::jsonb,
-	use_as_default_reset_password jsonb default '[]'::jsonb,
-	use_as_default_unregisted_password_reset jsonb default '[]'::jsonb
-) returns _jaaql_procedure_result as
-$$
-	DECLARE
-		_returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_r jsonb;
-	BEGIN
-		SELECT * INTO strict _returned_status FROM "email_template.insert__internal"(
-			application => "email_template.insert+".application,
-			dispatcher => "email_template.insert+".dispatcher,
-			name => "email_template.insert+".name,
-			type => "email_template.insert+".type,
-			content_url => "email_template.insert+".content_url,
-			validation_schema => "email_template.insert+".validation_schema,
-			base_relation => "email_template.insert+".base_relation,
-			dbms_user_column_name => "email_template.insert+".dbms_user_column_name,
-			permissions_view => "email_template.insert+".permissions_view,
-			data_view => "email_template.insert+".data_view,
-			dispatcher_domain_recipient => "email_template.insert+".dispatcher_domain_recipient,
-			requires_confirmation => "email_template.insert+".requires_confirmation,
-			can_be_sent_anonymously => "email_template.insert+".can_be_sent_anonymously );
-		_status.result = _returned_status.result;
-		_status.errors = _status.errors || _returned_status.errors;
-
-		for _r in SELECT * FROM jsonb_array_elements(use_as_default_sign_up) loop
-			SELECT * INTO strict _returned_status FROM "application.insert__internal"(
-				name => "email_template.insert+".application,
-				default_s_et => "email_template.insert+".name,
-				base_url => (_r->>'base_url')::url,
-				templates_source => (_r->>'templates_source')::location,
-				default_schema => (_r->>'default_schema')::object_name,
-				default_a_et => (_r->>'default_a_et')::object_name,
-				default_r_et => (_r->>'default_r_et')::object_name,
-				default_u_et => (_r->>'default_u_et')::object_name,
-				unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
-				unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
-				is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		for _r in SELECT * FROM jsonb_array_elements(use_as_default_already_signed_up) loop
-			SELECT * INTO strict _returned_status FROM "application.insert__internal"(
-				name => "email_template.insert+".application,
-				default_a_et => "email_template.insert+".name,
-				base_url => (_r->>'base_url')::url,
-				templates_source => (_r->>'templates_source')::location,
-				default_schema => (_r->>'default_schema')::object_name,
-				default_s_et => (_r->>'default_s_et')::object_name,
-				default_r_et => (_r->>'default_r_et')::object_name,
-				default_u_et => (_r->>'default_u_et')::object_name,
-				unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
-				unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
-				is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		for _r in SELECT * FROM jsonb_array_elements(use_as_default_reset_password) loop
-			SELECT * INTO strict _returned_status FROM "application.insert__internal"(
-				name => "email_template.insert+".application,
-				default_r_et => "email_template.insert+".name,
-				base_url => (_r->>'base_url')::url,
-				templates_source => (_r->>'templates_source')::location,
-				default_schema => (_r->>'default_schema')::object_name,
-				default_s_et => (_r->>'default_s_et')::object_name,
-				default_a_et => (_r->>'default_a_et')::object_name,
-				default_u_et => (_r->>'default_u_et')::object_name,
-				unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
-				unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
-				is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		for _r in SELECT * FROM jsonb_array_elements(use_as_default_unregisted_password_reset) loop
-			SELECT * INTO strict _returned_status FROM "application.insert__internal"(
-				name => "email_template.insert+".application,
-				default_u_et => "email_template.insert+".name,
-				base_url => (_r->>'base_url')::url,
-				templates_source => (_r->>'templates_source')::location,
-				default_schema => (_r->>'default_schema')::object_name,
-				default_s_et => (_r->>'default_s_et')::object_name,
-				default_a_et => (_r->>'default_a_et')::object_name,
-				default_r_et => (_r->>'default_r_et')::object_name,
-				unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
-				unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
-				is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-	END
-$$ language plpgsql security definer;
-select * from plpgsql_check_function(
-	'"email_template.insert+"('
-		'safe_path,'
-		'email_template_type,'
-		'object_name,'
-		'object_name,'
-		'internet_name,'
-		'object_name,'
-		'object_name,'
-		'object_name,'
-		'object_name,'
-		'object_name,'
-		'email_account_username,'
-		'bool,'
-		'bool,'
-		'jsonb,'
-		'jsonb,'
-		'jsonb,'
-		'jsonb)'
-);
-
-grant execute on function "email_template.insert+" to registered;
-drop function if exists "email_template.persist+";
-create function "email_template.persist+" (
-	application internet_name,
-	name object_name,
-	dispatcher object_name default null,
-	type email_template_type default null,
-	content_url safe_path default null,
-	validation_schema object_name default null,
-	base_relation object_name default null,
-	dbms_user_column_name object_name default null,
-	permissions_view object_name default null,
-	data_view object_name default null,
-	dispatcher_domain_recipient email_account_username default null,
-	requires_confirmation bool default null,
-	can_be_sent_anonymously bool default null,
-	use_as_default_sign_up jsonb default '[]'::jsonb,
-	use_as_default_already_signed_up jsonb default '[]'::jsonb,
-	use_as_default_reset_password jsonb default '[]'::jsonb,
-	use_as_default_unregisted_password_reset jsonb default '[]'::jsonb
-) returns _jaaql_procedure_result as
-$$
-	DECLARE
-		_returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_r jsonb;
-	BEGIN
-		DELETE FROM document_template D WHERE
-			D.application = "email_template.persist+".application AND
-			D.email_template = "email_template.persist+".name;
-		DELETE FROM application A WHERE
-			A.name = "email_template.persist+".application AND
-			A.default_s_et = "email_template.persist+".name;
-		DELETE FROM application A WHERE
-			A.name = "email_template.persist+".application AND
-			A.default_a_et = "email_template.persist+".name;
-		DELETE FROM application A WHERE
-			A.name = "email_template.persist+".application AND
-			A.default_r_et = "email_template.persist+".name;
-		DELETE FROM application A WHERE
-			A.name = "email_template.persist+".application AND
-			A.default_u_et = "email_template.persist+".name;
-		DELETE FROM security_event S WHERE
-			S.application = "email_template.persist+".application AND
-			S.email_template = "email_template.persist+".name;
-
-		for _r in SELECT * FROM jsonb_array_elements(use_as_default_sign_up) loop
-			SELECT * INTO strict _returned_status FROM "application.persist__internal"(
-				name => "email_template.persist+".application,
-				default_s_et => "email_template.persist+".name,
-				base_url => (_r->>'base_url')::url,
-				templates_source => (_r->>'templates_source')::location,
-				default_schema => (_r->>'default_schema')::object_name,
-				default_a_et => (_r->>'default_a_et')::object_name,
-				default_r_et => (_r->>'default_r_et')::object_name,
-				default_u_et => (_r->>'default_u_et')::object_name,
-				unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
-				unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
-				is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		for _r in SELECT * FROM jsonb_array_elements(use_as_default_already_signed_up) loop
-			SELECT * INTO strict _returned_status FROM "application.persist__internal"(
-				name => "email_template.persist+".application,
-				default_a_et => "email_template.persist+".name,
-				base_url => (_r->>'base_url')::url,
-				templates_source => (_r->>'templates_source')::location,
-				default_schema => (_r->>'default_schema')::object_name,
-				default_s_et => (_r->>'default_s_et')::object_name,
-				default_r_et => (_r->>'default_r_et')::object_name,
-				default_u_et => (_r->>'default_u_et')::object_name,
-				unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
-				unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
-				is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		for _r in SELECT * FROM jsonb_array_elements(use_as_default_reset_password) loop
-			SELECT * INTO strict _returned_status FROM "application.persist__internal"(
-				name => "email_template.persist+".application,
-				default_r_et => "email_template.persist+".name,
-				base_url => (_r->>'base_url')::url,
-				templates_source => (_r->>'templates_source')::location,
-				default_schema => (_r->>'default_schema')::object_name,
-				default_s_et => (_r->>'default_s_et')::object_name,
-				default_a_et => (_r->>'default_a_et')::object_name,
-				default_u_et => (_r->>'default_u_et')::object_name,
-				unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
-				unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
-				is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		for _r in SELECT * FROM jsonb_array_elements(use_as_default_unregisted_password_reset) loop
-			SELECT * INTO strict _returned_status FROM "application.persist__internal"(
-				name => "email_template.persist+".application,
-				default_u_et => "email_template.persist+".name,
-				base_url => (_r->>'base_url')::url,
-				templates_source => (_r->>'templates_source')::location,
-				default_schema => (_r->>'default_schema')::object_name,
-				default_s_et => (_r->>'default_s_et')::object_name,
-				default_a_et => (_r->>'default_a_et')::object_name,
-				default_r_et => (_r->>'default_r_et')::object_name,
-				unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
-				unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
-				is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-	END
-$$ language plpgsql security definer;
-select * from plpgsql_check_function(
-	'"email_template.persist+"('
-		'internet_name,'
-		'object_name,'
-		'object_name,'
-		'email_template_type,'
-		'safe_path,'
-		'object_name,'
-		'object_name,'
-		'object_name,'
-		'object_name,'
-		'object_name,'
-		'email_account_username,'
-		'bool,'
-		'bool,'
-		'jsonb,'
-		'jsonb,'
-		'jsonb,'
-		'jsonb)'
-);
-
-grant execute on function "email_template.persist+" to registered;
-drop function if exists "email_template.update+";
-create function "email_template.update+" (
-	application internet_name,
-	name object_name,
-	dispatcher object_name default null,
-	type email_template_type default null,
-	content_url safe_path default null,
-	validation_schema object_name default null,
-	base_relation object_name default null,
-	dbms_user_column_name object_name default null,
-	permissions_view object_name default null,
-	data_view object_name default null,
-	dispatcher_domain_recipient email_account_username default null,
-	requires_confirmation bool default null,
-	can_be_sent_anonymously bool default null,
-	use_as_default_sign_up jsonb default '[]'::jsonb,
-	use_as_default_already_signed_up jsonb default '[]'::jsonb,
-	use_as_default_reset_password jsonb default '[]'::jsonb,
-	use_as_default_unregisted_password_reset jsonb default '[]'::jsonb
-) returns _jaaql_procedure_result as
-$$
-	DECLARE
-		_returned_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
-		_r jsonb;
-	BEGIN
-		DELETE FROM document_template D WHERE
-			D.application = "email_template.update+".application AND
-			D.email_template = "email_template.update+".name;
-		DELETE FROM application A WHERE
-			A.name = "email_template.update+".application AND
-			A.default_s_et = "email_template.update+".name;
-		DELETE FROM application A WHERE
-			A.name = "email_template.update+".application AND
-			A.default_a_et = "email_template.update+".name;
-		DELETE FROM application A WHERE
-			A.name = "email_template.update+".application AND
-			A.default_r_et = "email_template.update+".name;
-		DELETE FROM application A WHERE
-			A.name = "email_template.update+".application AND
-			A.default_u_et = "email_template.update+".name;
-		DELETE FROM security_event S WHERE
-			S.application = "email_template.update+".application AND
-			S.email_template = "email_template.update+".name;
-
-		for _r in SELECT * FROM jsonb_array_elements(use_as_default_sign_up) loop
-			SELECT * INTO strict _returned_status FROM "application.update__internal"(
-				name => "email_template.update+".application,
-				default_s_et => "email_template.update+".name,
-				base_url => (_r->>'base_url')::url,
-				templates_source => (_r->>'templates_source')::location,
-				default_schema => (_r->>'default_schema')::object_name,
-				default_a_et => (_r->>'default_a_et')::object_name,
-				default_r_et => (_r->>'default_r_et')::object_name,
-				default_u_et => (_r->>'default_u_et')::object_name,
-				unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
-				unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
-				is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		for _r in SELECT * FROM jsonb_array_elements(use_as_default_already_signed_up) loop
-			SELECT * INTO strict _returned_status FROM "application.update__internal"(
-				name => "email_template.update+".application,
-				default_a_et => "email_template.update+".name,
-				base_url => (_r->>'base_url')::url,
-				templates_source => (_r->>'templates_source')::location,
-				default_schema => (_r->>'default_schema')::object_name,
-				default_s_et => (_r->>'default_s_et')::object_name,
-				default_r_et => (_r->>'default_r_et')::object_name,
-				default_u_et => (_r->>'default_u_et')::object_name,
-				unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
-				unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
-				is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		for _r in SELECT * FROM jsonb_array_elements(use_as_default_reset_password) loop
-			SELECT * INTO strict _returned_status FROM "application.update__internal"(
-				name => "email_template.update+".application,
-				default_r_et => "email_template.update+".name,
-				base_url => (_r->>'base_url')::url,
-				templates_source => (_r->>'templates_source')::location,
-				default_schema => (_r->>'default_schema')::object_name,
-				default_s_et => (_r->>'default_s_et')::object_name,
-				default_a_et => (_r->>'default_a_et')::object_name,
-				default_u_et => (_r->>'default_u_et')::object_name,
-				unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
-				unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
-				is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		for _r in SELECT * FROM jsonb_array_elements(use_as_default_unregisted_password_reset) loop
-			SELECT * INTO strict _returned_status FROM "application.update__internal"(
-				name => "email_template.update+".application,
-				default_u_et => "email_template.update+".name,
-				base_url => (_r->>'base_url')::url,
-				templates_source => (_r->>'templates_source')::location,
-				default_schema => (_r->>'default_schema')::object_name,
-				default_s_et => (_r->>'default_s_et')::object_name,
-				default_a_et => (_r->>'default_a_et')::object_name,
-				default_r_et => (_r->>'default_r_et')::object_name,
-				unlock_key_validity_period => CASE WHEN _r->>'unlock_key_validity_period' = '' THEN null ELSE (_r->>'unlock_key_validity_period')::validity_period END,
-				unlock_code_validity_period => CASE WHEN _r->>'unlock_code_validity_period' = '' THEN null ELSE (_r->>'unlock_code_validity_period')::short_validity_period END,
-				is_live => CASE WHEN _r->>'is_live' = '' THEN null ELSE (_r->>'is_live')::bool END,
-				_index => (_r->>'_index')::integer,
-				_check_only => cardinality(_status.errors) <> 0);
-			_status.errors = _status.errors || _returned_status.errors;
-		end loop;
-		-- Throw exception, which triggers a rollback if errors
-		if cardinality(_status.errors) <> 0 then
-			SELECT raise_jaaql_handled_query_exception(_status);
-		end if;
-		return _status.result::_jaaql_procedure_result;
-	END
-$$ language plpgsql security definer;
-select * from plpgsql_check_function(
-	'"email_template.update+"('
-		'internet_name,'
-		'object_name,'
-		'object_name,'
-		'email_template_type,'
-		'safe_path,'
-		'object_name,'
-		'object_name,'
-		'object_name,'
-		'object_name,'
-		'object_name,'
-		'email_account_username,'
-		'bool,'
-		'bool,'
-		'jsonb,'
-		'jsonb,'
-		'jsonb,'
-		'jsonb)'
-);
-
-grant execute on function "email_template.update+" to registered;
 -- document_template...
 
 -- document_request...
@@ -669,10 +233,6 @@ create function "application.insert__internal" (
 	name internet_name,
 	templates_source location default null,
 	default_schema object_name default null,
-	default_s_et object_name default null,
-	default_a_et object_name default null,
-	default_r_et object_name default null,
-	default_u_et object_name default null,
 	_index integer default null,
 	_check_only boolean default false ) returns _status_record as
 $$
@@ -680,40 +240,19 @@ DECLARE
 	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 	_count integer not null = 0;
 BEGIN
-		-- (1) Coercion
-			if "application.insert__internal".name is null then
-				"application.insert__internal".name = '';
-			end if;
-			if "application.insert__internal".base_url is null then
-				"application.insert__internal".base_url = '';
-			end if;
 		-- (A) Check that required values are present
-			if "application.insert__internal".base_url = '' then
+			if "application.insert__internal".name = '' OR "application.insert__internal".name is null then
 				_status.errors = _status.errors ||
 					ROW('application', _index,
-						'Er moet een waarde ingevuld worden voor Base Url',
+						'A value must be entered for Name',
+						'name'
+					)::_error_record;
+			end if;
+			if "application.insert__internal".base_url = '' OR "application.insert__internal".base_url is null then
+				_status.errors = _status.errors ||
+					ROW('application', _index,
+						'A value must be entered for Base Url',
 						'base_url'
-					)::_error_record;
-			end if;
-			if "application.insert__internal".unlock_key_validity_period is null then
-				_status.errors = _status.errors ||
-					ROW('application', _index,
-						'Er moet een waarde ingevuld worden voor Unlock Key Validity Period',
-						'unlock_key_validity_period'
-					)::_error_record;
-			end if;
-			if "application.insert__internal".unlock_code_validity_period is null then
-				_status.errors = _status.errors ||
-					ROW('application', _index,
-						'Er moet een waarde ingevuld worden voor Unlock Code Validity Period',
-						'unlock_code_validity_period'
-					)::_error_record;
-			end if;
-			if "application.insert__internal".is_live is null then
-				_status.errors = _status.errors ||
-					ROW('application', _index,
-						'Er moet een waarde ingevuld worden voor Is Live',
-						'is_live'
 					)::_error_record;
 			end if;
 		-- (D) Check that there is no record in the table with the same prime key
@@ -724,8 +263,8 @@ BEGIN
 			if _count <> 0 then
 				_status.errors = _status.errors ||
 					ROW('application', _index,
-						'Er is al een Application geregistreed met '
-						'Name',
+						'There is already a Application registered with '
+						'Name (' || "application.insert__internal".name || ')',
 						'name'
 					)::_error_record;
 			end if;
@@ -740,10 +279,6 @@ BEGIN
 					base_url,
 					templates_source,
 					default_schema,
-					default_s_et,
-					default_a_et,
-					default_r_et,
-					default_u_et,
 					unlock_key_validity_period,
 					unlock_code_validity_period,
 					is_live
@@ -752,13 +287,9 @@ BEGIN
 					"application.insert__internal"."base_url",
 					"application.insert__internal"."templates_source",
 					"application.insert__internal"."default_schema",
-					"application.insert__internal"."default_s_et",
-					"application.insert__internal"."default_a_et",
-					"application.insert__internal"."default_r_et",
-					"application.insert__internal"."default_u_et",
-					"application.insert__internal"."unlock_key_validity_period",
-					"application.insert__internal"."unlock_code_validity_period",
-					"application.insert__internal"."is_live" );
+					coalesce("application.insert__internal"."unlock_key_validity_period", 1209600),
+					coalesce("application.insert__internal"."unlock_code_validity_period", 900),
+					coalesce("application.insert__internal"."is_live", false) );
 				_status.result = 1;
 			end if;
 	return _status;
@@ -773,10 +304,6 @@ select * from plpgsql_check_function(
 		'internet_name,'
 		'location,'
 		'object_name,'
-		'object_name,'
-		'object_name,'
-		'object_name,'
-		'object_name,'
 		'integer,'
 		'boolean)'
 );
@@ -789,11 +316,7 @@ drop function if exists "application.insert";
 		base_url url,
 		name internet_name,
 		templates_source location default null,
-		default_schema object_name default null,
-		default_s_et object_name default null,
-		default_a_et object_name default null,
-		default_r_et object_name default null,
-		default_u_et object_name default null) returns _jaaql_procedure_result as
+		default_schema object_name default null) returns _jaaql_procedure_result as
 	$$
 		DECLARE
 			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -803,10 +326,6 @@ drop function if exists "application.insert";
 				base_url => "application.insert".base_url,
 				templates_source => "application.insert".templates_source,
 				default_schema => "application.insert".default_schema,
-				default_s_et => "application.insert".default_s_et,
-				default_a_et => "application.insert".default_a_et,
-				default_r_et => "application.insert".default_r_et,
-				default_u_et => "application.insert".default_u_et,
 				unlock_key_validity_period => "application.insert".unlock_key_validity_period,
 				unlock_code_validity_period => "application.insert".unlock_code_validity_period,
 				is_live => "application.insert".is_live);
@@ -824,10 +343,6 @@ drop function if exists "application.update__internal";
 		base_url url default null,
 		templates_source location default null,
 		default_schema object_name default null,
-		default_s_et object_name default null,
-		default_a_et object_name default null,
-		default_r_et object_name default null,
-		default_u_et object_name default null,
 		unlock_key_validity_period validity_period default null,
 		unlock_code_validity_period short_validity_period default null,
 		is_live bool default null,
@@ -846,7 +361,7 @@ drop function if exists "application.update__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('application', _index,
-						'Er is geen Application gevonden met '
+						'There is no Application found with '
 						'Name',
 						'name'
 					)::_error_record;
@@ -864,10 +379,6 @@ drop function if exists "application.update__internal";
 				base_url = coalesce("application.update__internal".base_url, A.base_url),
 				templates_source = coalesce("application.update__internal".templates_source, A.templates_source),
 				default_schema = coalesce("application.update__internal".default_schema, A.default_schema),
-				default_s_et = coalesce("application.update__internal".default_s_et, A.default_s_et),
-				default_a_et = coalesce("application.update__internal".default_a_et, A.default_a_et),
-				default_r_et = coalesce("application.update__internal".default_r_et, A.default_r_et),
-				default_u_et = coalesce("application.update__internal".default_u_et, A.default_u_et),
 				unlock_key_validity_period = coalesce("application.update__internal".unlock_key_validity_period, A.unlock_key_validity_period),
 				unlock_code_validity_period = coalesce("application.update__internal".unlock_code_validity_period, A.unlock_code_validity_period),
 				is_live = coalesce("application.update__internal".is_live, A.is_live)
@@ -883,10 +394,6 @@ drop function if exists "application.update__internal";
 			'url,'
 			'location,'
 			'object_name,'
-			'object_name,'
-			'object_name,'
-			'object_name,'
-			'object_name,'
 			'validity_period,'
 			'short_validity_period,'
 			'bool,'
@@ -900,10 +407,6 @@ drop function if exists "application.update";
 		base_url url default null,
 		templates_source location default null,
 		default_schema object_name default null,
-		default_s_et object_name default null,
-		default_a_et object_name default null,
-		default_r_et object_name default null,
-		default_u_et object_name default null,
 		unlock_key_validity_period validity_period default null,
 		unlock_code_validity_period short_validity_period default null,
 		is_live bool default null) returns _jaaql_procedure_result as
@@ -916,10 +419,6 @@ drop function if exists "application.update";
 				base_url => "application.update".base_url,
 				templates_source => "application.update".templates_source,
 				default_schema => "application.update".default_schema,
-				default_s_et => "application.update".default_s_et,
-				default_a_et => "application.update".default_a_et,
-				default_r_et => "application.update".default_r_et,
-				default_u_et => "application.update".default_u_et,
 				unlock_key_validity_period => "application.update".unlock_key_validity_period,
 				unlock_code_validity_period => "application.update".unlock_code_validity_period,
 				is_live => "application.update".is_live);
@@ -948,7 +447,7 @@ drop function if exists "application.delete__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('application', _index,
-						'Er is geen Application gevonden met '
+						'There is no Application found with '
 						'Name',
 						'name'
 					)::_error_record;
@@ -1004,21 +503,25 @@ DECLARE
 	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 	_count integer not null = 0;
 BEGIN
-		-- (1) Coercion
-			if "application_schema.insert__internal".application is null then
-				"application_schema.insert__internal".application = '';
-			end if;
-			if "application_schema.insert__internal".name is null then
-				"application_schema.insert__internal".name = '';
-			end if;
-			if "application_schema.insert__internal".database is null then
-				"application_schema.insert__internal".database = '';
-			end if;
 		-- (A) Check that required values are present
-			if "application_schema.insert__internal".database = '' then
+			if "application_schema.insert__internal".application = '' OR "application_schema.insert__internal".application is null then
 				_status.errors = _status.errors ||
 					ROW('application_schema', _index,
-						'Er moet een waarde ingevuld worden voor Database',
+						'A value must be entered for Application',
+						'application'
+					)::_error_record;
+			end if;
+			if "application_schema.insert__internal".name = '' OR "application_schema.insert__internal".name is null then
+				_status.errors = _status.errors ||
+					ROW('application_schema', _index,
+						'A value must be entered for Name',
+						'name'
+					)::_error_record;
+			end if;
+			if "application_schema.insert__internal".database = '' OR "application_schema.insert__internal".database is null then
+				_status.errors = _status.errors ||
+					ROW('application_schema', _index,
+						'A value must be entered for Database',
 						'database'
 					)::_error_record;
 			end if;
@@ -1031,8 +534,8 @@ BEGIN
 			if _count <> 0 then
 				_status.errors = _status.errors ||
 					ROW('application_schema', _index,
-						'Er is al een Application Schema geregistreed met '
-						'Application, Name',
+						'There is already a Application Schema registered with '
+						'Application (' || "application_schema.insert__internal".application || '), Name (' || "application_schema.insert__internal".name || ')',
 						'name'
 					)::_error_record;
 			end if;
@@ -1106,7 +609,7 @@ drop function if exists "application_schema.update__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('application_schema', _index,
-						'Er is geen Application Schema gevonden met '
+						'There is no Application Schema found with '
 						'Application, Name',
 						'name'
 					)::_error_record;
@@ -1178,7 +681,7 @@ drop function if exists "application_schema.delete__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('application_schema', _index,
-						'Er is geen Application Schema gevonden met '
+						'There is no Application Schema found with '
 						'Application, Name',
 						'name'
 					)::_error_record;
@@ -1244,21 +747,25 @@ DECLARE
 	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 	_count integer not null = 0;
 BEGIN
-		-- (1) Coercion
-			if "email_dispatcher.insert__internal".application is null then
-				"email_dispatcher.insert__internal".application = '';
-			end if;
-			if "email_dispatcher.insert__internal".name is null then
-				"email_dispatcher.insert__internal".name = '';
-			end if;
-			if "email_dispatcher.insert__internal".display_name is null then
-				"email_dispatcher.insert__internal".display_name = '';
-			end if;
 		-- (A) Check that required values are present
-			if "email_dispatcher.insert__internal".display_name = '' then
+			if "email_dispatcher.insert__internal".application = '' OR "email_dispatcher.insert__internal".application is null then
 				_status.errors = _status.errors ||
 					ROW('email_dispatcher', _index,
-						'Er moet een waarde ingevuld worden voor Display Name',
+						'A value must be entered for Application',
+						'application'
+					)::_error_record;
+			end if;
+			if "email_dispatcher.insert__internal".name = '' OR "email_dispatcher.insert__internal".name is null then
+				_status.errors = _status.errors ||
+					ROW('email_dispatcher', _index,
+						'A value must be entered for Name',
+						'name'
+					)::_error_record;
+			end if;
+			if "email_dispatcher.insert__internal".display_name = '' OR "email_dispatcher.insert__internal".display_name is null then
+				_status.errors = _status.errors ||
+					ROW('email_dispatcher', _index,
+						'A value must be entered for Display Name',
 						'display_name'
 					)::_error_record;
 			end if;
@@ -1271,8 +778,8 @@ BEGIN
 			if _count <> 0 then
 				_status.errors = _status.errors ||
 					ROW('email_dispatcher', _index,
-						'Er is al een Email Dispatcher geregistreed met '
-						'Application, Name',
+						'There is already a Email Dispatcher registered with '
+						'Application (' || "email_dispatcher.insert__internal".application || '), Name (' || "email_dispatcher.insert__internal".name || ')',
 						'name'
 					)::_error_record;
 			end if;
@@ -1382,7 +889,7 @@ drop function if exists "email_dispatcher.update__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('email_dispatcher', _index,
-						'Er is geen Email Dispatcher gevonden met '
+						'There is no Email Dispatcher found with '
 						'Application, Name',
 						'name'
 					)::_error_record;
@@ -1478,7 +985,7 @@ drop function if exists "email_dispatcher.delete__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('email_dispatcher', _index,
-						'Er is geen Email Dispatcher gevonden met '
+						'There is no Email Dispatcher found with '
 						'Application, Name',
 						'name'
 					)::_error_record;
@@ -1531,17 +1038,15 @@ drop function if exists "email_dispatcher.delete";
 drop function if exists "email_template.insert__internal";
 create function "email_template.insert__internal" (
 	content_url safe_path,
-	type email_template_type,
 	name object_name,
 	dispatcher object_name,
 	application internet_name,
 	validation_schema object_name default null,
 	base_relation object_name default null,
-	dbms_user_column_name object_name default null,
 	permissions_view object_name default null,
 	data_view object_name default null,
 	dispatcher_domain_recipient email_account_username default null,
-	requires_confirmation bool default null,
+	fixed_address character varying(254) default null,
 	can_be_sent_anonymously bool default null,
 	_index integer default null,
 	_check_only boolean default false ) returns _status_record as
@@ -1550,41 +1055,32 @@ DECLARE
 	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 	_count integer not null = 0;
 BEGIN
-		-- (1) Coercion
-			if "email_template.insert__internal".application is null then
-				"email_template.insert__internal".application = '';
-			end if;
-			if "email_template.insert__internal".dispatcher is null then
-				"email_template.insert__internal".dispatcher = '';
-			end if;
-			if "email_template.insert__internal".name is null then
-				"email_template.insert__internal".name = '';
-			end if;
-			if "email_template.insert__internal".type is null then
-				"email_template.insert__internal".type = '';
-			end if;
-			if "email_template.insert__internal".content_url is null then
-				"email_template.insert__internal".content_url = '';
-			end if;
 		-- (A) Check that required values are present
-			if "email_template.insert__internal".dispatcher = '' then
+			if "email_template.insert__internal".application = '' OR "email_template.insert__internal".application is null then
 				_status.errors = _status.errors ||
 					ROW('email_template', _index,
-						'Er moet een waarde ingevuld worden voor Dispatcher',
+						'A value must be entered for Application',
+						'application'
+					)::_error_record;
+			end if;
+			if "email_template.insert__internal".dispatcher = '' OR "email_template.insert__internal".dispatcher is null then
+				_status.errors = _status.errors ||
+					ROW('email_template', _index,
+						'A value must be entered for Dispatcher',
 						'dispatcher'
 					)::_error_record;
 			end if;
-			if "email_template.insert__internal".type = '' then
+			if "email_template.insert__internal".name = '' OR "email_template.insert__internal".name is null then
 				_status.errors = _status.errors ||
 					ROW('email_template', _index,
-						'Er moet een waarde ingevuld worden voor Type',
-						'type'
+						'A value must be entered for Name',
+						'name'
 					)::_error_record;
 			end if;
-			if "email_template.insert__internal".content_url = '' then
+			if "email_template.insert__internal".content_url = '' OR "email_template.insert__internal".content_url is null then
 				_status.errors = _status.errors ||
 					ROW('email_template', _index,
-						'Er moet een waarde ingevuld worden voor Content Url',
+						'A value must be entered for Content Url',
 						'content_url'
 					)::_error_record;
 			end if;
@@ -1597,8 +1093,8 @@ BEGIN
 			if _count <> 0 then
 				_status.errors = _status.errors ||
 					ROW('email_template', _index,
-						'Er is al een Email Template geregistreed met '
-						'Application, Name',
+						'There is already a Email Template registered with '
+						'Application (' || "email_template.insert__internal".application || '), Name (' || "email_template.insert__internal".name || ')',
 						'name'
 					)::_error_record;
 			end if;
@@ -1612,29 +1108,25 @@ BEGIN
 					application,
 					dispatcher,
 					name,
-					type,
 					content_url,
 					validation_schema,
 					base_relation,
-					dbms_user_column_name,
 					permissions_view,
 					data_view,
 					dispatcher_domain_recipient,
-					requires_confirmation,
+					fixed_address,
 					can_be_sent_anonymously
 				) VALUES (
 					"email_template.insert__internal"."application",
 					"email_template.insert__internal"."dispatcher",
 					"email_template.insert__internal"."name",
-					"email_template.insert__internal"."type",
 					"email_template.insert__internal"."content_url",
 					"email_template.insert__internal"."validation_schema",
 					"email_template.insert__internal"."base_relation",
-					"email_template.insert__internal"."dbms_user_column_name",
 					"email_template.insert__internal"."permissions_view",
 					"email_template.insert__internal"."data_view",
 					"email_template.insert__internal"."dispatcher_domain_recipient",
-					"email_template.insert__internal"."requires_confirmation",
+					"email_template.insert__internal"."fixed_address",
 					"email_template.insert__internal"."can_be_sent_anonymously" );
 				_status.result = 1;
 			end if;
@@ -1644,7 +1136,6 @@ $$ language plpgsql security definer;
 select * from plpgsql_check_function(
 	'"email_template.insert__internal"('
 		'safe_path,'
-		'email_template_type,'
 		'object_name,'
 		'object_name,'
 		'internet_name,'
@@ -1652,9 +1143,8 @@ select * from plpgsql_check_function(
 		'object_name,'
 		'object_name,'
 		'object_name,'
-		'object_name,'
 		'email_account_username,'
-		'bool,'
+		'character varying(254),'
 		'bool,'
 		'integer,'
 		'boolean)'
@@ -1663,17 +1153,15 @@ select * from plpgsql_check_function(
 drop function if exists "email_template.insert";
 	create function "email_template.insert" (
 		content_url safe_path,
-		type email_template_type,
 		name object_name,
 		dispatcher object_name,
 		application internet_name,
 		validation_schema object_name default null,
 		base_relation object_name default null,
-		dbms_user_column_name object_name default null,
 		permissions_view object_name default null,
 		data_view object_name default null,
 		dispatcher_domain_recipient email_account_username default null,
-		requires_confirmation bool default null,
+		fixed_address character varying(254) default null,
 		can_be_sent_anonymously bool default null) returns _jaaql_procedure_result as
 	$$
 		DECLARE
@@ -1683,15 +1171,13 @@ drop function if exists "email_template.insert";
 				application => "email_template.insert".application,
 				dispatcher => "email_template.insert".dispatcher,
 				name => "email_template.insert".name,
-				type => "email_template.insert".type,
 				content_url => "email_template.insert".content_url,
 				validation_schema => "email_template.insert".validation_schema,
 				base_relation => "email_template.insert".base_relation,
-				dbms_user_column_name => "email_template.insert".dbms_user_column_name,
 				permissions_view => "email_template.insert".permissions_view,
 				data_view => "email_template.insert".data_view,
 				dispatcher_domain_recipient => "email_template.insert".dispatcher_domain_recipient,
-				requires_confirmation => "email_template.insert".requires_confirmation,
+				fixed_address => "email_template.insert".fixed_address,
 				can_be_sent_anonymously => "email_template.insert".can_be_sent_anonymously);
 
 		-- Throw exception, which triggers a rollback if errors
@@ -1706,15 +1192,13 @@ drop function if exists "email_template.update__internal";
 		application internet_name,
 		name object_name,
 		dispatcher object_name default null,
-		type email_template_type default null,
 		content_url safe_path default null,
 		validation_schema object_name default null,
 		base_relation object_name default null,
-		dbms_user_column_name object_name default null,
 		permissions_view object_name default null,
 		data_view object_name default null,
 		dispatcher_domain_recipient email_account_username default null,
-		requires_confirmation bool default null,
+		fixed_address character varying(254) default null,
 		can_be_sent_anonymously bool default null,
 		_index integer default null,
 		_check_only boolean default false) returns _status_record as
@@ -1732,7 +1216,7 @@ drop function if exists "email_template.update__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('email_template', _index,
-						'Er is geen Email Template gevonden met '
+						'There is no Email Template found with '
 						'Application, Name',
 						'name'
 					)::_error_record;
@@ -1748,15 +1232,13 @@ drop function if exists "email_template.update__internal";
 			UPDATE email_template E
 			SET
 				dispatcher = coalesce("email_template.update__internal".dispatcher, E.dispatcher),
-				type = coalesce("email_template.update__internal".type, E.type),
 				content_url = coalesce("email_template.update__internal".content_url, E.content_url),
 				validation_schema = coalesce("email_template.update__internal".validation_schema, E.validation_schema),
 				base_relation = coalesce("email_template.update__internal".base_relation, E.base_relation),
-				dbms_user_column_name = coalesce("email_template.update__internal".dbms_user_column_name, E.dbms_user_column_name),
 				permissions_view = coalesce("email_template.update__internal".permissions_view, E.permissions_view),
 				data_view = coalesce("email_template.update__internal".data_view, E.data_view),
 				dispatcher_domain_recipient = coalesce("email_template.update__internal".dispatcher_domain_recipient, E.dispatcher_domain_recipient),
-				requires_confirmation = coalesce("email_template.update__internal".requires_confirmation, E.requires_confirmation),
+				fixed_address = coalesce("email_template.update__internal".fixed_address, E.fixed_address),
 				can_be_sent_anonymously = coalesce("email_template.update__internal".can_be_sent_anonymously, E.can_be_sent_anonymously)
 			WHERE 
 				E.application = "email_template.update__internal".application AND
@@ -1770,15 +1252,13 @@ drop function if exists "email_template.update__internal";
 			'internet_name,'
 			'object_name,'
 			'object_name,'
-			'email_template_type,'
 			'safe_path,'
 			'object_name,'
 			'object_name,'
 			'object_name,'
 			'object_name,'
-			'object_name,'
 			'email_account_username,'
-			'bool,'
+			'character varying(254),'
 			'bool,'
 			'integer,'
 			'boolean)'
@@ -1789,15 +1269,13 @@ drop function if exists "email_template.update";
 		application internet_name,
 		name object_name,
 		dispatcher object_name default null,
-		type email_template_type default null,
 		content_url safe_path default null,
 		validation_schema object_name default null,
 		base_relation object_name default null,
-		dbms_user_column_name object_name default null,
 		permissions_view object_name default null,
 		data_view object_name default null,
 		dispatcher_domain_recipient email_account_username default null,
-		requires_confirmation bool default null,
+		fixed_address character varying(254) default null,
 		can_be_sent_anonymously bool default null) returns _jaaql_procedure_result as
 	$$
 		DECLARE
@@ -1807,15 +1285,13 @@ drop function if exists "email_template.update";
 				application => "email_template.update".application,
 				dispatcher => "email_template.update".dispatcher,
 				name => "email_template.update".name,
-				type => "email_template.update".type,
 				content_url => "email_template.update".content_url,
 				validation_schema => "email_template.update".validation_schema,
 				base_relation => "email_template.update".base_relation,
-				dbms_user_column_name => "email_template.update".dbms_user_column_name,
 				permissions_view => "email_template.update".permissions_view,
 				data_view => "email_template.update".data_view,
 				dispatcher_domain_recipient => "email_template.update".dispatcher_domain_recipient,
-				requires_confirmation => "email_template.update".requires_confirmation,
+				fixed_address => "email_template.update".fixed_address,
 				can_be_sent_anonymously => "email_template.update".can_be_sent_anonymously);
 		-- Throw exception, which triggers a rollback if errors
 		if cardinality(_status.errors) <> 0 then
@@ -1844,7 +1320,7 @@ drop function if exists "email_template.delete__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('email_template', _index,
-						'Er is geen Email Template gevonden met '
+						'There is no Email Template found with '
 						'Application, Name',
 						'name'
 					)::_error_record;
@@ -1905,21 +1381,25 @@ DECLARE
 	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 	_count integer not null = 0;
 BEGIN
-		-- (1) Coercion
-			if "document_template.insert__internal".application is null then
-				"document_template.insert__internal".application = '';
-			end if;
-			if "document_template.insert__internal".name is null then
-				"document_template.insert__internal".name = '';
-			end if;
-			if "document_template.insert__internal".content_path is null then
-				"document_template.insert__internal".content_path = '';
-			end if;
 		-- (A) Check that required values are present
-			if "document_template.insert__internal".content_path = '' then
+			if "document_template.insert__internal".application = '' OR "document_template.insert__internal".application is null then
 				_status.errors = _status.errors ||
 					ROW('document_template', _index,
-						'Er moet een waarde ingevuld worden voor Content Path',
+						'A value must be entered for Application',
+						'application'
+					)::_error_record;
+			end if;
+			if "document_template.insert__internal".name = '' OR "document_template.insert__internal".name is null then
+				_status.errors = _status.errors ||
+					ROW('document_template', _index,
+						'A value must be entered for Name',
+						'name'
+					)::_error_record;
+			end if;
+			if "document_template.insert__internal".content_path = '' OR "document_template.insert__internal".content_path is null then
+				_status.errors = _status.errors ||
+					ROW('document_template', _index,
+						'A value must be entered for Content Path',
 						'content_path'
 					)::_error_record;
 			end if;
@@ -1932,8 +1412,8 @@ BEGIN
 			if _count <> 0 then
 				_status.errors = _status.errors ||
 					ROW('document_template', _index,
-						'Er is al een Document Template geregistreed met '
-						'Application, Name',
+						'There is already a Document Template registered with '
+						'Application (' || "document_template.insert__internal".application || '), Name (' || "document_template.insert__internal".name || ')',
 						'name'
 					)::_error_record;
 			end if;
@@ -2013,7 +1493,7 @@ drop function if exists "document_template.update__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('document_template', _index,
-						'Er is geen Document Template gevonden met '
+						'There is no Document Template found with '
 						'Application, Name',
 						'name'
 					)::_error_record;
@@ -2089,7 +1569,7 @@ drop function if exists "document_template.delete__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('document_template', _index,
-						'Er is geen Document Template gevonden met '
+						'There is no Document Template found with '
 						'Application, Name',
 						'name'
 					)::_error_record;
@@ -2139,6 +1619,7 @@ drop function if exists "document_template.delete";
 
 drop function if exists "document_request.insert__internal";
 create function "document_request.insert__internal" (
+	create_file bool,
 	encrypted_access_token encrypted__access_token,
 	request_timestamp timestamptz,
 	uuid uuid,
@@ -2146,6 +1627,9 @@ create function "document_request.insert__internal" (
 	application internet_name,
 	encrypted_parameters text default null,
 	render_timestamp timestamptz default null,
+	file_name file_name default null,
+	content bytea default null,
+	completed timestamptz default null,
 	_index integer default null,
 	_check_only boolean default false ) returns _status_record as
 $$
@@ -2153,43 +1637,33 @@ DECLARE
 	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 	_count integer not null = 0;
 BEGIN
-		-- (1) Coercion
-			if "document_request.insert__internal".application is null then
-				"document_request.insert__internal".application = '';
-			end if;
-			if "document_request.insert__internal".template is null then
-				"document_request.insert__internal".template = '';
-			end if;
-			if "document_request.insert__internal".encrypted_access_token is null then
-				"document_request.insert__internal".encrypted_access_token = '';
-			end if;
 		-- (A) Check that required values are present
-			if "document_request.insert__internal".application = '' then
+			if "document_request.insert__internal".application = '' OR "document_request.insert__internal".application is null then
 				_status.errors = _status.errors ||
 					ROW('document_request', _index,
-						'Er moet een waarde ingevuld worden voor Application',
+						'A value must be entered for Application',
 						'application'
 					)::_error_record;
 			end if;
-			if "document_request.insert__internal".template = '' then
+			if "document_request.insert__internal".template = '' OR "document_request.insert__internal".template is null then
 				_status.errors = _status.errors ||
 					ROW('document_request', _index,
-						'Er moet een waarde ingevuld worden voor Template',
+						'A value must be entered for Template',
 						'template'
 					)::_error_record;
 			end if;
-			if "document_request.insert__internal".request_timestamp is null then
+			if "document_request.insert__internal".encrypted_access_token is null then
 				_status.errors = _status.errors ||
 					ROW('document_request', _index,
-						'Er moet een waarde ingevuld worden voor Request Timestamp',
-						'request_timestamp'
+						'A value must be entered for Encrypted Access Token',
+						'encrypted_access_token'
 					)::_error_record;
 			end if;
-			if "document_request.insert__internal".encrypted_access_token = '' then
+			if "document_request.insert__internal".create_file is null then
 				_status.errors = _status.errors ||
 					ROW('document_request', _index,
-						'Er moet een waarde ingevuld worden voor Encrypted Access Token',
-						'encrypted_access_token'
+						'A value must be entered for Create File',
+						'create_file'
 					)::_error_record;
 			end if;
 		-- (D) Check that there is no record in the table with the same prime key
@@ -2200,8 +1674,8 @@ BEGIN
 			if _count <> 0 then
 				_status.errors = _status.errors ||
 					ROW('document_request', _index,
-						'Er is al een Document Request geregistreed met '
-						'Uuid',
+						'There is already a Document Request registered with '
+						'Uuid (' || "document_request.insert__internal".uuid || ')',
 						'uuid'
 					)::_error_record;
 			end if;
@@ -2218,15 +1692,23 @@ BEGIN
 					request_timestamp,
 					encrypted_access_token,
 					encrypted_parameters,
-					render_timestamp
+					render_timestamp,
+					create_file,
+					file_name,
+					content,
+					completed
 				) VALUES (
 					"document_request.insert__internal"."application",
 					"document_request.insert__internal"."template",
-					"document_request.insert__internal"."uuid",
-					"document_request.insert__internal"."request_timestamp",
+					coalesce("document_request.insert__internal"."uuid", gen_random_uuid()),
+					coalesce("document_request.insert__internal"."request_timestamp", current_timestamp),
 					"document_request.insert__internal"."encrypted_access_token",
 					"document_request.insert__internal"."encrypted_parameters",
-					"document_request.insert__internal"."render_timestamp" );
+					"document_request.insert__internal"."render_timestamp",
+					"document_request.insert__internal"."create_file",
+					"document_request.insert__internal"."file_name",
+					"document_request.insert__internal"."content",
+					"document_request.insert__internal"."completed" );
 				_status.result = 1;
 			end if;
 	return _status;
@@ -2234,6 +1716,7 @@ END;
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
 	'"document_request.insert__internal"('
+		'bool,'
 		'encrypted__access_token,'
 		'timestamptz,'
 		'uuid,'
@@ -2241,19 +1724,26 @@ select * from plpgsql_check_function(
 		'internet_name,'
 		'text,'
 		'timestamptz,'
+		'file_name,'
+		'bytea,'
+		'timestamptz,'
 		'integer,'
 		'boolean)'
 );
 
 drop function if exists "document_request.insert";
 	create function "document_request.insert" (
+		create_file bool,
 		encrypted_access_token encrypted__access_token,
 		request_timestamp timestamptz,
 		uuid uuid,
 		template object_name,
 		application internet_name,
 		encrypted_parameters text default null,
-		render_timestamp timestamptz default null) returns _jaaql_procedure_result as
+		render_timestamp timestamptz default null,
+		file_name file_name default null,
+		content bytea default null,
+		completed timestamptz default null) returns _jaaql_procedure_result as
 	$$
 		DECLARE
 			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -2265,7 +1755,11 @@ drop function if exists "document_request.insert";
 				request_timestamp => "document_request.insert".request_timestamp,
 				encrypted_access_token => "document_request.insert".encrypted_access_token,
 				encrypted_parameters => "document_request.insert".encrypted_parameters,
-				render_timestamp => "document_request.insert".render_timestamp);
+				render_timestamp => "document_request.insert".render_timestamp,
+				create_file => "document_request.insert".create_file,
+				file_name => "document_request.insert".file_name,
+				content => "document_request.insert".content,
+				completed => "document_request.insert".completed);
 
 		-- Throw exception, which triggers a rollback if errors
 		if cardinality(_status.errors) <> 0 then
@@ -2283,6 +1777,10 @@ drop function if exists "document_request.update__internal";
 		encrypted_access_token encrypted__access_token default null,
 		encrypted_parameters text default null,
 		render_timestamp timestamptz default null,
+		create_file bool default null,
+		file_name file_name default null,
+		content bytea default null,
+		completed timestamptz default null,
 		_index integer default null,
 		_check_only boolean default false) returns _status_record as
 	$$
@@ -2298,7 +1796,7 @@ drop function if exists "document_request.update__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('document_request', _index,
-						'Er is geen Document Request gevonden met '
+						'There is no Document Request found with '
 						'Uuid',
 						'uuid'
 					)::_error_record;
@@ -2318,7 +1816,11 @@ drop function if exists "document_request.update__internal";
 				request_timestamp = coalesce("document_request.update__internal".request_timestamp, D.request_timestamp),
 				encrypted_access_token = coalesce("document_request.update__internal".encrypted_access_token, D.encrypted_access_token),
 				encrypted_parameters = coalesce("document_request.update__internal".encrypted_parameters, D.encrypted_parameters),
-				render_timestamp = coalesce("document_request.update__internal".render_timestamp, D.render_timestamp)
+				render_timestamp = coalesce("document_request.update__internal".render_timestamp, D.render_timestamp),
+				create_file = coalesce("document_request.update__internal".create_file, D.create_file),
+				file_name = coalesce("document_request.update__internal".file_name, D.file_name),
+				content = coalesce("document_request.update__internal".content, D.content),
+				completed = coalesce("document_request.update__internal".completed, D.completed)
 			WHERE 
 				D.uuid = "document_request.update__internal".uuid;
 			return _status;
@@ -2334,6 +1836,10 @@ drop function if exists "document_request.update__internal";
 			'encrypted__access_token,'
 			'text,'
 			'timestamptz,'
+			'bool,'
+			'file_name,'
+			'bytea,'
+			'timestamptz,'
 			'integer,'
 			'boolean)'
 	);
@@ -2346,7 +1852,11 @@ drop function if exists "document_request.update";
 		request_timestamp timestamptz default null,
 		encrypted_access_token encrypted__access_token default null,
 		encrypted_parameters text default null,
-		render_timestamp timestamptz default null) returns _jaaql_procedure_result as
+		render_timestamp timestamptz default null,
+		create_file bool default null,
+		file_name file_name default null,
+		content bytea default null,
+		completed timestamptz default null) returns _jaaql_procedure_result as
 	$$
 		DECLARE
 			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -2358,7 +1868,11 @@ drop function if exists "document_request.update";
 				request_timestamp => "document_request.update".request_timestamp,
 				encrypted_access_token => "document_request.update".encrypted_access_token,
 				encrypted_parameters => "document_request.update".encrypted_parameters,
-				render_timestamp => "document_request.update".render_timestamp);
+				render_timestamp => "document_request.update".render_timestamp,
+				create_file => "document_request.update".create_file,
+				file_name => "document_request.update".file_name,
+				content => "document_request.update".content,
+				completed => "document_request.update".completed);
 		-- Throw exception, which triggers a rollback if errors
 		if cardinality(_status.errors) <> 0 then
 			SELECT raise_jaaql_handled_query_exception(_status);
@@ -2384,7 +1898,7 @@ drop function if exists "document_request.delete__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('document_request', _index,
-						'Er is geen Document Request gevonden met '
+						'There is no Document Request found with '
 						'Uuid',
 						'uuid'
 					)::_error_record;
@@ -2430,7 +1944,7 @@ drop function if exists "document_request.delete";
 
 drop function if exists "federation_procedure.insert__internal";
 create function "federation_procedure.insert__internal" (
-	name object_name,
+	name procedure_name,
 	_index integer default null,
 	_check_only boolean default false ) returns _status_record as
 $$
@@ -2438,11 +1952,14 @@ DECLARE
 	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 	_count integer not null = 0;
 BEGIN
-		-- (1) Coercion
-			if "federation_procedure.insert__internal".name is null then
-				"federation_procedure.insert__internal".name = '';
-			end if;
 		-- (A) Check that required values are present
+			if "federation_procedure.insert__internal".name = '' OR "federation_procedure.insert__internal".name is null then
+				_status.errors = _status.errors ||
+					ROW('federation_procedure', _index,
+						'A value must be entered for Name',
+						'name'
+					)::_error_record;
+			end if;
 		-- (D) Check that there is no record in the table with the same prime key
 			SELECT COUNT(*) into _count
 			FROM federation_procedure F
@@ -2451,8 +1968,8 @@ BEGIN
 			if _count <> 0 then
 				_status.errors = _status.errors ||
 					ROW('federation_procedure', _index,
-						'Er is al een Federation Procedure geregistreed met '
-						'Name',
+						'There is already a Federation Procedure registered with '
+						'Name (' || "federation_procedure.insert__internal".name || ')',
 						'name'
 					)::_error_record;
 			end if;
@@ -2473,14 +1990,14 @@ END;
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
 	'"federation_procedure.insert__internal"('
-		'object_name,'
+		'procedure_name,'
 		'integer,'
 		'boolean)'
 );
 
 drop function if exists "federation_procedure.insert";
 	create function "federation_procedure.insert" (
-		name object_name) returns _jaaql_procedure_result as
+		name procedure_name) returns _jaaql_procedure_result as
 	$$
 		DECLARE
 			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -2497,7 +2014,7 @@ drop function if exists "federation_procedure.insert";
 	$$ language plpgsql security definer;
 drop function if exists "federation_procedure.delete__internal";
 	create function "federation_procedure.delete__internal" (
-		name object_name,
+		name procedure_name,
 		_index integer default null,
 		_check_only boolean default false ) returns _status_record as
 	$$
@@ -2513,7 +2030,7 @@ drop function if exists "federation_procedure.delete__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('federation_procedure', _index,
-						'Er is geen Federation Procedure gevonden met '
+						'There is no Federation Procedure found with '
 						'Name',
 						'name'
 					)::_error_record;
@@ -2534,14 +2051,14 @@ drop function if exists "federation_procedure.delete__internal";
 
 	select * from plpgsql_check_function(
 		'"federation_procedure.delete__internal"('
-			'object_name,'
+			'procedure_name,'
 			'integer,'
 			'boolean)'
 	);
 
 drop function if exists "federation_procedure.delete";
 	create function "federation_procedure.delete" (
-		name object_name) returns _jaaql_procedure_result as
+		name procedure_name) returns _jaaql_procedure_result as
 	$$
 		DECLARE
 			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -2560,7 +2077,7 @@ drop function if exists "federation_procedure.delete";
 drop function if exists "federation_procedure_parameter.insert__internal";
 create function "federation_procedure_parameter.insert__internal" (
 	name scope_name,
-	procedure object_name,
+	procedure procedure_name,
 	_index integer default null,
 	_check_only boolean default false ) returns _status_record as
 $$
@@ -2568,14 +2085,21 @@ DECLARE
 	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 	_count integer not null = 0;
 BEGIN
-		-- (1) Coercion
-			if "federation_procedure_parameter.insert__internal".procedure is null then
-				"federation_procedure_parameter.insert__internal".procedure = '';
-			end if;
-			if "federation_procedure_parameter.insert__internal".name is null then
-				"federation_procedure_parameter.insert__internal".name = '';
-			end if;
 		-- (A) Check that required values are present
+			if "federation_procedure_parameter.insert__internal".procedure = '' OR "federation_procedure_parameter.insert__internal".procedure is null then
+				_status.errors = _status.errors ||
+					ROW('federation_procedure_parameter', _index,
+						'A value must be entered for Procedure',
+						'procedure'
+					)::_error_record;
+			end if;
+			if "federation_procedure_parameter.insert__internal".name = '' OR "federation_procedure_parameter.insert__internal".name is null then
+				_status.errors = _status.errors ||
+					ROW('federation_procedure_parameter', _index,
+						'A value must be entered for Name',
+						'name'
+					)::_error_record;
+			end if;
 		-- (D) Check that there is no record in the table with the same prime key
 			SELECT COUNT(*) into _count
 			FROM federation_procedure_parameter F
@@ -2585,8 +2109,8 @@ BEGIN
 			if _count <> 0 then
 				_status.errors = _status.errors ||
 					ROW('federation_procedure_parameter', _index,
-						'Er is al een Federation Procedure Parameter geregistreed met '
-						'Procedure, Name',
+						'There is already a Federation Procedure Parameter registered with '
+						'Procedure (' || "federation_procedure_parameter.insert__internal".procedure || '), Name (' || "federation_procedure_parameter.insert__internal".name || ')',
 						'name'
 					)::_error_record;
 			end if;
@@ -2610,7 +2134,7 @@ $$ language plpgsql security definer;
 select * from plpgsql_check_function(
 	'"federation_procedure_parameter.insert__internal"('
 		'scope_name,'
-		'object_name,'
+		'procedure_name,'
 		'integer,'
 		'boolean)'
 );
@@ -2618,7 +2142,7 @@ select * from plpgsql_check_function(
 drop function if exists "federation_procedure_parameter.insert";
 	create function "federation_procedure_parameter.insert" (
 		name scope_name,
-		procedure object_name) returns _jaaql_procedure_result as
+		procedure procedure_name) returns _jaaql_procedure_result as
 	$$
 		DECLARE
 			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -2636,7 +2160,7 @@ drop function if exists "federation_procedure_parameter.insert";
 	$$ language plpgsql security definer;
 drop function if exists "federation_procedure_parameter.delete__internal";
 	create function "federation_procedure_parameter.delete__internal" (
-		procedure object_name,
+		procedure procedure_name,
 		name scope_name,
 		_index integer default null,
 		_check_only boolean default false ) returns _status_record as
@@ -2654,7 +2178,7 @@ drop function if exists "federation_procedure_parameter.delete__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('federation_procedure_parameter', _index,
-						'Er is geen Federation Procedure Parameter gevonden met '
+						'There is no Federation Procedure Parameter found with '
 						'Procedure, Name',
 						'name'
 					)::_error_record;
@@ -2676,7 +2200,7 @@ drop function if exists "federation_procedure_parameter.delete__internal";
 
 	select * from plpgsql_check_function(
 		'"federation_procedure_parameter.delete__internal"('
-			'object_name,'
+			'procedure_name,'
 			'scope_name,'
 			'integer,'
 			'boolean)'
@@ -2684,7 +2208,7 @@ drop function if exists "federation_procedure_parameter.delete__internal";
 
 drop function if exists "federation_procedure_parameter.delete";
 	create function "federation_procedure_parameter.delete" (
-		procedure object_name,
+		procedure procedure_name,
 		name scope_name) returns _jaaql_procedure_result as
 	$$
 		DECLARE
@@ -2714,25 +2238,25 @@ DECLARE
 	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 	_count integer not null = 0;
 BEGIN
-		-- (1) Coercion
-			if "identity_provider_service.insert__internal".name is null then
-				"identity_provider_service.insert__internal".name = '';
-			end if;
-			if "identity_provider_service.insert__internal".logo_url is null then
-				"identity_provider_service.insert__internal".logo_url = '';
-			end if;
 		-- (A) Check that required values are present
-			if "identity_provider_service.insert__internal".logo_url = '' then
+			if "identity_provider_service.insert__internal".name = '' OR "identity_provider_service.insert__internal".name is null then
 				_status.errors = _status.errors ||
 					ROW('identity_provider_service', _index,
-						'Er moet een waarde ingevuld worden voor Logo Url',
+						'A value must be entered for Name',
+						'name'
+					)::_error_record;
+			end if;
+			if "identity_provider_service.insert__internal".logo_url = '' OR "identity_provider_service.insert__internal".logo_url is null then
+				_status.errors = _status.errors ||
+					ROW('identity_provider_service', _index,
+						'A value must be entered for Logo Url',
 						'logo_url'
 					)::_error_record;
 			end if;
 			if "identity_provider_service.insert__internal".requires_email_verification is null then
 				_status.errors = _status.errors ||
 					ROW('identity_provider_service', _index,
-						'Er moet een waarde ingevuld worden voor Requires Email Verification',
+						'A value must be entered for Requires Email Verification',
 						'requires_email_verification'
 					)::_error_record;
 			end if;
@@ -2744,8 +2268,8 @@ BEGIN
 			if _count <> 0 then
 				_status.errors = _status.errors ||
 					ROW('identity_provider_service', _index,
-						'Er is al een Identity Provider Service geregistreed met '
-						'Name',
+						'There is already a Identity Provider Service registered with '
+						'Name (' || "identity_provider_service.insert__internal".name || ')',
 						'name'
 					)::_error_record;
 			end if;
@@ -2818,7 +2342,7 @@ drop function if exists "identity_provider_service.update__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('identity_provider_service', _index,
-						'Er is geen Identity Provider Service gevonden met '
+						'There is no Identity Provider Service found with '
 						'Name',
 						'name'
 					)::_error_record;
@@ -2888,7 +2412,7 @@ drop function if exists "identity_provider_service.delete__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('identity_provider_service', _index,
-						'Er is geen Identity Provider Service gevonden met '
+						'There is no Identity Provider Service found with '
 						'Name',
 						'name'
 					)::_error_record;
@@ -2944,21 +2468,25 @@ DECLARE
 	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 	_count integer not null = 0;
 BEGIN
-		-- (1) Coercion
-			if "user_registry.insert__internal".provider is null then
-				"user_registry.insert__internal".provider = '';
-			end if;
-			if "user_registry.insert__internal".tenant is null then
-				"user_registry.insert__internal".tenant = '';
-			end if;
-			if "user_registry.insert__internal".discovery_url is null then
-				"user_registry.insert__internal".discovery_url = '';
-			end if;
 		-- (A) Check that required values are present
-			if "user_registry.insert__internal".discovery_url = '' then
+			if "user_registry.insert__internal".provider = '' OR "user_registry.insert__internal".provider is null then
 				_status.errors = _status.errors ||
 					ROW('user_registry', _index,
-						'Er moet een waarde ingevuld worden voor Discovery Url',
+						'A value must be entered for Provider',
+						'provider'
+					)::_error_record;
+			end if;
+			if "user_registry.insert__internal".tenant = '' OR "user_registry.insert__internal".tenant is null then
+				_status.errors = _status.errors ||
+					ROW('user_registry', _index,
+						'A value must be entered for Tenant',
+						'tenant'
+					)::_error_record;
+			end if;
+			if "user_registry.insert__internal".discovery_url = '' OR "user_registry.insert__internal".discovery_url is null then
+				_status.errors = _status.errors ||
+					ROW('user_registry', _index,
+						'A value must be entered for Discovery Url',
 						'discovery_url'
 					)::_error_record;
 			end if;
@@ -2971,8 +2499,8 @@ BEGIN
 			if _count <> 0 then
 				_status.errors = _status.errors ||
 					ROW('user_registry', _index,
-						'Er is al een User Registry geregistreed met '
-						'Provider, Tenant',
+						'There is already a User Registry registered with '
+						'Provider (' || "user_registry.insert__internal".provider || '), Tenant (' || "user_registry.insert__internal".tenant || ')',
 						'tenant'
 					)::_error_record;
 			end if;
@@ -3046,7 +2574,7 @@ drop function if exists "user_registry.update__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('user_registry', _index,
-						'Er is geen User Registry gevonden met '
+						'There is no User Registry found with '
 						'Provider, Tenant',
 						'tenant'
 					)::_error_record;
@@ -3118,7 +2646,7 @@ drop function if exists "user_registry.delete__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('user_registry', _index,
-						'Er is geen User Registry gevonden met '
+						'There is no User Registry found with '
 						'Provider, Tenant',
 						'tenant'
 					)::_error_record;
@@ -3169,7 +2697,7 @@ drop function if exists "user_registry.delete";
 drop function if exists "database_user_registry.insert__internal";
 create function "database_user_registry.insert__internal" (
 	client_id encrypted__oidc_client_id,
-	federation_procedure object_name,
+	federation_procedure procedure_name,
 	database object_name,
 	tenant tenant_name,
 	provider provider_name,
@@ -3181,34 +2709,39 @@ DECLARE
 	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 	_count integer not null = 0;
 BEGIN
-		-- (1) Coercion
-			if "database_user_registry.insert__internal".provider is null then
-				"database_user_registry.insert__internal".provider = '';
-			end if;
-			if "database_user_registry.insert__internal".tenant is null then
-				"database_user_registry.insert__internal".tenant = '';
-			end if;
-			if "database_user_registry.insert__internal".database is null then
-				"database_user_registry.insert__internal".database = '';
-			end if;
-			if "database_user_registry.insert__internal".federation_procedure is null then
-				"database_user_registry.insert__internal".federation_procedure = '';
-			end if;
-			if "database_user_registry.insert__internal".client_id is null then
-				"database_user_registry.insert__internal".client_id = '';
-			end if;
 		-- (A) Check that required values are present
-			if "database_user_registry.insert__internal".federation_procedure = '' then
+			if "database_user_registry.insert__internal".provider = '' OR "database_user_registry.insert__internal".provider is null then
 				_status.errors = _status.errors ||
 					ROW('database_user_registry', _index,
-						'Er moet een waarde ingevuld worden voor Federation Procedure',
+						'A value must be entered for Provider',
+						'provider'
+					)::_error_record;
+			end if;
+			if "database_user_registry.insert__internal".tenant = '' OR "database_user_registry.insert__internal".tenant is null then
+				_status.errors = _status.errors ||
+					ROW('database_user_registry', _index,
+						'A value must be entered for Tenant',
+						'tenant'
+					)::_error_record;
+			end if;
+			if "database_user_registry.insert__internal".database = '' OR "database_user_registry.insert__internal".database is null then
+				_status.errors = _status.errors ||
+					ROW('database_user_registry', _index,
+						'A value must be entered for Database',
+						'database'
+					)::_error_record;
+			end if;
+			if "database_user_registry.insert__internal".federation_procedure = '' OR "database_user_registry.insert__internal".federation_procedure is null then
+				_status.errors = _status.errors ||
+					ROW('database_user_registry', _index,
+						'A value must be entered for Federation Procedure',
 						'federation_procedure'
 					)::_error_record;
 			end if;
-			if "database_user_registry.insert__internal".client_id = '' then
+			if "database_user_registry.insert__internal".client_id = '' OR "database_user_registry.insert__internal".client_id is null then
 				_status.errors = _status.errors ||
 					ROW('database_user_registry', _index,
-						'Er moet een waarde ingevuld worden voor Client Id',
+						'A value must be entered for Client Id',
 						'client_id'
 					)::_error_record;
 			end if;
@@ -3222,8 +2755,8 @@ BEGIN
 			if _count <> 0 then
 				_status.errors = _status.errors ||
 					ROW('database_user_registry', _index,
-						'Er is al een Database User Registry geregistreed met '
-						'Provider, Tenant, Database',
+						'There is already a Database User Registry registered with '
+						'Provider (' || "database_user_registry.insert__internal".provider || '), Tenant (' || "database_user_registry.insert__internal".tenant || '), Database (' || "database_user_registry.insert__internal".database || ')',
 						'database'
 					)::_error_record;
 			end if;
@@ -3255,7 +2788,7 @@ $$ language plpgsql security definer;
 select * from plpgsql_check_function(
 	'"database_user_registry.insert__internal"('
 		'encrypted__oidc_client_id,'
-		'object_name,'
+		'procedure_name,'
 		'object_name,'
 		'tenant_name,'
 		'provider_name,'
@@ -3267,7 +2800,7 @@ select * from plpgsql_check_function(
 drop function if exists "database_user_registry.insert";
 	create function "database_user_registry.insert" (
 		client_id encrypted__oidc_client_id,
-		federation_procedure object_name,
+		federation_procedure procedure_name,
 		database object_name,
 		tenant tenant_name,
 		provider provider_name,
@@ -3296,7 +2829,7 @@ drop function if exists "database_user_registry.update__internal";
 		provider provider_name,
 		tenant tenant_name,
 		database object_name,
-		federation_procedure object_name default null,
+		federation_procedure procedure_name default null,
 		client_id encrypted__oidc_client_id default null,
 		client_secret encrypted__oidc_client_secret default null,
 		_index integer default null,
@@ -3316,7 +2849,7 @@ drop function if exists "database_user_registry.update__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('database_user_registry', _index,
-						'Er is geen Database User Registry gevonden met '
+						'There is no Database User Registry found with '
 						'Provider, Tenant, Database',
 						'database'
 					)::_error_record;
@@ -3347,7 +2880,7 @@ drop function if exists "database_user_registry.update__internal";
 			'provider_name,'
 			'tenant_name,'
 			'object_name,'
-			'object_name,'
+			'procedure_name,'
 			'encrypted__oidc_client_id,'
 			'encrypted__oidc_client_secret,'
 			'integer,'
@@ -3359,7 +2892,7 @@ drop function if exists "database_user_registry.update";
 		provider provider_name,
 		tenant tenant_name,
 		database object_name,
-		federation_procedure object_name default null,
+		federation_procedure procedure_name default null,
 		client_id encrypted__oidc_client_id default null,
 		client_secret encrypted__oidc_client_secret default null) returns _jaaql_procedure_result as
 	$$
@@ -3402,7 +2935,7 @@ drop function if exists "database_user_registry.delete__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('database_user_registry', _index,
-						'Er is geen Database User Registry gevonden met '
+						'There is no Database User Registry found with '
 						'Provider, Tenant, Database',
 						'database'
 					)::_error_record;
@@ -3472,25 +3005,25 @@ DECLARE
 	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 	_count integer not null = 0;
 BEGIN
-		-- (1) Coercion
-			if "account.insert__internal".id is null then
-				"account.insert__internal".id = '';
-			end if;
-			if "account.insert__internal".sub is null then
-				"account.insert__internal".sub = '';
-			end if;
 		-- (A) Check that required values are present
-			if "account.insert__internal".sub = '' then
+			if "account.insert__internal".id = '' OR "account.insert__internal".id is null then
 				_status.errors = _status.errors ||
 					ROW('account', _index,
-						'Er moet een waarde ingevuld worden voor Sub',
+						'A value must be entered for Id',
+						'id'
+					)::_error_record;
+			end if;
+			if "account.insert__internal".sub = '' OR "account.insert__internal".sub is null then
+				_status.errors = _status.errors ||
+					ROW('account', _index,
+						'A value must be entered for Sub',
 						'sub'
 					)::_error_record;
 			end if;
 			if "account.insert__internal".email_verified is null then
 				_status.errors = _status.errors ||
 					ROW('account', _index,
-						'Er moet een waarde ingevuld worden voor Email Verified',
+						'A value must be entered for Email Verified',
 						'email_verified'
 					)::_error_record;
 			end if;
@@ -3502,8 +3035,8 @@ BEGIN
 			if _count <> 0 then
 				_status.errors = _status.errors ||
 					ROW('account', _index,
-						'Er is al een Account geregistreed met '
-						'Id',
+						'There is already a Account registered with '
+						'Id (' || "account.insert__internal".id || ')',
 						'id'
 					)::_error_record;
 			end if;
@@ -3612,7 +3145,7 @@ drop function if exists "account.update__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('account', _index,
-						'Er is geen Account gevonden met '
+						'There is no Account found with '
 						'Id',
 						'id'
 					)::_error_record;
@@ -3706,7 +3239,7 @@ drop function if exists "account.delete__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('account', _index,
-						'Er is geen Account gevonden met '
+						'There is no Account found with '
 						'Id',
 						'id'
 					)::_error_record;
@@ -3764,39 +3297,25 @@ DECLARE
 	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 	_count integer not null = 0;
 BEGIN
-		-- (1) Coercion
-			if "validated_ip_address.insert__internal".account is null then
-				"validated_ip_address.insert__internal".account = '';
-			end if;
-			if "validated_ip_address.insert__internal".encrypted_salted_ip_address is null then
-				"validated_ip_address.insert__internal".encrypted_salted_ip_address = '';
-			end if;
 		-- (A) Check that required values are present
-			if "validated_ip_address.insert__internal".account = '' then
+			if "validated_ip_address.insert__internal".account = '' OR "validated_ip_address.insert__internal".account is null then
 				_status.errors = _status.errors ||
 					ROW('validated_ip_address', _index,
-						'Er moet een waarde ingevuld worden voor Account',
+						'A value must be entered for Account',
 						'account'
 					)::_error_record;
 			end if;
-			if "validated_ip_address.insert__internal".encrypted_salted_ip_address = '' then
+			if "validated_ip_address.insert__internal".encrypted_salted_ip_address = '' OR "validated_ip_address.insert__internal".encrypted_salted_ip_address is null then
 				_status.errors = _status.errors ||
 					ROW('validated_ip_address', _index,
-						'Er moet een waarde ingevuld worden voor Encrypted Salted Ip Address',
+						'A value must be entered for Encrypted Salted Ip Address',
 						'encrypted_salted_ip_address'
-					)::_error_record;
-			end if;
-			if "validated_ip_address.insert__internal".first_authentication_timestamp is null then
-				_status.errors = _status.errors ||
-					ROW('validated_ip_address', _index,
-						'Er moet een waarde ingevuld worden voor First Authentication Timestamp',
-						'first_authentication_timestamp'
 					)::_error_record;
 			end if;
 			if "validated_ip_address.insert__internal".last_authentication_timestamp is null then
 				_status.errors = _status.errors ||
 					ROW('validated_ip_address', _index,
-						'Er moet een waarde ingevuld worden voor Last Authentication Timestamp',
+						'A value must be entered for Last Authentication Timestamp',
 						'last_authentication_timestamp'
 					)::_error_record;
 			end if;
@@ -3808,8 +3327,8 @@ BEGIN
 			if _count <> 0 then
 				_status.errors = _status.errors ||
 					ROW('validated_ip_address', _index,
-						'Er is al een Validated Ip Address geregistreed met '
-						'Uuid',
+						'There is already a Validated Ip Address registered with '
+						'Uuid (' || "validated_ip_address.insert__internal".uuid || ')',
 						'uuid'
 					)::_error_record;
 			end if;
@@ -3827,9 +3346,9 @@ BEGIN
 					last_authentication_timestamp
 				) VALUES (
 					"validated_ip_address.insert__internal"."account",
-					"validated_ip_address.insert__internal"."uuid",
+					coalesce("validated_ip_address.insert__internal"."uuid", gen_random_uuid()),
 					"validated_ip_address.insert__internal"."encrypted_salted_ip_address",
-					"validated_ip_address.insert__internal"."first_authentication_timestamp",
+					coalesce("validated_ip_address.insert__internal"."first_authentication_timestamp", current_timestamp),
 					"validated_ip_address.insert__internal"."last_authentication_timestamp" );
 				_status.result = 1;
 			end if;
@@ -3894,7 +3413,7 @@ drop function if exists "validated_ip_address.update__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('validated_ip_address', _index,
-						'Er is geen Validated Ip Address gevonden met '
+						'There is no Validated Ip Address found with '
 						'Uuid',
 						'uuid'
 					)::_error_record;
@@ -3972,7 +3491,7 @@ drop function if exists "validated_ip_address.delete__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('validated_ip_address', _index,
-						'Er is geen Validated Ip Address gevonden met '
+						'There is no Validated Ip Address found with '
 						'Uuid',
 						'uuid'
 					)::_error_record;
@@ -4018,17 +3537,10 @@ drop function if exists "validated_ip_address.delete";
 
 drop function if exists "security_event.insert__internal";
 create function "security_event.insert__internal" (
-	unlock_code unlock_code,
-	unlock_key uuid,
-	email_template object_name,
-	wrong_key_attempt_count current_attempt_count,
-	creation_timestamp timestamptz,
-	event_lock uuid,
+	database_procedure procedure_name,
+	type security_event_type,
+	name security_event_name,
 	application internet_name,
-	account postgres_role default null,
-	fake_account encrypted__jaaql_username default null,
-	unlock_timestamp timestamptz default null,
-	finish_timestamp timestamptz default null,
 	_index integer default null,
 	_check_only boolean default false ) returns _status_record as
 $$
@@ -4036,50 +3548,33 @@ DECLARE
 	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 	_count integer not null = 0;
 BEGIN
-		-- (1) Coercion
-			if "security_event.insert__internal".application is null then
-				"security_event.insert__internal".application = '';
-			end if;
-			if "security_event.insert__internal".email_template is null then
-				"security_event.insert__internal".email_template = '';
-			end if;
-			if "security_event.insert__internal".unlock_code is null then
-				"security_event.insert__internal".unlock_code = '';
-			end if;
 		-- (A) Check that required values are present
-			if "security_event.insert__internal".creation_timestamp is null then
+			if "security_event.insert__internal".application = '' OR "security_event.insert__internal".application is null then
 				_status.errors = _status.errors ||
 					ROW('security_event', _index,
-						'Er moet een waarde ingevuld worden voor Creation Timestamp',
-						'creation_timestamp'
+						'A value must be entered for Application',
+						'application'
 					)::_error_record;
 			end if;
-			if "security_event.insert__internal".wrong_key_attempt_count is null then
+			if "security_event.insert__internal".name = '' OR "security_event.insert__internal".name is null then
 				_status.errors = _status.errors ||
 					ROW('security_event', _index,
-						'Er moet een waarde ingevuld worden voor Wrong Key Attempt Count',
-						'wrong_key_attempt_count'
+						'A value must be entered for Name',
+						'name'
 					)::_error_record;
 			end if;
-			if "security_event.insert__internal".email_template = '' then
+			if "security_event.insert__internal".type = '' OR "security_event.insert__internal".type is null then
 				_status.errors = _status.errors ||
 					ROW('security_event', _index,
-						'Er moet een waarde ingevuld worden voor Email Template',
-						'email_template'
+						'A value must be entered for Type',
+						'type'
 					)::_error_record;
 			end if;
-			if "security_event.insert__internal".unlock_key is null then
+			if "security_event.insert__internal".database_procedure = '' OR "security_event.insert__internal".database_procedure is null then
 				_status.errors = _status.errors ||
 					ROW('security_event', _index,
-						'Er moet een waarde ingevuld worden voor Unlock Key',
-						'unlock_key'
-					)::_error_record;
-			end if;
-			if "security_event.insert__internal".unlock_code = '' then
-				_status.errors = _status.errors ||
-					ROW('security_event', _index,
-						'Er moet een waarde ingevuld worden voor Unlock Code',
-						'unlock_code'
+						'A value must be entered for Database Procedure',
+						'database_procedure'
 					)::_error_record;
 			end if;
 		-- (D) Check that there is no record in the table with the same prime key
@@ -4087,13 +3582,14 @@ BEGIN
 			FROM security_event S
 			WHERE
 				S.application = "security_event.insert__internal".application AND
-				S.event_lock = "security_event.insert__internal".event_lock;
+				S.name = "security_event.insert__internal".name AND
+				S.type = "security_event.insert__internal".type;
 			if _count <> 0 then
 				_status.errors = _status.errors ||
 					ROW('security_event', _index,
-						'Er is al een Security Event geregistreed met '
-						'Application, Event Lock',
-						'event_lock'
+						'There is already a Security Event registered with '
+						'Application (' || "security_event.insert__internal".application || '), Name (' || "security_event.insert__internal".name || '), Type (' || "security_event.insert__internal".type || ')',
+						'type'
 					)::_error_record;
 			end if;
 			-- Get out quick if there are errors
@@ -4104,28 +3600,14 @@ BEGIN
 			if not "security_event.insert__internal"._check_only then
 				INSERT INTO security_event (
 					application,
-					event_lock,
-					creation_timestamp,
-					wrong_key_attempt_count,
-					email_template,
-					account,
-					fake_account,
-					unlock_key,
-					unlock_code,
-					unlock_timestamp,
-					finish_timestamp
+					name,
+					type,
+					database_procedure
 				) VALUES (
 					"security_event.insert__internal"."application",
-					"security_event.insert__internal"."event_lock",
-					"security_event.insert__internal"."creation_timestamp",
-					"security_event.insert__internal"."wrong_key_attempt_count",
-					"security_event.insert__internal"."email_template",
-					"security_event.insert__internal"."account",
-					"security_event.insert__internal"."fake_account",
-					"security_event.insert__internal"."unlock_key",
-					"security_event.insert__internal"."unlock_code",
-					"security_event.insert__internal"."unlock_timestamp",
-					"security_event.insert__internal"."finish_timestamp" );
+					"security_event.insert__internal"."name",
+					"security_event.insert__internal"."type",
+					"security_event.insert__internal"."database_procedure" );
 				_status.result = 1;
 			end if;
 	return _status;
@@ -4133,50 +3615,29 @@ END;
 $$ language plpgsql security definer;
 select * from plpgsql_check_function(
 	'"security_event.insert__internal"('
-		'unlock_code,'
-		'uuid,'
-		'object_name,'
-		'current_attempt_count,'
-		'timestamptz,'
-		'uuid,'
+		'procedure_name,'
+		'security_event_type,'
+		'security_event_name,'
 		'internet_name,'
-		'postgres_role,'
-		'encrypted__jaaql_username,'
-		'timestamptz,'
-		'timestamptz,'
 		'integer,'
 		'boolean)'
 );
 
 drop function if exists "security_event.insert";
 	create function "security_event.insert" (
-		unlock_code unlock_code,
-		unlock_key uuid,
-		email_template object_name,
-		wrong_key_attempt_count current_attempt_count,
-		creation_timestamp timestamptz,
-		event_lock uuid,
-		application internet_name,
-		account postgres_role default null,
-		fake_account encrypted__jaaql_username default null,
-		unlock_timestamp timestamptz default null,
-		finish_timestamp timestamptz default null) returns _jaaql_procedure_result as
+		database_procedure procedure_name,
+		type security_event_type,
+		name security_event_name,
+		application internet_name) returns _jaaql_procedure_result as
 	$$
 		DECLARE
 			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 		BEGIN
 			SELECT * INTO strict _status FROM "security_event.insert__internal"(
 				application => "security_event.insert".application,
-				event_lock => "security_event.insert".event_lock,
-				creation_timestamp => "security_event.insert".creation_timestamp,
-				wrong_key_attempt_count => "security_event.insert".wrong_key_attempt_count,
-				email_template => "security_event.insert".email_template,
-				account => "security_event.insert".account,
-				fake_account => "security_event.insert".fake_account,
-				unlock_key => "security_event.insert".unlock_key,
-				unlock_code => "security_event.insert".unlock_code,
-				unlock_timestamp => "security_event.insert".unlock_timestamp,
-				finish_timestamp => "security_event.insert".finish_timestamp);
+				name => "security_event.insert".name,
+				type => "security_event.insert".type,
+				database_procedure => "security_event.insert".database_procedure);
 
 		-- Throw exception, which triggers a rollback if errors
 		if cardinality(_status.errors) <> 0 then
@@ -4188,16 +3649,9 @@ drop function if exists "security_event.insert";
 drop function if exists "security_event.update__internal";
 	create function "security_event.update__internal" (
 		application internet_name,
-		event_lock uuid,
-		creation_timestamp timestamptz default null,
-		wrong_key_attempt_count current_attempt_count default null,
-		email_template object_name default null,
-		account postgres_role default null,
-		fake_account encrypted__jaaql_username default null,
-		unlock_key uuid default null,
-		unlock_code unlock_code default null,
-		unlock_timestamp timestamptz default null,
-		finish_timestamp timestamptz default null,
+		name security_event_name,
+		type security_event_type,
+		database_procedure procedure_name default null,
 		_index integer default null,
 		_check_only boolean default false) returns _status_record as
 	$$
@@ -4210,13 +3664,14 @@ drop function if exists "security_event.update__internal";
 			FROM security_event S
 			WHERE
 				S.application = "security_event.update__internal".application AND
-				S.event_lock = "security_event.update__internal".event_lock;
+				S.name = "security_event.update__internal".name AND
+				S.type = "security_event.update__internal".type;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('security_event', _index,
-						'Er is geen Security Event gevonden met '
-						'Application, Event Lock',
-						'event_lock'
+						'There is no Security Event found with '
+						'Application, Name, Type',
+						'type'
 					)::_error_record;
 			end if;
 			-- Get out quick if there are errors
@@ -4229,18 +3684,11 @@ drop function if exists "security_event.update__internal";
 
 			UPDATE security_event S
 			SET
-				creation_timestamp = coalesce("security_event.update__internal".creation_timestamp, S.creation_timestamp),
-				wrong_key_attempt_count = coalesce("security_event.update__internal".wrong_key_attempt_count, S.wrong_key_attempt_count),
-				email_template = coalesce("security_event.update__internal".email_template, S.email_template),
-				account = coalesce("security_event.update__internal".account, S.account),
-				fake_account = coalesce("security_event.update__internal".fake_account, S.fake_account),
-				unlock_key = coalesce("security_event.update__internal".unlock_key, S.unlock_key),
-				unlock_code = coalesce("security_event.update__internal".unlock_code, S.unlock_code),
-				unlock_timestamp = coalesce("security_event.update__internal".unlock_timestamp, S.unlock_timestamp),
-				finish_timestamp = coalesce("security_event.update__internal".finish_timestamp, S.finish_timestamp)
+				database_procedure = coalesce("security_event.update__internal".database_procedure, S.database_procedure)
 			WHERE 
 				S.application = "security_event.update__internal".application AND
-				S.event_lock = "security_event.update__internal".event_lock;
+				S.name = "security_event.update__internal".name AND
+				S.type = "security_event.update__internal".type;
 			return _status;
 		END;
 	$$ language plpgsql security definer;
@@ -4248,16 +3696,9 @@ drop function if exists "security_event.update__internal";
 	select * from plpgsql_check_function(
 		'"security_event.update__internal"('
 			'internet_name,'
-			'uuid,'
-			'timestamptz,'
-			'current_attempt_count,'
-			'object_name,'
-			'postgres_role,'
-			'encrypted__jaaql_username,'
-			'uuid,'
-			'unlock_code,'
-			'timestamptz,'
-			'timestamptz,'
+			'security_event_name,'
+			'security_event_type,'
+			'procedure_name,'
 			'integer,'
 			'boolean)'
 	);
@@ -4265,32 +3706,18 @@ drop function if exists "security_event.update__internal";
 drop function if exists "security_event.update";
 	create function "security_event.update" (
 		application internet_name,
-		event_lock uuid,
-		creation_timestamp timestamptz default null,
-		wrong_key_attempt_count current_attempt_count default null,
-		email_template object_name default null,
-		account postgres_role default null,
-		fake_account encrypted__jaaql_username default null,
-		unlock_key uuid default null,
-		unlock_code unlock_code default null,
-		unlock_timestamp timestamptz default null,
-		finish_timestamp timestamptz default null) returns _jaaql_procedure_result as
+		name security_event_name,
+		type security_event_type,
+		database_procedure procedure_name default null) returns _jaaql_procedure_result as
 	$$
 		DECLARE
 			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 		BEGIN
 			SELECT * INTO strict _status FROM "security_event.update__internal"(
 				application => "security_event.update".application,
-				event_lock => "security_event.update".event_lock,
-				creation_timestamp => "security_event.update".creation_timestamp,
-				wrong_key_attempt_count => "security_event.update".wrong_key_attempt_count,
-				email_template => "security_event.update".email_template,
-				account => "security_event.update".account,
-				fake_account => "security_event.update".fake_account,
-				unlock_key => "security_event.update".unlock_key,
-				unlock_code => "security_event.update".unlock_code,
-				unlock_timestamp => "security_event.update".unlock_timestamp,
-				finish_timestamp => "security_event.update".finish_timestamp);
+				name => "security_event.update".name,
+				type => "security_event.update".type,
+				database_procedure => "security_event.update".database_procedure);
 		-- Throw exception, which triggers a rollback if errors
 		if cardinality(_status.errors) <> 0 then
 			SELECT raise_jaaql_handled_query_exception(_status);
@@ -4301,7 +3728,8 @@ drop function if exists "security_event.update";
 drop function if exists "security_event.delete__internal";
 	create function "security_event.delete__internal" (
 		application internet_name,
-		event_lock uuid,
+		name security_event_name,
+		type security_event_type,
 		_index integer default null,
 		_check_only boolean default false ) returns _status_record as
 	$$
@@ -4314,13 +3742,14 @@ drop function if exists "security_event.delete__internal";
 			FROM security_event S
 			WHERE
 				S.application = "security_event.delete__internal".application AND
-				S.event_lock = "security_event.delete__internal".event_lock;
+				S.name = "security_event.delete__internal".name AND
+				S.type = "security_event.delete__internal".type;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('security_event', _index,
-						'Er is geen Security Event gevonden met '
-						'Application, Event Lock',
-						'event_lock'
+						'There is no Security Event found with '
+						'Application, Name, Type',
+						'type'
 					)::_error_record;
 			end if;			-- Get out quick if there are errors
 			if cardinality(_status.errors) <> 0 then
@@ -4333,7 +3762,8 @@ drop function if exists "security_event.delete__internal";
 			DELETE FROM security_event S
 			WHERE 
 				S.application = "security_event.delete__internal".application AND
-				S.event_lock = "security_event.delete__internal".event_lock;
+				S.name = "security_event.delete__internal".name AND
+				S.type = "security_event.delete__internal".type;
 			return _status;
 		END;
 	$$ language plpgsql security definer;
@@ -4341,7 +3771,8 @@ drop function if exists "security_event.delete__internal";
 	select * from plpgsql_check_function(
 		'"security_event.delete__internal"('
 			'internet_name,'
-			'uuid,'
+			'security_event_name,'
+			'security_event_type,'
 			'integer,'
 			'boolean)'
 	);
@@ -4349,14 +3780,16 @@ drop function if exists "security_event.delete__internal";
 drop function if exists "security_event.delete";
 	create function "security_event.delete" (
 		application internet_name,
-		event_lock uuid) returns _jaaql_procedure_result as
+		name security_event_name,
+		type security_event_type) returns _jaaql_procedure_result as
 	$$
 		DECLARE
 			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 		BEGIN
 			SELECT * INTO strict _status FROM "security_event.delete__internal"(
 				application => "security_event.delete".application,
-				event_lock => "security_event.delete".event_lock);
+				name => "security_event.delete".name,
+				type => "security_event.delete".type);
 		-- Throw exception, which triggers a rollback if errors
 		if cardinality(_status.errors) <> 0 then
 			SELECT raise_jaaql_handled_query_exception(_status);
@@ -4387,19 +3820,25 @@ DECLARE
 	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 	_count integer not null = 0;
 BEGIN
-		-- (1) Coercion
 		-- (A) Check that required values are present
+			if "handled_error.insert__internal".code is null then
+				_status.errors = _status.errors ||
+					ROW('handled_error', _index,
+						'A value must be entered for Code',
+						'code'
+					)::_error_record;
+			end if;
 			if "handled_error.insert__internal".is_arrayed is null then
 				_status.errors = _status.errors ||
 					ROW('handled_error', _index,
-						'Er moet een waarde ingevuld worden voor Is Arrayed',
+						'A value must be entered for Is Arrayed',
 						'is_arrayed'
 					)::_error_record;
 			end if;
 			if "handled_error.insert__internal".description is null then
 				_status.errors = _status.errors ||
 					ROW('handled_error', _index,
-						'Er moet een waarde ingevuld worden voor Description',
+						'A value must be entered for Description',
 						'description'
 					)::_error_record;
 			end if;
@@ -4411,8 +3850,8 @@ BEGIN
 			if _count <> 0 then
 				_status.errors = _status.errors ||
 					ROW('handled_error', _index,
-						'Er is al een Handled Error geregistreed met '
-						'Code',
+						'There is already a Handled Error registered with '
+						'Code (' || "handled_error.insert__internal".code || ')',
 						'code'
 					)::_error_record;
 			end if;
@@ -4445,7 +3884,7 @@ BEGIN
 					"handled_error.insert__internal"."column_possible",
 					"handled_error.insert__internal"."has_associated_set",
 					"handled_error.insert__internal"."column_name",
-					"handled_error.insert__internal"."http_response_code",
+					coalesce("handled_error.insert__internal"."http_response_code", 422),
 					"handled_error.insert__internal"."message",
 					"handled_error.insert__internal"."description" );
 				_status.result = 1;
@@ -4539,7 +3978,7 @@ drop function if exists "handled_error.update__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('handled_error', _index,
-						'Er is geen Handled Error gevonden met '
+						'There is no Handled Error found with '
 						'Code',
 						'code'
 					)::_error_record;
@@ -4645,7 +4084,7 @@ drop function if exists "handled_error.delete__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('handled_error', _index,
-						'Er is geen Handled Error gevonden met '
+						'There is no Handled Error found with '
 						'Code',
 						'code'
 					)::_error_record;
@@ -4701,6 +4140,7 @@ create function "remote_procedure.insert__internal" (
 	command text,
 	name object_name,
 	application internet_name,
+	cron text default null,
 	_index integer default null,
 	_check_only boolean default false ) returns _status_record as
 $$
@@ -4708,28 +4148,32 @@ DECLARE
 	_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
 	_count integer not null = 0;
 BEGIN
-		-- (1) Coercion
-			if "remote_procedure.insert__internal".application is null then
-				"remote_procedure.insert__internal".application = '';
-			end if;
-			if "remote_procedure.insert__internal".name is null then
-				"remote_procedure.insert__internal".name = '';
-			end if;
-			if "remote_procedure.insert__internal".access is null then
-				"remote_procedure.insert__internal".access = '';
-			end if;
 		-- (A) Check that required values are present
+			if "remote_procedure.insert__internal".application = '' OR "remote_procedure.insert__internal".application is null then
+				_status.errors = _status.errors ||
+					ROW('remote_procedure', _index,
+						'A value must be entered for Application',
+						'application'
+					)::_error_record;
+			end if;
+			if "remote_procedure.insert__internal".name = '' OR "remote_procedure.insert__internal".name is null then
+				_status.errors = _status.errors ||
+					ROW('remote_procedure', _index,
+						'A value must be entered for Name',
+						'name'
+					)::_error_record;
+			end if;
 			if "remote_procedure.insert__internal".command is null then
 				_status.errors = _status.errors ||
 					ROW('remote_procedure', _index,
-						'Er moet een waarde ingevuld worden voor Command',
+						'A value must be entered for Command',
 						'command'
 					)::_error_record;
 			end if;
-			if "remote_procedure.insert__internal".access = '' then
+			if "remote_procedure.insert__internal".access = '' OR "remote_procedure.insert__internal".access is null then
 				_status.errors = _status.errors ||
 					ROW('remote_procedure', _index,
-						'Er moet een waarde ingevuld worden voor Access',
+						'A value must be entered for Access',
 						'access'
 					)::_error_record;
 			end if;
@@ -4742,8 +4186,8 @@ BEGIN
 			if _count <> 0 then
 				_status.errors = _status.errors ||
 					ROW('remote_procedure', _index,
-						'Er is al een Remote Procedure geregistreed met '
-						'Application, Name',
+						'There is already a Remote Procedure registered with '
+						'Application (' || "remote_procedure.insert__internal".application || '), Name (' || "remote_procedure.insert__internal".name || ')',
 						'name'
 					)::_error_record;
 			end if;
@@ -4757,12 +4201,14 @@ BEGIN
 					application,
 					name,
 					command,
-					access
+					access,
+					cron
 				) VALUES (
 					"remote_procedure.insert__internal"."application",
 					"remote_procedure.insert__internal"."name",
 					"remote_procedure.insert__internal"."command",
-					"remote_procedure.insert__internal"."access" );
+					"remote_procedure.insert__internal"."access",
+					"remote_procedure.insert__internal"."cron" );
 				_status.result = 1;
 			end if;
 	return _status;
@@ -4774,6 +4220,7 @@ select * from plpgsql_check_function(
 		'text,'
 		'object_name,'
 		'internet_name,'
+		'text,'
 		'integer,'
 		'boolean)'
 );
@@ -4783,7 +4230,8 @@ drop function if exists "remote_procedure.insert";
 		access procedure_access_level,
 		command text,
 		name object_name,
-		application internet_name) returns _jaaql_procedure_result as
+		application internet_name,
+		cron text default null) returns _jaaql_procedure_result as
 	$$
 		DECLARE
 			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -4792,7 +4240,8 @@ drop function if exists "remote_procedure.insert";
 				application => "remote_procedure.insert".application,
 				name => "remote_procedure.insert".name,
 				command => "remote_procedure.insert".command,
-				access => "remote_procedure.insert".access);
+				access => "remote_procedure.insert".access,
+				cron => "remote_procedure.insert".cron);
 
 		-- Throw exception, which triggers a rollback if errors
 		if cardinality(_status.errors) <> 0 then
@@ -4807,6 +4256,7 @@ drop function if exists "remote_procedure.update__internal";
 		name object_name,
 		command text default null,
 		access procedure_access_level default null,
+		cron text default null,
 		_index integer default null,
 		_check_only boolean default false) returns _status_record as
 	$$
@@ -4823,7 +4273,7 @@ drop function if exists "remote_procedure.update__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('remote_procedure', _index,
-						'Er is geen Remote Procedure gevonden met '
+						'There is no Remote Procedure found with '
 						'Application, Name',
 						'name'
 					)::_error_record;
@@ -4839,7 +4289,8 @@ drop function if exists "remote_procedure.update__internal";
 			UPDATE remote_procedure R
 			SET
 				command = coalesce("remote_procedure.update__internal".command, R.command),
-				access = coalesce("remote_procedure.update__internal".access, R.access)
+				access = coalesce("remote_procedure.update__internal".access, R.access),
+				cron = coalesce("remote_procedure.update__internal".cron, R.cron)
 			WHERE 
 				R.application = "remote_procedure.update__internal".application AND
 				R.name = "remote_procedure.update__internal".name;
@@ -4853,6 +4304,7 @@ drop function if exists "remote_procedure.update__internal";
 			'object_name,'
 			'text,'
 			'procedure_access_level,'
+			'text,'
 			'integer,'
 			'boolean)'
 	);
@@ -4862,7 +4314,8 @@ drop function if exists "remote_procedure.update";
 		application internet_name,
 		name object_name,
 		command text default null,
-		access procedure_access_level default null) returns _jaaql_procedure_result as
+		access procedure_access_level default null,
+		cron text default null) returns _jaaql_procedure_result as
 	$$
 		DECLARE
 			_status _status_record = ROW(0, ARRAY[]::_error_record[])::_status_record;
@@ -4871,7 +4324,8 @@ drop function if exists "remote_procedure.update";
 				application => "remote_procedure.update".application,
 				name => "remote_procedure.update".name,
 				command => "remote_procedure.update".command,
-				access => "remote_procedure.update".access);
+				access => "remote_procedure.update".access,
+				cron => "remote_procedure.update".cron);
 		-- Throw exception, which triggers a rollback if errors
 		if cardinality(_status.errors) <> 0 then
 			SELECT raise_jaaql_handled_query_exception(_status);
@@ -4899,7 +4353,7 @@ drop function if exists "remote_procedure.delete__internal";
 			if _count <> 1 then
 				_status.errors = _status.errors ||
 					ROW('remote_procedure', _index,
-						'Er is geen Remote Procedure gevonden met '
+						'There is no Remote Procedure found with '
 						'Application, Name',
 						'name'
 					)::_error_record;

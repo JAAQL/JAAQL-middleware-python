@@ -116,11 +116,14 @@ def execute_supplied_statement(db_interface, query: str, parameters: dict = None
 
 def force_singleton(data, as_objects: bool = False, singleton_code: int = None, singleton_message: str = None):
     was_no_singleton = False
+    original_count = 1
     if as_objects:
         if len(data) != 1:
+            original_count = len(data)
             was_no_singleton = True
     else:
         if len(data["rows"]) != 1:
+            original_count = len(data["rows"])
             was_no_singleton = True
         if len(data["rows"]) != 0:
             data["rows"] = data["rows"][0]
@@ -129,7 +132,7 @@ def force_singleton(data, as_objects: bool = False, singleton_code: int = None, 
         err = ERR__expected_single_row % len(data)
         if singleton_message is not None:
             err = singleton_message
-        raise HttpSingletonStatusException(err, singleton_code)
+        raise HttpSingletonStatusException(err, singleton_code, original_count)
 
     return data[0] if as_objects else data
 

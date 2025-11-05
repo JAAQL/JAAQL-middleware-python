@@ -2,11 +2,13 @@
 
 -- (3) Populate tables
 
+
 -- jaaql...
-insert into jaaql (security_event_attempt_limit, migration_version, last_successful_build_time)
-values (3, '1.0.3', 0);
+insert into jaaql (migration_version, last_successful_build_time)
+values ('4.33.10', 0);
 
 ;
+
 -- pg_base_exception...
 insert into pg_base_exception (name)
 values ('DatabaseError'),
@@ -18,6 +20,7 @@ values ('DatabaseError'),
 		('InternalError');
 
 ;
+
 -- pg_error_class...
 insert into pg_error_class (code, name, description)
 values ('02', 'NO_DATA', 'this is also a warning class per the SQL standard'),
@@ -65,6 +68,7 @@ insert into pg_error_class (code, name, description)
 values ('XX', 'INTERNAL_ERROR', NULL);
 
 ;
+
 -- pg_exception...
 insert into pg_exception (pg_class, sqlstate, name, base_exception)
 values ('02', '02000', 'NoData', 'DatabaseError'),

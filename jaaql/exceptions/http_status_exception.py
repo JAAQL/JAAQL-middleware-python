@@ -28,8 +28,10 @@ class HttpStatusException(Exception):
 
 
 class HttpSingletonStatusException(HttpStatusException):
-    def __init__(self, message: str, response_code: int = HTTPStatus.UNPROCESSABLE_ENTITY):
+    def __init__(self, message: str, response_code: int = HTTPStatus.UNPROCESSABLE_ENTITY, actual_count: int = 1):
         super().__init__(message, response_code)
+
+        self.actual_count = actual_count
 
 
 class JaaqlInterpretableHandledError(Exception):
