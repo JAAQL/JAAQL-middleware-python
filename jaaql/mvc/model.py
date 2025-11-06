@@ -1513,6 +1513,7 @@ WHERE
         return {
             "temporary_password": temp_pw,
             "response": response_obj,
+            "subject": user_id
         }
 
     def security_event__delete_user(
@@ -1597,6 +1598,7 @@ WHERE
         return {
             "temporary_password": temp_pw,
             "response": response_obj,
+            "subject": user_id
         }
 
     def handle_procedure(self, http_inputs: dict, is_the_anonymous_user: bool, auth_token: str, username: str, ip_address: str, account_id: str):
