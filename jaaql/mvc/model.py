@@ -1647,7 +1647,7 @@ WHERE
             raise HttpStatusException("Could not intepret remote procedure result", HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def handle_webhook(self, application: str, name: str, body: bytes, headers: dict, args: dict,
-                       response: JAAQLResponse, account_id: str):
+                       response: JAAQLResponse, account_id: str | None):
         rpc = remote_procedure__select(self.jaaql_lookup_connection, application, name)
         if rpc[KG__remote_procedure__access] != RPC_ACCESS__webhook:
             raise HttpStatusException("Procedure type is not type webhook")
@@ -1667,7 +1667,9 @@ WHERE
             base_cmd = m.group(2)
 
         argv = shlex.split(base_cmd)  # ["node","--import","./__imports__.js","RemoteProcedures/...entrypoint.js"]
-        argv += [encoded_headers, encoded_args, encoded_body, account_id]
+        argv += [encoded_headers, encoded_args, encoded_body]
+        if account_id is not None:
+            argv += [account_id]
 
         # No shell; pass argv list. Capture output as text.
         result = subprocess.run(

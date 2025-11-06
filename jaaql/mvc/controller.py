@@ -151,7 +151,7 @@ class JAAQLController(BaseJAAQLController):
 
         @self.publish_route('/webhook/<application>/<name>', DOCUMENTATION__webhook)
         def handle_webhook(application: str, name: str, body: bytes, headers: dict, args: dict, response: JAAQLResponse):
-            self.model.handle_webhook(application, name, body, headers, args, response)
+            self.model.handle_webhook(application, name, body, headers, args, response, None)
 
         @self.publish_route('/secure/<application>/<name>', DOCUMENTATION__secure_webhook)
         def handle_secure_webhook(application: str, name: str, body: bytes, headers: dict, args: dict,

@@ -1,5 +1,6 @@
 import threading
 import traceback
+from werkzeug.datastructures import Headers
 import uuid
 from functools import wraps
 
@@ -667,9 +668,15 @@ class BaseJAAQLController:
                     if jaaql_resp.raw_response is not None:
                         resp = jaaql_resp.raw_response
                     if jaaql_resp.is_binary:
-                        resp = Response(resp, mimetype=jaaql_resp.response_type, status=jaaql_resp.response_code)
+                        hdrs = Headers(jaaql_resp.raw_headers or {})
+                        content_type = hdrs.pop("Content-Type", None)
+                        try:
+                            del jaaql_resp.raw_headers["Content-Type"]
+                        except:
+                            pass
+                        resp = Response(resp, status=jaaql_resp.response_code, content_type=content_type or "application/octet-stream")
                     else:
-                        resp = Response(resp, status=jaaql_resp.response_code)
+                        resp = Response(resp, mimetype=jaaql_resp.response_type, status=jaaql_resp.response_code)
 
                 for key, val in jaaql_resp.raw_headers.items():
                     resp.headers.add(key, val)
