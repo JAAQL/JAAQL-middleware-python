@@ -176,6 +176,25 @@ DOCUMENTATION__webhook = SwaggerDocumentation(
     ]
 )
 
+DOCUMENTATION__secure_webhook = SwaggerDocumentation(
+    tags="Webhook",
+    security=True,  # Security is handled at the webhook implementation itself
+    methods=[
+        SwaggerMethod(
+            name="Receive Webhook GET",
+            description="Receives a webhook as a GET",
+            method=REST__GET,
+            arguments=ARG_RES__proc + [ARG_RES__parameters]
+        ),
+        SwaggerMethod(
+            name="Receive Webhook POST",
+            description="Receives a webhook as a POST",
+            method=REST__POST,
+            arguments=ARG_RESP__allow_all
+        )
+    ]
+)
+
 EXAMPLE__document_id = "b47dc954-d608-4e1b-8a8c-d8b754ee554b"
 
 ARG_RES__document_id = SwaggerArgumentResponse(

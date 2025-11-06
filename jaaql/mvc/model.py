@@ -8,6 +8,7 @@ import urllib.parse
 import uuid
 import signal
 import secrets
+import shlex
 from typing import Dict, Any
 
 from cryptography.hazmat.primitives import hashes
@@ -1645,9 +1646,9 @@ WHERE
             traceback.print_exc()
             raise HttpStatusException("Could not intepret remote procedure result", HTTPStatus.INTERNAL_SERVER_ERROR)
 
-    def handle_webhook(self, application: str, name: str, body: bytes, headers: dict, args: dict, response: JAAQLResponse):
+    def handle_webhook(self, application: str, name: str, body: bytes, headers: dict, args: dict,
+                       response: JAAQLResponse, account_id: str):
         rpc = remote_procedure__select(self.jaaql_lookup_connection, application, name)
-
         if rpc[KG__remote_procedure__access] != RPC_ACCESS__webhook:
             raise HttpStatusException("Procedure type is not type webhook")
 
@@ -1655,30 +1656,60 @@ WHERE
         encoded_headers = base64.b64encode(json.dumps(headers).encode(ENCODING__utf)).decode(ENCODING__utf)
         encoded_args = base64.b64encode(json.dumps(args).encode(ENCODING__utf)).decode(ENCODING__utf)
 
-        command = [rpc[KG__remote_procedure__command], encoded_headers, encoded_args, encoded_body]
-        command = " ".join(command)
-        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
+        # --- Build argv & cwd without using a shell ---
+        base_cmd = rpc[KG__remote_procedure__command]  # e.g.
+        # "cd /procs && node --import ./__imports__.js RemoteProcedures/webhook/document.proc.entrypoint.js"
+
+        cwd = None
+        m = re.match(r'^\s*cd\s+([^\s;]+)\s*&&\s*(.*)$', base_cmd)
+        if m:
+            cwd = m.group(1)
+            base_cmd = m.group(2)
+
+        argv = shlex.split(base_cmd)  # ["node","--import","./__imports__.js","RemoteProcedures/...entrypoint.js"]
+        argv += [encoded_headers, encoded_args, encoded_body, account_id]
+
+        # No shell; pass argv list. Capture output as text.
+        result = subprocess.run(
+            argv,
+            cwd=cwd,  # None if no "cd … &&" in the command
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False
+        )
 
         try:
             res = json.loads(result.stdout)
             if result.returncode == 0:
-                response.response_code = res['statusCode']
-                response.raw_response = res['body']
-                response.raw_headers = res['headers']
-            elif "error_code" in res:
+                response.response_code = res.get('statusCode', 200)
+                response.raw_headers = res.get('headers', {}) or {}
+
+                body_str = res.get('body', '')
+                if res.get('isBase64Encoded'):
+                    # be tolerant to padding/whitespace
+                    import re as _re
+                    s = _re.sub(r"\s+", "", body_str)
+                    s += "=" * (-len(s) % 4)
+                    response.raw_response = base64.b64decode(s)
+                    response.is_binary = True
+                else:
+                    response.raw_response = body_str
+                    response.is_binary = False
+            elif isinstance(res, dict) and "error_code" in res:
                 raise JaaqlInterpretableHandledError.deserialize_from_json(res)
             else:
                 raise Exception("Unrecognised error object")
-        except JaaqlInterpretableHandledError as e:
-            raise e
+        except JaaqlInterpretableHandledError:
+            raise
         except Exception:
-            print(result.stdout)
-            print(result.stderr)
+            # Helpful debug
+            print("----- STDOUT -----\n", result.stdout, file=sys.stderr)
+            print("----- STDERR -----\n", result.stderr, file=sys.stderr)
             if result.returncode != 0:
                 raise UnhandledRemoteProcedureError()
-
             traceback.print_exc()
-            raise HttpStatusException("Could not intepret webhook procedure result", HTTPStatus.INTERNAL_SERVER_ERROR)
+            raise HttpStatusException("Could not interpret webhook procedure result", HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def set_procedures(self, inputs: dict, connection: DBInterface):
         execute_supplied_statement(

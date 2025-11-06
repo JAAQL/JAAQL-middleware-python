@@ -666,7 +666,10 @@ class BaseJAAQLController:
                 else:
                     if jaaql_resp.raw_response is not None:
                         resp = jaaql_resp.raw_response
-                    resp = Response(resp, mimetype=jaaql_resp.response_type, status=jaaql_resp.response_code)
+                    if jaaql_resp.is_binary:
+                        resp = Response(resp, mimetype=jaaql_resp.response_type, status=jaaql_resp.response_code)
+                    else:
+                        resp = Response(resp, status=jaaql_resp.response_code)
 
                 for key, val in jaaql_resp.raw_headers.items():
                     resp.headers.add(key, val)

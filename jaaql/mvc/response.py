@@ -11,6 +11,7 @@ class JAAQLResponse:
         self.response_type = None
         self.raw_response = None
         self.raw_headers = {}
+        self.is_binary = False
 
         self.cookies = {}
 
