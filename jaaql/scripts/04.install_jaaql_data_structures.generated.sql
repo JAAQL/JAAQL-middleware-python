@@ -27,6 +27,7 @@ grant execute on function "BS.iso_extended_week_number" to public;
 create type _error_type as (
 	table_name character varying(63),
 	index integer,
+	error_code character varying(20),
 	message character varying(256),
 	column_name character varying(63)
 );
@@ -215,6 +216,7 @@ create table handled_error (
 	table_possible bool,
 	column_possible bool,
 	has_associated_set bool,
+	has_sub_code bool,
 	column_name object_name,
 	http_response_code http_response_code default 422,
 	message text,

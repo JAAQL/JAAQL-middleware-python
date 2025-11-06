@@ -1,5 +1,5 @@
 """
-This script was generated from build_and_run.fxls at 2025-11-05, 14:24:08
+This script was generated from build_and_run.fxls at 2025-11-06, 06:34:38
 """
 
 from jaaql.db.db_interface import DBInterface
@@ -1667,6 +1667,7 @@ KG__handled_error__table_name_required = "table_name_required"
 KG__handled_error__table_possible = "table_possible"
 KG__handled_error__column_possible = "column_possible"
 KG__handled_error__has_associated_set = "has_associated_set"
+KG__handled_error__has_sub_code = "has_sub_code"
 KG__handled_error__column_name = "column_name"
 KG__handled_error__http_response_code = "http_response_code"
 KG__handled_error__message = "message"
@@ -1677,12 +1678,12 @@ QG__handled_error_delete = "DELETE FROM handled_error WHERE code = :code"
 QG__handled_error_insert = """
     INSERT INTO handled_error (code, error_name, is_arrayed,
         table_name, table_name_required, table_possible,
-        column_possible, has_associated_set, column_name,
-        message, description)
+        column_possible, has_associated_set, has_sub_code,
+        column_name, message, description)
     VALUES (:code, :error_name, :is_arrayed,
         :table_name, :table_name_required, :table_possible,
-        :column_possible, :has_associated_set, :column_name,
-        :message, :description)
+        :column_possible, :has_associated_set, :has_sub_code,
+        :column_name, :message, :description)
     RETURNING http_response_code
 """
 QG__handled_error_select_all = "SELECT * FROM handled_error"
@@ -1698,6 +1699,7 @@ QG__handled_error_update = """
         table_possible = COALESCE(:table_possible, table_possible),
         column_possible = COALESCE(:column_possible, column_possible),
         has_associated_set = COALESCE(:has_associated_set, has_associated_set),
+        has_sub_code = COALESCE(:has_sub_code, has_sub_code),
         column_name = COALESCE(:column_name, column_name),
         http_response_code = COALESCE(:http_response_code, http_response_code),
         message = COALESCE(:message, message),
@@ -1726,8 +1728,8 @@ def handled_error__update(
     code,
     error_name=None, is_arrayed=None, table_name=None,
     table_name_required=None, table_possible=None, column_possible=None,
-    has_associated_set=None, column_name=None, http_response_code=None,
-    message=None, description=None
+    has_associated_set=None, has_sub_code=None, column_name=None,
+    http_response_code=None, message=None, description=None
 ):
     execute_supplied_statement(
         connection, QG__handled_error_update,
@@ -1743,6 +1745,7 @@ def handled_error__update(
             KG__handled_error__table_possible: table_possible,
             KG__handled_error__column_possible: column_possible,
             KG__handled_error__has_associated_set: has_associated_set,
+            KG__handled_error__has_sub_code: has_sub_code,
             KG__handled_error__column_name: column_name,
             KG__handled_error__http_response_code: http_response_code,
             KG__handled_error__message: message,
@@ -1780,7 +1783,7 @@ def handled_error__insert(
     code, is_arrayed, description,
     error_name=None, table_name=None, table_name_required=None,
     table_possible=None, column_possible=None, has_associated_set=None,
-    column_name=None, message=None
+    has_sub_code=None, column_name=None, message=None
 ):
     return execute_supplied_statement_singleton(
         connection, QG__handled_error_insert,
@@ -1793,6 +1796,7 @@ def handled_error__insert(
             KG__handled_error__table_possible: table_possible,
             KG__handled_error__column_possible: column_possible,
             KG__handled_error__has_associated_set: has_associated_set,
+            KG__handled_error__has_sub_code: has_sub_code,
             KG__handled_error__column_name: column_name,
             KG__handled_error__message: message,
             KG__handled_error__description: description

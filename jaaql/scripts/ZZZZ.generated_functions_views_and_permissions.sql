@@ -243,14 +243,14 @@ BEGIN
 		-- (A) Check that required values are present
 			if "application.insert__internal".name = '' OR "application.insert__internal".name is null then
 				_status.errors = _status.errors ||
-					ROW('application', _index,
+					ROW('application', _index, 'MISSING_VALUE',
 						'A value must be entered for Name',
 						'name'
 					)::_error_record;
 			end if;
 			if "application.insert__internal".base_url = '' OR "application.insert__internal".base_url is null then
 				_status.errors = _status.errors ||
-					ROW('application', _index,
+					ROW('application', _index, 'MISSING_VALUE',
 						'A value must be entered for Base Url',
 						'base_url'
 					)::_error_record;
@@ -262,7 +262,7 @@ BEGIN
 				A.name = "application.insert__internal".name;
 			if _count <> 0 then
 				_status.errors = _status.errors ||
-					ROW('application', _index,
+					ROW('application', _index, 'ALREADY_EXISTS',
 						'There is already a Application registered with '
 						'Name (' || "application.insert__internal".name || ')',
 						'name'
@@ -360,7 +360,7 @@ drop function if exists "application.update__internal";
 				A.name = "application.update__internal".name;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('application', _index,
+					ROW('application', _index, 'DOESNT_EXIST',
 						'There is no Application found with '
 						'Name',
 						'name'
@@ -446,7 +446,7 @@ drop function if exists "application.delete__internal";
 				A.name = "application.delete__internal".name;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('application', _index,
+					ROW('application', _index, 'DOESNT_EXIST',
 						'There is no Application found with '
 						'Name',
 						'name'
@@ -506,21 +506,21 @@ BEGIN
 		-- (A) Check that required values are present
 			if "application_schema.insert__internal".application = '' OR "application_schema.insert__internal".application is null then
 				_status.errors = _status.errors ||
-					ROW('application_schema', _index,
+					ROW('application_schema', _index, 'MISSING_VALUE',
 						'A value must be entered for Application',
 						'application'
 					)::_error_record;
 			end if;
 			if "application_schema.insert__internal".name = '' OR "application_schema.insert__internal".name is null then
 				_status.errors = _status.errors ||
-					ROW('application_schema', _index,
+					ROW('application_schema', _index, 'MISSING_VALUE',
 						'A value must be entered for Name',
 						'name'
 					)::_error_record;
 			end if;
 			if "application_schema.insert__internal".database = '' OR "application_schema.insert__internal".database is null then
 				_status.errors = _status.errors ||
-					ROW('application_schema', _index,
+					ROW('application_schema', _index, 'MISSING_VALUE',
 						'A value must be entered for Database',
 						'database'
 					)::_error_record;
@@ -533,7 +533,7 @@ BEGIN
 				A.name = "application_schema.insert__internal".name;
 			if _count <> 0 then
 				_status.errors = _status.errors ||
-					ROW('application_schema', _index,
+					ROW('application_schema', _index, 'ALREADY_EXISTS',
 						'There is already a Application Schema registered with '
 						'Application (' || "application_schema.insert__internal".application || '), Name (' || "application_schema.insert__internal".name || ')',
 						'name'
@@ -608,7 +608,7 @@ drop function if exists "application_schema.update__internal";
 				A.name = "application_schema.update__internal".name;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('application_schema', _index,
+					ROW('application_schema', _index, 'DOESNT_EXIST',
 						'There is no Application Schema found with '
 						'Application, Name',
 						'name'
@@ -680,7 +680,7 @@ drop function if exists "application_schema.delete__internal";
 				A.name = "application_schema.delete__internal".name;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('application_schema', _index,
+					ROW('application_schema', _index, 'DOESNT_EXIST',
 						'There is no Application Schema found with '
 						'Application, Name',
 						'name'
@@ -750,21 +750,21 @@ BEGIN
 		-- (A) Check that required values are present
 			if "email_dispatcher.insert__internal".application = '' OR "email_dispatcher.insert__internal".application is null then
 				_status.errors = _status.errors ||
-					ROW('email_dispatcher', _index,
+					ROW('email_dispatcher', _index, 'MISSING_VALUE',
 						'A value must be entered for Application',
 						'application'
 					)::_error_record;
 			end if;
 			if "email_dispatcher.insert__internal".name = '' OR "email_dispatcher.insert__internal".name is null then
 				_status.errors = _status.errors ||
-					ROW('email_dispatcher', _index,
+					ROW('email_dispatcher', _index, 'MISSING_VALUE',
 						'A value must be entered for Name',
 						'name'
 					)::_error_record;
 			end if;
 			if "email_dispatcher.insert__internal".display_name = '' OR "email_dispatcher.insert__internal".display_name is null then
 				_status.errors = _status.errors ||
-					ROW('email_dispatcher', _index,
+					ROW('email_dispatcher', _index, 'MISSING_VALUE',
 						'A value must be entered for Display Name',
 						'display_name'
 					)::_error_record;
@@ -777,7 +777,7 @@ BEGIN
 				E.name = "email_dispatcher.insert__internal".name;
 			if _count <> 0 then
 				_status.errors = _status.errors ||
-					ROW('email_dispatcher', _index,
+					ROW('email_dispatcher', _index, 'ALREADY_EXISTS',
 						'There is already a Email Dispatcher registered with '
 						'Application (' || "email_dispatcher.insert__internal".application || '), Name (' || "email_dispatcher.insert__internal".name || ')',
 						'name'
@@ -888,7 +888,7 @@ drop function if exists "email_dispatcher.update__internal";
 				E.name = "email_dispatcher.update__internal".name;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('email_dispatcher', _index,
+					ROW('email_dispatcher', _index, 'DOESNT_EXIST',
 						'There is no Email Dispatcher found with '
 						'Application, Name',
 						'name'
@@ -984,7 +984,7 @@ drop function if exists "email_dispatcher.delete__internal";
 				E.name = "email_dispatcher.delete__internal".name;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('email_dispatcher', _index,
+					ROW('email_dispatcher', _index, 'DOESNT_EXIST',
 						'There is no Email Dispatcher found with '
 						'Application, Name',
 						'name'
@@ -1058,28 +1058,28 @@ BEGIN
 		-- (A) Check that required values are present
 			if "email_template.insert__internal".application = '' OR "email_template.insert__internal".application is null then
 				_status.errors = _status.errors ||
-					ROW('email_template', _index,
+					ROW('email_template', _index, 'MISSING_VALUE',
 						'A value must be entered for Application',
 						'application'
 					)::_error_record;
 			end if;
 			if "email_template.insert__internal".dispatcher = '' OR "email_template.insert__internal".dispatcher is null then
 				_status.errors = _status.errors ||
-					ROW('email_template', _index,
+					ROW('email_template', _index, 'MISSING_VALUE',
 						'A value must be entered for Dispatcher',
 						'dispatcher'
 					)::_error_record;
 			end if;
 			if "email_template.insert__internal".name = '' OR "email_template.insert__internal".name is null then
 				_status.errors = _status.errors ||
-					ROW('email_template', _index,
+					ROW('email_template', _index, 'MISSING_VALUE',
 						'A value must be entered for Name',
 						'name'
 					)::_error_record;
 			end if;
 			if "email_template.insert__internal".content_url = '' OR "email_template.insert__internal".content_url is null then
 				_status.errors = _status.errors ||
-					ROW('email_template', _index,
+					ROW('email_template', _index, 'MISSING_VALUE',
 						'A value must be entered for Content Url',
 						'content_url'
 					)::_error_record;
@@ -1092,7 +1092,7 @@ BEGIN
 				E.name = "email_template.insert__internal".name;
 			if _count <> 0 then
 				_status.errors = _status.errors ||
-					ROW('email_template', _index,
+					ROW('email_template', _index, 'ALREADY_EXISTS',
 						'There is already a Email Template registered with '
 						'Application (' || "email_template.insert__internal".application || '), Name (' || "email_template.insert__internal".name || ')',
 						'name'
@@ -1215,7 +1215,7 @@ drop function if exists "email_template.update__internal";
 				E.name = "email_template.update__internal".name;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('email_template', _index,
+					ROW('email_template', _index, 'DOESNT_EXIST',
 						'There is no Email Template found with '
 						'Application, Name',
 						'name'
@@ -1319,7 +1319,7 @@ drop function if exists "email_template.delete__internal";
 				E.name = "email_template.delete__internal".name;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('email_template', _index,
+					ROW('email_template', _index, 'DOESNT_EXIST',
 						'There is no Email Template found with '
 						'Application, Name',
 						'name'
@@ -1384,21 +1384,21 @@ BEGIN
 		-- (A) Check that required values are present
 			if "document_template.insert__internal".application = '' OR "document_template.insert__internal".application is null then
 				_status.errors = _status.errors ||
-					ROW('document_template', _index,
+					ROW('document_template', _index, 'MISSING_VALUE',
 						'A value must be entered for Application',
 						'application'
 					)::_error_record;
 			end if;
 			if "document_template.insert__internal".name = '' OR "document_template.insert__internal".name is null then
 				_status.errors = _status.errors ||
-					ROW('document_template', _index,
+					ROW('document_template', _index, 'MISSING_VALUE',
 						'A value must be entered for Name',
 						'name'
 					)::_error_record;
 			end if;
 			if "document_template.insert__internal".content_path = '' OR "document_template.insert__internal".content_path is null then
 				_status.errors = _status.errors ||
-					ROW('document_template', _index,
+					ROW('document_template', _index, 'MISSING_VALUE',
 						'A value must be entered for Content Path',
 						'content_path'
 					)::_error_record;
@@ -1411,7 +1411,7 @@ BEGIN
 				D.name = "document_template.insert__internal".name;
 			if _count <> 0 then
 				_status.errors = _status.errors ||
-					ROW('document_template', _index,
+					ROW('document_template', _index, 'ALREADY_EXISTS',
 						'There is already a Document Template registered with '
 						'Application (' || "document_template.insert__internal".application || '), Name (' || "document_template.insert__internal".name || ')',
 						'name'
@@ -1492,7 +1492,7 @@ drop function if exists "document_template.update__internal";
 				D.name = "document_template.update__internal".name;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('document_template', _index,
+					ROW('document_template', _index, 'DOESNT_EXIST',
 						'There is no Document Template found with '
 						'Application, Name',
 						'name'
@@ -1568,7 +1568,7 @@ drop function if exists "document_template.delete__internal";
 				D.name = "document_template.delete__internal".name;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('document_template', _index,
+					ROW('document_template', _index, 'DOESNT_EXIST',
 						'There is no Document Template found with '
 						'Application, Name',
 						'name'
@@ -1640,28 +1640,28 @@ BEGIN
 		-- (A) Check that required values are present
 			if "document_request.insert__internal".application = '' OR "document_request.insert__internal".application is null then
 				_status.errors = _status.errors ||
-					ROW('document_request', _index,
+					ROW('document_request', _index, 'MISSING_VALUE',
 						'A value must be entered for Application',
 						'application'
 					)::_error_record;
 			end if;
 			if "document_request.insert__internal".template = '' OR "document_request.insert__internal".template is null then
 				_status.errors = _status.errors ||
-					ROW('document_request', _index,
+					ROW('document_request', _index, 'MISSING_VALUE',
 						'A value must be entered for Template',
 						'template'
 					)::_error_record;
 			end if;
 			if "document_request.insert__internal".encrypted_access_token is null then
 				_status.errors = _status.errors ||
-					ROW('document_request', _index,
+					ROW('document_request', _index, 'MISSING_VALUE',
 						'A value must be entered for Encrypted Access Token',
 						'encrypted_access_token'
 					)::_error_record;
 			end if;
 			if "document_request.insert__internal".create_file is null then
 				_status.errors = _status.errors ||
-					ROW('document_request', _index,
+					ROW('document_request', _index, 'MISSING_VALUE',
 						'A value must be entered for Create File',
 						'create_file'
 					)::_error_record;
@@ -1673,7 +1673,7 @@ BEGIN
 				D.uuid = "document_request.insert__internal".uuid;
 			if _count <> 0 then
 				_status.errors = _status.errors ||
-					ROW('document_request', _index,
+					ROW('document_request', _index, 'ALREADY_EXISTS',
 						'There is already a Document Request registered with '
 						'Uuid (' || "document_request.insert__internal".uuid || ')',
 						'uuid'
@@ -1795,7 +1795,7 @@ drop function if exists "document_request.update__internal";
 				D.uuid = "document_request.update__internal".uuid;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('document_request', _index,
+					ROW('document_request', _index, 'DOESNT_EXIST',
 						'There is no Document Request found with '
 						'Uuid',
 						'uuid'
@@ -1897,7 +1897,7 @@ drop function if exists "document_request.delete__internal";
 				D.uuid = "document_request.delete__internal".uuid;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('document_request', _index,
+					ROW('document_request', _index, 'DOESNT_EXIST',
 						'There is no Document Request found with '
 						'Uuid',
 						'uuid'
@@ -1955,7 +1955,7 @@ BEGIN
 		-- (A) Check that required values are present
 			if "federation_procedure.insert__internal".name = '' OR "federation_procedure.insert__internal".name is null then
 				_status.errors = _status.errors ||
-					ROW('federation_procedure', _index,
+					ROW('federation_procedure', _index, 'MISSING_VALUE',
 						'A value must be entered for Name',
 						'name'
 					)::_error_record;
@@ -1967,7 +1967,7 @@ BEGIN
 				F.name = "federation_procedure.insert__internal".name;
 			if _count <> 0 then
 				_status.errors = _status.errors ||
-					ROW('federation_procedure', _index,
+					ROW('federation_procedure', _index, 'ALREADY_EXISTS',
 						'There is already a Federation Procedure registered with '
 						'Name (' || "federation_procedure.insert__internal".name || ')',
 						'name'
@@ -2029,7 +2029,7 @@ drop function if exists "federation_procedure.delete__internal";
 				F.name = "federation_procedure.delete__internal".name;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('federation_procedure', _index,
+					ROW('federation_procedure', _index, 'DOESNT_EXIST',
 						'There is no Federation Procedure found with '
 						'Name',
 						'name'
@@ -2088,14 +2088,14 @@ BEGIN
 		-- (A) Check that required values are present
 			if "federation_procedure_parameter.insert__internal".procedure = '' OR "federation_procedure_parameter.insert__internal".procedure is null then
 				_status.errors = _status.errors ||
-					ROW('federation_procedure_parameter', _index,
+					ROW('federation_procedure_parameter', _index, 'MISSING_VALUE',
 						'A value must be entered for Procedure',
 						'procedure'
 					)::_error_record;
 			end if;
 			if "federation_procedure_parameter.insert__internal".name = '' OR "federation_procedure_parameter.insert__internal".name is null then
 				_status.errors = _status.errors ||
-					ROW('federation_procedure_parameter', _index,
+					ROW('federation_procedure_parameter', _index, 'MISSING_VALUE',
 						'A value must be entered for Name',
 						'name'
 					)::_error_record;
@@ -2108,7 +2108,7 @@ BEGIN
 				F.name = "federation_procedure_parameter.insert__internal".name;
 			if _count <> 0 then
 				_status.errors = _status.errors ||
-					ROW('federation_procedure_parameter', _index,
+					ROW('federation_procedure_parameter', _index, 'ALREADY_EXISTS',
 						'There is already a Federation Procedure Parameter registered with '
 						'Procedure (' || "federation_procedure_parameter.insert__internal".procedure || '), Name (' || "federation_procedure_parameter.insert__internal".name || ')',
 						'name'
@@ -2177,7 +2177,7 @@ drop function if exists "federation_procedure_parameter.delete__internal";
 				F.name = "federation_procedure_parameter.delete__internal".name;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('federation_procedure_parameter', _index,
+					ROW('federation_procedure_parameter', _index, 'DOESNT_EXIST',
 						'There is no Federation Procedure Parameter found with '
 						'Procedure, Name',
 						'name'
@@ -2241,21 +2241,21 @@ BEGIN
 		-- (A) Check that required values are present
 			if "identity_provider_service.insert__internal".name = '' OR "identity_provider_service.insert__internal".name is null then
 				_status.errors = _status.errors ||
-					ROW('identity_provider_service', _index,
+					ROW('identity_provider_service', _index, 'MISSING_VALUE',
 						'A value must be entered for Name',
 						'name'
 					)::_error_record;
 			end if;
 			if "identity_provider_service.insert__internal".logo_url = '' OR "identity_provider_service.insert__internal".logo_url is null then
 				_status.errors = _status.errors ||
-					ROW('identity_provider_service', _index,
+					ROW('identity_provider_service', _index, 'MISSING_VALUE',
 						'A value must be entered for Logo Url',
 						'logo_url'
 					)::_error_record;
 			end if;
 			if "identity_provider_service.insert__internal".requires_email_verification is null then
 				_status.errors = _status.errors ||
-					ROW('identity_provider_service', _index,
+					ROW('identity_provider_service', _index, 'MISSING_VALUE',
 						'A value must be entered for Requires Email Verification',
 						'requires_email_verification'
 					)::_error_record;
@@ -2267,7 +2267,7 @@ BEGIN
 				I.name = "identity_provider_service.insert__internal".name;
 			if _count <> 0 then
 				_status.errors = _status.errors ||
-					ROW('identity_provider_service', _index,
+					ROW('identity_provider_service', _index, 'ALREADY_EXISTS',
 						'There is already a Identity Provider Service registered with '
 						'Name (' || "identity_provider_service.insert__internal".name || ')',
 						'name'
@@ -2341,7 +2341,7 @@ drop function if exists "identity_provider_service.update__internal";
 				I.name = "identity_provider_service.update__internal".name;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('identity_provider_service', _index,
+					ROW('identity_provider_service', _index, 'DOESNT_EXIST',
 						'There is no Identity Provider Service found with '
 						'Name',
 						'name'
@@ -2411,7 +2411,7 @@ drop function if exists "identity_provider_service.delete__internal";
 				I.name = "identity_provider_service.delete__internal".name;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('identity_provider_service', _index,
+					ROW('identity_provider_service', _index, 'DOESNT_EXIST',
 						'There is no Identity Provider Service found with '
 						'Name',
 						'name'
@@ -2471,21 +2471,21 @@ BEGIN
 		-- (A) Check that required values are present
 			if "user_registry.insert__internal".provider = '' OR "user_registry.insert__internal".provider is null then
 				_status.errors = _status.errors ||
-					ROW('user_registry', _index,
+					ROW('user_registry', _index, 'MISSING_VALUE',
 						'A value must be entered for Provider',
 						'provider'
 					)::_error_record;
 			end if;
 			if "user_registry.insert__internal".tenant = '' OR "user_registry.insert__internal".tenant is null then
 				_status.errors = _status.errors ||
-					ROW('user_registry', _index,
+					ROW('user_registry', _index, 'MISSING_VALUE',
 						'A value must be entered for Tenant',
 						'tenant'
 					)::_error_record;
 			end if;
 			if "user_registry.insert__internal".discovery_url = '' OR "user_registry.insert__internal".discovery_url is null then
 				_status.errors = _status.errors ||
-					ROW('user_registry', _index,
+					ROW('user_registry', _index, 'MISSING_VALUE',
 						'A value must be entered for Discovery Url',
 						'discovery_url'
 					)::_error_record;
@@ -2498,7 +2498,7 @@ BEGIN
 				U.tenant = "user_registry.insert__internal".tenant;
 			if _count <> 0 then
 				_status.errors = _status.errors ||
-					ROW('user_registry', _index,
+					ROW('user_registry', _index, 'ALREADY_EXISTS',
 						'There is already a User Registry registered with '
 						'Provider (' || "user_registry.insert__internal".provider || '), Tenant (' || "user_registry.insert__internal".tenant || ')',
 						'tenant'
@@ -2573,7 +2573,7 @@ drop function if exists "user_registry.update__internal";
 				U.tenant = "user_registry.update__internal".tenant;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('user_registry', _index,
+					ROW('user_registry', _index, 'DOESNT_EXIST',
 						'There is no User Registry found with '
 						'Provider, Tenant',
 						'tenant'
@@ -2645,7 +2645,7 @@ drop function if exists "user_registry.delete__internal";
 				U.tenant = "user_registry.delete__internal".tenant;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('user_registry', _index,
+					ROW('user_registry', _index, 'DOESNT_EXIST',
 						'There is no User Registry found with '
 						'Provider, Tenant',
 						'tenant'
@@ -2712,35 +2712,35 @@ BEGIN
 		-- (A) Check that required values are present
 			if "database_user_registry.insert__internal".provider = '' OR "database_user_registry.insert__internal".provider is null then
 				_status.errors = _status.errors ||
-					ROW('database_user_registry', _index,
+					ROW('database_user_registry', _index, 'MISSING_VALUE',
 						'A value must be entered for Provider',
 						'provider'
 					)::_error_record;
 			end if;
 			if "database_user_registry.insert__internal".tenant = '' OR "database_user_registry.insert__internal".tenant is null then
 				_status.errors = _status.errors ||
-					ROW('database_user_registry', _index,
+					ROW('database_user_registry', _index, 'MISSING_VALUE',
 						'A value must be entered for Tenant',
 						'tenant'
 					)::_error_record;
 			end if;
 			if "database_user_registry.insert__internal".database = '' OR "database_user_registry.insert__internal".database is null then
 				_status.errors = _status.errors ||
-					ROW('database_user_registry', _index,
+					ROW('database_user_registry', _index, 'MISSING_VALUE',
 						'A value must be entered for Database',
 						'database'
 					)::_error_record;
 			end if;
 			if "database_user_registry.insert__internal".federation_procedure = '' OR "database_user_registry.insert__internal".federation_procedure is null then
 				_status.errors = _status.errors ||
-					ROW('database_user_registry', _index,
+					ROW('database_user_registry', _index, 'MISSING_VALUE',
 						'A value must be entered for Federation Procedure',
 						'federation_procedure'
 					)::_error_record;
 			end if;
 			if "database_user_registry.insert__internal".client_id = '' OR "database_user_registry.insert__internal".client_id is null then
 				_status.errors = _status.errors ||
-					ROW('database_user_registry', _index,
+					ROW('database_user_registry', _index, 'MISSING_VALUE',
 						'A value must be entered for Client Id',
 						'client_id'
 					)::_error_record;
@@ -2754,7 +2754,7 @@ BEGIN
 				D.database = "database_user_registry.insert__internal".database;
 			if _count <> 0 then
 				_status.errors = _status.errors ||
-					ROW('database_user_registry', _index,
+					ROW('database_user_registry', _index, 'ALREADY_EXISTS',
 						'There is already a Database User Registry registered with '
 						'Provider (' || "database_user_registry.insert__internal".provider || '), Tenant (' || "database_user_registry.insert__internal".tenant || '), Database (' || "database_user_registry.insert__internal".database || ')',
 						'database'
@@ -2848,7 +2848,7 @@ drop function if exists "database_user_registry.update__internal";
 				D.database = "database_user_registry.update__internal".database;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('database_user_registry', _index,
+					ROW('database_user_registry', _index, 'DOESNT_EXIST',
 						'There is no Database User Registry found with '
 						'Provider, Tenant, Database',
 						'database'
@@ -2934,7 +2934,7 @@ drop function if exists "database_user_registry.delete__internal";
 				D.database = "database_user_registry.delete__internal".database;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('database_user_registry', _index,
+					ROW('database_user_registry', _index, 'DOESNT_EXIST',
 						'There is no Database User Registry found with '
 						'Provider, Tenant, Database',
 						'database'
@@ -3008,21 +3008,21 @@ BEGIN
 		-- (A) Check that required values are present
 			if "account.insert__internal".id = '' OR "account.insert__internal".id is null then
 				_status.errors = _status.errors ||
-					ROW('account', _index,
+					ROW('account', _index, 'MISSING_VALUE',
 						'A value must be entered for Id',
 						'id'
 					)::_error_record;
 			end if;
 			if "account.insert__internal".sub = '' OR "account.insert__internal".sub is null then
 				_status.errors = _status.errors ||
-					ROW('account', _index,
+					ROW('account', _index, 'MISSING_VALUE',
 						'A value must be entered for Sub',
 						'sub'
 					)::_error_record;
 			end if;
 			if "account.insert__internal".email_verified is null then
 				_status.errors = _status.errors ||
-					ROW('account', _index,
+					ROW('account', _index, 'MISSING_VALUE',
 						'A value must be entered for Email Verified',
 						'email_verified'
 					)::_error_record;
@@ -3034,7 +3034,7 @@ BEGIN
 				A.id = "account.insert__internal".id;
 			if _count <> 0 then
 				_status.errors = _status.errors ||
-					ROW('account', _index,
+					ROW('account', _index, 'ALREADY_EXISTS',
 						'There is already a Account registered with '
 						'Id (' || "account.insert__internal".id || ')',
 						'id'
@@ -3144,7 +3144,7 @@ drop function if exists "account.update__internal";
 				A.id = "account.update__internal".id;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('account', _index,
+					ROW('account', _index, 'DOESNT_EXIST',
 						'There is no Account found with '
 						'Id',
 						'id'
@@ -3238,7 +3238,7 @@ drop function if exists "account.delete__internal";
 				A.id = "account.delete__internal".id;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('account', _index,
+					ROW('account', _index, 'DOESNT_EXIST',
 						'There is no Account found with '
 						'Id',
 						'id'
@@ -3300,21 +3300,21 @@ BEGIN
 		-- (A) Check that required values are present
 			if "validated_ip_address.insert__internal".account = '' OR "validated_ip_address.insert__internal".account is null then
 				_status.errors = _status.errors ||
-					ROW('validated_ip_address', _index,
+					ROW('validated_ip_address', _index, 'MISSING_VALUE',
 						'A value must be entered for Account',
 						'account'
 					)::_error_record;
 			end if;
 			if "validated_ip_address.insert__internal".encrypted_salted_ip_address = '' OR "validated_ip_address.insert__internal".encrypted_salted_ip_address is null then
 				_status.errors = _status.errors ||
-					ROW('validated_ip_address', _index,
+					ROW('validated_ip_address', _index, 'MISSING_VALUE',
 						'A value must be entered for Encrypted Salted Ip Address',
 						'encrypted_salted_ip_address'
 					)::_error_record;
 			end if;
 			if "validated_ip_address.insert__internal".last_authentication_timestamp is null then
 				_status.errors = _status.errors ||
-					ROW('validated_ip_address', _index,
+					ROW('validated_ip_address', _index, 'MISSING_VALUE',
 						'A value must be entered for Last Authentication Timestamp',
 						'last_authentication_timestamp'
 					)::_error_record;
@@ -3326,7 +3326,7 @@ BEGIN
 				V.uuid = "validated_ip_address.insert__internal".uuid;
 			if _count <> 0 then
 				_status.errors = _status.errors ||
-					ROW('validated_ip_address', _index,
+					ROW('validated_ip_address', _index, 'ALREADY_EXISTS',
 						'There is already a Validated Ip Address registered with '
 						'Uuid (' || "validated_ip_address.insert__internal".uuid || ')',
 						'uuid'
@@ -3412,7 +3412,7 @@ drop function if exists "validated_ip_address.update__internal";
 				V.uuid = "validated_ip_address.update__internal".uuid;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('validated_ip_address', _index,
+					ROW('validated_ip_address', _index, 'DOESNT_EXIST',
 						'There is no Validated Ip Address found with '
 						'Uuid',
 						'uuid'
@@ -3490,7 +3490,7 @@ drop function if exists "validated_ip_address.delete__internal";
 				V.uuid = "validated_ip_address.delete__internal".uuid;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('validated_ip_address', _index,
+					ROW('validated_ip_address', _index, 'DOESNT_EXIST',
 						'There is no Validated Ip Address found with '
 						'Uuid',
 						'uuid'
@@ -3551,28 +3551,28 @@ BEGIN
 		-- (A) Check that required values are present
 			if "security_event.insert__internal".application = '' OR "security_event.insert__internal".application is null then
 				_status.errors = _status.errors ||
-					ROW('security_event', _index,
+					ROW('security_event', _index, 'MISSING_VALUE',
 						'A value must be entered for Application',
 						'application'
 					)::_error_record;
 			end if;
 			if "security_event.insert__internal".name = '' OR "security_event.insert__internal".name is null then
 				_status.errors = _status.errors ||
-					ROW('security_event', _index,
+					ROW('security_event', _index, 'MISSING_VALUE',
 						'A value must be entered for Name',
 						'name'
 					)::_error_record;
 			end if;
 			if "security_event.insert__internal".type = '' OR "security_event.insert__internal".type is null then
 				_status.errors = _status.errors ||
-					ROW('security_event', _index,
+					ROW('security_event', _index, 'MISSING_VALUE',
 						'A value must be entered for Type',
 						'type'
 					)::_error_record;
 			end if;
 			if "security_event.insert__internal".database_procedure = '' OR "security_event.insert__internal".database_procedure is null then
 				_status.errors = _status.errors ||
-					ROW('security_event', _index,
+					ROW('security_event', _index, 'MISSING_VALUE',
 						'A value must be entered for Database Procedure',
 						'database_procedure'
 					)::_error_record;
@@ -3586,7 +3586,7 @@ BEGIN
 				S.type = "security_event.insert__internal".type;
 			if _count <> 0 then
 				_status.errors = _status.errors ||
-					ROW('security_event', _index,
+					ROW('security_event', _index, 'ALREADY_EXISTS',
 						'There is already a Security Event registered with '
 						'Application (' || "security_event.insert__internal".application || '), Name (' || "security_event.insert__internal".name || '), Type (' || "security_event.insert__internal".type || ')',
 						'type'
@@ -3668,7 +3668,7 @@ drop function if exists "security_event.update__internal";
 				S.type = "security_event.update__internal".type;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('security_event', _index,
+					ROW('security_event', _index, 'DOESNT_EXIST',
 						'There is no Security Event found with '
 						'Application, Name, Type',
 						'type'
@@ -3746,7 +3746,7 @@ drop function if exists "security_event.delete__internal";
 				S.type = "security_event.delete__internal".type;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('security_event', _index,
+					ROW('security_event', _index, 'DOESNT_EXIST',
 						'There is no Security Event found with '
 						'Application, Name, Type',
 						'type'
@@ -3810,6 +3810,7 @@ create function "handled_error.insert__internal" (
 	table_possible bool default null,
 	column_possible bool default null,
 	has_associated_set bool default null,
+	has_sub_code bool default null,
 	column_name object_name default null,
 	http_response_code http_response_code default null,
 	message text default null,
@@ -3823,21 +3824,21 @@ BEGIN
 		-- (A) Check that required values are present
 			if "handled_error.insert__internal".code is null then
 				_status.errors = _status.errors ||
-					ROW('handled_error', _index,
+					ROW('handled_error', _index, 'MISSING_VALUE',
 						'A value must be entered for Code',
 						'code'
 					)::_error_record;
 			end if;
 			if "handled_error.insert__internal".is_arrayed is null then
 				_status.errors = _status.errors ||
-					ROW('handled_error', _index,
+					ROW('handled_error', _index, 'MISSING_VALUE',
 						'A value must be entered for Is Arrayed',
 						'is_arrayed'
 					)::_error_record;
 			end if;
 			if "handled_error.insert__internal".description is null then
 				_status.errors = _status.errors ||
-					ROW('handled_error', _index,
+					ROW('handled_error', _index, 'MISSING_VALUE',
 						'A value must be entered for Description',
 						'description'
 					)::_error_record;
@@ -3849,7 +3850,7 @@ BEGIN
 				H.code = "handled_error.insert__internal".code;
 			if _count <> 0 then
 				_status.errors = _status.errors ||
-					ROW('handled_error', _index,
+					ROW('handled_error', _index, 'ALREADY_EXISTS',
 						'There is already a Handled Error registered with '
 						'Code (' || "handled_error.insert__internal".code || ')',
 						'code'
@@ -3870,6 +3871,7 @@ BEGIN
 					table_possible,
 					column_possible,
 					has_associated_set,
+					has_sub_code,
 					column_name,
 					http_response_code,
 					message,
@@ -3883,6 +3885,7 @@ BEGIN
 					"handled_error.insert__internal"."table_possible",
 					"handled_error.insert__internal"."column_possible",
 					"handled_error.insert__internal"."has_associated_set",
+					"handled_error.insert__internal"."has_sub_code",
 					"handled_error.insert__internal"."column_name",
 					coalesce("handled_error.insert__internal"."http_response_code", 422),
 					"handled_error.insert__internal"."message",
@@ -3899,6 +3902,7 @@ select * from plpgsql_check_function(
 		'error_code,'
 		'error_name,'
 		'object_name,'
+		'bool,'
 		'bool,'
 		'bool,'
 		'bool,'
@@ -3921,6 +3925,7 @@ drop function if exists "handled_error.insert";
 		table_possible bool default null,
 		column_possible bool default null,
 		has_associated_set bool default null,
+		has_sub_code bool default null,
 		column_name object_name default null,
 		http_response_code http_response_code default null,
 		message text default null) returns _jaaql_procedure_result as
@@ -3937,6 +3942,7 @@ drop function if exists "handled_error.insert";
 				table_possible => "handled_error.insert".table_possible,
 				column_possible => "handled_error.insert".column_possible,
 				has_associated_set => "handled_error.insert".has_associated_set,
+				has_sub_code => "handled_error.insert".has_sub_code,
 				column_name => "handled_error.insert".column_name,
 				http_response_code => "handled_error.insert".http_response_code,
 				message => "handled_error.insert".message,
@@ -3959,6 +3965,7 @@ drop function if exists "handled_error.update__internal";
 		table_possible bool default null,
 		column_possible bool default null,
 		has_associated_set bool default null,
+		has_sub_code bool default null,
 		column_name object_name default null,
 		http_response_code http_response_code default null,
 		message text default null,
@@ -3977,7 +3984,7 @@ drop function if exists "handled_error.update__internal";
 				H.code = "handled_error.update__internal".code;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('handled_error', _index,
+					ROW('handled_error', _index, 'DOESNT_EXIST',
 						'There is no Handled Error found with '
 						'Code',
 						'code'
@@ -4000,6 +4007,7 @@ drop function if exists "handled_error.update__internal";
 				table_possible = coalesce("handled_error.update__internal".table_possible, H.table_possible),
 				column_possible = coalesce("handled_error.update__internal".column_possible, H.column_possible),
 				has_associated_set = coalesce("handled_error.update__internal".has_associated_set, H.has_associated_set),
+				has_sub_code = coalesce("handled_error.update__internal".has_sub_code, H.has_sub_code),
 				column_name = coalesce("handled_error.update__internal".column_name, H.column_name),
 				http_response_code = coalesce("handled_error.update__internal".http_response_code, H.http_response_code),
 				message = coalesce("handled_error.update__internal".message, H.message),
@@ -4016,6 +4024,7 @@ drop function if exists "handled_error.update__internal";
 			'error_name,'
 			'bool,'
 			'object_name,'
+			'bool,'
 			'bool,'
 			'bool,'
 			'bool,'
@@ -4038,6 +4047,7 @@ drop function if exists "handled_error.update";
 		table_possible bool default null,
 		column_possible bool default null,
 		has_associated_set bool default null,
+		has_sub_code bool default null,
 		column_name object_name default null,
 		http_response_code http_response_code default null,
 		message text default null,
@@ -4055,6 +4065,7 @@ drop function if exists "handled_error.update";
 				table_possible => "handled_error.update".table_possible,
 				column_possible => "handled_error.update".column_possible,
 				has_associated_set => "handled_error.update".has_associated_set,
+				has_sub_code => "handled_error.update".has_sub_code,
 				column_name => "handled_error.update".column_name,
 				http_response_code => "handled_error.update".http_response_code,
 				message => "handled_error.update".message,
@@ -4083,7 +4094,7 @@ drop function if exists "handled_error.delete__internal";
 				H.code = "handled_error.delete__internal".code;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('handled_error', _index,
+					ROW('handled_error', _index, 'DOESNT_EXIST',
 						'There is no Handled Error found with '
 						'Code',
 						'code'
@@ -4151,28 +4162,28 @@ BEGIN
 		-- (A) Check that required values are present
 			if "remote_procedure.insert__internal".application = '' OR "remote_procedure.insert__internal".application is null then
 				_status.errors = _status.errors ||
-					ROW('remote_procedure', _index,
+					ROW('remote_procedure', _index, 'MISSING_VALUE',
 						'A value must be entered for Application',
 						'application'
 					)::_error_record;
 			end if;
 			if "remote_procedure.insert__internal".name = '' OR "remote_procedure.insert__internal".name is null then
 				_status.errors = _status.errors ||
-					ROW('remote_procedure', _index,
+					ROW('remote_procedure', _index, 'MISSING_VALUE',
 						'A value must be entered for Name',
 						'name'
 					)::_error_record;
 			end if;
 			if "remote_procedure.insert__internal".command is null then
 				_status.errors = _status.errors ||
-					ROW('remote_procedure', _index,
+					ROW('remote_procedure', _index, 'MISSING_VALUE',
 						'A value must be entered for Command',
 						'command'
 					)::_error_record;
 			end if;
 			if "remote_procedure.insert__internal".access = '' OR "remote_procedure.insert__internal".access is null then
 				_status.errors = _status.errors ||
-					ROW('remote_procedure', _index,
+					ROW('remote_procedure', _index, 'MISSING_VALUE',
 						'A value must be entered for Access',
 						'access'
 					)::_error_record;
@@ -4185,7 +4196,7 @@ BEGIN
 				R.name = "remote_procedure.insert__internal".name;
 			if _count <> 0 then
 				_status.errors = _status.errors ||
-					ROW('remote_procedure', _index,
+					ROW('remote_procedure', _index, 'ALREADY_EXISTS',
 						'There is already a Remote Procedure registered with '
 						'Application (' || "remote_procedure.insert__internal".application || '), Name (' || "remote_procedure.insert__internal".name || ')',
 						'name'
@@ -4272,7 +4283,7 @@ drop function if exists "remote_procedure.update__internal";
 				R.name = "remote_procedure.update__internal".name;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('remote_procedure', _index,
+					ROW('remote_procedure', _index, 'DOESNT_EXIST',
 						'There is no Remote Procedure found with '
 						'Application, Name',
 						'name'
@@ -4352,7 +4363,7 @@ drop function if exists "remote_procedure.delete__internal";
 				R.name = "remote_procedure.delete__internal".name;
 			if _count <> 1 then
 				_status.errors = _status.errors ||
-					ROW('remote_procedure', _index,
+					ROW('remote_procedure', _index, 'DOESNT_EXIST',
 						'There is no Remote Procedure found with '
 						'Application, Name',
 						'name'
