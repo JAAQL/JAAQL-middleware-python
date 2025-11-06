@@ -5,7 +5,7 @@
 
 -- jaaql...
 insert into jaaql (migration_version, last_successful_build_time)
-values ('4.33.10', 0);
+values ('4.33.12', 0);
 
 ;
 

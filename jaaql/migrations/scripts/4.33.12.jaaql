@@ -1,0 +1,13 @@
+DROP TABLE security_event CASCADE;
+
+create table security_event (
+	application internet_name not null,
+	name security_event_name not null,
+	type security_event_type not null,
+	database_procedure procedure_name not null,
+	primary key (application, name, type) );
+
+\import ../../scripts/ZZZZ.reset_references.sql
+\import ../../scripts/ZZZZ.generated_functions_views_and_permissions.sql
+
+\g
