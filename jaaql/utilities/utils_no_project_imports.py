@@ -78,7 +78,7 @@ COOKIE_FLAG_SECURE = "Secure"
 COOKIE_ATTR_SAME_SITE = "SameSite"
 COOKIE_ATTR_EXPIRES = "Expires"
 COOKIE_ATTR_MAX_AGE = "Max-Age"
-COOKIE_VAL_STRICT = "Strict"
+COOKIE_VAL_LAX = "Lax"
 COOKIE_VAL_INACTIVITY_15_MINUTES = "900"
 COOKIE_EXPIRY_90_DAYS = 90
 COOKIE_ATTR_PATH = "Path"
@@ -89,7 +89,7 @@ from datetime import timedelta
 
 
 def get_cookie_attrs(vigilant_sessions: bool, remember_me: bool, is_gunicorn: bool):
-    cookie_attrs = {COOKIE_ATTR_SAME_SITE: COOKIE_VAL_STRICT}
+    cookie_attrs = {COOKIE_ATTR_SAME_SITE: COOKIE_VAL_LAX}
     cookie_attrs[COOKIE_ATTR_PATH] = "/api" if is_gunicorn else "/"
 
     if vigilant_sessions:
