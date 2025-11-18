@@ -177,7 +177,7 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
     echo "        return 503;"
   fi
   echo "    }" >> $SITE_FILE
-  if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
+  if [ "$IS_HTTPS_WILDCARD" = "TRUE" ] || [ "$SELF_CERTIFICATES" = "TRUE" ]; then
     echo "    # listen 443 ssl http2;" >> $SITE_FILE
   fi
   echo "}" >> $SITE_FILE
@@ -282,7 +282,7 @@ if [ "$IS_HTTPS" = "TRUE" ] && [ ! -d "$CERT_DIR" ] ; then
   service nginx restart || { echo "Failed to restart nginx. Reason: $(nginx -t 2>&1)"; exit 1; }
 elif [ "$IS_HTTPS" = "TRUE" ] && [ -d "$CERT_DIR" ] ; then
   echo "Found existing certificates. Installing"
-  if [ "$IS_HTTPS_WILDCARD" = "TRUE" ]; then
+  if [ "$IS_HTTPS_WILDCARD" = "TRUE" ] || [ "$SELF_CERTIFICATES" = "TRUE" ]; then
     sed -i '/^[ \t]*# listen 443 ssl http2;/c\
     listen 443 ssl http2;\
     listen [::]:443 ssl http2;\
@@ -301,7 +301,9 @@ docker-entrypoint.sh postgres &
 (echo "TZ=$TZ") | /usr/bin/crontab -
 
 if [ "$IS_HTTPS" = "TRUE" ] ; then
-  if [ "$PIGGYBACK_LETSENCRYPT" = "TRUE" ] ; then
+  if [ "$SELF_CERTIFICATES" = "TRUE" ] ; then
+    echo "Skipping certbot renewal as certificates provided by user"
+  elif [ "$PIGGYBACK_LETSENCRYPT" = "TRUE" ] ; then
     echo "Skipping certbot renewal as piggybacking implementation"
   else
     $CERTBOT_PATH renew --dry-run &
