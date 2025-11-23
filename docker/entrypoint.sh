@@ -1,6 +1,13 @@
 #!/bin/sh
 set -e
 
+if [ -f /pki/ca.cert.pem ]; then
+	echo "Installing on-prem root CA from /pki/ca.cert.pem"
+	mkdir -p /usr/local/share/ca-certificates
+	cp /pki/ca.cert.pem /usr/local/share/ca-certificates/onprem-root-ca.crt
+	update-ca-certificates
+fi
+
 Xvfb -ac :99 -screen 0 1920x1080x16 &
 export DISPLAY=:99
 
@@ -288,8 +295,7 @@ elif [ "$IS_HTTPS" = "TRUE" ] && [ -d "$CERT_DIR" ] ; then
     listen [::]:443 ssl http2;\
     ssl_certificate /etc/letsencrypt/live/'"$SERVER_ADDRESS"'/fullchain.pem;\
     ssl_certificate_key /etc/letsencrypt/live/'"$SERVER_ADDRESS"'/privkey.pem;\
-    include /etc/letsencrypt/options-ssl-nginx.conf;\
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;' $SITE_FILE
+    include /etc/letsencrypt/options-ssl-nginx.conf;' $SITE_FILE
   else
     printf "1,2\n1\n" | $CERTBOT_PATH --nginx
   fi
