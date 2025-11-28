@@ -324,7 +324,12 @@ if [ "$JAAQL_DEBUGGING" = "TRUE" ] ; then
   export PYTHONUNBUFFERED=TRUE
 fi
 
-$PY_PATH /JAAQL-middleware-python/jaaql/email/patch_ems.py &> $LOG_FILE_EMAILS &
+if [ -f /pki/ca.cert.pem ]; then
+	echo "Starting patch_ems.py with IGNORE_CERTS=TRUE"
+	IGNORE_CERTS=TRUE $PY_PATH /JAAQL-middleware-python/jaaql/email/patch_ems.py &> $LOG_FILE_EMAILS &
+else
+	$PY_PATH /JAAQL-middleware-python/jaaql/email/patch_ems.py &> $LOG_FILE_EMAILS &
+fi
 $PY_PATH /JAAQL-middleware-python/jaaql/services/patch_mms.py &> $LOG_FILE_MIGRATIONS &
 $PY_PATH /JAAQL-middleware-python/jaaql/services/patch_shared_var_service.py &> $LOG_FILE_SHARED_VAR_SERVICE &
 

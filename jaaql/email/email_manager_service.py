@@ -1,3 +1,4 @@
+import os
 import traceback
 import uuid
 import time
@@ -132,6 +133,10 @@ class DrivenChrome:
         options.add_argument("--disable-extensions")
         options.add_argument("--headless=new")
 
+        if os.environ.get("IGNORE_CERTS") == "TRUE":
+            print("Chrome starting with --ignore-certificate-errors (IGNORE_CERTS=TRUE)")
+            options.add_argument("--ignore-certificate-errors")
+
         # Add options to handle long-running JavaScript
         options.add_argument("--disable-background-timer-throttling")
         options.add_argument("--disable-renderer-backgrounding")
@@ -212,6 +217,8 @@ class DrivenChrome:
     def chrome_page_to_pdf(self, url: str, access_token: str, parameters: dict, document_id: str):
         with self.chrome_lock:
             try:
+                self.last_progress_log = None
+
                 origin = "{uri.scheme}://{uri.netloc}".format(uri=urlparse(url))
                 self.driver.execute_cdp_cmd(
                     "Storage.clearDataForOrigin",
@@ -301,10 +308,31 @@ class DrivenChrome:
 
                 except TimeoutException:
                     elapsed = time_delta_ms(start_time, datetime.now()) / 1000
-                    # Log any console errors before failing
                     print(f"Timeout after {elapsed:.1f}s waiting for document {document_id}")
+
+                    try:
+                        print_url = self.driver.current_url
+                        if not CHROME_DEBUGGING:
+                            print_url = print_url.split("oauth_token=")[0]
+                        print("Current URL:", print_url)
+
+                        # Dump HTML for inspection
+                        html_path = f"/tmp/render_failure_{document_id}.html"
+                        with open(html_path, "w", encoding="utf-8") as f:
+                            f.write(self.driver.page_source)
+                        print(f"Wrote failing page HTML to {html_path}")
+
+                        # Screenshot
+                        png_path = f"/tmp/render_failure_{document_id}.png"
+                        self.driver.save_screenshot(png_path)
+                        print(f"Wrote failing page screenshot to {png_path}")
+
+                    except Exception as dump_ex:
+                        print(f"Error while dumping failure artefacts: {dump_ex}")
+
                     for log in self.driver.get_log('browser'):
                         print(f"CHROMEFAILURE: {log if isinstance(log, str) else json.dumps(log)}")
+
                     raise Exception(f"Render timeout after {elapsed:.1f}s (limit: {self.render_timeout}s)")
 
                 # Process filename
@@ -396,73 +424,167 @@ class DrivenChrome:
 
     def render_document_requests(self):
         consecutive_failures = 0
-        max_consecutive_failures = 5
         last_resp = None
+
+        # Per-document attempt tracking
+        doc_failures = {}  # { document_id (str): int }
+        max_attempts_per_doc = 3  # 1 + 1 + (restart) + 1 final
+        restart_after_attempt = 2  # restart Chrome after 2nd timeout
 
         while True:
             resp = None
 
             try:
+                # Re-use the same response only if we've explicitly chosen to retry it
                 resp = last_resp if last_resp is not None else execute_supplied_statement_singleton(
-                    self.db_interface, QUERY__fetch_unrendered_document,
+                    self.db_interface,
+                    QUERY__fetch_unrendered_document,
                     as_objects=True,
                     decrypt_columns=[KEY__parameters, KEY__oauth_token],
-                    encryption_key=self.db_key)
+                    encryption_key=self.db_key
+                )
                 last_resp = None
+
                 parameters = {}
                 if resp[KEY__parameters]:
                     parameters = json.loads(resp[KEY__parameters])
 
-                base_url = EmailAttachment.static_format_attached_url(resp[KG__application__base_url] + "/" + resp["url"], self.is_deployed)
+                document_id = str(resp[KEY__document_id])
 
-                filename, content = self.chrome_page_to_pdf(base_url, resp[KEY__oauth_token], parameters, str(resp[KEY__document_id]))
+                base_url = EmailAttachment.static_format_attached_url(
+                    resp[KG__application__base_url] + "/" + resp["url"],
+                    self.is_deployed
+                )
 
-                inputs = {KEY__document_id: resp[KEY__document_id], KEY__content: None, KG__document_request__file_name: filename}
+                filename, content = self.chrome_page_to_pdf(
+                    base_url,
+                    resp[KEY__oauth_token],
+                    parameters,
+                    document_id
+                )
+
+                inputs = {
+                    KEY__document_id: resp[KEY__document_id],
+                    KEY__content: None,
+                    KG__document_request__file_name: filename
+                }
+
                 if resp[KEY__create_file]:
                     if not os.path.exists(self.template_dir_path):
                         os.mkdir(self.template_dir_path)
-                    with open(os.path.join(self.template_dir_path,
-                                           str(resp[KEY__document_id]) + "." + resp[KEY__render_as]), "wb") as f:
+                    with open(
+                            os.path.join(
+                                self.template_dir_path,
+                                str(resp[KEY__document_id]) + "." + resp[KEY__render_as]
+                            ),
+                            "wb"
+                    ) as f:
                         f.write(content)
                 else:
                     inputs[KEY__content] = content
 
-                execute_supplied_statement(self.db_interface, QUERY__mark_rendered_document_completed, inputs)
+                execute_supplied_statement(
+                    self.db_interface,
+                    QUERY__mark_rendered_document_completed,
+                    inputs
+                )
 
+                # Success: reset counters for this document
                 consecutive_failures = 0
+                doc_failures.pop(document_id, None)
+
             except HttpStatusException as ex:
-                consecutive_failures = 0  # This is a properly handled exception
+                # Application-level error, not a Chrome/timeout error
+                consecutive_failures = 0
+
+                document_id = None
+                if resp is not None and KEY__document_id in resp:
+                    document_id = str(resp[KEY__document_id])
 
                 if ex.response_code == HTTPStatus.UNPROCESSABLE_ENTITY:
-                    # When there are no rendered documents, we end up here with a null resp
+                    # "No work" case, or doc no longer valid
                     if resp is not None:
-                        execute_supplied_statement(self.db_interface,
+                        execute_supplied_statement(
+                            self.db_interface,
                             QUERY__mark_rendered_document_completed_with_error,
-                            { KEY__document_id: resp[KEY__document_id] })
-
+                            {KEY__document_id: resp[KEY__document_id]}
+                        )
                     time.sleep(0.25)
                 else:
+                    # Some other app-level error: give up on this document
                     traceback.print_exc()
+                    if document_id is not None:
+                        try:
+                            execute_supplied_statement(
+                                self.db_interface,
+                                QUERY__mark_rendered_document_completed_with_error,
+                                {KEY__document_id: resp[KEY__document_id]}
+                            )
+                        except Exception:
+                            traceback.print_exc()
+                        doc_failures.pop(document_id, None)
+
             except Exception as ex:
                 consecutive_failures += 1
                 print(f"Error in render_document_requests: {ex}")
 
-                if consecutive_failures == 1:
-                    # We will now retry the same resp
-                    last_resp = resp
+                document_id = None
+                if resp is not None and KEY__document_id in resp:
+                    document_id = str(resp[KEY__document_id])
 
-                if consecutive_failures >= max_consecutive_failures:
-                    print(f"Too many consecutive failures ({consecutive_failures}), attempting Chrome restart")
-                    try:
-                        self.restart_chrome(reason=f"{consecutive_failures} consecutive failures")
-                        consecutive_failures = 0  # Reset after restart
-                    except Exception as restart_error:
-                        print(f"Failed to restart Chrome: {restart_error}")
-                        # Sleep longer if restart fails
-                        time.sleep(30)
-                else:
-                    # Regular error handling
-                    time.sleep(min(consecutive_failures * 2, 10))
+                if document_id is not None:
+                    # Track attempts for this specific document
+                    doc_failures[document_id] = doc_failures.get(document_id, 0) + 1
+                    attempt_no = doc_failures[document_id]
+
+                    # Only treat these as "Chrome problems" if they are timeouts
+                    is_timeout = "Render timeout after" in str(ex)
+
+                    if attempt_no < max_attempts_per_doc:
+                        # 1st failure: retry once with same Chrome
+                        if attempt_no == 1:
+                            last_resp = resp
+
+                        # 2nd failure *and* it's a timeout: restart Chrome, then retry once more
+                        elif attempt_no == restart_after_attempt and is_timeout:
+                            print(
+                                f"Document {document_id} has timed out twice, "
+                                "restarting Chrome then trying once more"
+                            )
+                            try:
+                                self.restart_chrome(
+                                    reason=f"document {document_id} timed out twice"
+                                )
+                                last_resp = resp
+                            except Exception as restart_error:
+                                print(f"Failed to restart Chrome: {restart_error}")
+                                traceback.print_exc()
+                                # Don't spin if restart keeps failing
+                                time.sleep(30)
+                        else:
+                            # Non-timeout 2nd failure: just retry once more without restarting
+                            last_resp = resp
+                    else:
+                        # We are at or beyond max attempts for this document: give up
+                        print(
+                            f"Document {document_id} failed {attempt_no} times, "
+                            "marking as error and skipping further attempts"
+                        )
+                        try:
+                            execute_supplied_statement(
+                                self.db_interface,
+                                QUERY__mark_rendered_document_completed_with_error,
+                                {KEY__document_id: resp[KEY__document_id]}
+                            )
+                        except Exception as db_ex:
+                            print(f"Failed to mark document {document_id} as error: {db_ex}")
+                            traceback.print_exc()
+
+                        doc_failures.pop(document_id, None)
+                        last_resp = None
+
+                # Back-off sleep to avoid hammering
+                time.sleep(min(consecutive_failures * 2, 10))
 
     def start_chrome(self):
         try:
