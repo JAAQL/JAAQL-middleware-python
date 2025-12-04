@@ -191,7 +191,9 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   echo "" >> $SITE_FILE
   # The following is needed to allow https-less access via 127.0.0.1 address
   echo "server {" >> $SITE_FILE
-  echo "    server_name localhost;" >> $SITE_FILE
+  echo "    listen 80;" >> $SITE_FILE
+  echo "    listen [::]:80;" >> $SITE_FILE
+  echo "    server_name 127.0.0.1 localhost;" >> $SITE_FILE
   echo "$SECURITY_HEADERS" >> $SITE_FILE
   echo "    root $INSTALL_PATH/www;" >> $SITE_FILE
   echo "    location /api/ {" >> $SITE_FILE
