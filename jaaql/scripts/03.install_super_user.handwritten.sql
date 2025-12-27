@@ -1,5 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS dblink;
+CREATE SCHEMA IF NOT EXISTS jaaql_extension;
+GRANT USAGE ON SCHEMA jaaql_extension TO PUBLIC;
 CREATE EXTENSION IF NOT EXISTS jaaql;
 CREATE EXTENSION IF NOT EXISTS plpgsql_check;
 
@@ -19,6 +21,8 @@ BEGIN
     if does_user_own_this_database(session_user, database) then
         PERFORM dblink_exec('dbname=' || database, 'CREATE EXTENSION IF NOT EXISTS pgcrypto;');
         PERFORM dblink_exec('dbname=' || database, 'CREATE EXTENSION IF NOT EXISTS plpgsql_check;');
+        PERFORM dblink_exec('dbname=' || database, 'CREATE SCHEMA IF NOT EXISTS jaaql_extension;');
+        PERFORM dblink_exec('dbname=' || database, 'GRANT USAGE ON SCHEMA jaaql_extension TO PUBLIC;');
         PERFORM dblink_exec('dbname=' || database, 'CREATE EXTENSION IF NOT EXISTS jaaql;');
     else
         raise notice 'You do not own this database'

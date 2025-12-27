@@ -1,4 +1,3 @@
-CREATE SCHEMA IF NOT EXISTS @extschema@;
 SET LOCAL search_path = @extschema@, pg_temp;
 
 CREATE FUNCTION @extschema@.jaaql__set_session_authorization(text, text)

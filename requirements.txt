@@ -1,5 +1,5 @@
 jaaql-monitor==1.6.3
-psycopg[binary]==3.1.18
+psycopg[binary]==3.2.13
 Pillow==11.2.1
 cryptography==44.0.2
 flask==3.1.0

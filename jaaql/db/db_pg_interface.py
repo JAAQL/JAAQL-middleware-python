@@ -52,7 +52,7 @@ class DBPGInterface(DBInterface):
                         did_close = False
                         if hasattr(conn, "jaaql_reset_key"):
                             try:
-                                cursor.execute("SELECT jaaql__reset_session_authorization('" + str(conn.jaaql_reset_key) + "');")
+                                cursor.execute("SELECT jaaql_extension.jaaql__reset_session_authorization('" + str(conn.jaaql_reset_key) + "');")
                             except:
                                 did_close = True
                                 conn.close()
@@ -121,7 +121,7 @@ class DBPGInterface(DBInterface):
                 with conn.cursor() as cursor:
                     if self.role is not None:
                         try:
-                            cursor.execute("SELECT jaaql.jaaql__set_session_authorization('" + self.role + "', '" + conn.jaaql_reset_key + "');")
+                            cursor.execute("SELECT jaaql_extension.jaaql__set_session_authorization('" + self.role + "', '" + conn.jaaql_reset_key + "');")
                         except InternalError as ex:
                             if str(ex).startswith("role \"") and str(ex).endswith("\" does not exist"):
                                 raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
@@ -216,7 +216,7 @@ class DBPGInterface(DBInterface):
                     else:
                         return [desc[0] for desc in cursor.description], [desc.type_code for desc in cursor.description], cursor.fetchall()
             except OperationalError as ex:
-                if ex.sqlstate is None or ex.sqlstate.startswith("08"):
+                if ex.sqlstate is None or ex.sqlstate.startswith("08") or ex.sqlstate.startswith("57"):
                     DBPGInterface.HOST_POOLS[self.username][self.db_name].putconn(conn)
                     DBPGInterface.HOST_POOLS[self.username][self.db_name].check()
                     conn = self.get_conn()

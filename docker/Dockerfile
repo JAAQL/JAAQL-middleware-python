@@ -182,6 +182,7 @@ RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini && \
     dos2unix pg_reboot.sh && \
     dos2unix $INSTALL_PATH/base_reboot.sh && \
     cd $INSTALL_PATH && \
+    $PIP_PATH install -U setuptools wheel && \
     $PY_PATH setup.py sdist bdist_wheel && \
     VERSION=$(grep '^VERSION = ' /JAAQL-middleware-python/jaaql/constants.py | cut -d'=' -f2 | cut -d'"' -f2) && $PIP_PATH install --no-deps /JAAQL-middleware-python/dist/jaaql_middleware_python-"$VERSION"-py3-none-any.whl && \
     cd / && \
