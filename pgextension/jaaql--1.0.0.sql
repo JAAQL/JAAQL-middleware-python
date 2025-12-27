@@ -1,6 +1,5 @@
-\echo Use "CREATE EXTENSION jaaql" to load this file. \quit
-
-SET LOCAL search_path to @extschema@;
+CREATE SCHEMA IF NOT EXISTS @extschema@;
+SET LOCAL search_path = @extschema@, pg_temp;
 
 CREATE FUNCTION @extschema@.jaaql__set_session_authorization(text, text)
 RETURNS text

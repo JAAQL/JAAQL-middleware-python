@@ -121,7 +121,7 @@ class DBPGInterface(DBInterface):
                 with conn.cursor() as cursor:
                     if self.role is not None:
                         try:
-                            cursor.execute("SELECT jaaql__set_session_authorization('" + self.role + "', '" + conn.jaaql_reset_key + "');")
+                            cursor.execute("SELECT jaaql.jaaql__set_session_authorization('" + self.role + "', '" + conn.jaaql_reset_key + "');")
                         except InternalError as ex:
                             if str(ex).startswith("role \"") and str(ex).endswith("\" does not exist"):
                                 raise HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)

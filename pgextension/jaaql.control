@@ -3,3 +3,4 @@ comment = 'JAAQL for postgres extension using c'
 default_version = '1.0.0'
 module_pathname = '$libdir/jaaql'
 relocatable = false
+schema = jaaql
