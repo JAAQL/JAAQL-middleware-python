@@ -336,35 +336,95 @@ class InterpretJAAQL:
                                                                          requires_dba_check=check_required and canned_query_service is not None)
                         last_query = """
 WITH RECURSIVE column_hierarchy AS (
-    -- Base case: Select columns from 'managed_service'
-    SELECT
-        C.column_name, C.data_type, C.udt_name, C.domain_name,
-        VC.table_catalog, VC.table_schema, VC.table_name,
-        true as is_nullable,
-        1 as level
-    FROM information_schema.columns C
-    LEFT JOIN information_schema.view_column_usage VC on VC.view_name = C.table_name AND VC.column_name = C.column_name
-    WHERE C.table_name = 'temp_view__""" + temp_view_name + """'
+	SELECT
+		c.column_name,
+		c.data_type,
+		c.udt_name,
+		c.domain_name,
+		c.table_catalog,
+		c.table_schema,
+		c.table_name,
+		true AS is_nullable,
+		1 AS level
+	FROM information_schema.columns c
+	WHERE c.table_name =  'temp_view__""" + temp_view_name + """'
+		AND c.table_schema = (
+			SELECT n.nspname
+			FROM pg_namespace n
+			WHERE n.oid = pg_my_temp_schema()
+		)
 
-    UNION ALL
+	UNION ALL
 
-    SELECT
-        C.column_name, C.data_type, C.udt_name, C.domain_name,
-        VC.table_catalog, VC.table_schema, VC.table_name,
-        CASE WHEN C.is_nullable = 'NO' then false else true end as is_nullable,
-        CH.level + 1 as level
-    FROM information_schema.columns C
-    JOIN column_hierarchy CH ON C.column_name = CH.column_name
-    LEFT JOIN information_schema.view_column_usage VC on VC.view_name = C.table_name AND VC.column_name = C.column_name
-    WHERE C.table_name = CH.table_name AND C.table_schema = CH.table_schema AND C.table_catalog = CH.table_catalog
-)SELECT
-    MAX(CH.column_name) as column_name,
-    MAX(CH.data_type) as data_type,
-    MAX(CH.udt_name) as udt_name,
-    MAX(CH.domain_name) as domain_name,
-    NOT(bool_or(NOT(CH.is_nullable))) as is_nullable
-FROM column_hierarchy CH
-GROUP BY CH.column_name, CH.data_type, CH.udt_name, CH.domain_name;"""
+	SELECT
+		ch.column_name,
+		ref.data_type,
+		ref.udt_name,
+		ref.domain_name,
+		ref.table_catalog,
+		ref.table_schema,
+		ref.table_name,
+		(ref.is_nullable = 'YES') AS is_nullable,
+		ch.level + 1 AS level
+	FROM column_hierarchy ch
+	JOIN information_schema.views v
+		ON v.table_catalog = ch.table_catalog
+		AND v.table_schema = ch.table_schema
+		AND v.table_name = ch.table_name
+	JOIN LATERAL (
+		SELECT
+			c2.data_type,
+			c2.udt_name,
+			c2.domain_name,
+			c2.table_catalog,
+			c2.table_schema,
+			c2.table_name,
+			c2.is_nullable
+		FROM information_schema.view_column_usage u
+		JOIN information_schema.columns c2
+			ON c2.table_catalog = u.table_catalog
+			AND c2.table_schema = u.table_schema
+			AND c2.table_name = u.table_name
+			AND c2.column_name = u.column_name
+		WHERE u.view_catalog = ch.table_catalog
+			AND u.view_schema = ch.table_schema
+			AND u.view_name = ch.table_name
+			AND u.column_name = ch.column_name
+		ORDER BY
+			CASE WHEN ch.domain_name IS NOT DISTINCT FROM c2.domain_name THEN 3 ELSE 0 END DESC,
+			CASE WHEN ch.udt_name = c2.udt_name THEN 2 ELSE 0 END DESC,
+			CASE WHEN ch.data_type = c2.data_type THEN 1 ELSE 0 END DESC,
+			c2.table_schema,
+			c2.table_name
+		LIMIT 1
+	) ref ON true
+),
+deep AS (
+	SELECT DISTINCT ON (column_name)
+		column_name,
+		data_type,
+		udt_name,
+		domain_name
+	FROM column_hierarchy
+	ORDER BY column_name, level DESC
+),
+nul AS (
+	SELECT
+		column_name,
+		NOT(bool_or(NOT is_nullable)) AS is_nullable
+	FROM column_hierarchy
+	GROUP BY column_name
+)
+SELECT
+	d.column_name,
+	d.data_type,
+	d.udt_name,
+	d.domain_name,
+	n.is_nullable
+FROM deep d
+JOIN nul n USING (column_name)
+ORDER BY d.column_name;
+"""
                         found_params = {}
                     elif do_prepare_only and not psql:
                         arg_open = "(" if len(found_params) != 0 else ""
