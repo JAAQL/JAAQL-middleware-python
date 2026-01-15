@@ -203,28 +203,46 @@ class JAAQLModel(BaseJAAQLModel):
     def parse_gdesc_output(self, output):
         """
         Parse the output of gdesc to extract column names and types.
+
+        If duplicate column names exist, raise an exception listing them.
         """
         lines = output.strip().split('\n')
         columns = {}
         parsing = False
+
+        seen = {}
         for line in lines:
             if line.strip().replace(" ", "") == "Column|Type":
                 # Found the header line
                 parsing = True
                 continue
+
             if parsing:
                 if line.strip() == '':
                     # End of table
                     break
+
                 # Parse the line
                 parts = [part.strip() for part in line.strip().split('|')]
                 if len(parts) >= 2:
                     column_name = parts[0]
                     column_type = parts[1]
+
+                    seen[column_name] = seen.get(column_name, 0) + 1
+
+                    # Still build the dict, but we'll error afterwards if duplicates exist
                     columns[column_name] = {
                         "type": column_type,
                         "nullable": True  # We can't figure this out with gdesc
                     }
+
+        dupes = [name for name, count in seen.items() if count > 1]
+        if dupes:
+            dupes.sort()
+            # Include counts so it's unambiguous
+            dupe_str = ", ".join([f"{name} (x{seen[name]})" for name in dupes])
+            raise Exception("Duplicate output column names are not supported: " + dupe_str)
+
         return columns
 
     def fetch_domains(self, inputs: dict, account_id: str):
@@ -269,32 +287,58 @@ ORDER BY
             cost = None
             type_resolution_method = None
             columns = None
+
             try:
-                results = execute_supplied_statement(db_connection, query["query"].strip(),
-                                                     do_prepare_only=my_uuid)  # Fetch cursor descriptors here too and then merge
+                results = execute_supplied_statement(
+                    db_connection,
+                    query["query"].strip(),
+                    do_prepare_only=my_uuid
+                )
                 cost = float(results["rows"][0][0].split("..")[1].split(" ")[0])
             except Exception as ex:
                 exc = str(ex).replace("PREPARE _jaaql_query_check_" + my_uuid + " as ", "").replace(
                     " ... _jaaql_query_check_" + my_uuid + " as ", "")
 
             if exc is None and not cost_only:
+                # Try temp_view domain type resolution first
                 try:
-                    domain_types = execute_supplied_statement(db_connection, query["query"].strip(), do_prepare_only=my_uuid, attempt_fetch_domain_types=True)
+                    domain_types = execute_supplied_statement(
+                        db_connection,
+                        query["query"].strip(),
+                        do_prepare_only=my_uuid,
+                        attempt_fetch_domain_types=True
+                    )
                     type_resolution_method = "temp_view"
+
                     temp_columns = [row[0] for row in domain_types['rows']]
-                    nullable = [row[4] for row in domain_types['rows']]
-                    temp_types = [row[3] if row[3] is not None else row[2] for row in domain_types['rows']]
-                    columns = {
-                        col: {
-                            "type": temp_types[idx],
-                            "nullable": nullable[idx]
+
+                    # Detect duplicates BEFORE building the dict (dict would overwrite)
+                    counts = {}
+                    for c in temp_columns:
+                        counts[c] = counts.get(c, 0) + 1
+
+                    dupes = [name for name, count in counts.items() if count > 1]
+                    if dupes:
+                        dupes.sort()
+                        dupe_str = ", ".join([f"{name} (x{counts[name]})" for name in dupes])
+                        exc = "Duplicate output column names are not supported: " + dupe_str
+                        columns = None
+                    else:
+                        nullable = [row[4] for row in domain_types['rows']]
+                        temp_types = [row[3] if row[3] is not None else row[2] for row in domain_types['rows']]
+                        columns = {
+                            col: {
+                                "type": temp_types[idx],
+                                "nullable": nullable[idx]
+                            }
+                            for col, idx in zip(temp_columns, range(len(temp_columns)))
                         }
-                        for col, idx in zip(temp_columns, range(len(temp_columns)))
-                    }
-                except Exception as ex:
+
+                except Exception:
                     pass  # This is fine
 
-                if columns is None:
+                # If temp_view didn't work, fallback to gdesc/psql
+                if columns is None and exc is None:
                     try:
                         type_resolution_method = "gdesc"
                         psql = [
@@ -303,11 +347,22 @@ ORDER BY
                             "-d", inputs[KEY__database],
                             "-q", "-X", "--pset", "pager=off", "-f", "-"
                         ]
-                        results = execute_supplied_statement(db_connection, query["query"].strip(), do_prepare_only=my_uuid, psql=psql,
-                                                             pre_psql="SET SESSION AUTHORIZATION \"" + account_id + "\";")
+                        results = execute_supplied_statement(
+                            db_connection,
+                            query["query"].strip(),
+                            do_prepare_only=my_uuid,
+                            psql=psql,
+                            pre_psql="SET SESSION AUTHORIZATION \"" + account_id + "\";"
+                        )
+
+                        # parse_gdesc_output now throws if duplicates exist
                         columns = self.parse_gdesc_output(results['rows'][0])
-                    except:
+
+                    except Exception as ex:
+                        # This catches duplicate column errors and also any parse failures
+                        exc = str(ex)
                         type_resolution_method = "failed"
+                        columns = None
 
             res.append({
                 "location": query["file"] + ":" + str(query["line_number"]),
@@ -319,7 +374,13 @@ ORDER BY
             })
 
         if inputs.get("sort_cost", True):
-            return sorted(res, key=lambda x: (x["exception"] if x["exception"] is not None else '', float('-inf') if x["cost"] is None else -x["cost"]))
+            return sorted(
+                res,
+                key=lambda x: (
+                    x["exception"] if x["exception"] is not None else '',
+                    float('-inf') if x["cost"] is None else -x["cost"]
+                )
+            )
         else:
             return res
 
