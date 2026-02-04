@@ -306,7 +306,10 @@ fi
 
 docker-entrypoint.sh postgres &
 
-(echo "TZ=$TZ") | /usr/bin/crontab -
+(
+	echo "TZ=$TZ"
+	echo "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+) | /usr/bin/crontab -
 
 if [ "$IS_HTTPS" = "TRUE" ] ; then
   if [ "$SELF_CERTIFICATES" = "TRUE" ] ; then
@@ -315,7 +318,7 @@ if [ "$IS_HTTPS" = "TRUE" ] ; then
     echo "Skipping certbot renewal as piggybacking implementation"
   else
     $CERTBOT_PATH renew --dry-run &
-    (/usr/bin/crontab -l 2>/dev/null; echo "0 0,12 * * * $PY_PATH -c 'import random; import time; time.sleep(random.random() * 3600)' && $CERTBOT_PATH renew -q") | /usr/bin/crontab -
+    (/usr/bin/crontab -l 2>/dev/null; echo "0 0,12 * * * flock -n /var/run/certbot.lock $CERTBOT_PATH renew -q") | /usr/bin/crontab -
   fi
 fi
 
