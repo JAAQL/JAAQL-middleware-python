@@ -609,7 +609,7 @@ WHERE
         discovery = self.fetch_discovery_content(database, provider, tenant, user_registry[KG__user_registry__discovery_url])
         jwk_client = self.fetch_jwks_client(database, provider, tenant, discovery)
 
-        expected_issuer = discovery.get("issuer")
+        expected_issuer = os.environ.get("OIDC_ISSUER", "").strip() or discovery.get("issuer")
         if not expected_issuer:
             raise Exception(f"Failed to fetch issuer in discovery document for {provider}, {tenant}")
 
@@ -620,37 +620,50 @@ WHERE
         if not allowed_algs:
             raise Exception(f"No allowed algs for {provider}, {tenant}")
 
-        jarms_response = inputs["response"]
-        if self.use_fapi_advanced:
-            jwe_token = jwe.JWE()
-            jwe_token.deserialize(jarms_response)
-            jwe_token.decrypt(self.fapi_enc_key)
-            jarms_response = jwe_token.payload
+        auth_code = None
+        if self.use_oidc_basic:
+            auth_code = inputs.get("code")
+            if not auth_code:
+                raise UserUnauthorized()
+            if inputs.get(KEY__state) != oidc_state.get(KEY__state):
+                raise UserUnauthorized()
         else:
-            jarms_response = jarms_response.encode('utf-8')
+            jarms_response = inputs["response"]
+            if self.use_fapi_advanced:
+                jwe_token = jwe.JWE()
+                jwe_token.deserialize(jarms_response)
+                jwe_token.decrypt(self.fapi_enc_key)
+                jarms_response = jwe_token.payload
+            else:
+                jarms_response = jarms_response.encode('utf-8')
 
-        signing_key = jwk_client.get_signing_key_from_jwt(jarms_response)
-        jarms_payload = jwt.decode(
-            jarms_response,
-            signing_key.key,
-            algorithms=allowed_algs,
-            audience=database_user_registry[KG__database_user_registry__client_id],
-            issuer=expected_issuer
-        )
+            signing_key = jwk_client.get_signing_key_from_jwt(jarms_response)
+            jarms_payload = jwt.decode(
+                jarms_response,
+                signing_key.key,
+                algorithms=allowed_algs,
+                audience=database_user_registry[KG__database_user_registry__client_id],
+                issuer=expected_issuer
+            )
 
-        if jarms_payload[KEY__state] != oidc_state.get('state'):
-            raise UserUnauthorized()
+            if jarms_payload[KEY__state] != oidc_state.get(KEY__state):
+                raise UserUnauthorized()
+            auth_code = jarms_payload[KEY__code]
 
         token_request_payload = {
             'grant_type': 'authorization_code',
-            'code': jarms_payload[KEY__code],
+            'code': auth_code,
             'redirect_uri': application_tuple[KG__application__base_url] + "/api" + ENDPOINT__oidc_get_token,
             'client_id': database_user_registry[KG__database_user_registry__client_id],
             'code_verifier': code_verifier
         }
 
         kwargs = {}
-        if self.use_fapi_advanced:
+        if self.use_oidc_basic:
+            client_secret = database_user_registry.get(KG__database_user_registry__client_secret)
+            if client_secret is not None and len(str(client_secret).strip()) != 0:
+                token_request_payload["client_secret"] = client_secret
+        elif self.use_fapi_advanced:
             kwargs["verify"] = True
             kwargs["cert"] = (f"/etc/letsencrypt/live/{self.application_url}/fullchain.pem", f"/etc/letsencrypt/live/{self.application_url}/privkey.pem")
         else:
@@ -865,76 +878,89 @@ WHERE
             if scope not in default_scopes:
                 default_scopes.append(scope)
 
-        par_endpoint = discovery.get("pushed_authorization_request_endpoint")
-        if not par_endpoint:
-            raise Exception("Pushed Authorization Request endpoint not found in discovery document.")
-        par_endpoint = par_endpoint.replace("localhost", "host.docker.internal")
-
-        par_payload = {
-            "client_id": database_user_registry[KG__database_user_registry__client_id],
-            "response_type": "code",
-            "code_challenge_method": "S256",
-            "scope": " ".join(["openid"]),  # should later be default scopes, may cause issues now
-            "nonce": nonce,
-            "state": state,
-            "code_challenge": code_challenge,
-            "redirect_uri": oidc_redirect_uri,
-        }
-
-        kwargs = {}
-        if self.use_fapi_advanced:
-            current_time = int(time.time())
-            payload = {
-                **par_payload,
-                "response_mode": "jwt",
-                "iss": database_user_registry[KG__database_user_registry__client_id],
-                "aud": discovery.get("issuer"),
-                "jti": str(uuid.uuid4()),
-                "iat": current_time,
-                "nbf": current_time - 1,
-                "exp": current_time + 300  # Token valid for 5 minutes
+        if self.use_oidc_basic:
+            basic_query = {
+                "client_id": database_user_registry[KG__database_user_registry__client_id],
+                "response_type": "code",
+                "code_challenge_method": "S256",
+                "scope": " ".join(["openid"]),  # keep parity with current flow
+                "nonce": nonce,
+                "state": state,
+                "code_challenge": code_challenge,
+                "redirect_uri": oidc_redirect_uri,
             }
+            redirect_url = auth_endpoint + "?" + urllib.parse.urlencode(basic_query, doseq=False, safe="/:")
+        else:
+            par_endpoint = discovery.get("pushed_authorization_request_endpoint")
+            if not par_endpoint:
+                raise Exception("Pushed Authorization Request endpoint not found in discovery document.")
+            par_endpoint = par_endpoint.replace("localhost", "host.docker.internal")
+
             par_payload = {
                 "client_id": database_user_registry[KG__database_user_registry__client_id],
-                "request": jwt.encode(payload, self.fapi_pem, algorithm="PS256", headers={
-                    "kid": self.jwks["keys"][0]["kid"],
-                    "typ": "oauth-authz-req+jwt"
+                "response_type": "code",
+                "code_challenge_method": "S256",
+                "scope": " ".join(["openid"]),  # should later be default scopes, may cause issues now
+                "nonce": nonce,
+                "state": state,
+                "code_challenge": code_challenge,
+                "redirect_uri": oidc_redirect_uri,
+            }
+
+            kwargs = {}
+            if self.use_fapi_advanced:
+                current_time = int(time.time())
+                payload = {
+                    **par_payload,
+                    "response_mode": "jwt",
+                    "iss": database_user_registry[KG__database_user_registry__client_id],
+                    "aud": discovery.get("issuer"),
+                    "jti": str(uuid.uuid4()),
+                    "iat": current_time,
+                    "nbf": current_time - 1,
+                    "exp": current_time + 300  # Token valid for 5 minutes
+                }
+                par_payload = {
+                    "client_id": database_user_registry[KG__database_user_registry__client_id],
+                    "request": jwt.encode(payload, self.fapi_pem, algorithm="PS256", headers={
+                        "kid": self.jwks["keys"][0]["kid"],
+                        "typ": "oauth-authz-req+jwt"
+                    })
+                }
+                kwargs["verify"] = True
+                kwargs["cert"] = (f"/etc/letsencrypt/live/{self.application_url}/fullchain.pem", f"/etc/letsencrypt/live/{self.application_url}/privkey.pem")
+            else:
+                payload = {
+                    "iss": database_user_registry[KG__database_user_registry__client_id],
+                    "sub": database_user_registry[KG__database_user_registry__client_id],
+                    "aud": discovery.get("pushed_authorization_request_endpoint"),
+                    "jti": str(uuid.uuid4()),
+                    "iat": int(time.time()),
+                    "exp": int(time.time()) + 300  # Token valid for 5 minutes
+                }
+                par_payload["client_assertion_type"] = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+                par_payload["client_assertion"] = jwt.encode(payload, self.fapi_pem, algorithm="PS256", headers={
+                    "kid": self.jwks["keys"][0]["kid"]
                 })
-            }
-            kwargs["verify"] = True
-            kwargs["cert"] = (f"/etc/letsencrypt/live/{self.application_url}/fullchain.pem", f"/etc/letsencrypt/live/{self.application_url}/privkey.pem")
-        else:
-            payload = {
-                "iss": database_user_registry[KG__database_user_registry__client_id],
-                "sub": database_user_registry[KG__database_user_registry__client_id],
-                "aud": discovery.get("pushed_authorization_request_endpoint"),
-                "jti": str(uuid.uuid4()),
-                "iat": int(time.time()),
-                "exp": int(time.time()) + 300  # Token valid for 5 minutes
-            }
-            par_payload["client_assertion_type"] = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
-            par_payload["client_assertion"] = jwt.encode(payload, self.fapi_pem, algorithm="PS256", headers={
-                "kid": self.jwks["keys"][0]["kid"]
-            })
 
-        par_response = self.idp_session.post(
-            par_endpoint,
-            data=par_payload,
-            **kwargs
-        )
+            par_response = self.idp_session.post(
+                par_endpoint,
+                data=par_payload,
+                **kwargs
+            )
 
-        if par_response.status_code not in (200, 201):
-            print(par_response.status_code)
-            print(par_response.text)
-            raise Exception(f"PAR request failed with status {par_response.status_code}: {par_response.text}")
+            if par_response.status_code not in (200, 201):
+                print(par_response.status_code)
+                print(par_response.text)
+                raise Exception(f"PAR request failed with status {par_response.status_code}: {par_response.text}")
 
-        par_data = par_response.json()
-        request_uri = par_data.get("request_uri")
-        if not request_uri:
-            raise Exception("No request_uri returned from the PAR endpoint.")
+            par_data = par_response.json()
+            request_uri = par_data.get("request_uri")
+            if not request_uri:
+                raise Exception("No request_uri returned from the PAR endpoint.")
 
-        redirect_url = auth_endpoint + "?request_uri=" + urllib.parse.quote(request_uri) + f"{"" if self.use_fapi_advanced else "&response_mode=query.jwt"
-            }&client_id=" + client_id
+            redirect_url = auth_endpoint + "?request_uri=" + urllib.parse.quote(request_uri) + f"{"" if self.use_fapi_advanced else "&response_mode=query.jwt"
+                }&client_id=" + client_id
 
         response.response_code = HTTPStatus.FOUND
         response.raw_headers["Location"] = redirect_url
@@ -1067,7 +1093,13 @@ WHERE
                 raise HttpStatusException(ERR__incorrect_install_key, HTTPStatus.UNAUTHORIZED)
 
             if db_connection_string is None:
-                db_connection_string = PG__default_connection_string % os.environ[PG_ENV__password]
+                postgres_password = os.environ.get(PG_ENV__password)
+                if (postgres_password is None or len(str(postgres_password).strip()) == 0) and \
+                        self.vault.has_obj(VAULT_KEY__postgres_bootstrap_password):
+                    postgres_password = self.vault.get_obj(VAULT_KEY__postgres_bootstrap_password)
+                if postgres_password is None or len(str(postgres_password).strip()) == 0:
+                    raise HttpStatusException("Missing local postgres bootstrap password", HTTPStatus.INTERNAL_SERVER_ERROR)
+                db_connection_string = PG__default_connection_string % postgres_password
 
             address, port, _, username, db_password = DBInterface.fracture_uri(db_connection_string)
 
@@ -1395,7 +1427,9 @@ WHERE
     def _kc_get_token(self) -> str:
         kc_base = os.environ.get("KEYCLOAK_URL", "http://localhost:8080").rstrip("/")
         kc_client_id = os.environ.get("KEYCLOAK_REALM_ADMIN_ID", "admin")
-        kc_client_secret = os.environ.get("KEYCLOAK_REALM_ADMIN_SECRET", "admin")
+        kc_client_secret = self.vault.get_obj(VAULT_KEY__keycloak_realm_admin_secret) \
+            if self.vault.has_obj(VAULT_KEY__keycloak_realm_admin_secret) \
+            else os.environ.get("KEYCLOAK_REALM_ADMIN_SECRET", "admin")
         resp = requests.post(
             f"{kc_base}/realms/master/protocol/openid-connect/token",
             headers={"Content-Type": "application/x-www-form-urlencoded"},

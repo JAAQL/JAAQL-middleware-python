@@ -91,6 +91,8 @@ VAULT_KEY__super_db_credentials = "super_db_credentials"
 VAULT_KEY__jaaql_lookup_connection = "jaaql_lookup_connection"
 VAULT_KEY__allow_jaaql_uninstall = "Allow jaaql uninstall"
 VAULT_KEY__jaaql_db_password = "Jaaql DB Password"
+VAULT_KEY__postgres_bootstrap_password = "postgres_bootstrap_password"
+VAULT_KEY__keycloak_realm_admin_secret = "keycloak_realm_admin_secret"
 
 # Used for re-installation
 VAULT_KEY__db_connection_string = "db_connection_string"

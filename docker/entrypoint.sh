@@ -1,6 +1,41 @@
 #!/bin/sh
 set -e
 
+ensure_postgres_password() {
+  if [ -n "${POSTGRES_PASSWORD}" ] && [ -z "${JAAQL_VAULT_PASSWORD}" ]; then
+    return
+  fi
+
+  if [ -z "${JAAQL_VAULT_PASSWORD}" ]; then
+    echo "POSTGRES_PASSWORD is not set and JAAQL_VAULT_PASSWORD is unavailable to generate one" >&2
+    exit 1
+  fi
+
+  POSTGRES_PASSWORD="$(python - <<'PY'
+import os
+import sys
+
+install_path = os.environ.get("INSTALL_PATH", "/JAAQL-middleware-python")
+sys.path.insert(0, install_path)
+
+from jaaql.constants import VAULT_KEY__postgres_bootstrap_password
+from jaaql.utilities.bootstrap_secrets import get_or_seed_vault_secret
+from jaaql.utilities.vault import Vault
+
+vault = Vault(os.environ["JAAQL_VAULT_PASSWORD"], os.path.join(install_path, "vault"))
+value = get_or_seed_vault_secret(vault, VAULT_KEY__postgres_bootstrap_password, "POSTGRES_PASSWORD", generate_if_missing=True)
+print(value or "")
+PY
+)"
+
+  if [ -z "${POSTGRES_PASSWORD}" ]; then
+    echo "Failed to resolve postgres bootstrap password" >&2
+    exit 1
+  fi
+
+  export POSTGRES_PASSWORD
+}
+
 if [ -f /pki/ca.cert.pem ]; then
 	echo "Installing on-prem root CA from /pki/ca.cert.pem"
 	mkdir -p /usr/local/share/ca-certificates
@@ -14,6 +49,7 @@ export DISPLAY=:99
 ARCHIVE_DIR=/var/lib/postgresql/archives
 mkdir -p $ARCHIVE_DIR
 WAS_EMPTY="false"
+ensure_postgres_password
 if [ -z "$(ls -A /var/lib/postgresql/data)" ] && [ -z "$IS_RESTORING" ]; then
     WAS_EMPTY="true"
     su postgres -c "echo \"$POSTGRES_PASSWORD\" | TZ=\"$TZ\" /usr/lib/postgresql/16/bin/initdb -A scram-sha-256 --pwfile=/dev/stdin $POSTGRES_INITDB_ARGS /var/lib/postgresql/data"
@@ -27,6 +63,10 @@ if [ -z "$(ls -A /var/lib/postgresql/data)" ] && [ -z "$IS_RESTORING" ]; then
     echo "host    replication     all             ::1/128                 trust" >> /var/lib/postgresql/data/pg_hba.conf
     echo "host all all all scram-sha-256" >> /var/lib/postgresql/data/pg_hba.conf
 fi
+
+# Postgres bootstrap password is persisted in the JAAQL vault for local install fallback.
+# Avoid keeping it in the long-running process environment.
+unset POSTGRES_PASSWORD
 
 if [ -z "${TZ}" ]; then
   echo "Using default timezone"

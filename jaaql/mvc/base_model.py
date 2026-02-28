@@ -18,6 +18,7 @@ from jaaql.config_constants import *
 from jaaql.email.email_manager import EmailManager
 from os.path import dirname
 from jaaql.services.cached_canned_query_service import CachedCannedQueryService
+from jaaql.utilities.bootstrap_secrets import get_or_seed_vault_secret
 import threading
 
 import uuid
@@ -236,6 +237,10 @@ class BaseJAAQLModel:
 
         self.application_url = os.environ.get("SERVER_ADDRESS", "")
         self.use_fapi_advanced = os.environ.get("USE_FAPI_ADVANCED", "").lower() == "true"
+        self.use_oidc_basic = os.environ.get("USE_OIDC_BASIC", "").lower() == "true"
+        if self.use_oidc_basic:
+            # Basic OIDC mode intentionally disables the advanced FAPI/JARM/PAR flow.
+            self.use_fapi_advanced = False
 
         self.fapi_pem = None
         self.fapi_cert = None
@@ -293,16 +298,27 @@ class BaseJAAQLModel:
 
         self.reload_lock = threading.Lock()
 
-        if not self.vault.has_obj(VAULT_KEY__jaaql_local_access_key):
-            self.vault.insert_obj(VAULT_KEY__jaaql_local_access_key, str(uuid.uuid4()))
+        jaaql_bypass_key = get_or_seed_vault_secret(
+            self.vault,
+            VAULT_KEY__jaaql_local_access_key,
+            ENVIRON__JAAQL__JAAQL_BYPASS_KEY,
+            generate_if_missing=True
+        )
+        super_bypass_key = get_or_seed_vault_secret(
+            self.vault,
+            VAULT_KEY__super_local_access_key,
+            ENVIRON__JAAQL__SUPER_BYPASS_KEY,
+            generate_if_missing=True
+        )
+        get_or_seed_vault_secret(
+            self.vault,
+            VAULT_KEY__keycloak_realm_admin_secret,
+            "KEYCLOAK_REALM_ADMIN_SECRET",
+            generate_if_missing=False
+        )
 
-        if not self.vault.has_obj(VAULT_KEY__super_local_access_key):
-            self.vault.insert_obj(VAULT_KEY__super_local_access_key, str(uuid.uuid4()))
-
-        self.local_jaaql_access_key = os.environ.get(ENVIRON__JAAQL__JAAQL_BYPASS_KEY,
-                                                     self.vault.get_obj(VAULT_KEY__super_local_access_key) if self.is_container else "00000-00000")
-        self.local_super_access_key = os.environ.get(ENVIRON__JAAQL__SUPER_BYPASS_KEY,
-                                                     self.vault.get_obj(VAULT_KEY__super_local_access_key) if self.is_container else "00000-00000")
+        self.local_jaaql_access_key = jaaql_bypass_key if self.is_container else "00000-00000"
+        self.local_super_access_key = super_bypass_key if self.is_container else "00000-00000"
 
         if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):
             if self.is_container:
