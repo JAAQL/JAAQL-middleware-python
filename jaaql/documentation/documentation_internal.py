@@ -367,12 +367,40 @@ DOCUMENTATION__oidc_exchange_code = SwaggerDocumentation(
         name="Fetch OIDC code",
         description="Exchanges OIDC auth code for auth token, returns the token",
         method=REST__GET,
-        arguments=SwaggerArgumentResponse(
-            name="response",
-            description="The OIDC response JWT object",
-            arg_type=str,
-            example=["eyJ..."]
-        ),
+        arguments=[
+            SwaggerArgumentResponse(
+                name="response",
+                description="The OIDC response JWT object (FAPI/JARM mode)",
+                arg_type=str,
+                required=False,
+                condition="When USE_FAPI_ADVANCED or standard JARM is enabled",
+                example=["eyJ..."]
+            ),
+            SwaggerArgumentResponse(
+                name="code",
+                description="The authorization code (basic OIDC mode)",
+                arg_type=str,
+                required=False,
+                condition="When USE_OIDC_BASIC is enabled",
+                example=["abc123"]
+            ),
+            SwaggerArgumentResponse(
+                name="state",
+                description="The state parameter (basic OIDC mode)",
+                arg_type=str,
+                required=False,
+                condition="When USE_OIDC_BASIC is enabled",
+                example=["xyz789"]
+            ),
+            SwaggerArgumentResponse(
+                name="session_state",
+                description="The session state parameter (Azure AD / OpenID Connect session management)",
+                arg_type=str,
+                required=False,
+                condition="When the identity provider includes session management",
+                example=["0022d22a-3a6c-953c-be05-80a155fda337"]
+            )
+        ],
         response=SwaggerFlatResponse(
             description="URL",
             code=HTTPStatus.FOUND,

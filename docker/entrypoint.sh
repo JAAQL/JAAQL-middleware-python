@@ -11,7 +11,7 @@ ensure_postgres_password() {
     exit 1
   fi
 
-  POSTGRES_PASSWORD="$(python - <<'PY'
+  POSTGRES_PASSWORD="$($PY_PATH - <<'PY'
 import os
 import sys
 
@@ -144,6 +144,31 @@ mkdir -p $INSTALL_PATH/log/nginx
 mkdir -p $INSTALL_PATH/www
 
 cp -r /JAAQL-middleware-python/jaaql/apps $INSTALL_PATH/www
+
+# ── Serverless mode: generate BATON.config.js and cache-bust assets ────
+# APPLICATION_BASE_URL is only set for serverless/cloud deployments where
+# reset_app.sh does not run.  Traditional deployments handle config
+# generation and cache busting via reset_app.sh instead.
+if [ -n "${APPLICATION_BASE_URL:-}" ]; then
+  BATON_CONFIG_DIR="$INSTALL_PATH/www/__misc__"
+  if [ -d "$BATON_CONFIG_DIR" ]; then
+    BATON_DEPLOYED_AT=$(date +%s)
+    echo "var BATON_CONFIG = { sentinelUrl: \"${SENTINEL_URL:-}\", jaaqlUrl: \"${APPLICATION_BASE_URL}\", appVersion: \"${APP_VERSION:-1.0.0}\", debug: false, deployedAt: ${BATON_DEPLOYED_AT}, deployed: true, acceptanceTesting: false };" > "$BATON_CONFIG_DIR/BATON.config.js"
+    echo "Generated BATON.config.js: jaaqlUrl=${APPLICATION_BASE_URL}"
+  fi
+
+  CACHE_BUST_MARKER="$INSTALL_PATH/www/.cache_busted"
+  if [ ! -f "$CACHE_BUST_MARKER" ]; then
+    CACHE_BUST_ORIG_DIR=$(pwd)
+    cd "$INSTALL_PATH/www"
+    if ls *.html 1>/dev/null 2>&1; then
+      $PY_PATH "$INSTALL_PATH/docker/cache_bust.py"
+      touch "$CACHE_BUST_MARKER"
+      echo "Cache busting complete"
+    fi
+    cd "$CACHE_BUST_ORIG_DIR"
+  fi
+fi
 
 LOG_FILE=$INSTALL_PATH/log/gunicorn.log
 LOG_FILE_EMAILS=$INSTALL_PATH/log/mail_service.log
@@ -369,7 +394,9 @@ if [ "$JAAQL_DEBUGGING" = "TRUE" ] ; then
   export PYTHONUNBUFFERED=TRUE
 fi
 
-if [ -f /pki/ca.cert.pem ]; then
+if [ "$SKIP_EMAIL_SERVICE" = "TRUE" ]; then
+	echo "Skipping email service (SKIP_EMAIL_SERVICE=TRUE)"
+elif [ -f /pki/ca.cert.pem ]; then
 	echo "Starting patch_ems.py with IGNORE_CERTS=TRUE"
 	IGNORE_CERTS=TRUE $PY_PATH /JAAQL-middleware-python/jaaql/email/patch_ems.py &> $LOG_FILE_EMAILS &
 else

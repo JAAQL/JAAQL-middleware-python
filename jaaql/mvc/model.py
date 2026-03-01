@@ -741,11 +741,13 @@ WHERE
         sub = id_payload.get("sub")
 
         account = None
+        require_email_verification = os.environ.get("REQUIRE_EMAIL_VERIFICATION", "FALSE").upper() == "TRUE"
+
         try:
             account = fetch_account_from_sub(self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
                                              sub, provider, tenant)
             if not account[KG__account__email_verified]:
-                email_verified = id_payload.get('email_verified')
+                email_verified = id_payload.get('email_verified') if require_email_verification else True
                 if email_verified:
                     mark_account_registered(self.jaaql_lookup_connection, account[KG__account__id])
 
@@ -753,7 +755,7 @@ WHERE
             # User does not exist, federate it
             print("federating user")
             email = id_payload.get('email')
-            email_verified = id_payload.get('email_verified')
+            email_verified = id_payload.get('email_verified') if require_email_verification else True
             account_id = self.create_account_with_potential_api_key(self.jaaql_lookup_connection,
                                                                     sub, provider, tenant,
                                                                     None, email, registered=email_verified)
@@ -874,16 +876,13 @@ WHERE
                             is_https=self.is_https)
 
         default_scopes = ["openid", "profile", "email"]
-        for scope in scope_list:
-            if scope not in default_scopes:
-                default_scopes.append(scope)
 
         if self.use_oidc_basic:
             basic_query = {
                 "client_id": database_user_registry[KG__database_user_registry__client_id],
                 "response_type": "code",
                 "code_challenge_method": "S256",
-                "scope": " ".join(["openid"]),  # keep parity with current flow
+                "scope": " ".join(default_scopes),
                 "nonce": nonce,
                 "state": state,
                 "code_challenge": code_challenge,
@@ -900,7 +899,7 @@ WHERE
                 "client_id": database_user_registry[KG__database_user_registry__client_id],
                 "response_type": "code",
                 "code_challenge_method": "S256",
-                "scope": " ".join(["openid"]),  # should later be default scopes, may cause issues now
+                "scope": " ".join(default_scopes),
                 "nonce": nonce,
                 "state": state,
                 "code_challenge": code_challenge,
@@ -1860,7 +1859,7 @@ WHERE
         os.kill(int(open("app.pid", "r").read()), signal.SIGUSR1)
 
     def execute(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
-        if self.query_caches is None:
+        if not self.query_caches:
             self.reload_cache()
 
         if self.db_cache == 1:
