@@ -249,9 +249,6 @@ class BaseJAAQLModel:
             print("EasyAuth mode enabled. Container MUST be behind Azure EasyAuth (App Service or Container Apps).")
             self.easyauth_provider = os.environ.get("EASYAUTH_PROVIDER", "azure")
             self.easyauth_tenant = os.environ.get("EASYAUTH_TENANT", "easyauth")
-            self.easyauth_application = os.environ.get("EASYAUTH_APPLICATION", "")
-            self.easyauth_schema = os.environ.get("EASYAUTH_SCHEMA", "")
-            self.easyauth_federation_procedure = os.environ.get("EASYAUTH_FEDERATION_PROCEDURE", "")
             self.easyauth_provisioned = False
 
         self.fapi_pem = None

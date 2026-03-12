@@ -854,7 +854,10 @@ WHERE
     def _ensure_easyauth_data_model(self):
         """Auto-provision identity_provider_service, user_registry, and database_user_registry
         rows for EasyAuth on first use. These are normally set up via jqli slurp files for OIDC
-        but EasyAuth needs them created automatically."""
+        but EasyAuth needs them created automatically.
+
+        Application and federation procedure are auto-detected from the database rather than
+        requiring env vars — there is typically one application with one database_user_registry."""
         if self.easyauth_provisioned:
             return
 
@@ -875,26 +878,26 @@ WHERE
             print(f"EasyAuth: Creating user_registry row for '{provider}/{tenant}'")
             user_registry__insert(self.jaaql_lookup_connection, provider, tenant, 'easyauth://azure')
 
-        # 3. database_user_registry — links provider/tenant to a database + federation procedure
-        if self.easyauth_application and self.easyauth_federation_procedure:
-            try:
-                schema = self.easyauth_schema
-                if not schema:
-                    schema = application__select(self.jaaql_lookup_connection, self.easyauth_application)[KG__application__default_schema]
-                database_rec = application_schema__select(self.jaaql_lookup_connection, self.easyauth_application, schema)
-                database_name = database_rec[KG__application_schema__database]
-
+        # 3. database_user_registry — auto-detect from existing application + database_user_registry rows
+        #    The slurp files create the application, schema, and database_user_registry with federation procedure.
+        #    We look up what already exists and clone it for our easyauth provider/tenant if needed.
+        try:
+            all_registries = database_user_registry__select_all(self.jaaql_lookup_connection, self.get_db_crypt_key())
+            if all_registries:
+                existing = all_registries[0]
+                database_name = existing[KG__database_user_registry__database]
+                federation_procedure = existing[KG__database_user_registry__federation_procedure]
                 try:
                     database_user_registry__select(self.jaaql_lookup_connection, self.get_db_crypt_key(),
                                                    provider, tenant, database_name)
                 except HttpSingletonStatusException:
                     print(f"EasyAuth: Creating database_user_registry row for '{provider}/{tenant}/{database_name}' "
-                          f"with federation procedure '{self.easyauth_federation_procedure}'")
+                          f"with federation procedure '{federation_procedure}'")
                     database_user_registry__insert(self.jaaql_lookup_connection, self.get_db_crypt_key(),
                                                    provider, tenant, database_name,
-                                                   self.easyauth_federation_procedure, 'easyauth')
-            except (HttpStatusException, HttpSingletonStatusException) as e:
-                print(f"EasyAuth: Could not auto-provision database_user_registry: {e}")
+                                                   federation_procedure, 'easyauth')
+        except (HttpStatusException, HttpSingletonStatusException) as e:
+            print(f"EasyAuth: Could not auto-provision database_user_registry: {e}")
 
         self.easyauth_provisioned = True
 
@@ -924,25 +927,26 @@ WHERE
 
         provider = self.easyauth_provider
         tenant = self.easyauth_tenant
-        application = self.easyauth_application
 
         # Auto-provision the JAAQL data model rows for EasyAuth on first use
         self._ensure_easyauth_data_model()
 
-        # Resolve database_user_registry for federation
+        # Auto-detect application and resolve database_user_registry for federation
         database_user_registry = None
-        schema = self.easyauth_schema
-        if application:
-            try:
-                if not schema:
-                    schema = application__select(self.jaaql_lookup_connection, application)[KG__application__default_schema]
+        application = None
+        schema = None
+        try:
+            apps = application__select_all(self.jaaql_lookup_connection)
+            if apps:
+                application = apps[0][KG__application__name]
+                schema = apps[0][KG__application__default_schema]
                 database_rec = application_schema__select(self.jaaql_lookup_connection, application, schema)
                 database_user_registry = database_user_registry__select(
                     self.jaaql_lookup_connection, self.get_db_crypt_key(),
                     provider, tenant, database_rec[KG__application_schema__database]
                 )
-            except (HttpStatusException, HttpSingletonStatusException):
-                print("EasyAuth: No database_user_registry found, skipping federation procedure")
+        except (HttpStatusException, HttpSingletonStatusException):
+            print("EasyAuth: No database_user_registry found, skipping federation procedure")
 
         account, address = self._federate_and_issue_jwt(
             sub, provider, tenant, id_payload, ip_address, response,
