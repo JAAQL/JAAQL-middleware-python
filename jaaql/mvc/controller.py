@@ -171,8 +171,8 @@ class JAAQLController(BaseJAAQLController):
             return self.model.fetch_user_registries_for_tenant(http_inputs)
 
         @self.publish_route('/oidc-redirect-url', DOCUMENTATION__oidc_redirect_url)
-        def fetch_redirect_url(http_inputs: dict, response: JAAQLResponse):
-            self.model.fetch_redirect_uri(http_inputs, response)
+        def fetch_redirect_url(http_inputs: dict, response: JAAQLResponse, request_headers=None, ip_address=None):
+            self.model.fetch_redirect_uri(http_inputs, response, request_headers=request_headers, ip_address=ip_address)
 
         @self.publish_route(ENDPOINT__oidc_get_token, DOCUMENTATION__oidc_exchange_code)
         def exchange_auth_code(http_inputs: dict, ip_address: str, response: JAAQLResponse):

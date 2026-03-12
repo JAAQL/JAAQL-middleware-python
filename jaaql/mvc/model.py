@@ -534,6 +534,16 @@ WHERE
                              json={ARG__variable: SHARED_VAR__frozen}).json()[ARG__value]
 
     def fetch_user_registries_for_tenant(self, inputs: dict):
+        # In EasyAuth mode, return a synthetic provider so the login form shows
+        # a "Login with <provider>" link. The /oidc-redirect-url endpoint handles
+        # authentication via EasyAuth headers instead of performing an OIDC redirect.
+        if self.use_easyauth:
+            self._ensure_easyauth_data_model()
+            return {"providers": [{
+                KG__user_registry__provider: self.easyauth_provider,
+                KG__identity_provider_service__logo_url: ""
+            }]}
+
         schema = inputs.get(KEY__schema, None)
         if not schema:
             schema = application__select(self.jaaql_lookup_connection, inputs[KEY__application])[KG__application__default_schema]
@@ -740,6 +750,17 @@ WHERE
 
         sub = id_payload.get("sub")
 
+        account, address = self._federate_and_issue_jwt(
+            sub, provider, tenant, id_payload, ip_address, response,
+            application=application, schema=oidc_state["schema"],
+            database_user_registry=database_user_registry
+        )
+
+        response.response_code = HTTPStatus.FOUND
+        response.raw_headers["Location"] = oidc_state[KEY__redirect_uri]
+
+    def _federate_and_issue_jwt(self, sub, provider, tenant, id_payload, ip_address, response,
+                                application=None, schema=None, database_user_registry=None):
         account = None
         require_email_verification = os.environ.get("REQUIRE_EMAIL_VERIFICATION", "FALSE").upper() == "TRUE"
 
@@ -761,42 +782,44 @@ WHERE
                                                                     None, email, registered=email_verified)
             print("new federated user with account id " + account_id)
             account = account__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), account_id)
-            db_params = {"tenant": tenant, "application": application, "account_id": account_id, "provider": provider,
-                         "email": email, "sub": sub}
-            parameters = fetch_parameters_for_federation_procedure(self.jaaql_lookup_connection,
-                                                                   database_user_registry[KG__database_user_registry__federation_procedure])
-            for claim in parameters:
-                claim_name = claim[KG__federation_procedure_parameter__name]
-                db_params[claim_name] = id_payload.get(claim_name)
 
-            procedure_name = database_user_registry[KG__database_user_registry__federation_procedure]
-            if re.match(REGEX__dmbs_procedure_name, procedure_name) is None:
-                raise HttpStatusException("Unsafe data federation procedure")
+            if database_user_registry is not None and application is not None and schema is not None:
+                db_params = {"tenant": tenant, "application": application, "account_id": account_id, "provider": provider,
+                             "email": email, "sub": sub}
+                parameters = fetch_parameters_for_federation_procedure(self.jaaql_lookup_connection,
+                                                                       database_user_registry[KG__database_user_registry__federation_procedure])
+                for claim in parameters:
+                    claim_name = claim[KG__federation_procedure_parameter__name]
+                    db_params[claim_name] = id_payload.get(claim_name, "")
 
-            procedure_params = []
-            for key, _ in db_params.items():
-                if re.match(REGEX__dmbs_object_name, key) is None:
-                    raise HttpStatusException("Unsafe data federation parameter " + key)
-                procedure_params.append(f"{key} => :{key}")
+                procedure_name = database_user_registry[KG__database_user_registry__federation_procedure]
+                if re.match(REGEX__dmbs_procedure_name, procedure_name) is None:
+                    raise HttpStatusException("Unsafe data federation procedure")
 
-            submit_data = {
-                KEY__application: application,
-                KEY_query: f"SELECT * FROM \"{procedure_name}\"({", ".join(procedure_params)});",
-                KEY__schema: oidc_state["schema"],
-                KEY__parameters: db_params
-            }
+                procedure_params = []
+                for key, _ in db_params.items():
+                    if re.match(REGEX__dmbs_object_name, key) is None:
+                        raise HttpStatusException("Unsafe data federation parameter " + key)
+                    procedure_params.append(f"{key} => :{key}")
 
-            print("Preparing federating procedure")
+                submit_data = {
+                    KEY__application: application,
+                    KEY_query: f"SELECT * FROM \"{procedure_name}\"({', '.join(procedure_params)});",
+                    KEY__schema: schema,
+                    KEY__parameters: db_params
+                }
 
-            submit(self.vault, self.config, self.get_db_crypt_key(),
-                   self.jaaql_lookup_connection, submit_data, ROLE__jaaql,
-                   None, self.cached_canned_query_service, as_objects=True, singleton=True)
+                print("Preparing federating procedure")
 
-            print("Federated user")
-            print(submit_data)
+                submit(self.vault, self.config, self.get_db_crypt_key(),
+                       self.jaaql_lookup_connection, submit_data, ROLE__jaaql,
+                       None, self.cached_canned_query_service, as_objects=True, singleton=True)
+
+                print("Federated user")
+                print(submit_data)
 
         salt_user = self.get_repeatable_salt(account[KG__account__id])
-        encrypted_salted_ip_address = jaaql__encrypt(ip_address, self.get_db_crypt_key(), salt_user)  # An optimisation, it is used later twice
+        encrypted_salted_ip_address = jaaql__encrypt(ip_address, self.get_db_crypt_key(), salt_user)
         address = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
                                                        QUERY___add_or_update_validated_ip_address,
                                                        {KG__validated_ip_address__account: account[KG__account__id],
@@ -826,10 +849,121 @@ WHERE
 
         response.set_cookie(COOKIE_LOGIN_MARKER, value="true", is_https=True, attributes=get_sloppy_cookie_attrs())
 
-        response.response_code = HTTPStatus.FOUND
-        response.raw_headers["Location"] = oidc_state[KEY__redirect_uri]
+        return account, address
 
-    def fetch_redirect_uri(self, inputs: dict, response: JAAQLResponse):
+    def _ensure_easyauth_data_model(self):
+        """Auto-provision identity_provider_service, user_registry, and database_user_registry
+        rows for EasyAuth on first use. These are normally set up via jqli slurp files for OIDC
+        but EasyAuth needs them created automatically."""
+        if self.easyauth_provisioned:
+            return
+
+        provider = self.easyauth_provider
+        tenant = self.easyauth_tenant
+
+        # 1. identity_provider_service — needed by create_account() SQL to resolve requires_email_verification
+        try:
+            identity_provider_service__select(self.jaaql_lookup_connection, provider)
+        except HttpSingletonStatusException:
+            print(f"EasyAuth: Creating identity_provider_service row for '{provider}'")
+            identity_provider_service__insert(self.jaaql_lookup_connection, provider, '', False)
+
+        # 2. user_registry — provider/tenant pair (discovery_url is unused for EasyAuth but NOT NULL)
+        try:
+            user_registry__select(self.jaaql_lookup_connection, provider, tenant)
+        except HttpSingletonStatusException:
+            print(f"EasyAuth: Creating user_registry row for '{provider}/{tenant}'")
+            user_registry__insert(self.jaaql_lookup_connection, provider, tenant, 'easyauth://azure')
+
+        # 3. database_user_registry — links provider/tenant to a database + federation procedure
+        if self.easyauth_application and self.easyauth_federation_procedure:
+            try:
+                schema = self.easyauth_schema
+                if not schema:
+                    schema = application__select(self.jaaql_lookup_connection, self.easyauth_application)[KG__application__default_schema]
+                database_rec = application_schema__select(self.jaaql_lookup_connection, self.easyauth_application, schema)
+                database_name = database_rec[KG__application_schema__database]
+
+                try:
+                    database_user_registry__select(self.jaaql_lookup_connection, self.get_db_crypt_key(),
+                                                   provider, tenant, database_name)
+                except HttpSingletonStatusException:
+                    print(f"EasyAuth: Creating database_user_registry row for '{provider}/{tenant}/{database_name}' "
+                          f"with federation procedure '{self.easyauth_federation_procedure}'")
+                    database_user_registry__insert(self.jaaql_lookup_connection, self.get_db_crypt_key(),
+                                                   provider, tenant, database_name,
+                                                   self.easyauth_federation_procedure, 'easyauth')
+            except (HttpStatusException, HttpSingletonStatusException) as e:
+                print(f"EasyAuth: Could not auto-provision database_user_registry: {e}")
+
+        self.easyauth_provisioned = True
+
+    def authenticate_via_easyauth(self, request_headers, ip_address, response):
+        principal_id = request_headers.get("X-MS-CLIENT-PRINCIPAL-ID")
+        principal_name = request_headers.get("X-MS-CLIENT-PRINCIPAL-NAME", "")
+        id_token_raw = request_headers.get("X-MS-TOKEN-AAD-ID-TOKEN")
+
+        if not principal_id:
+            raise UserUnauthorized()
+
+        # Decode the Azure AD ID token without verification (Azure EasyAuth already verified it)
+        id_payload = {}
+        if id_token_raw:
+            try:
+                id_payload = jwt.decode(id_token_raw, options={"verify_signature": False})
+            except Exception:
+                print("EasyAuth: Failed to decode X-MS-TOKEN-AAD-ID-TOKEN, falling back to header values")
+
+        # Ensure critical claims are populated, falling back to EasyAuth headers
+        sub = id_payload.get("sub") or principal_id
+        email = id_payload.get("email") or principal_name
+        if "name" not in id_payload:
+            id_payload["name"] = ""
+        if "email" not in id_payload:
+            id_payload["email"] = email
+
+        provider = self.easyauth_provider
+        tenant = self.easyauth_tenant
+        application = self.easyauth_application
+
+        # Auto-provision the JAAQL data model rows for EasyAuth on first use
+        self._ensure_easyauth_data_model()
+
+        # Resolve database_user_registry for federation
+        database_user_registry = None
+        schema = self.easyauth_schema
+        if application:
+            try:
+                if not schema:
+                    schema = application__select(self.jaaql_lookup_connection, application)[KG__application__default_schema]
+                database_rec = application_schema__select(self.jaaql_lookup_connection, application, schema)
+                database_user_registry = database_user_registry__select(
+                    self.jaaql_lookup_connection, self.get_db_crypt_key(),
+                    provider, tenant, database_rec[KG__application_schema__database]
+                )
+            except (HttpStatusException, HttpSingletonStatusException):
+                print("EasyAuth: No database_user_registry found, skipping federation procedure")
+
+        account, address = self._federate_and_issue_jwt(
+            sub, provider, tenant, id_payload, ip_address, response,
+            application=application, schema=schema,
+            database_user_registry=database_user_registry
+        )
+
+        return str(account[KG__account__id]), sub, str(address), False, True
+
+    def fetch_redirect_uri(self, inputs: dict, response: JAAQLResponse, request_headers=None, ip_address=None):
+        # In EasyAuth mode, skip the OIDC redirect — authenticate via Azure headers and redirect back
+        if self.use_easyauth:
+            self._ensure_easyauth_data_model()
+            self.authenticate_via_easyauth(request_headers, ip_address, response)
+            application_rec = application__select(self.jaaql_lookup_connection, inputs[KEY__application])
+            redirect_uri = inputs.get(KEY__redirect_uri, "")
+            redirect_target = application_rec[KG__application__base_url] + "/" + redirect_uri
+            response.response_code = HTTPStatus.FOUND
+            response.raw_headers["Location"] = redirect_target
+            return
+
         schema = inputs.get(KEY__schema, None)
         application = application__select(self.jaaql_lookup_connection, inputs[KEY__application])
         if not schema:
@@ -1939,6 +2073,16 @@ WHERE
 			- KEY__redirect_uri (final place in your app after logout, e.g. "logged-out" or "")
 			- optional: "id_token_hint" (if you persisted the ID token)
 		"""
+        # In EasyAuth mode, redirect to Azure's built-in logout endpoint
+        if self.use_easyauth:
+            application = application__select(self.jaaql_lookup_connection, inputs[KEY__application])
+            redirect_uri = inputs.get(KEY__redirect_uri, "")
+            post_logout_url = application[KG__application__base_url] + "/" + redirect_uri
+            response.set_cookie(COOKIE_LOGIN_MARKER, value="", is_https=True, attributes=get_sloppy_cookie_attrs())
+            response.response_code = HTTPStatus.FOUND
+            response.raw_headers["Location"] = "/.auth/logout?post_logout_redirect_uri=" + urllib.parse.quote(post_logout_url)
+            return
+
         # Resolve schema & app
         schema = inputs.get(KEY__schema)
         application = application__select(self.jaaql_lookup_connection, inputs[KEY__application])

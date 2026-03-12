@@ -35,6 +35,7 @@ from jaaql.exceptions.http_status_exception import *
 ARG__http_inputs = "http_inputs"
 ARG__account_id = "account_id"
 ARG__ip_address = "ip_address"
+ARG__request_headers = "request_headers"
 ARG__response = "response"
 ARG__username = "username"
 ARG__profiler = "profiler"
@@ -496,7 +497,16 @@ class BaseJAAQLController:
                     if auth_cookie is not None:
                         security_key = auth_cookie
 
-                    if swagger_documentation.security:
+                    easyauth_resolved = False
+                    if self.model.use_easyauth and security_key is None:
+                        easyauth_principal_id = request.headers.get("X-MS-CLIENT-PRINCIPAL-ID")
+                        if easyauth_principal_id:
+                            account_id, username, ip_id, is_public, remember_me = \
+                                self.model.authenticate_via_easyauth(request.headers, ip_addr, jaaql_resp)
+                            easyauth_resolved = True
+                            self.perform_profile(request_id, "EasyAuth")
+
+                    if swagger_documentation.security and not easyauth_resolved:
                         bypass_super = request.headers.get(HEADER__security_bypass)
                         bypass_jaaql = request.headers.get(HEADER__security_bypass_jaaql)
                         bypass_user = request.headers.get(HEADER__security_specify_user)
@@ -565,6 +575,9 @@ class BaseJAAQLController:
 
                         if ARG__ip_address in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__ip_address] = ip_addr
+
+                        if ARG__request_headers in inspect.getfullargspec(view_func_local).args:
+                            supply_dict[ARG__request_headers] = request.headers
 
                         if ARG__response in inspect.getfullargspec(view_func_local).args:
                             supply_dict[ARG__response] = jaaql_resp

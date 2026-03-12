@@ -242,6 +242,18 @@ class BaseJAAQLModel:
             # Basic OIDC mode intentionally disables the advanced FAPI/JARM/PAR flow.
             self.use_fapi_advanced = False
 
+        self.use_easyauth = os.environ.get("USE_EASYAUTH", "").lower() == "true"
+        if self.use_easyauth:
+            if self.use_oidc_basic or self.use_fapi_advanced:
+                raise Exception("USE_EASYAUTH cannot be combined with USE_OIDC_BASIC or USE_FAPI_ADVANCED")
+            print("EasyAuth mode enabled. Container MUST be behind Azure EasyAuth (App Service or Container Apps).")
+            self.easyauth_provider = os.environ.get("EASYAUTH_PROVIDER", "azure")
+            self.easyauth_tenant = os.environ.get("EASYAUTH_TENANT", "easyauth")
+            self.easyauth_application = os.environ.get("EASYAUTH_APPLICATION", "")
+            self.easyauth_schema = os.environ.get("EASYAUTH_SCHEMA", "")
+            self.easyauth_federation_procedure = os.environ.get("EASYAUTH_FEDERATION_PROCEDURE", "")
+            self.easyauth_provisioned = False
+
         self.fapi_pem = None
         self.fapi_cert = None
         self.fapi_enc = None
