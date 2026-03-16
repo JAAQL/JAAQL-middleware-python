@@ -1789,12 +1789,15 @@ WHERE
     ) -> Dict[str, Any]:
         """
         Executes the configured database function for the security event (must return exactly 1 row),
-        then ensures a Keycloak user exists for inputs["email"] with a newly-set TEMPORARY password.
+        then ensures a Keycloak user exists for inputs["email"] with a newly-set TEMPORARY password,
+        and creates a JAAQL account (postgres role) so the account_id is available immediately.
 
         Returns:
             {
                 "temporary_password": "<16-char alphanumeric>",
-                "response": <single row/object from the DB function>
+                "response": <single row/object from the DB function>,
+                "subject": "<keycloak user id>",
+                "account_id": "<postgres role name>"
             }
         Raises:
             - Any exception from the submit() call (bubbles up).
@@ -1828,10 +1831,31 @@ WHERE
         temp_pw = self._gen_alnum_16()
         self._kc_set_temp_password(access_token, user_id, temp_pw)
 
+        # 3) Create JAAQL account (postgres role) if it doesn't exist yet
+        new_account_id = None
+        if should_create_user:
+            application = security_event[KG__security_event__application]
+            default_schema = application_schema__select(self.jaaql_lookup_connection, application, "default")
+            database = default_schema[KG__application_schema__database]
+
+            registries = database_user_registry__select_all(self.jaaql_lookup_connection, self.get_db_crypt_key())
+            registry = next((r for r in registries
+                             if r[KG__database_user_registry__database] == database), None)
+
+            if registry:
+                provider = registry[KG__database_user_registry__provider]
+                tenant = registry[KG__database_user_registry__tenant]
+                new_account_id = self.create_account_with_potential_api_key(
+                    self.jaaql_lookup_connection,
+                    sub=user_id, provider=provider, tenant=tenant,
+                    email=username, registered=False
+                )
+
         return {
             "temporary_password": temp_pw,
             "response": response_obj,
-            "subject": user_id
+            "subject": user_id,
+            "account_id": new_account_id
         }
 
     def handle_procedure(self, http_inputs: dict, is_the_anonymous_user: bool, auth_token: str, username: str, ip_address: str, account_id: str):
