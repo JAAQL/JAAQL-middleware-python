@@ -425,7 +425,10 @@ mv /JAAQL-middleware-python/docker/gunicorn_config.py.tmp /JAAQL-middleware-pyth
 cp -n /JAAQL-middleware-python/docker/generate_jwks.py generate_jwks.py
 $PY_PATH generate_jwks.py
 
-openssl req -new -x509 -key /tmp/client_key.pem -out /tmp/client_cert.pem -days 3650 -subj "/CN=jaaql-key-$SERVER_ADDRESS"
+if [ "${USE_EASYAUTH}" != "TRUE" ]; then
+  CN_VALUE="jaaql-key-$(echo "$SERVER_ADDRESS" | cut -c1-54)"
+  openssl req -new -x509 -key /tmp/client_key.pem -out /tmp/client_cert.pem -days 3650 -subj "/CN=$CN_VALUE"
+fi
 
 if [ $WAS_EMPTY = "true" ]; then
   until psql -U "postgres" -d "postgres" -c "select 1" > /dev/null 2>&1; do
