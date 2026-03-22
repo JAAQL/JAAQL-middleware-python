@@ -24,6 +24,24 @@ BEGIN
         PERFORM dblink_exec('dbname=' || database, 'CREATE SCHEMA IF NOT EXISTS jaaql_extension;');
         PERFORM dblink_exec('dbname=' || database, 'GRANT USAGE ON SCHEMA jaaql_extension TO PUBLIC;');
         PERFORM dblink_exec('dbname=' || database, 'CREATE EXTENSION IF NOT EXISTS jaaql;');
+
+        -- Federation schema: stores OIDC identity linkage for federated/invited users
+        PERFORM dblink_exec('dbname=' || database, 'CREATE SCHEMA IF NOT EXISTS federation;');
+        PERFORM dblink_exec('dbname=' || database, '
+            CREATE TABLE IF NOT EXISTS federation.federated_user (
+                account_id  postgres_user_id       NOT NULL,
+                sub         oidc_subject_id        NOT NULL,
+                registered_at timestamptz           NOT NULL DEFAULT NOW(),
+                tenant      character varying(256)  NOT NULL,
+                provider    character varying(256)  NOT NULL,
+                PRIMARY KEY (account_id),
+                UNIQUE (sub, tenant, provider)
+            );
+        ');
+        PERFORM dblink_exec('dbname=' || database, 'GRANT USAGE ON SCHEMA federation TO registered;');
+        PERFORM dblink_exec('dbname=' || database, 'GRANT SELECT ON federation.federated_user TO registered;');
+        PERFORM dblink_exec('dbname=' || database, 'GRANT USAGE ON SCHEMA federation TO unconfirmed;');
+        PERFORM dblink_exec('dbname=' || database, 'GRANT SELECT ON federation.federated_user TO unconfirmed;');
     else
         raise notice 'You do not own this database'
                  'You cannot install the jaaql extension';
