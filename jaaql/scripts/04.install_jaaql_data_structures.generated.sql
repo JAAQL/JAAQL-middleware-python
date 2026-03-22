@@ -183,6 +183,7 @@ create table account (
 	username username,
 	email encrypted__email,
 	email_verified bool not null,
+	created_timestamp timestamptz not null default current_timestamp,
 	deletion_timestamp timestamptz,
 	provider provider_name,
 	tenant tenant_name,

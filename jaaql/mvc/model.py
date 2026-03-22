@@ -36,8 +36,8 @@ from jaaql.utilities.utils import get_jaaql_root, get_base_url
 from jaaql.db.db_utils import create_interface, jaaql__encrypt, create_interface_for_db, jaaql__decrypt
 from jaaql.db.db_utils_no_circ import submit, get_required_db, objectify
 from jaaql.utilities import crypt_utils
-from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_OIDC, COOKIE_LOGIN_MARKER, \
-    get_sloppy_cookie_attrs
+from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_OIDC, COOKIE_OIDC_RETURN, \
+    COOKIE_LOGIN_MARKER, get_sloppy_cookie_attrs
 from jaaql.mvc.response import *
 import threading
 from datetime import datetime, timedelta
@@ -136,6 +136,32 @@ class JAAQLModel(BaseJAAQLModel):
     def redeploy(self, connection: DBInterface):
         raise HttpStatusException("Not yet implemented", response_code=HTTPStatus.NOT_IMPLEMENTED)
 
+    def _check_email_confirmation_grace_period(self, account, email: str = None):
+        """Check if an unconfirmed account is still within its grace period.
+        Raises EmailConfirmationRequired if the grace period has expired."""
+        if account[KG__account__email_verified]:
+            return  # Already confirmed, nothing to check
+
+        grace_hours = int(os.environ.get("CONFIRMATION_GRACE_PERIOD_HOURS", "-1"))
+        if grace_hours < 0:
+            return  # Grace period checking disabled (no email verification required)
+
+        descriptor = {"email": email} if email else None
+
+        if grace_hours == 0:
+            # Immediate confirmation required
+            raise EmailConfirmationRequired(descriptor=descriptor)
+
+        created = account.get(KG__account__created_timestamp)
+        if created is None:
+            return  # No timestamp available, allow access
+
+        if isinstance(created, str):
+            created = datetime.fromisoformat(created)
+
+        if datetime.now(created.tzinfo) > created + timedelta(hours=grace_hours):
+            raise EmailConfirmationRequired(descriptor=descriptor)
+
     def create_account_with_potential_api_key(self, connection: DBInterface,
                                               sub: str | None, provider: str = None, tenant: str = None,
                                               username: str = None,
@@ -159,16 +185,64 @@ class JAAQLModel(BaseJAAQLModel):
         return account_id
 
     def shallow_federate_batch_potential_with_api_key(self, connection: DBInterface, accounts: list):
-        for cur_input in accounts:
-            # TODO SHORTCUT TAKEN
-            # The email is not set and registered is assumed to be true
-            # Should come from the OIDC scopes
-            self.create_account_with_potential_api_key(
-                connection,
-                cur_input[KG__account__sub], cur_input[KG__account__provider], cur_input[KG__account__tenant],
-                cur_input[KG__account__username], attach_as=cur_input[KEY__attach_as],
-                api_key=cur_input[KEY__password], allow_already_exists=True, registered=True
-            )
+        # Build a cache of database connections keyed by (provider, tenant) -> database name
+        registries = database_user_registry__select_all(self.jaaql_lookup_connection, self.get_db_crypt_key())
+        registry_lookup = {(r[KG__database_user_registry__provider], r[KG__database_user_registry__tenant]): r[KG__database_user_registry__database]
+                          for r in registries}
+        app_connections = {}
+
+        try:
+            for cur_input in accounts:
+                provider = cur_input.get(KG__account__provider)
+                tenant = cur_input.get(KG__account__tenant)
+                username = cur_input[KG__account__username]
+                sub = cur_input[KG__account__sub]
+
+                account_id = self.create_account_with_potential_api_key(
+                    connection,
+                    sub, provider, tenant,
+                    username, attach_as=cur_input[KEY__attach_as],
+                    api_key=cur_input[KEY__password], allow_already_exists=True, registered=True
+                )
+
+                # Insert into federation.federated_user on the app database
+                if provider and tenant:
+                    database = registry_lookup.get((provider, tenant))
+                    if database is None:
+                        # Internal provider — find any database for this tenant
+                        database = next((db for (p, t), db in registry_lookup.items() if t == tenant), None)
+
+                    if database:
+                        if database not in app_connections:
+                            app_connections[database] = create_interface_for_db(self.vault, self.config, "jaaql", database)
+
+                        encrypted_email = jaaql__encrypt(
+                            username, self.get_db_crypt_key(),
+                            self.get_repeatable_salt()
+                        ) if username else None
+
+                        execute_supplied_statement(
+                            app_connections[database],
+                            "INSERT INTO federation.account (account_id) VALUES (:account_id) "
+                            "ON CONFLICT (account_id) DO NOTHING",
+                            {"account_id": account_id}
+                        )
+                        execute_supplied_statement(
+                            app_connections[database],
+                            "INSERT INTO federation.federated_user (account_id, sub, tenant, provider, encrypted_email) "
+                            "VALUES (:account_id, :sub, :tenant, :provider, :encrypted_email) "
+                            "ON CONFLICT (tenant, provider, sub) DO NOTHING",
+                            {
+                                "account_id": account_id,
+                                "sub": sub,
+                                "tenant": tenant,
+                                "provider": provider,
+                                "encrypted_email": encrypted_email
+                            }
+                        )
+        finally:
+            for conn in app_connections.values():
+                conn.close()
 
     def validate_query(self, queries: list, query, allow_list=True):
         if isinstance(query, list) and allow_list:
@@ -604,7 +678,11 @@ WHERE
 
     def exchange_auth_code(self, inputs: dict, oidc_cookie: str, ip_address: str, response: JAAQLResponse):
         response.delete_cookie(COOKIE_OIDC, self.is_https)
+        if not oidc_cookie:
+            raise UserUnauthorized()
         oidc_state = crypt_utils.jwt_decode(self.vault.get_obj(VAULT_KEY__jwt_crypt_key), oidc_cookie, JWT_PURPOSE__oidc)
+        if not isinstance(oidc_state, dict):
+            raise UserUnauthorized()
 
         application = oidc_state[KEY__application]
         application_tuple = application__select(self.jaaql_lookup_connection, application)
@@ -647,15 +725,28 @@ WHERE
             else:
                 jarms_response = jarms_response.encode('utf-8')
 
-            signing_key = jwk_client.get_signing_key_from_jwt(jarms_response)
-            jarms_payload = jwt.decode(
-                jarms_response,
-                signing_key.key,
-                algorithms=allowed_algs,
-                audience=database_user_registry[KG__database_user_registry__client_id],
-                issuer=expected_issuer
-            )
+            try:
+                signing_key = jwk_client.get_signing_key_from_jwt(jarms_response)
+                jarms_payload = jwt.decode(
+                    jarms_response,
+                    signing_key.key,
+                    algorithms=allowed_algs,
+                    audience=database_user_registry[KG__database_user_registry__client_id],
+                    issuer=expected_issuer
+                )
+            except Exception as jarms_ex:
+                # JARMS verification failed — likely an error response from Keycloak (e.g. authentication_expired)
+                # Redirect the user back to their original page rather than showing an error
+                print(f"JARMS decode failed: {jarms_ex}")
+                response.response_code = HTTPStatus.FOUND
+                response.raw_headers["Location"] = oidc_state[KEY__redirect_uri]
+                return
 
+            if jarms_payload.get("error"):
+                print(f"OIDC error response: {jarms_payload.get('error')} - {jarms_payload.get('error_description')}")
+                response.response_code = HTTPStatus.FOUND
+                response.raw_headers["Location"] = oidc_state[KEY__redirect_uri]
+                return
             if jarms_payload[KEY__state] != oidc_state.get(KEY__state):
                 raise UserUnauthorized()
             auth_code = jarms_payload[KEY__code]
@@ -817,6 +908,55 @@ WHERE
 
                 print("Federated user")
                 print(submit_data)
+
+            # Insert into federation.federated_user on the app database
+            if database_user_registry is not None:
+                database = database_user_registry[KG__database_user_registry__database]
+                email = id_payload.get('email')
+                encrypted_email = jaaql__encrypt(
+                    email, self.get_db_crypt_key(),
+                    self.get_repeatable_salt()
+                ) if email else None
+                app_connection = create_interface_for_db(self.vault, self.config, "jaaql", database)
+                try:
+                    execute_supplied_statement(
+                        app_connection,
+                        "INSERT INTO federation.account (account_id) VALUES (:account_id) "
+                        "ON CONFLICT (account_id) DO NOTHING",
+                        {"account_id": account_id}
+                    )
+                    execute_supplied_statement(
+                        app_connection,
+                        "INSERT INTO federation.federated_user (account_id, sub, tenant, provider, encrypted_email) "
+                        "VALUES (:account_id, :sub, :tenant, :provider, :encrypted_email) "
+                        "ON CONFLICT (tenant, provider, sub) DO NOTHING",
+                        {
+                            "account_id": account_id,
+                            "sub": sub,
+                            "tenant": tenant,
+                            "provider": provider,
+                            "encrypted_email": encrypted_email
+                        }
+                    )
+                finally:
+                    app_connection.close()
+
+            # Send verification email via Keycloak if the OIDC claim says email not verified
+            # This is independent of REQUIRE_EMAIL_VERIFICATION — always send if Keycloak says unverified
+            oidc_email_verified = id_payload.get('email_verified', False)
+            if not oidc_email_verified:
+                try:
+                    kc_token = self._kc_get_token()
+                    kc_user_id = self._kc_find_user_id_by_username(kc_token, email)
+                    if kc_user_id:
+                        self._kc_send_verify_email(kc_token, kc_user_id)
+                        print(f"Verification email sent to user {kc_user_id}")
+                    else:
+                        print(f"Warning: could not find Keycloak user for email {email}")
+                except Exception as e:
+                    print(f"Warning: could not trigger verification email: {e}")
+
+        self._check_email_confirmation_grace_period(account, email=id_payload.get('email'))
 
         salt_user = self.get_repeatable_salt(account[KG__account__id])
         encrypted_salted_ip_address = jaaql__encrypt(ip_address, self.get_db_crypt_key(), salt_user)
@@ -1010,6 +1150,12 @@ WHERE
         }, JWT_PURPOSE__oidc, expiry_ms=self.oidc_login_expiry_ms)
 
         response.set_cookie(COOKIE_OIDC, value=oidc_session,
+                            attributes=get_cookie_attrs(True, False, self.is_container),
+                            is_https=self.is_https)
+
+        # Store the return URL in a separate cookie so the exchange catch block can redirect correctly
+        # even if the OIDC session cookie has been consumed by a prior exchange request
+        response.set_cookie(COOKIE_OIDC_RETURN, value=real_redirect_uri,
                             attributes=get_cookie_attrs(True, False, self.is_container),
                             is_https=self.is_https)
 
@@ -1412,6 +1558,8 @@ WHERE
         if incorrect_credentials:
             raise UserUnauthorized()
 
+        self._check_email_confirmation_grace_period(account, email=username)
+
         address = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
                                                        QUERY___add_or_update_validated_ip_address,
                                                        {KG__validated_ip_address__account: account[KG__account__id],
@@ -1595,6 +1743,31 @@ WHERE
                 return u.get("id")
         return None
 
+    def _kc_send_verify_email(self, access_token: str, user_id: str) -> None:
+        """Trigger Keycloak to send a verification email to the user."""
+        kc_base = os.environ.get("KEYCLOAK_URL", "http://localhost:8080").rstrip("/")
+        kc_realm = os.environ["KEYCLOAK_REALM"]
+        try:
+            r = requests.put(
+                f"{kc_base}/admin/realms/{kc_realm}/users/{user_id}/send-verify-email",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=20,
+            )
+            if r.status_code not in [200, 204]:
+                print(f"Warning: failed to send verification email to user {user_id}: {r.status_code} {r.text}")
+        except Exception as e:
+            print(f"Warning: could not send verification email: {e}")
+
+    def resend_verification_email(self, email: str):
+        """Resend a Keycloak verification email for the given email address."""
+        if not email or not email.strip():
+            return  # Silently ignore empty email to avoid information disclosure
+        kc_token = self._kc_get_token()
+        kc_user_id = self._kc_find_user_id_by_username(kc_token, email)
+        if not kc_user_id:
+            return  # Silently ignore unknown emails to avoid user enumeration
+        self._kc_send_verify_email(kc_token, kc_user_id)
+
     def _kc_delete_pw_and_passkeys(self, access_token: str, user_id: str) -> None:
         kc_base = os.environ.get("KEYCLOAK_URL", "http://localhost:8080").rstrip("/")
         kc_realm = os.environ["KEYCLOAK_REALM"]
@@ -1756,14 +1929,35 @@ WHERE
             security_event: dict
     ) -> Dict[str, Any]:
         """
-        Gate via DB procedure (must return exactly one row), then delete the Keycloak user.
+        Gate via DB procedure (must return exactly one row), then:
+        - deactivate federation entries for the account,
+        - delete the Keycloak user.
         Returns { response } (the singleton row from the gate).
         """
         # 1) Gate (throws if fails)
         response_obj = self._gate_run_singleton(inputs, account_id, security_event)
 
-        # 2) Keycloak delete
         username = inputs["email"]  # username == email
+
+        # 2) Deactivate all federation entries for this account
+        application = security_event[KG__security_event__application]
+        default_schema = application_schema__select(self.jaaql_lookup_connection, application, "default")
+        database = default_schema[KG__application_schema__database]
+
+        target_account_id = inputs[KEY__parameters].get("account_id")
+        if target_account_id:
+            app_connection = create_interface_for_db(self.vault, self.config, "jaaql", database)
+            try:
+                execute_supplied_statement(
+                    app_connection,
+                    "UPDATE federation.federated_user SET is_active = false "
+                    "WHERE account_id = :account_id",
+                    {"account_id": target_account_id}
+                )
+            finally:
+                app_connection.close()
+
+        # 3) Keycloak delete
         access_token = self._kc_get_token()
         user_id = self._kc_find_user_id_by_username(access_token, username)
         if not user_id:
@@ -1850,6 +2044,35 @@ WHERE
                     sub=user_id, provider=provider, tenant=tenant,
                     email=username, registered=False
                 )
+
+                # 4) Insert into federation.federated_user on the app database
+                encrypted_email = jaaql__encrypt(
+                    username, self.get_db_crypt_key(),
+                    self.get_repeatable_salt()
+                )
+                app_connection = create_interface_for_db(self.vault, self.config, "jaaql", database)
+                try:
+                    execute_supplied_statement(
+                        app_connection,
+                        "INSERT INTO federation.account (account_id) VALUES (:account_id) "
+                        "ON CONFLICT (account_id) DO NOTHING",
+                        {"account_id": new_account_id}
+                    )
+                    execute_supplied_statement(
+                        app_connection,
+                        "INSERT INTO federation.federated_user (account_id, sub, tenant, provider, encrypted_email) "
+                        "VALUES (:account_id, :sub, :tenant, :provider, :encrypted_email) "
+                        "ON CONFLICT (tenant, provider, sub) DO NOTHING",
+                        {
+                            "account_id": new_account_id,
+                            "sub": user_id,
+                            "tenant": tenant,
+                            "provider": provider,
+                            "encrypted_email": encrypted_email
+                        }
+                    )
+                finally:
+                    app_connection.close()
 
         return {
             "temporary_password": temp_pw,

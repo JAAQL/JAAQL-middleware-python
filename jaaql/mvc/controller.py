@@ -1,3 +1,5 @@
+from http import HTTPStatus
+
 from jaaql.mvc.exception_queries import SECURITY_EVENT_TYPE__create, SECURITY_EVENT_TYPE__delete, \
     SECURITY_EVENT_TYPE__reset
 from jaaql.mvc.model import JAAQLModel
@@ -10,7 +12,7 @@ from jaaql.db.db_interface import DBInterface
 from flask import request
 import queue
 
-from jaaql.utilities.utils_no_project_imports import COOKIE_OIDC
+from jaaql.utilities.utils_no_project_imports import COOKIE_OIDC, COOKIE_OIDC_RETURN
 
 
 class JAAQLController(BaseJAAQLController):
@@ -178,9 +180,19 @@ class JAAQLController(BaseJAAQLController):
         def exchange_auth_code(http_inputs: dict, ip_address: str, response: JAAQLResponse):
             try:
                 self.model.exchange_auth_code(http_inputs, request.cookies.get(COOKIE_OIDC), ip_address, response)
-            except:  # Sometimes this can fail when the user didn't exist before
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                print(f"OIDC code exchange failed: {e}")
+                # Redirect to the saved return URL if available (survives OIDC cookie consumption),
+                # otherwise fall back to the app root
+                return_url = request.cookies.get(COOKIE_OIDC_RETURN)
                 response.response_code = HTTPStatus.FOUND
-                response.raw_headers["Location"] = self.model.url.replace("_", "localhost")
+                response.raw_headers["Location"] = return_url if return_url else self.model.url.replace("_", "localhost")
+
+        @self.publish_route('/resend-verify-email', DOCUMENTATION__resend_verify_email)
+        def resend_verify_email(http_inputs: dict):
+            self.model.resend_verification_email(http_inputs.get("email", ""))
 
         @self.publish_route('/.well-known/jwks', DOCUMENTATION__jwks)
         def fetch_jwks():

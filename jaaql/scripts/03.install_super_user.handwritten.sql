@@ -28,20 +28,42 @@ BEGIN
         -- Federation schema: stores OIDC identity linkage for federated/invited users
         PERFORM dblink_exec('dbname=' || database, 'CREATE SCHEMA IF NOT EXISTS federation;');
         PERFORM dblink_exec('dbname=' || database, '
-            CREATE TABLE IF NOT EXISTS federation.federated_user (
-                account_id  postgres_user_id       NOT NULL,
-                sub         oidc_subject_id        NOT NULL,
-                registered_at timestamptz           NOT NULL DEFAULT NOW(),
-                tenant      character varying(256)  NOT NULL,
-                provider    character varying(256)  NOT NULL,
-                PRIMARY KEY (account_id),
-                UNIQUE (sub, tenant, provider)
+            DO $d$ BEGIN CREATE DOMAIN postgres_user_id AS character varying(63); EXCEPTION WHEN duplicate_object THEN NULL; END $d$;
+        ');
+        PERFORM dblink_exec('dbname=' || database, '
+            DO $d$ BEGIN CREATE DOMAIN oidc_subject_id AS character varying(255); EXCEPTION WHEN duplicate_object THEN NULL; END $d$;
+        ');
+        PERFORM dblink_exec('dbname=' || database, '
+            CREATE TABLE IF NOT EXISTS federation.account (
+                account_id      postgres_user_id       NOT NULL,
+                PRIMARY KEY (account_id)
             );
         ');
-        PERFORM dblink_exec('dbname=' || database, 'GRANT USAGE ON SCHEMA federation TO registered;');
-        PERFORM dblink_exec('dbname=' || database, 'GRANT SELECT ON federation.federated_user TO registered;');
-        PERFORM dblink_exec('dbname=' || database, 'GRANT USAGE ON SCHEMA federation TO unconfirmed;');
-        PERFORM dblink_exec('dbname=' || database, 'GRANT SELECT ON federation.federated_user TO unconfirmed;');
+        PERFORM dblink_exec('dbname=' || database, '
+            CREATE TABLE IF NOT EXISTS federation.federated_user (
+                account_id      postgres_user_id       NOT NULL,
+                sub             oidc_subject_id        NOT NULL,
+                registered_at   timestamptz            NOT NULL DEFAULT NOW(),
+                tenant          character varying(256)  NOT NULL,
+                provider        character varying(256)  NOT NULL,
+                is_active       boolean                NOT NULL DEFAULT TRUE,
+                encrypted_email character varying(512),
+                PRIMARY KEY (tenant, provider, sub),
+                FOREIGN KEY (account_id) REFERENCES federation.account (account_id)
+            );
+        ');
+        PERFORM dblink_exec('dbname=' || database, '
+            CREATE INDEX IF NOT EXISTS idx_federated_user_account_id ON federation.federated_user (account_id);
+        ');
+        PERFORM dblink_exec('dbname=' || database, '
+            CREATE INDEX IF NOT EXISTS idx_federated_user_encrypted_email ON federation.federated_user (encrypted_email);
+        ');
+        PERFORM dblink_exec('dbname=' || database, 'ALTER SCHEMA federation OWNER TO dba;');
+        PERFORM dblink_exec('dbname=' || database, 'ALTER TABLE federation.account OWNER TO dba;');
+        PERFORM dblink_exec('dbname=' || database, 'ALTER TABLE federation.federated_user OWNER TO dba;');
+        PERFORM dblink_exec('dbname=' || database, 'GRANT USAGE ON SCHEMA federation TO jaaql;');
+        PERFORM dblink_exec('dbname=' || database, 'GRANT SELECT, INSERT, UPDATE ON federation.account TO jaaql;');
+        PERFORM dblink_exec('dbname=' || database, 'GRANT SELECT, INSERT, UPDATE ON federation.federated_user TO jaaql;');
     else
         raise notice 'You do not own this database'
                  'You cannot install the jaaql extension';

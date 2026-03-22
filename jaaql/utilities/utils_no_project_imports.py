@@ -73,6 +73,7 @@ def pull_from_dict(self, inputs: dict, keys: Union[list, str, dict]):
 COOKIE_JAAQL_AUTH = "jaaql_auth"
 COOKIE_LOGIN_MARKER = "jaaql_successful_auth"
 COOKIE_OIDC = "oidc"
+COOKIE_OIDC_RETURN = "oidc_return"
 COOKIE_FLAG_HTTP_ONLY = "HttpOnly"
 COOKIE_FLAG_SECURE = "Secure"
 COOKIE_ATTR_SAME_SITE = "SameSite"

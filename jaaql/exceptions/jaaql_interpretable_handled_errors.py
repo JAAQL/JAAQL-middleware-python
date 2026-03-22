@@ -127,10 +127,24 @@ class UserUnauthorized(JaaqlInterpretableHandledError):
         )
 
 
-class UnhandledJaaqlServerError(JaaqlInterpretableHandledError):
+class EmailConfirmationRequired(JaaqlInterpretableHandledError):
     def __init__(self, descriptor=None):
         super().__init__(
             error_code=1010,
+            http_response_code=403,
+            table_name=None,
+            message="Your email confirmation grace period has expired. Please confirm your email to continue.",
+            column_name=None,
+            _set=None,
+            index=None,
+            descriptor=descriptor
+        )
+
+
+class UnhandledJaaqlServerError(JaaqlInterpretableHandledError):
+    def __init__(self, descriptor=None):
+        super().__init__(
+            error_code=1099,
             http_response_code=500,
             table_name=None,
             message="An unhandled exception has occurred with JAAQL.",

@@ -27,6 +27,8 @@ CREATE DOMAIN scope_name AS character varying(50) CHECK (VALUE ~* '^[A-Za-z0-9_\
 CREATE DOMAIN provider_name AS character varying(63);
 CREATE DOMAIN tenant_name AS character varying(63);
 CREATE DOMAIN postgres_role AS character varying(63);
+CREATE DOMAIN postgres_user_id AS character varying(63);
+CREATE DOMAIN oidc_subject_id AS character varying(255);
 CREATE DOMAIN username AS character varying(63);
 CREATE DOMAIN api_key AS character varying(255);
 CREATE DOMAIN security_event_name AS character varying(64);

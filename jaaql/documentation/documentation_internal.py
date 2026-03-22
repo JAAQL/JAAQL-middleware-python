@@ -409,6 +409,16 @@ DOCUMENTATION__oidc_exchange_code = SwaggerDocumentation(
     )
 )
 
+DOCUMENTATION__resend_verify_email = SwaggerDocumentation(
+    tags="oidc",
+    security=False,
+    methods=SwaggerMethod(
+        name="Resend verification email",
+        description="Triggers Keycloak to resend a verification email for a given email address",
+        method=REST__POST,
+    )
+)
+
 DOCUMENTATION__jwks = SwaggerDocumentation(
     tags="jwks",
     security=False,

@@ -38,11 +38,9 @@ BEGIN
         EXECUTE 'CREATE ROLE ' || quote_ident(account_id);
     end if;
 
-    IF requires_email_verification THEN
-        EXECUTE 'GRANT unconfirmed TO ' || quote_ident(account_id);
-    ELSE
-        EXECUTE 'GRANT registered TO ' || quote_ident(account_id);
-    END IF;
+    -- Always grant registered so users have DB access during confirmation grace period.
+    -- The Python layer enforces the grace period check at token issue/refresh time.
+    EXECUTE 'GRANT registered TO ' || quote_ident(account_id);
 
     return account_id;
 END
