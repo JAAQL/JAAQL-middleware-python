@@ -46,6 +46,20 @@ fi
 Xvfb -ac :99 -screen 0 1920x1080x16 &
 export DISPLAY=:99
 
+# ── EasyAuth ephemeral mode ──────────────────────────────────────────
+# Azure App Service preserves the container's writable layer across
+# restarts, so Postgres data / vault files can survive when they
+# shouldn't.  Wipe on every entrypoint start so the container always
+# initialises from scratch.  This is safe because the gunicorn
+# "reboot" (to share state across workers) happens inside the while
+# loop at the bottom of this script — the entrypoint does not re-run.
+if [ "${USE_EASYAUTH}" = "TRUE" ]; then
+  echo "EasyAuth: wiping ephemeral data for clean start"
+  rm -rf /var/lib/postgresql/data/*
+  rm -rf /var/lib/postgresql/archives/*
+  rm -rf "${INSTALL_PATH:-/JAAQL-middleware-python}/vault"/* 2>/dev/null || true
+fi
+
 ARCHIVE_DIR=/var/lib/postgresql/archives
 mkdir -p $ARCHIVE_DIR
 WAS_EMPTY="false"
