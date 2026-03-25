@@ -862,6 +862,7 @@ WHERE
                 email_verified = id_payload.get('email_verified') if require_email_verification else True
                 if email_verified:
                     mark_account_registered(self.jaaql_lookup_connection, account[KG__account__id])
+                    account[KG__account__email_verified] = True
 
         except HttpSingletonStatusException:
             # User does not exist, federate it
