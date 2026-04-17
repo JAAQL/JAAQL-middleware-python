@@ -1275,15 +1275,18 @@ WHERE
             with open(file_path, 'r') as file:
                 lines = file.readlines()
 
+            # Strip existing QUIC/HTTP3 lines so they can be cleanly re-added
+            # in the second pass without preventing the config update.
+            lines = [l for l in lines if "listen 443 quic" not in l
+                     and "listen [::]:443 quic" not in l
+                     and "http3 on;" not in l.strip()
+                     and not (l.strip().startswith("add_header Alt-Svc") and "h3=" in l)]
+
             # Initialize variables to track the current state and to store updated lines
             in_section = False
             updated_lines = []
 
-            do_write = True
-
             for line in lines:
-                if "listen 443 quic" in line:
-                    do_write = False
                 if line.strip().startswith('charset'):
                     in_section = True
                     continue  # Skip to the next iteration
@@ -1314,9 +1317,8 @@ WHERE
                     second_iteration_updated_lines.append(line)
 
             # Write the updated content back to the file
-            if do_write:
-                with open(file_path, 'w') as file:
-                    file.writelines(second_iteration_updated_lines)
+            with open(file_path, 'w') as file:
+                file.writelines(second_iteration_updated_lines)
 
             subprocess.call(['nginx', '-s', 'reload'])
         else:
