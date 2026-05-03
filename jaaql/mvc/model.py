@@ -1316,6 +1316,15 @@ WHERE
                 if not in_localhost or not line.strip().startswith("limit_req"):  # Ignore limit req for local requests
                     second_iteration_updated_lines.append(line)
 
+            # Defensive: if the input had `listen 443 ssl` (Certbot installed it) but
+            # our output dropped it, refuse to write. Better to leave Certbot's working
+            # config in place than overwrite with a broken one.
+            input_had_ssl = any('listen 443 ssl' in l for l in open(file_path).readlines())
+            output_has_ssl = any('listen 443 ssl' in l for l in second_iteration_updated_lines)
+            if input_had_ssl and not output_has_ssl:
+                print('set_web_config aborting: would have lost listen 443 ssl', file=sys.stderr)
+                return
+
             # Write the updated content back to the file
             with open(file_path, 'w') as file:
                 file.writelines(second_iteration_updated_lines)

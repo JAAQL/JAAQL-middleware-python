@@ -396,7 +396,11 @@ if [ "$IS_HTTPS" = "TRUE" ] ; then
   elif [ "$PIGGYBACK_LETSENCRYPT" = "TRUE" ] ; then
     echo "Skipping certbot renewal as piggybacking implementation"
   else
-    $CERTBOT_PATH renew --dry-run &
+    # Do NOT run `certbot renew --dry-run` here. Certbot 5.x's nginx plugin
+    # writes ACME-challenge blocks into /etc/nginx/conf.d/jaaql.conf during a
+    # dry-run and never rolls them back; reset_app.sh's set_web_config then
+    # consumes that corrupted input and emits a config without
+    # `listen 443 ssl;`, breaking HTTPS until manual recovery.
     (/usr/bin/crontab -l 2>/dev/null; echo "0 0,12 * * * flock -n /var/run/certbot.lock $CERTBOT_PATH renew -q") | /usr/bin/crontab -
   fi
 fi
