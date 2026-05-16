@@ -124,6 +124,28 @@ QUERY__purge_rendered_document = "DELETE FROM document_request WHERE completed i
 QUERY__fetch_rendered_document = "SELECT app.base_url, rd.uuid as document_id, 'pdf' as render_as, rd.file_name, rd.create_file, rd.completed, rd.encrypted_access_token as oauth_token FROM document_request rd INNER JOIN document_template able ON rd.template = able.name INNER JOIN application app ON app.name = rd.application WHERE rd.uuid = :document_id"
 QUERY__fetch_cron_jobs = "SELECT * FROM remote_procedure WHERE access = 'S'";
 
+
+def _rewrite_endpoint_to_origin(endpoint_url: str, target_origin_url: str) -> str:
+    # Swap scheme+host of `endpoint_url` for those of `target_origin_url`,
+    # preserving path/query/fragment. Returns endpoint_url unchanged if either
+    # input is missing a scheme or host. Used to keep the OIDC auth iframe
+    # same-origin with the parent app — see fetch_redirect_uri.
+    if not endpoint_url or not target_origin_url:
+        return endpoint_url
+    parsed_endpoint = urllib.parse.urlparse(endpoint_url)
+    parsed_origin = urllib.parse.urlparse(target_origin_url)
+    if not parsed_origin.scheme or not parsed_origin.netloc:
+        return endpoint_url
+    return urllib.parse.urlunparse((
+        parsed_origin.scheme,
+        parsed_origin.netloc,
+        parsed_endpoint.path,
+        parsed_endpoint.params,
+        parsed_endpoint.query,
+        parsed_endpoint.fragment,
+    ))
+
+
 class JAAQLModel(BaseJAAQLModel):
     VERIFICATION_QUEUE = None
 
@@ -697,9 +719,18 @@ WHERE
         discovery = self.fetch_discovery_content(database, provider, tenant, user_registry[KG__user_registry__discovery_url])
         jwk_client = self.fetch_jwks_client(database, provider, tenant, discovery)
 
-        expected_issuer = os.environ.get("OIDC_ISSUER", "").strip() or discovery.get("issuer")
-        if not expected_issuer:
-            raise Exception(f"Failed to fetch issuer in discovery document for {provider}, {tenant}")
+        oidc_issuer_override = os.environ.get("OIDC_ISSUER", "").strip()
+        if oidc_issuer_override:
+            expected_issuer = oidc_issuer_override
+        else:
+            expected_issuer = discovery.get("issuer")
+            if not expected_issuer:
+                raise Exception(f"Failed to fetch issuer in discovery document for {provider}, {tenant}")
+            # JARMS and id_tokens echo Keycloak's view of the host the BROWSER
+            # hit — which, with the same-origin proxy in place, is the app's
+            # base_url, not the server-side discovery host. Rewrite the
+            # discovery issuer to match so jwt.decode(...issuer=...) lines up.
+            expected_issuer = _rewrite_endpoint_to_origin(expected_issuer, application_tuple[KG__application__base_url])
 
         token_endpoint = discovery.get("token_endpoint")
         if not token_endpoint:
@@ -988,7 +1019,7 @@ WHERE
                             attributes=get_cookie_attrs(self.vigilant_sessions, False, self.is_container),
                             is_https=self.is_https)
 
-        response.set_cookie(COOKIE_LOGIN_MARKER, value="true", is_https=True, attributes=get_sloppy_cookie_attrs())
+        response.set_cookie(COOKIE_LOGIN_MARKER, value="true", is_https=self.is_https, attributes=get_sloppy_cookie_attrs())
 
         return account, address
 
@@ -1125,6 +1156,15 @@ WHERE
         auth_endpoint = discovery.get("authorization_endpoint")
         if not auth_endpoint:
             raise Exception("Authorization endpoint not found in discovery document")
+
+        # Rewrite host to the application's own origin so the OIDC login iframe
+        # stays same-origin with the parent page (password managers refuse to
+        # autofill cross-origin iframes). The nginx proxy in the app container
+        # forwards /realms/* and /resources/* back to the identity host.
+        # Only the host changes; the path (/realms/<R>/protocol/openid-connect/auth)
+        # is preserved verbatim so the proxy can route it as-is. PAR, token,
+        # JWKS and discovery endpoints are server-to-server and stay on identity.
+        auth_endpoint = _rewrite_endpoint_to_origin(auth_endpoint, application[KG__application__base_url])
 
         parameters = fetch_parameters_for_federation_procedure(self.jaaql_lookup_connection,
                                                                database_user_registry[KG__database_user_registry__federation_procedure])
@@ -2341,7 +2381,7 @@ WHERE
             application = application__select(self.jaaql_lookup_connection, inputs[KEY__application])
             redirect_uri = inputs.get(KEY__redirect_uri, "")
             post_logout_url = application[KG__application__base_url] + "/" + redirect_uri
-            response.set_cookie(COOKIE_LOGIN_MARKER, value="", is_https=True, attributes=get_sloppy_cookie_attrs())
+            response.set_cookie(COOKIE_LOGIN_MARKER, value="", is_https=self.is_https, attributes=get_sloppy_cookie_attrs())
             response.response_code = HTTPStatus.FOUND
             response.raw_headers["Location"] = "/.auth/logout?post_logout_redirect_uri=" + urllib.parse.quote(post_logout_url)
             return
@@ -2405,7 +2445,7 @@ WHERE
         # Kill your own app session immediately
         response.delete_cookie(COOKIE_JAAQL_AUTH, self.is_https)
         # Optional: clear the UI helper marker
-        response.set_cookie(COOKIE_LOGIN_MARKER, value="", is_https=True, attributes=get_sloppy_cookie_attrs())
+        response.set_cookie(COOKIE_LOGIN_MARKER, value="", is_https=self.is_https, attributes=get_sloppy_cookie_attrs())
 
         # Build front-channel logout URL (Keycloak requires either id_token_hint OR client_id with post_logout_redirect_uri)
         url = urllib.parse.urlsplit(end_session)
