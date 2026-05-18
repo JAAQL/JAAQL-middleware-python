@@ -27,6 +27,10 @@ BEGIN
 
         -- Federation schema: stores OIDC identity linkage for federated/invited users
         PERFORM dblink_exec('dbname=' || database, 'CREATE SCHEMA IF NOT EXISTS federation;');
+        -- The public-schema copies are kept for backwards compatibility with code that
+        -- references the domains unqualified. The federation-schema copies are what the
+        -- federation tables themselves type against, so they survive a `DROP SCHEMA public
+        -- CASCADE` (e.g. from JAAQL's own folder-migration step in migrations_manager_service.py).
         PERFORM dblink_exec('dbname=' || database, '
             DO $d$ BEGIN CREATE DOMAIN postgres_user_id AS character varying(63); EXCEPTION WHEN duplicate_object THEN NULL; END $d$;
         ');
@@ -34,19 +38,25 @@ BEGIN
             DO $d$ BEGIN CREATE DOMAIN oidc_subject_id AS character varying(255); EXCEPTION WHEN duplicate_object THEN NULL; END $d$;
         ');
         PERFORM dblink_exec('dbname=' || database, '
+            DO $d$ BEGIN CREATE DOMAIN federation.postgres_user_id AS character varying(63); EXCEPTION WHEN duplicate_object THEN NULL; END $d$;
+        ');
+        PERFORM dblink_exec('dbname=' || database, '
+            DO $d$ BEGIN CREATE DOMAIN federation.oidc_subject_id AS character varying(255); EXCEPTION WHEN duplicate_object THEN NULL; END $d$;
+        ');
+        PERFORM dblink_exec('dbname=' || database, '
             CREATE TABLE IF NOT EXISTS federation.account (
-                account_id      postgres_user_id       NOT NULL,
+                account_id      federation.postgres_user_id       NOT NULL,
                 PRIMARY KEY (account_id)
             );
         ');
         PERFORM dblink_exec('dbname=' || database, '
             CREATE TABLE IF NOT EXISTS federation.federated_user (
-                account_id      postgres_user_id       NOT NULL,
-                sub             oidc_subject_id        NOT NULL,
-                registered_at   timestamptz            NOT NULL DEFAULT NOW(),
-                tenant          character varying(256)  NOT NULL,
-                provider        character varying(256)  NOT NULL,
-                is_active       boolean                NOT NULL DEFAULT TRUE,
+                account_id      federation.postgres_user_id       NOT NULL,
+                sub             federation.oidc_subject_id        NOT NULL,
+                registered_at   timestamptz                       NOT NULL DEFAULT NOW(),
+                tenant          character varying(256)            NOT NULL,
+                provider        character varying(256)            NOT NULL,
+                is_active       boolean                           NOT NULL DEFAULT TRUE,
                 encrypted_email character varying(512),
                 PRIMARY KEY (tenant, provider, sub),
                 FOREIGN KEY (account_id) REFERENCES federation.account (account_id)
