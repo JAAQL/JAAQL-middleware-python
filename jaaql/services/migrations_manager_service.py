@@ -393,16 +393,64 @@ def _run_folder_migration(folder_path: str, folder_name: str,
     _run_psql_file(pre_wipe, "dba", app_database)
 
     # Step 3: Wipe public schema.
+    #
+    # DROP SCHEMA public CASCADE wipes any extension installed in public (unaccent,
+    # pg_trgm, pgcrypto, ...) AND any column typed against a public-schema domain.
+    # JAAQL's federation tables historically typed account_id/sub against
+    # public.postgres_user_id / public.oidc_subject_id, so the cascade silently
+    # removed those columns. We snapshot extensions before the drop and restore
+    # them afterwards, and migrate the federation column types onto the federation-
+    # schema copies of the domains so they survive the wipe in future.
     print(f"  Wiping public schema", file=sys.stderr)
+
+    public_extensions_raw = _run_psql_query(
+        "SELECT extname FROM pg_extension "
+        "WHERE extnamespace = 'public'::regnamespace AND extname <> 'plpgsql_check' "
+        "ORDER BY extname;",
+        "postgres", app_database,
+    )
+    public_extensions = [e.strip() for e in public_extensions_raw.split("\n") if e.strip()]
+    print(f"  Preserving public-schema extensions: {public_extensions or '(none)'}", file=sys.stderr)
+
+    # Re-house federation domains and any federation columns that still type against
+    # the public-schema versions. Idempotent: healthy / already-migrated systems no-op.
     _run_psql_query(
+        "CREATE SCHEMA IF NOT EXISTS federation; "
+        "DO $d$ BEGIN CREATE DOMAIN federation.postgres_user_id AS character varying(63);  EXCEPTION WHEN duplicate_object THEN NULL; END $d$; "
+        "DO $d$ BEGIN CREATE DOMAIN federation.oidc_subject_id  AS character varying(255); EXCEPTION WHEN duplicate_object THEN NULL; END $d$; "
+        "DO $alter$ BEGIN "
+        "  IF EXISTS (SELECT 1 FROM information_schema.columns "
+        "             WHERE table_schema='federation' AND table_name='account' "
+        "             AND column_name='account_id' AND udt_schema='public' AND udt_name='postgres_user_id') THEN "
+        "    ALTER TABLE federation.account ALTER COLUMN account_id TYPE federation.postgres_user_id; "
+        "  END IF; "
+        "  IF EXISTS (SELECT 1 FROM information_schema.columns "
+        "             WHERE table_schema='federation' AND table_name='federated_user' "
+        "             AND column_name='account_id' AND udt_schema='public' AND udt_name='postgres_user_id') THEN "
+        "    ALTER TABLE federation.federated_user ALTER COLUMN account_id TYPE federation.postgres_user_id; "
+        "  END IF; "
+        "  IF EXISTS (SELECT 1 FROM information_schema.columns "
+        "             WHERE table_schema='federation' AND table_name='federated_user' "
+        "             AND column_name='sub' AND udt_schema='public' AND udt_name='oidc_subject_id') THEN "
+        "    ALTER TABLE federation.federated_user ALTER COLUMN sub TYPE federation.oidc_subject_id; "
+        "  END IF; "
+        "END $alter$;",
+        "postgres", app_database,
+    )
+
+    drop_recreate = (
         "SET search_path = public, pg_catalog; "
         "DROP EXTENSION IF EXISTS plpgsql_check; "
         "DROP SCHEMA IF EXISTS public CASCADE; "
         "CREATE SCHEMA public; "
         "GRANT USAGE, CREATE ON SCHEMA public TO PUBLIC; "
-        "CREATE EXTENSION IF NOT EXISTS plpgsql_check SCHEMA public;",
-        "postgres", app_database,
+        "CREATE EXTENSION IF NOT EXISTS plpgsql_check SCHEMA public; "
     )
+    for ext in public_extensions:
+        # extname comes from pg_extension; safe to interpolate as a quoted identifier.
+        drop_recreate += f'CREATE EXTENSION IF NOT EXISTS "{ext}" SCHEMA public; '
+
+    _run_psql_query(drop_recreate, "postgres", app_database)
 
     # Step 4: Rebuild schema from data model (migration pt1).
     print(f"  Rebuilding schema via migration pt1: {pt1}", file=sys.stderr)
