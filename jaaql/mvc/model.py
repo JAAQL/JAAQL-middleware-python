@@ -146,6 +146,29 @@ def _rewrite_endpoint_to_origin(endpoint_url: str, target_origin_url: str) -> st
     ))
 
 
+def _keycloak_backchannel_origin(discovery_url: str) -> str:
+    # Canonical scheme+host that JAAQL uses for SERVER-side Keycloak calls
+    # (PAR, token, JWKS). With per-realm frontendUrl set, the discovery doc
+    # advertises endpoint URLs against the BROWSER host (the app's domain),
+    # which routes through the same-origin nginx proxy. That proxy terminates
+    # the middleware's mTLS handshake at the app's nginx and opens a fresh
+    # upstream TLS connection — the FAPI client cert never reaches Keycloak.
+    # So for backchannel we must skip the proxy.
+    #
+    # Source of truth: KEYCLOAK_URL env var (already set per-deployment).
+    # Fallback: the origin of user_registry.discovery_url, which is also the
+    # canonical server-side host for the deployment.
+    env_url = os.environ.get("KEYCLOAK_URL", "").strip().rstrip("/")
+    if env_url:
+        return env_url
+    if not discovery_url:
+        return ""
+    parsed = urllib.parse.urlparse(discovery_url)
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
 class JAAQLModel(BaseJAAQLModel):
     VERIFICATION_QUEUE = None
 
@@ -670,9 +693,16 @@ WHERE
         return discovery
 
     def fetch_jwks_client(self, database: str, provider: str, tenant: str, discovery):
-        jwks_url = discovery.get("jwks_uri").replace("localhost", "host.docker.internal")
+        jwks_url = discovery.get("jwks_uri")
         if not jwks_url:
             raise Exception(f"Discovery document for {provider}, {tenant} did not have JWKS url")
+        # Force backchannel: skip the app same-origin proxy and hit Keycloak directly.
+        # JWKS doesn't require mTLS, but keeping all backchannel calls on the same
+        # canonical host avoids surprise routing and an extra hop. KEYCLOAK_URL env
+        # is the source of truth; if absent we leave the discovery URL untouched.
+        backchannel_origin = os.environ.get("KEYCLOAK_URL", "").strip().rstrip("/")
+        if backchannel_origin:
+            jwks_url = _rewrite_endpoint_to_origin(jwks_url, backchannel_origin)
         lookup = database + ":" + provider + ":" + tenant
         jwks = self.JWKS_CACHE.get(lookup)
         if not jwks:
@@ -735,6 +765,9 @@ WHERE
         token_endpoint = discovery.get("token_endpoint")
         if not token_endpoint:
             raise Exception(f"No token endpoint for {provider}, {tenant}")
+        # Force backchannel: hit Keycloak directly (skip the app same-origin proxy)
+        # so the FAPI client cert presented at TLS handshake actually reaches Keycloak.
+        token_endpoint = _rewrite_endpoint_to_origin(token_endpoint, _keycloak_backchannel_origin(user_registry[KG__user_registry__discovery_url]))
         allowed_algs = discovery.get("id_token_signing_alg_values_supported")
         if not allowed_algs:
             raise Exception(f"No allowed algs for {provider}, {tenant}")
@@ -813,7 +846,7 @@ WHERE
             })
 
         token_response = self.idp_session.post(
-            token_endpoint.replace("localhost", "host.docker.internal"),
+            token_endpoint,
             data=token_request_payload,
             **kwargs
         )
@@ -1218,7 +1251,11 @@ WHERE
             par_endpoint = discovery.get("pushed_authorization_request_endpoint")
             if not par_endpoint:
                 raise Exception("Pushed Authorization Request endpoint not found in discovery document.")
-            par_endpoint = par_endpoint.replace("localhost", "host.docker.internal")
+            # Force backchannel calls to go DIRECT to Keycloak (skip the app's
+            # same-origin proxy, which would terminate mTLS at the app's nginx
+            # and never forward the FAPI client cert to identity). See
+            # _keycloak_backchannel_origin.
+            par_endpoint = _rewrite_endpoint_to_origin(par_endpoint, _keycloak_backchannel_origin(user_registry[KG__user_registry__discovery_url]))
 
             par_payload = {
                 "client_id": database_user_registry[KG__database_user_registry__client_id],
