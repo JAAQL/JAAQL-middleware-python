@@ -28,6 +28,40 @@ QUERY__dba_query = "SELECT pg_has_role(datdba::regrole, 'MEMBER') FROM pg_databa
 QUERY__dba_query_external = "SELECT pg_has_role(datdba::regrole, 'MEMBER') FROM pg_database WHERE datname = current_database();"
 
 
+def _escape_unescaped_percent(query: str) -> str:
+    # psycopg3 scans every '%' in the SQL when parameters are supplied and
+    # rejects anything that isn't a placeholder or '%%'. JAAQL uses named
+    # parameters only (:parameter -> %(name)s), so positional %s/%b/%t must
+    # never survive: any '%s' in author SQL is a literal inside a string
+    # (LIKE '%saas%', LIKE '%twynstra%', etc.), not a placeholder. Escape
+    # everything except '%%' and '%(name)X'.
+    out = []
+    i = 0
+    n = len(query)
+    while i < n:
+        if query[i] != '%':
+            out.append(query[i])
+            i += 1
+            continue
+
+        nxt = query[i + 1] if i + 1 < n else ''
+        if nxt == '%':
+            out.append('%%')
+            i += 2
+        elif nxt == '(':
+            close = query.find(')', i + 2)
+            if close == -1 or close + 1 >= n:
+                out.append('%%')
+                i += 1
+            else:
+                out.append(query[i:close + 2])
+                i = close + 2
+        else:
+            out.append('%%')
+            i += 1
+    return ''.join(out)
+
+
 class DBPGInterface(DBInterface):
 
     HOST_POOLS = {}
@@ -210,7 +244,7 @@ class DBPGInterface(DBInterface):
                     if parameters is None or len(parameters.keys()) == 0:
                         cursor.execute(query, prepare=do_prepare)
                     else:
-                        cursor.execute(query, parameters, prepare=do_prepare)
+                        cursor.execute(_escape_unescaped_percent(query), parameters, prepare=do_prepare)
                     if cursor.description is None:
                         return [], [], []
                     else:
