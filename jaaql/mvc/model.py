@@ -914,6 +914,47 @@ WHERE
         response.response_code = HTTPStatus.FOUND
         response.raw_headers["Location"] = oidc_state[KEY__redirect_uri]
 
+    def _run_federation_procedure(self, database_user_registry, application, schema,
+                                  account_id, provider, tenant, email, sub, id_payload):
+        # Runs the app database's federation procedure (e.g. linking the JAAQL account to an
+        # app user row). Safe to call on every login: the procedure is expected to be idempotent.
+        if database_user_registry is None or application is None or schema is None:
+            return
+
+        db_params = {"tenant": tenant, "application": application, "account_id": account_id, "provider": provider,
+                     "email": email, "sub": sub}
+        parameters = fetch_parameters_for_federation_procedure(self.jaaql_lookup_connection,
+                                                               database_user_registry[KG__database_user_registry__federation_procedure])
+        for claim in parameters:
+            claim_name = claim[KG__federation_procedure_parameter__name]
+            db_params[claim_name] = id_payload.get(claim_name, "")
+
+        procedure_name = database_user_registry[KG__database_user_registry__federation_procedure]
+        if re.match(REGEX__dmbs_procedure_name, procedure_name) is None:
+            raise HttpStatusException("Unsafe data federation procedure")
+
+        procedure_params = []
+        for key, _ in db_params.items():
+            if re.match(REGEX__dmbs_object_name, key) is None:
+                raise HttpStatusException("Unsafe data federation parameter " + key)
+            procedure_params.append(f"{key} => :{key}")
+
+        submit_data = {
+            KEY__application: application,
+            KEY_query: f"SELECT * FROM \"{procedure_name}\"({', '.join(procedure_params)});",
+            KEY__schema: schema,
+            KEY__parameters: db_params
+        }
+
+        print("Preparing federating procedure")
+
+        submit(self.vault, self.config, self.get_db_crypt_key(),
+               self.jaaql_lookup_connection, submit_data, ROLE__jaaql,
+               None, self.cached_canned_query_service, as_objects=True, singleton=True)
+
+        print("Federated user")
+        print(submit_data)
+
     def _federate_and_issue_jwt(self, sub, provider, tenant, id_payload, ip_address, response,
                                 application=None, schema=None, database_user_registry=None):
         account = None
@@ -928,6 +969,17 @@ WHERE
                     mark_account_registered(self.jaaql_lookup_connection, account[KG__account__id])
                     account[KG__account__email_verified] = True
 
+            # Re-run the federation procedure for already-known accounts so the app-side
+            # person<->account linkage self-heals when the app user was created after the
+            # account was first federated. Best-effort: a federation procedure failure (e.g. the
+            # app user does not exist yet) must not break an otherwise valid login.
+            try:
+                self._run_federation_procedure(database_user_registry, application, schema,
+                                               account[KG__account__id], provider, tenant,
+                                               id_payload.get('email'), sub, id_payload)
+            except Exception as e:
+                print(f"Federation procedure (existing-account re-link) skipped: {e}")
+
         except HttpSingletonStatusException:
             # User does not exist, federate it
             print("federating user")
@@ -939,40 +991,8 @@ WHERE
             print("new federated user with account id " + account_id)
             account = account__select(self.jaaql_lookup_connection, self.get_db_crypt_key(), account_id)
 
-            if database_user_registry is not None and application is not None and schema is not None:
-                db_params = {"tenant": tenant, "application": application, "account_id": account_id, "provider": provider,
-                             "email": email, "sub": sub}
-                parameters = fetch_parameters_for_federation_procedure(self.jaaql_lookup_connection,
-                                                                       database_user_registry[KG__database_user_registry__federation_procedure])
-                for claim in parameters:
-                    claim_name = claim[KG__federation_procedure_parameter__name]
-                    db_params[claim_name] = id_payload.get(claim_name, "")
-
-                procedure_name = database_user_registry[KG__database_user_registry__federation_procedure]
-                if re.match(REGEX__dmbs_procedure_name, procedure_name) is None:
-                    raise HttpStatusException("Unsafe data federation procedure")
-
-                procedure_params = []
-                for key, _ in db_params.items():
-                    if re.match(REGEX__dmbs_object_name, key) is None:
-                        raise HttpStatusException("Unsafe data federation parameter " + key)
-                    procedure_params.append(f"{key} => :{key}")
-
-                submit_data = {
-                    KEY__application: application,
-                    KEY_query: f"SELECT * FROM \"{procedure_name}\"({', '.join(procedure_params)});",
-                    KEY__schema: schema,
-                    KEY__parameters: db_params
-                }
-
-                print("Preparing federating procedure")
-
-                submit(self.vault, self.config, self.get_db_crypt_key(),
-                       self.jaaql_lookup_connection, submit_data, ROLE__jaaql,
-                       None, self.cached_canned_query_service, as_objects=True, singleton=True)
-
-                print("Federated user")
-                print(submit_data)
+            self._run_federation_procedure(database_user_registry, application, schema,
+                                           account_id, provider, tenant, email, sub, id_payload)
 
             # Insert into federation.federated_user on the app database
             if database_user_registry is not None:
@@ -2162,6 +2182,17 @@ WHERE
                     )
                 finally:
                     app_connection.close()
+
+                # Link the freshly-created app user (the person row created by the gate procedure
+                # above) to this account now, instead of waiting for a first login that will never
+                # trigger federation (the account already exists by then). Best-effort: do not fail
+                # user creation if the federation procedure errors.
+                try:
+                    self._run_federation_procedure(registry, application, "default",
+                                                   new_account_id, provider, tenant,
+                                                   username, user_id, {"email": username})
+                except Exception as e:
+                    print(f"Federation procedure (admin create user) skipped: {e}")
 
         return {
             "temporary_password": temp_pw,
