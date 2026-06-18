@@ -13,6 +13,7 @@ from flask import request
 import queue
 
 from jaaql.utilities.utils_no_project_imports import COOKIE_OIDC, COOKIE_OIDC_RETURN
+from jaaql.interpreter.interpret_jaaql import KEY_query, KEY_parameters
 
 
 class JAAQLController(BaseJAAQLController):
@@ -221,3 +222,33 @@ class JAAQLController(BaseJAAQLController):
                 {"state": http_inputs["state"], "oidc_cookie": request.cookies.get(COOKIE_OIDC)},
                 response
             )
+
+        @self.publish_route(ENDPOINT__report_sentinel_error, DOCUMENTATION__report_sentinel_error, True)
+        def report_sentinel_error(http_inputs: dict, ip_address: str):
+            # Public error-reporting endpoint, moved here from the deprecated jaaql-sentinel-middleware.
+            # MUST NEVER return a 500: a 500 makes JAAQL self-report (SENTINEL_URL=_) and recurse.
+            ins_error = (
+                "insert into error (location, source_file, user_agent, ip_address, error_condensed, stacktrace, "
+                "file_line_number, file_col_number, version, source_system) "
+                "VALUES (:location, :source_file, #user_agent, #ip_address, left(:error_condensed, 200), :stacktrace, "
+                ":file_line_number, :file_col_number, :version, :source_system) "
+                "RETURNING id::text as error_id"
+            )
+            try:
+                http_inputs["ip_address"] = ip_address  # plaintext -> #ip_address (field-level encrypted)
+                inserted = self.model.submit(
+                    {KEY_query: ins_error, KEY_parameters: http_inputs, KEY__application: "sentinel"},
+                    ROLE__dba, as_objects=True, singleton=True
+                )
+                self.model.submit(
+                    {
+                        KEY_query: 'SELECT "error.process_alert"(:id, :raw_ip_address)',
+                        KEY_parameters: {"id": inserted["error_id"], "raw_ip_address": ip_address},
+                        KEY__application: "sentinel"
+                    },
+                    ROLE__dba
+                )
+            except Exception as ex:
+                import traceback
+                traceback.print_exc()
+                raise HttpStatusException(str(ex))

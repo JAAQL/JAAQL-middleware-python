@@ -606,3 +606,25 @@ DOCUMENTATION__security_event = SwaggerDocumentation(
         response=RES__allow_all
     )
 )
+
+DOCUMENTATION__report_sentinel_error = SwaggerDocumentation(
+    tags="Reporting",
+    security=False,  # PUBLIC: also receives self-posts from the in-core sentinel reporter (SENTINEL_URL=_)
+    methods=SwaggerMethod(
+        name="Report error",
+        description="Logs an application error (user_agent + ip_address encrypted at rest) and triggers Sentinel "
+                    "alert processing. Never returns 500 (would otherwise make JAAQL report itself recursively).",
+        method=REST__POST,
+        body=[
+            SwaggerArgumentResponse(name="location", description="URL/location where the error occurred", arg_type=str, example=["https://app/index.html"]),
+            SwaggerArgumentResponse(name="source_file", description="Source file the error occurred in", arg_type=str, example=["common.js"]),
+            SwaggerArgumentResponse(name="error_condensed", description="Condensed error (truncated to 200 chars for grouping)", arg_type=str, example=["Uncaught TypeError"]),
+            SwaggerArgumentResponse(name="stacktrace", description="Full stacktrace", arg_type=str, example=["at <anonymous>:1:16"]),
+            SwaggerArgumentResponse(name="version", description="Product version", arg_type=str, example=["1.2.3"]),
+            SwaggerArgumentResponse(name="source_system", description="Originating system/application", arg_type=str, example=["JAAQL"]),
+            SwaggerArgumentResponse(name="file_line_number", description="Line number", arg_type=int, required=False, condition="If available", example=[123]),
+            SwaggerArgumentResponse(name="file_col_number", description="Column number", arg_type=int, required=False, condition="If available", example=[21]),
+            SwaggerArgumentResponse(name="user_agent", description="Browser user agent (encrypted at rest). Absent on internal self-posts.", arg_type=str, required=False, condition="If present", example=["Mozilla/5.0"]),
+        ]
+    )
+)
