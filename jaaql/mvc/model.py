@@ -1796,6 +1796,14 @@ WHERE
                                         submit_data, account_id, None, self.cached_canned_query_service,
                                         as_objects=True, singleton=True)
 
+        # Inject the JAAQL system email params so templates can deep-link back to
+        # the app via {{JAAQL__APP_URL}} (and {{JAAQL__APP_NAME}} / {{JAAQL__EMAIL_ADDRESS}}).
+        # The replacement set was otherwise the data-view row only, so these tokens
+        # went unresolved on every send path (e.g. cloud-proc alert mail).
+        email_replacement_data[EMAIL_PARAM__app_url] = self.replace_default_app_url(app[KG__application__base_url])
+        email_replacement_data[EMAIL_PARAM__app_name] = app[KG__application__name]
+        email_replacement_data[EMAIL_PARAM__email_address] = username
+
         document_templates = fetch_document_templates_for_email_template(self.jaaql_lookup_connection, inputs[KEY__application],
                                                                          inputs[KEY__template])
         attachments = [
