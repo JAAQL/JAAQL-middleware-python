@@ -158,8 +158,10 @@ class JAAQLController(BaseJAAQLController):
 
         @self.publish_route('/secure/<application>/<name>', DOCUMENTATION__secure_webhook)
         def handle_secure_webhook(application: str, name: str, body: bytes, headers: dict, args: dict,
-                                  response: JAAQLResponse, account_id: str):
-            self.model.handle_webhook(application, name, body, headers, args, response, account_id)
+                                  response: JAAQLResponse, username: str):
+            # Pass the username, not the account id: the proc runtime forwards this value as the bypass
+            # emulation user (dbms_user), which the server resolves via account.username
+            self.model.handle_webhook(application, name, body, headers, args, response, username)
 
         @self.publish_route('/remote_procedure', DOCUMENTATION__remote_procedures)
         def handle_remote_procedure(http_inputs: dict, is_the_anonymous_user: bool, auth_token: str, username: str, ip_address: str, account_id: str):
@@ -238,7 +240,7 @@ class JAAQLController(BaseJAAQLController):
                 http_inputs["ip_address"] = ip_address  # plaintext -> #ip_address (field-level encrypted)
                 inserted = self.model.submit(
                     {KEY_query: ins_error, KEY_parameters: http_inputs, KEY__application: "sentinel"},
-                    ROLE__dba, as_objects=True, singleton=True
+                    ROLE__dba, as_objects=True, singleton=True, server_authored_query=True
                 )
                 self.model.submit(
                     {
@@ -246,7 +248,7 @@ class JAAQLController(BaseJAAQLController):
                         KEY_parameters: {"id": inserted["error_id"], "raw_ip_address": ip_address},
                         KEY__application: "sentinel"
                     },
-                    ROLE__dba
+                    ROLE__dba, server_authored_query=True
                 )
             except Exception as ex:
                 import traceback

@@ -2254,7 +2254,7 @@ WHERE
             raise HttpStatusException("Could not intepret remote procedure result", HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def handle_webhook(self, application: str, name: str, body: bytes, headers: dict, args: dict,
-                       response: JAAQLResponse, account_id: str | None):
+                       response: JAAQLResponse, username: str | None):
         rpc = remote_procedure__select(self.jaaql_lookup_connection, application, name)
         if rpc[KG__remote_procedure__access] != RPC_ACCESS__webhook:
             raise HttpStatusException("Procedure type is not type webhook")
@@ -2275,17 +2275,19 @@ WHERE
 
         argv = shlex.split(base_cmd)  # ["node","--import","./__imports__.js","RemoteProcedures/...entrypoint.js"]
         argv += [encoded_headers, encoded_args, encoded_body]
-        if account_id is not None:
-            argv += [account_id]
+        if username is not None:
+            argv += [username]  # consumed as webhook.dbms_user: the user the proc emulates via the bypass key
 
         # No shell; pass argv list. Capture output as text.
+        # Webhooks are implicit system access on the BATON side, so they need the super bypass key
         result = subprocess.run(
             argv,
             cwd=cwd,  # None if no "cd … &&" in the command
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            check=False
+            check=False,
+            env=self.env_with_super_bypass_key()
         )
 
         try:
@@ -2333,6 +2335,13 @@ WHERE
                 { **proc, KG__remote_procedure__application: inputs[KEY__application] })
 
 
+    def env_with_super_bypass_key(self):
+        # System crons and webhooks authenticate back to JAAQL with the super bypass key, which the BATON runtime
+        # reads from this env var. get_or_seed_vault_secret scrubs the var from os.environ at startup, so spawned
+        # children no longer inherit it - it must be re-injected here. Never inject it for private/public remote
+        # procedures (handle_procedure): those run code on behalf of a normal user and must not hold the master key
+        return {**os.environ, ENVIRON__JAAQL__SUPER_BYPASS_KEY: self.local_super_access_key}
+
     def execute_cron_jobs(self, ip_address: str):
         if ip_address not in IPS__local:
             raise UserUnauthorized()
@@ -2349,7 +2358,8 @@ WHERE
                     cron[KEY__command],
                     shell=True,
                     start_new_session=True,  # detach from gunicorn worker
-                    text=True
+                    text=True,
+                    env=self.env_with_super_bypass_key()
                 )
 
     def get_last_successful_build_time(self):
@@ -2434,8 +2444,11 @@ WHERE
         return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
                       self.cached_canned_query_service, as_objects=as_objects, singleton=singleton, db_cache=None)
 
-    def submit(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False, ip_address: str = None):
-        if ip_address not in IPS__local and self.prevent_arbitrary_queries:
+    def submit(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False, ip_address: str = None,
+               server_authored_query: bool = False):
+        # server_authored_query asserts the query text is a code literal, not client input. It exempts the caller from the
+        # PREVENT_ARBITRARY_QUERIES guard, which exists to stop remote clients supplying their own query text
+        if not server_authored_query and ip_address not in IPS__local and self.prevent_arbitrary_queries:
             raise UnhandledJaaqlServerError("Not allowed to send queries to server!")
 
         return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
