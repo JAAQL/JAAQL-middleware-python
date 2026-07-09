@@ -27,6 +27,11 @@ import time
 import os
 from os.path import join
 
+# Absolute path (inside the container) of the compiled query cache written by the
+# BATON microcompiler / reset_app.sh at deploy and at boot. Re-read on flush and on
+# the cache-miss self-heal in Model.execute.
+PATH__query_cache = "/queries/queries.json"
+
 
 CONFIG_KEY_security = "SECURITY"
 CONFIG_KEY_SECURITY__mfa_label = "mfa_label"
@@ -187,18 +192,38 @@ class BaseJAAQLModel:
 
     def reload_cache(self):
         print("Received cache flush instruction")
-        if os.path.exists("/queries/queries.json"):
-            try:
-                self.query_caches = json.loads(open("/queries/queries.json", "r").read())
-                for key, encoded_list in self.query_caches["queries"].items():
-                    # Replace each encoded string in the list with its decoded version.
-                    self.query_caches["queries"][key] = [
-                        base64.b64decode(encoded).decode('utf-8') for encoded in encoded_list
-                    ]
-                self.db_cache = 1
-                print("Loaded query cache")
-            except:
-                traceback.print_exc()
+        if not os.path.exists(PATH__query_cache):
+            return
+        try:
+            mtime = os.path.getmtime(PATH__query_cache)
+            with open(PATH__query_cache, "r") as cache_file:
+                loaded = json.loads(cache_file.read())
+            # Decode the whole cache into a fresh dict and only publish it once
+            # every entry has parsed and decoded. A queries.json that is truncated
+            # or partial (a deploy/boot still mid-write - see BATON writeAllSQL) or
+            # otherwise malformed must never replace an already-good cache;
+            # otherwise the process serves a broken cache until it is restarted.
+            decoded_queries = {
+                key: [base64.b64decode(encoded).decode("utf-8") for encoded in encoded_list]
+                for key, encoded_list in loaded["queries"].items()
+            }
+            loaded["queries"] = decoded_queries
+            self.query_caches = loaded
+            self.query_caches_mtime = mtime
+            self.db_cache = 1
+            print("Loaded query cache (%d files)" % len(decoded_queries))
+        except Exception:
+            # Keep the previous good cache. A later flush, or the cache-miss
+            # self-heal in Model.execute, will retry once queries.json is whole.
+            traceback.print_exc()
+
+    def query_cache_is_stale(self):
+        # True when queries.json on disk differs from the version currently loaded,
+        # i.e. a newer (or first) cache is available to (re)load.
+        try:
+            return os.path.getmtime(PATH__query_cache) != self.query_caches_mtime
+        except OSError:
+            return False
 
     def set_jaaql_lookup_connection(self):
         if self.vault.has_obj(VAULT_KEY__jaaql_lookup_connection):
@@ -216,6 +241,7 @@ class BaseJAAQLModel:
         self.is_container = is_container
 
         self.query_caches = {}
+        self.query_caches_mtime = None
         self.db_cache = None
 
         self.prevent_arbitrary_queries = os.environ.get("PREVENT_ARBITRARY_QUERIES", "false") == "true"

@@ -1472,6 +1472,16 @@ WHERE
         if "PostgreSQL " not in version:
             raise HttpStatusException(ERR__keep_alive_failed)
 
+    def deep_health(self):
+        # Deep, unauthenticated health check. is_alive() only pings the DB and so
+        # stayed green while a stale/partial query cache broke every real request.
+        # This resolves a query THROUGH the query cache - the same lookup execute()
+        # performs, including the cache-miss self-heal - and runs it, so an empty,
+        # partial or stale cache fails the check. The health query is injected into
+        # every compiled queries.json by the BATON microcompiler.
+        sql = self._lookup_cached_query(QUERY_CACHE_REF__health)
+        execute_supplied_statement_singleton(self.jaaql_lookup_connection, sql, as_objects=True)
+
     def install(self, db_connection_string: str, jaaql_password: str, super_db_password: str, install_key: str, allow_uninstall: bool,
                 do_reboot: bool = True, jaaql_db_password: str = None):
         if self.jaaql_lookup_connection is None:
@@ -2381,6 +2391,27 @@ WHERE
 
         os.kill(int(open("app.pid", "r").read()), signal.SIGUSR1)
 
+    def _lookup_cached_query(self, trimmed: str):
+        name = trimmed.split(":")[0]
+        index = int(trimmed.split(":")[1])
+        try:
+            return self.query_caches["queries"][name][index]
+        except (KeyError, IndexError):
+            # The compiled query is absent from the in-memory cache. This happens
+            # when the container loaded queries.json before / while a deploy or
+            # boot was (re)writing it, leaving a stale or partial cache that then
+            # serves KeyErrors on the missing queries until the process restarts.
+            # If a newer queries.json is on disk, reload once and retry so the
+            # process self-heals in place instead of staying wedged.
+            if self.query_cache_is_stale():
+                self.reload_cache()
+                try:
+                    return self.query_caches["queries"][name][index]
+                except (KeyError, IndexError):
+                    pass
+            raise HttpStatusException("Compiled query '%s' is not present in the query cache" % name,
+                                      response_code=HTTPStatus.INTERNAL_SERVER_ERROR)
+
     def execute(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
         if not self.query_caches:
             self.reload_cache()
@@ -2395,16 +2426,20 @@ WHERE
             self.db_cache = {itm[KG__application_schema__name]: itm for itm in schemas}
             print("Loaded DB Cache")
 
+        # Snapshot the schema cache before resolving queries: a cache-miss self-heal
+        # inside _lookup_cached_query calls reload_cache(), which resets self.db_cache
+        # to 1. submit() expects the materialised schema dict (or None), so pass the
+        # snapshot - the reload still forces a schema refetch on the next execute.
+        db_cache = self.db_cache
+
         for key, val in inputs["query"].items():
             if isinstance(val, dict):
-                trimmed = val["query"].strip()
-                val["query"] = self.query_caches["queries"][trimmed.split(":")[0]][int(trimmed.split(":")[1])]
+                val["query"] = self._lookup_cached_query(val["query"].strip())
             else:
-                trimmed = val.strip()
-                inputs["query"][key] = self.query_caches["queries"][trimmed.split(":")[0]][int(trimmed.split(":")[1])]
+                inputs["query"][key] = self._lookup_cached_query(val.strip())
 
         return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
-                      self.cached_canned_query_service, as_objects=as_objects, singleton=singleton, db_cache=self.db_cache)
+                      self.cached_canned_query_service, as_objects=as_objects, singleton=singleton, db_cache=db_cache)
 
     def call_proc(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
         parameters = inputs["parameters"]

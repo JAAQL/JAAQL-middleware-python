@@ -187,6 +187,13 @@ ENDPOINT__internal_applications = "/internal/applications"
 ENDPOINT__internal_templates = "/internal/emails/templates"
 ENDPOINT__internal_accounts = "/internal/emails/accounts"
 ENDPOINT__is_alive = "/internal/is-alive"
+ENDPOINT__deep_health = "/internal/deep-health"
+
+# Synthetic query the BATON microcompiler injects into every queries.json so
+# deep_health() can resolve a query through the cache. Must match the microcompiler
+# constant HEALTH_QUERY_CACHE_KEY (index is always 0).
+QUERY_CACHE_KEY__health = "__health__"
+QUERY_CACHE_REF__health = QUERY_CACHE_KEY__health + ":0"
 ENDPOINT__report_sentinel_error = "/sentinel/reporting/error"
 ENDPOINT__install = "/internal/install"
 ENDPOINT__set_shared_var = "/set-shared-var"
@@ -211,5 +218,5 @@ ROLE__dba = "dba"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "5.2.8"
+VERSION = "5.2.9"
 

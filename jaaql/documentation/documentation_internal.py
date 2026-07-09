@@ -108,6 +108,17 @@ DOCUMENTATION__is_alive = SwaggerDocumentation(
     )
 )
 
+DOCUMENTATION__deep_health = SwaggerDocumentation(
+    security=False,
+    tags="Deep Health",
+    methods=SwaggerMethod(
+        name="Deep health check",
+        description="Resolves a query through the compiled query cache and runs it, so a stale, partial or "
+                    "unloaded cache fails the check (unlike is-alive, which only pings the database)",
+        method=REST__GET
+    )
+)
+
 DOCUMENTATION__clean = SwaggerDocumentation(
     tags="Installation",
     methods=SwaggerMethod(

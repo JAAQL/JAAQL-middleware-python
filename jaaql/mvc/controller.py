@@ -71,6 +71,10 @@ class JAAQLController(BaseJAAQLController):
         def is_alive():
             self.model.is_alive()
 
+        @self.publish_route(ENDPOINT__deep_health, DOCUMENTATION__deep_health)
+        def deep_health():
+            self.model.deep_health()
+
         @self.publish_route('/accounts', DOCUMENTATION__create_account)
         def accounts(connection: DBInterface, http_inputs: dict):
             registered = http_inputs.get(KEY__registered, True)
