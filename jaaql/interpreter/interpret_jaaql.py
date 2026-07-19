@@ -18,6 +18,7 @@ from jaaql.constants import KEY__position, KEY__file, KEY__application, KEY__err
 from jaaql.exceptions.jaaql_interpretable_handled_errors import DatabaseOperationalError, HandledProcedureError, UnhandledQueryError, UnhandledProcedureError, \
     SingletonExpected
 from typing import Union
+from functools import lru_cache
 
 
 ERR_malformed_statement = "Malformed query, expecting string or dictionary"
@@ -112,6 +113,42 @@ class MarkerPrepare:
         self.count = count
 
 
+# Statements larger than this are tokenized on every call rather than cached, bounding the
+# memory the cache can hold (canned/compiled queries are far below this)
+TOKEN_CACHE__max_statement_len = 16384
+
+
+def _tokenize_statement_uncached(query: str, match_regex: str):
+    literals = []
+    names = []
+    last_index = 0
+    for match in re.finditer(match_regex, query):
+        start_pos = match.regs[0][0]
+        if start_pos != 0 and query[start_pos - 1] == REGEX_query_argument[0]:
+            continue
+        end_pos = match.regs[0][1]
+        literals.append(query[last_index:start_pos])
+        names.append(query[start_pos + 1:end_pos])
+        last_index = end_pos
+    literals.append(query[last_index:])
+    return tuple(literals), tuple(names)
+
+
+_tokenize_statement_cached = lru_cache(maxsize=1024)(_tokenize_statement_uncached)
+
+
+def tokenize_statement(query: str, match_regex: str):
+    """
+    Splits a statement into literal SQL fragments and the argument names found between them, so the
+    (backtracking-heavy) not-in-quotes argument regex runs once per distinct statement text instead
+    of on every request. The skip of matches directly preceded by ':' (postgres '::' casts) is part
+    of tokenization, mirroring the previous inline check in pre_prepare_statement.
+    """
+    if len(query) <= TOKEN_CACHE__max_statement_len:
+        return _tokenize_statement_cached(query, match_regex)
+    return _tokenize_statement_uncached(query, match_regex)
+
+
 class InterpretJAAQL:
 
     def __init__(self, db_interface: DBInterface, jaaql_db_interface: DBInterface = None):
@@ -121,7 +158,7 @@ class InterpretJAAQL:
     def transform(self, operation: Union[dict, str], conn=None, skip_commit: bool = False, wait_hook: queue.Queue = None,
                   encryption_key: bytes = None, autocommit: bool = False, canned_query_service=None, prevent_unused_parameters: bool = True,
                   do_prepare_only: str = False, and_return_connection_mid_transaction: bool = False, attempt_fetch_domain_types: bool = False,
-                  psql: list = None, pre_psql: str = None):
+                  psql: list = None, pre_psql: str = None, prepare_statements: bool = False):
         if (not isinstance(operation, dict)) and (not isinstance(operation, str)):
             raise HttpStatusException(ERR_malformed_operation_type, HTTPStatus.BAD_REQUEST)
 
@@ -143,6 +180,9 @@ class InterpretJAAQL:
         ret = {}
         err = None
         query_key = None
+        # Keys whose statements are server-authored (canned) and single: safe and worthwhile to
+        # execute as postgres prepared statements so parse/plan is skipped on hot connections
+        canned_keys = set()
 
         if autocommit:
             conn.autocommit = autocommit
@@ -174,6 +214,7 @@ class InterpretJAAQL:
                 query = {"query": {KEY_query: canned_query, KEY_assert: operation.get(KEY_assert), KEY_decrypt: operation.get(KEY_decrypt),
                                    KEY_parameters: {}}}
                 check_required = False
+                canned_keys.add("query")
             else:
                 is_dict_query = isinstance(query, dict)
                 if not is_dict_query:
@@ -187,15 +228,19 @@ class InterpretJAAQL:
                             query[key] = {KEY_query: val, KEY_assert: None, KEY_decrypt: None, KEY_parameters: {}}
                         else:
                             if KEY_store in val:
+                                store_all_canned = True
                                 for sub_key, sub_val in val.items():
                                     if sub_key in [KEY_parameters, KEY_decrypt, KEY_store]:
                                         continue
                                     if isinstance(sub_val, str):
                                         all_replaced = False
+                                        store_all_canned = False
                                     else:
                                         canned_query = canned_query_service.get_canned_query(operation[KEY__application],
                                                                                              sub_val[KEY__file], sub_val[KEY__position])
                                         val[sub_key] = canned_query
+                                if store_all_canned:
+                                    canned_keys.add(key)
                                 if KEY_parameters not in val:
                                     val[KEY_parameters] = {}
                                 if KEY_decrypt not in val:
@@ -208,6 +253,7 @@ class InterpretJAAQL:
                                 else:
                                     fetched_query = canned_query_service.get_canned_query(operation[KEY__application],
                                                                                           val[KEY_query][KEY__file], val[KEY_query][KEY__position])
+                                    canned_keys.add(key)
                                 query[key] = {KEY_query: fetched_query, KEY_assert: val.get(KEY_assert), KEY_decrypt: val.get(KEY_decrypt),
                                               KEY_parameters: val.get(KEY_parameters, {})}
                     check_required = not all_replaced
@@ -465,7 +511,8 @@ ORDER BY d.column_name;
                         }
                     else:
                         res = self.db_interface.execute_query_fetching_results(conn, last_query, found_params, wait_hook=wait_hook,
-                                                                               requires_dba_check=check_required and canned_query_service is not None)
+                                                                               requires_dba_check=check_required and canned_query_service is not None,
+                                                                               prepare=prepare_statements or query_key in canned_keys)
 
                     if do_prepare_only and not attempt_fetch_domain_types and not psql:
                         self.db_interface.execute_query_fetching_results(conn, "DEALLOCATE _jaaql_query_check_" + do_prepare_only, found_params,
@@ -771,6 +818,11 @@ ORDER BY d.column_name;
             return [element]
 
     def encrypt_literals(self, query, encryption_key: bytes = None, match_regex: str = REGEX_enc_literals):
+        # The default pattern can only match if the literal prefix #' is present; the substring
+        # check is C-speed and skips the regex scan for the common case of no encrypted literals
+        if match_regex is REGEX_enc_literals and "#'" not in query:
+            return query
+
         new_query = ""
         last_end_match = 0
 
@@ -786,22 +838,15 @@ ORDER BY d.column_name;
     def pre_prepare_statement(self, query, parameters, match_regex: str = REGEX_query_argument, encryption_key: bytes = None,
                               require_presence: bool = True, for_prepare: bool = False, skipped_singletons: list[str] = None,
                               replace_with_nulls: bool = False):
-        prepared = ""
-        last_index = 0
+        literals, names = tokenize_statement(query, match_regex)
+        prepared_parts = []
         found_parameters = []
         found_parameter_dictionary = {}
 
-        for match in re.finditer(match_regex, query):
+        for token_idx, match_str in enumerate(names):
             is_skipped_default = False
-            start_pos = match.regs[0][0]
-            if start_pos != 0:
-                if query[start_pos - 1] == REGEX_query_argument[0]:
-                    continue
-            end_pos = match.regs[0][1]
-            match_str = query[start_pos + 1:end_pos]
 
-            prepared += query[last_index:start_pos]
-            last_index = end_pos
+            prepared_parts.append(literals[token_idx])
 
             if match_str not in parameters and for_prepare:
                 parameters[match_str] = MarkerPrepare(len(parameters))
@@ -826,20 +871,20 @@ ORDER BY d.column_name;
                     found_parameter_dictionary[match_str] = param
 
             if parameters[match_str] is None and not isinstance(parameters[match_str], MarkerPrepare):
-                prepared += STATEMENT_null
+                prepared_parts.append(STATEMENT_null)
             else:
                 if isinstance(parameters[match_str], MarkerPrepare):
                     if replace_with_nulls:
-                        prepared += "NULL"
+                        prepared_parts.append("NULL")
                     else:
-                        prepared += "$" + str(int(parameters[match_str].count) + 1)
+                        prepared_parts.append("$" + str(int(parameters[match_str].count) + 1))
                 else:
                     the_type = self.get_format_type(match_str, parameters[match_str])
                     if is_skipped_default:
-                        prepared += MARKER_DEFAULT
+                        prepared_parts.append(MARKER_DEFAULT)
                     else:
-                        prepared += STATEMENT_argument_begin + STATEMENT_paren_open + match_str + STATEMENT_paren_close + the_type
+                        prepared_parts.append(STATEMENT_argument_begin + STATEMENT_paren_open + match_str + STATEMENT_paren_close + the_type)
 
-        prepared += query[last_index:]
+        prepared_parts.append(literals[-1])
 
-        return prepared, found_parameter_dictionary
+        return STATEMENT_empty.join(prepared_parts), found_parameter_dictionary

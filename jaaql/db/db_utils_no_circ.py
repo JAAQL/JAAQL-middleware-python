@@ -68,7 +68,7 @@ def get_required_db(vault, config, jaaql_connection: DBInterface, inputs: dict, 
 
 def submit(vault, config, db_crypt_key, jaaql_connection: DBInterface, inputs: dict, account_id: str, verification_hook: Queue = None,
            cached_canned_query_service=None, as_objects: bool = False, singleton: bool = False, keep_alive_conn: bool = False,
-           conn=None, interface: DBInterface = None, db_cache=None):
+           conn=None, interface: DBInterface = None, db_cache=None, prepare_statements: bool = False):
     if not isinstance(inputs, dict):
         raise HttpStatusException("Expected object or string input")
 
@@ -80,7 +80,7 @@ def submit(vault, config, db_crypt_key, jaaql_connection: DBInterface, inputs: d
                          ).transform(inputs, skip_commit=inputs.get(KEY__read_only), wait_hook=verification_hook,
                                      encryption_key=db_crypt_key, conn=conn,
                                      canned_query_service=cached_canned_query_service, prevent_unused_parameters=prevent_unused,
-                                     and_return_connection_mid_transaction=keep_alive_conn)
+                                     and_return_connection_mid_transaction=keep_alive_conn, prepare_statements=prepare_statements)
 
     if as_objects:
         ret = objectify(ret, singleton=singleton)

@@ -125,7 +125,7 @@ class DBInterface(ABC):
         pass
 
     def execute_query_fetching_results(self, conn, query, parameters=None, echo=ECHO__none, as_objects=False, wait_hook: queue.Queue = None,
-                                       requires_dba_check: bool = False):
+                                       requires_dba_check: bool = False, prepare: bool = False):
         if echo not in ECHO__allowed:
             allowed_echoes = ", ".join([str(allowed_echo) for allowed_echo in ECHO__allowed])
             raise HttpStatusException(ERR__unknown_echo % (str(echo), allowed_echoes), HTTPStatus.BAD_REQUEST)
@@ -149,7 +149,7 @@ class DBInterface(ABC):
                 if wait_hook:
                     wait_hook = None
 
-            columns, type_codes, rows = self.execute_query(conn, query, new_parameters, wait_hook)
+            columns, type_codes, rows = self.execute_query(conn, query, new_parameters, wait_hook, prepare=prepare)
 
             ret = {
                 RET__columns: columns,
@@ -225,7 +225,7 @@ class DBInterface(ABC):
         pass
 
     @abstractmethod
-    def execute_query(self, conn, query, parameters: Optional[dict] = None, wait_hook: queue.Queue = None):
+    def execute_query(self, conn, query, parameters: Optional[dict] = None, wait_hook: queue.Queue = None, prepare: bool = False):
         pass
 
     @abstractmethod

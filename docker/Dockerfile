@@ -1,7 +1,14 @@
-FROM postgres:16.2
+FROM postgres:18.4-bookworm
 LABEL maintainer="jaaql.io"
 
-ARG POSTGRES_VERSION="16"
+ARG POSTGRES_VERSION="18"
+# Old volumes hold clusters of this version; its binaries are kept in the image so the
+# entrypoint can pg_upgrade them in place
+ARG OLD_POSTGRES_VERSION="16"
+
+# The postgres 18 image moved its default data directory to /var/lib/postgresql/18/docker;
+# pin the pre-18 path so existing volume mounts keep working
+ENV PGDATA /var/lib/postgresql/data
 
 EXPOSE 80
 EXPOSE 443
@@ -21,8 +28,8 @@ ENV LANGUAGE en_GB:en
 ENV LC_ALL en_GB.UTF-8
 
 ARG CHROME_VERSION="137.0.7151.70"
-ARG PYTHON_MAJOR_VERSION="3.12"
-ARG PYTHON_VERSION="${PYTHON_MAJOR_VERSION}.2"
+ARG PYTHON_MAJOR_VERSION="3.14"
+ARG PYTHON_VERSION="${PYTHON_MAJOR_VERSION}.6"
 
 VOLUME /etc/letsencrypt
 VOLUME $INSTALL_PATH/vault
@@ -53,6 +60,12 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     printf 'Package: *\nPin: origin nginx.org\nPin-Priority: 900\n' \
       > /etc/apt/preferences.d/99nginx && \
 
+    ## LLVM apt repo: clang 19+ enables CPython's tail-call interpreter build
+    curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key \
+      | gpg --dearmor -o /usr/share/keyrings/llvm-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-19 main" \
+      > /etc/apt/sources.list.d/llvm.list && \
+
     ## refresh metadata
     apt-get update && \
 
@@ -73,6 +86,21 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     ## show the version in the build log for sanity
     nginx -v && \
 
+    ## clang 19 + llvm tooling (PGO/LTO) for the CPython build; purged after use.
+    ## libclang-rt-19-dev supplies libclang_rt.profile.a, required by PGO instrumentation
+    apt-get install -y --no-install-recommends clang-19 llvm-19 libclang-rt-19-dev && \
+    ln -s /usr/bin/llvm-profdata-19 /usr/local/bin/llvm-profdata && \
+    ln -s /usr/bin/llvm-ar-19 /usr/local/bin/llvm-ar && \
+    ln -s /usr/bin/llvm-ranlib-19 /usr/local/bin/llvm-ranlib && \
+    ln -s /usr/bin/llvm-nm-19 /usr/local/bin/llvm-nm && \
+
+    ## old postgres binaries so the entrypoint can pg_upgrade old data volumes, new dev headers
+    ## to build the jaaql extension, and plpgsql_check for the new major from PGDG
+    mkdir -p /etc/postgresql-common/createcluster.d && \
+    echo "create_main_cluster = false" > /etc/postgresql-common/createcluster.d/jaaql-no-main.conf && \
+    apt-get install -y --no-install-recommends postgresql-${OLD_POSTGRES_VERSION} \
+      postgresql-server-dev-${POSTGRES_VERSION} postgresql-${POSTGRES_VERSION}-plpgsql-check && \
+
     apt-get -y install libzbar0 && \
     apt-get -y install libbz2-dev && \
     apt-get install dos2unix && \
@@ -85,7 +113,7 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     libncurses5-dev libgdbm-dev libnss3-dev -y \
     libssl-dev libreadline-dev libffi-dev libbz2-dev curl -y && \
     cd /Python-${PYTHON_VERSION} && \
-    ./configure --enable-optimizations --with-lto --disable-test-modules --without-doc-strings --prefix=/usr/local --with-ensurepip=install && \
+    CC=clang-19 CXX=clang++-19 ./configure --enable-optimizations --with-lto --with-tail-call-interp --disable-test-modules --without-doc-strings --prefix=/usr/local --with-ensurepip=install && \
     make install && \
     cd ../ && \
     rm -rf /Python-${PYTHON_VERSION} && \
@@ -109,39 +137,48 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     DEBIAN_FRONTEND=noninteractive apt-get -y install xorg xvfb gtk2-engines-pixbuf && \
     apt-get -y install dbus-x11 xfonts-base xfonts-100dpi xfonts-75dpi xfonts-scalable && \
     apt-get -y install imagemagick x11-apps && \
-    /bin/mkdir -p '/usr/share/postgresql/'${POSTGRES_VERSION}'/extension' && \
-    /bin/mkdir -p '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib' && \
-    /usr/bin/install -c -m 644 /pgextension/jaaql.control '/usr/share/postgresql/'${POSTGRES_VERSION}'/extension/' && \
-    /usr/bin/install -c -m 644 /pgextension/jaaql--1.0.0.sql  '/usr/share/postgresql/'${POSTGRES_VERSION}'/extension/' && \
-    /usr/bin/install -c -m 755 /pgextension/bin/jaaql.so '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/' && \
-    /bin/mkdir -p '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode/jaaql' && \
-    /bin/mkdir -p '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/jaaql/ && \
-    /usr/bin/install -c -m 644 /pgextension/bin/jaaql.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/jaaql/./ && \
-    mv /pgextension/bin/jaaql.index.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode' && \
+    /bin/mkdir -p '/usr/share/postgresql/'${OLD_POSTGRES_VERSION}'/extension' && \
+    /bin/mkdir -p '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib' && \
+    /usr/bin/install -c -m 644 /pgextension/jaaql.control '/usr/share/postgresql/'${OLD_POSTGRES_VERSION}'/extension/' && \
+    /usr/bin/install -c -m 644 /pgextension/jaaql--1.0.0.sql  '/usr/share/postgresql/'${OLD_POSTGRES_VERSION}'/extension/' && \
+    /usr/bin/install -c -m 755 /pgextension/bin/jaaql.so '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/' && \
+    /bin/mkdir -p '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode/jaaql' && \
+    /bin/mkdir -p '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/jaaql/ && \
+    /usr/bin/install -c -m 644 /pgextension/bin/jaaql.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/jaaql/./ && \
+    mv /pgextension/bin/jaaql.index.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode' && \
     cd /plpgsql_check && \
-    /usr/bin/install -c -m 755  plpgsql_check.so '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/plpgsql_check.so' && \
-    /usr/bin/install -c -m 644 .//plpgsql_check.control '/usr/share/postgresql/'${POSTGRES_VERSION}'/extension/' && \
-    /usr/bin/install -c -m 644 .//plpgsql_check--2.5.sql  '/usr/share/postgresql/'${POSTGRES_VERSION}'/extension/' && \
-    /bin/mkdir -p '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode/plpgsql_check' && \
-    /bin/mkdir -p '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/assign.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/catalog.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/check_expr.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/check_function.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/expr_walk.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/format.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/parser.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/pldbgapi2.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/plpgsql_check.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/pragma.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/profiler.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/report.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/stmtwalk.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/tablefunc.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/tracer.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 src/typdesc.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
-    /usr/bin/install -c -m 644 plpgsql_check.index.bc '/usr/lib/postgresql/'${POSTGRES_VERSION}'/lib/bitcode' && \
+    /usr/bin/install -c -m 755  plpgsql_check.so '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/plpgsql_check.so' && \
+    /usr/bin/install -c -m 644 .//plpgsql_check.control '/usr/share/postgresql/'${OLD_POSTGRES_VERSION}'/extension/' && \
+    /usr/bin/install -c -m 644 .//plpgsql_check--2.5.sql  '/usr/share/postgresql/'${OLD_POSTGRES_VERSION}'/extension/' && \
+    /bin/mkdir -p '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode/plpgsql_check' && \
+    /bin/mkdir -p '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/assign.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/catalog.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/check_expr.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/check_function.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/expr_walk.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/format.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/parser.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/pldbgapi2.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/plpgsql_check.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/pragma.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/profiler.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/report.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/stmtwalk.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/tablefunc.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/tracer.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 src/typdesc.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode'/plpgsql_check/src/ && \
+    /usr/bin/install -c -m 644 plpgsql_check.index.bc '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib/bitcode' && \
     cd ../ && \
+    ## build the jaaql extension from source against the new postgres major (the vendored .so
+    ## above is a postgres 16 binary and only loads into the old cluster during pg_upgrade)
+    cd /pgextension && \
+    make PG_CONFIG=/usr/lib/postgresql/${POSTGRES_VERSION}/bin/pg_config with_llvm=no && \
+    make PG_CONFIG=/usr/lib/postgresql/${POSTGRES_VERSION}/bin/pg_config with_llvm=no install && \
+    ## pg_upgrade's binary-mode dump recreates extensions at their old version, so the 2.5
+    ## install script must exist alongside the newer PGDG plpgsql_check
+    /usr/bin/install -c -m 644 /plpgsql_check/plpgsql_check--2.5.sql '/usr/share/postgresql/'${POSTGRES_VERSION}'/extension/' && \
+    cd / && \
     rm -rf /usr/local/lib/python${PYTHON_MAJOR_VERSION}/test && \
     rm -rf /Python-${PYTHON_VERSION} && \
     rm -rf /Python-${PYTHON_VERSION}.tar.xz && \
@@ -154,7 +191,8 @@ COPY requirements.txt $INSTALL_PATH/requirements.txt
 
 RUN sed -i 's/\[binary\]/[c]/g' $INSTALL_PATH/requirements.txt && \
     $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt && \
-    apt-get purge -y --auto-remove build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev libbz2-dev unzip bzip2 wget && \
+    apt-get purge -y --auto-remove build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev libbz2-dev unzip bzip2 wget clang-19 llvm-19 libclang-rt-19-dev postgresql-server-dev-${POSTGRES_VERSION} && \
+    rm -f /usr/local/bin/llvm-profdata /usr/local/bin/llvm-ar /usr/local/bin/llvm-ranlib /usr/local/bin/llvm-nm && \
     apt-get autoremove --purge -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /var/tmp/* /tmp/*

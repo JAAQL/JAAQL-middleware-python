@@ -39,7 +39,7 @@ while [ -e $DATA_DIR/recovery.signal ]; do
   sleep 1
 done
 
-su - postgres -c "/usr/lib/postgresql/16/bin/pg_ctl stop -D $DATA_DIR"
+su - postgres -c "/usr/lib/postgresql/$PG_MAJOR/bin/pg_ctl stop -D $DATA_DIR"
 
 echo "Recovery complete"
 

@@ -9,6 +9,11 @@ from werkzeug.exceptions import InternalServerError, HTTPException
 import inspect
 import json
 import requests
+
+try:
+    import orjson
+except ImportError:
+    orjson = None
 from datetime import datetime, date, time
 from jaaql.exceptions.custom_http_status import CustomHTTPStatus
 from jaaql.exceptions.jaaql_interpretable_handled_errors import UnhandledJaaqlServerError, NotYetInstalled
@@ -125,6 +130,27 @@ class JAAQLJSONProvider(DefaultJSONProvider):
     default: t.Callable[[t.Any], t.Any] = staticmethod(
         json_serial
     )  # type: ignore[assignment]
+
+    # Flask removed the JSON_SORT_KEYS config in 2.3, so the app-level setting of it below no
+    # longer has any effect; the provider attribute is what controls sorting now. Sorting is both
+    # unwanted (per that config) and slower, and orjson does not sort either
+    sort_keys = False
+
+    if orjson is not None:
+        # OPT_PASSTHROUGH_DATETIME routes datetime/date/time through json_serial so the wire format
+        # (e.g. microseconds stripped from datetimes) stays identical to the stdlib provider.
+        # orjson natively serializes UUIDs and dataclasses to the same output json_serial produces;
+        # Decimal is not natively supported so it still reaches json_serial via default=.
+        _ORJSON_OPTS = orjson.OPT_PASSTHROUGH_DATETIME | orjson.OPT_NON_STR_KEYS
+
+        def dumps(self, obj: t.Any, **kwargs: t.Any) -> str:
+            opts = self._ORJSON_OPTS
+            if kwargs.get("indent"):
+                opts |= orjson.OPT_INDENT_2
+            return orjson.dumps(obj, default=json_serial, option=opts).decode("utf-8")
+
+        def loads(self, s: t.Union[str, bytes], **kwargs: t.Any) -> t.Any:
+            return orjson.loads(s)
 
 
 class BaseJAAQLController:
@@ -460,6 +486,10 @@ class BaseJAAQLController:
             swagger_documentation = documentation_as_lists[0]
 
         def wrap_func(view_func):
+            # getfullargspec is expensive and the result never changes for a given view function, so
+            # resolve it once at registration instead of ~20 times per request
+            view_func_args = inspect.getfullargspec(view_func).args
+
             @wraps(view_func)
             def routed_function(view_func_local, **kwargs):
                 if not self.model.has_installed and not route.startswith('/internal'):
@@ -540,12 +570,12 @@ class BaseJAAQLController:
                     throw_ex = None
                     ex_msg = None
                     try:
-                        if ARG__http_inputs in inspect.getfullargspec(view_func_local).args or any([key in inspect.getfullargspec(view_func_local).args for key in kwargs.keys()]):
+                        if ARG__http_inputs in view_func_args or any([key in view_func_args for key in kwargs.keys()]):
                             validated = BaseJAAQLController.get_input_as_dictionary(the_method, self.is_prod, **kwargs)
-                            if ARG__http_inputs in inspect.getfullargspec(view_func_local).args:
+                            if ARG__http_inputs in view_func_args:
                                 supply_dict[ARG__http_inputs] = validated
 
-                        if ARG__account_id in inspect.getfullargspec(view_func_local).args:
+                        if ARG__account_id in view_func_args:
                             if not swagger_documentation.security:
                                 raise Exception(ERR__method_required_account_id)
                             supply_dict[ARG__account_id] = account_id
@@ -554,7 +584,7 @@ class BaseJAAQLController:
                             supply_dict[ARG__verification_hook] = verification_hook
 
                         # Do not close created interfaces as they are re-used
-                        for arg in inspect.getfullargspec(view_func_local).args:
+                        for arg in view_func_args:
                             if arg.startswith(ARG_START__connection):
                                 if not swagger_documentation.security:
                                     raise Exception(ERR__method_required_user_connection)
@@ -562,66 +592,66 @@ class BaseJAAQLController:
                                 supply_dict[arg] = create_interface_for_db(self.model.vault, self.model.config, account_id, connect_db,
                                                                            sub_role=account_id)
 
-                        for arg in inspect.getfullargspec(view_func_local).args:
+                        for arg in view_func_args:
                             if arg.startswith(ARG_START__jaaql_connection):
                                 connect_db = arg.split(ARG_START__jaaql_connection)[1]
                                 supply_dict[arg] = create_interface_for_db(self.model.vault, self.model.config, account_id, connect_db,
                                                                            sub_role=ROLE__jaaql)
 
-                        if ARG__username in inspect.getfullargspec(view_func_local).args:
+                        if ARG__username in view_func_args:
                             if not swagger_documentation.security:
                                 raise Exception(ERR__method_required_username)
                             supply_dict[ARG__username] = username
 
-                        if ARG__ip_address in inspect.getfullargspec(view_func_local).args:
+                        if ARG__ip_address in view_func_args:
                             supply_dict[ARG__ip_address] = ip_addr
 
-                        if ARG__request_headers in inspect.getfullargspec(view_func_local).args:
+                        if ARG__request_headers in view_func_args:
                             supply_dict[ARG__request_headers] = request.headers
 
-                        if ARG__response in inspect.getfullargspec(view_func_local).args:
+                        if ARG__response in view_func_args:
                             supply_dict[ARG__response] = jaaql_resp
 
-                        if ARG__auth_token in inspect.getfullargspec(view_func_local).args:
+                        if ARG__auth_token in view_func_args:
                             if not swagger_documentation.security:
                                 raise Exception(ERR__method_required_token)
                             supply_dict[ARG__auth_token] = request.headers.get(HEADER__security)
                             if supply_dict[ARG__auth_token] is None:
                                 supply_dict[ARG__auth_token] = auth_cookie
 
-                        if ARG__auth_token_for_refresh in inspect.getfullargspec(view_func_local).args:
+                        if ARG__auth_token_for_refresh in view_func_args:
                             supply_dict[ARG__auth_token_for_refresh] = request.headers.get(HEADER__security)
                             if supply_dict[ARG__auth_token_for_refresh] is None:
                                 supply_dict[ARG__auth_token_for_refresh] = auth_cookie
 
-                        if ARG__connection in inspect.getfullargspec(view_func_local).args:
+                        if ARG__connection in view_func_args:
                             if not swagger_documentation.security:
                                 raise Exception(ERR__method_required_connection)
                             supply_dict[ARG__connection] = create_interface_for_db(self.model.vault, self.model.config, account_id, DB__jaaql)
 
-                        if ARG__is_the_anonymous_user in inspect.getfullargspec(view_func_local).args:
+                        if ARG__is_the_anonymous_user in view_func_args:
                             if not swagger_documentation.security:
                                 raise Exception(ERR__method_required_is_the_anonymous_user)
                             supply_dict[ARG__is_the_anonymous_user] = is_public
 
                         self.perform_profile(request_id, "Fetch args")
-                        if ARG__profiler in inspect.getfullargspec(view_func_local).args:
+                        if ARG__profiler in view_func_args:
                             supply_dict[ARG__profiler] = Profiler(request_id, self.do_profiling)
 
-                        if ARG__headers in inspect.getfullargspec(view_func_local).args:
+                        if ARG__headers in view_func_args:
                             supply_dict[ARG__headers] = dict(request.headers)
 
-                        if ARG__body in inspect.getfullargspec(view_func_local).args:
+                        if ARG__body in view_func_args:
                             supply_dict[ARG__body] = request.get_data()
 
-                        if ARG__args in inspect.getfullargspec(view_func_local).args:
+                        if ARG__args in view_func_args:
                             supply_dict[ARG__args] = dict(request.args)
 
-                        if ARG__flask_request in inspect.getfullargspec(view_func_local).args:
+                        if ARG__flask_request in view_func_args:
                             supply_dict[ARG__flask_request] = request
 
                         for k, v in kwargs.items():
-                            if k in inspect.getfullargspec(view_func_local).args:
+                            if k in view_func_args:
                                 supply_dict[k] = v
 
                         resp = view_func_local(**supply_dict)

@@ -36,6 +36,16 @@ PY
   export POSTGRES_PASSWORD
 }
 
+write_pg_hba() {
+  echo "local   all             all                                     trust" > $1/pg_hba.conf
+  echo "host    all             all             127.0.0.1/32            trust" >> $1/pg_hba.conf
+  echo "host    all             all             ::1/128                 trust" >> $1/pg_hba.conf
+  echo "local   replication     all                                     trust" >> $1/pg_hba.conf
+  echo "host    replication     all             127.0.0.1/32            trust" >> $1/pg_hba.conf
+  echo "host    replication     all             ::1/128                 trust" >> $1/pg_hba.conf
+  echo "host all all all scram-sha-256" >> $1/pg_hba.conf
+}
+
 if [ -f /pki/ca.cert.pem ]; then
 	echo "Installing on-prem root CA from /pki/ca.cert.pem"
 	mkdir -p /usr/local/share/ca-certificates
@@ -64,18 +74,71 @@ ARCHIVE_DIR=/var/lib/postgresql/archives
 mkdir -p $ARCHIVE_DIR
 WAS_EMPTY="false"
 ensure_postgres_password
+
+# ── Automatic postgres major upgrade ─────────────────────────────────────────
+# Volumes initialised by older JAAQL images hold a postgres $JAAQL_OLD_PG_MAJOR cluster;
+# upgrade it in place (pg_upgrade --link) before the server starts. set -e means any
+# pg_upgrade failure aborts the boot loudly while the old cluster is still untouched.
+JAAQL_OLD_PG_MAJOR=16
+PG_DATA_DIR=/var/lib/postgresql/data
+if [ -d "$PG_DATA_DIR/retired_pg_${JAAQL_OLD_PG_MAJOR}_cluster" ] && [ ! -s "$PG_DATA_DIR/PG_VERSION" ]; then
+  echo "A previous postgres major-version upgrade was interrupted mid-swap. The old cluster files" >&2
+  echo "are in $PG_DATA_DIR/retired_pg_${JAAQL_OLD_PG_MAJOR}_cluster - move them back into" >&2
+  echo "$PG_DATA_DIR and restart the container to retry the upgrade" >&2
+  exit 1
+fi
+if [ -s "$PG_DATA_DIR/PG_VERSION" ]; then
+  DATA_PG_VERSION="$(cat "$PG_DATA_DIR/PG_VERSION")"
+  if [ "$DATA_PG_VERSION" != "$PG_MAJOR" ]; then
+    if [ "$DATA_PG_VERSION" != "$JAAQL_OLD_PG_MAJOR" ]; then
+      echo "Data directory holds postgres $DATA_PG_VERSION; only $JAAQL_OLD_PG_MAJOR -> $PG_MAJOR upgrades are supported" >&2
+      exit 1
+    fi
+    echo "Upgrading postgres data directory from $DATA_PG_VERSION to $PG_MAJOR"
+    UPGRADE_NEW=$PG_DATA_DIR/pg_upgrade_new
+    rm -rf $UPGRADE_NEW
+    mkdir -p $UPGRADE_NEW
+    chown postgres:postgres $UPGRADE_NEW
+    chmod 700 $UPGRADE_NEW
+    # --no-data-checksums: postgres 18 initdb enables checksums by default but pg_upgrade
+    # requires the new cluster to match the old (16 default: off). Trust auth is temporary
+    # for the upgrade; the strict pg_hba.conf is written after the swap
+    su postgres -c "TZ=\"$TZ\" /usr/lib/postgresql/$PG_MAJOR/bin/initdb -A trust --no-data-checksums $POSTGRES_INITDB_ARGS $UPGRADE_NEW"
+    su postgres -c "cd /var/lib/postgresql && /usr/lib/postgresql/$PG_MAJOR/bin/pg_upgrade --old-bindir=/usr/lib/postgresql/$JAAQL_OLD_PG_MAJOR/bin --new-bindir=/usr/lib/postgresql/$PG_MAJOR/bin --old-datadir=$PG_DATA_DIR --new-datadir=$UPGRADE_NEW --link"
+    # settings applied via ALTER SYSTEM live in postgresql.auto.conf; carry them over
+    if [ -f "$PG_DATA_DIR/postgresql.auto.conf" ]; then
+      cp -f $PG_DATA_DIR/postgresql.auto.conf $UPGRADE_NEW/postgresql.auto.conf
+      chown postgres:postgres $UPGRADE_NEW/postgresql.auto.conf
+    fi
+    # swap: retire the old cluster files, promote the new cluster into the volume path.
+    # --link means the retired files are hardlinks; removing them frees no table data
+    OLD_RETIRED=$PG_DATA_DIR/retired_pg_${JAAQL_OLD_PG_MAJOR}_cluster
+    mkdir -p $OLD_RETIRED
+    for cluster_entry in "$PG_DATA_DIR"/* "$PG_DATA_DIR"/.[!.]*; do
+      cluster_base=$(basename "$cluster_entry")
+      if [ -e "$cluster_entry" ] && [ "$cluster_base" != "pg_upgrade_new" ] && [ "$cluster_base" != "retired_pg_${JAAQL_OLD_PG_MAJOR}_cluster" ]; then
+        mv "$cluster_entry" $OLD_RETIRED/
+      fi
+    done
+    mv $UPGRADE_NEW/* $PG_DATA_DIR/
+    rmdir $UPGRADE_NEW
+    rm -rf $OLD_RETIRED
+    write_pg_hba $PG_DATA_DIR
+    rm -rf $ARCHIVE_DIR/basebackup
+    cp -r $PG_DATA_DIR $ARCHIVE_DIR/basebackup
+    # pg_upgrade does not transfer all planner statistics; analyze once the server is up
+    touch $PG_DATA_DIR/.jaaql_needs_post_upgrade_analyze
+    chown postgres:postgres $PG_DATA_DIR/.jaaql_needs_post_upgrade_analyze
+    echo "Postgres upgrade to $PG_MAJOR complete"
+  fi
+fi
+
 if [ -z "$(ls -A /var/lib/postgresql/data)" ] && [ -z "$IS_RESTORING" ]; then
     WAS_EMPTY="true"
-    su postgres -c "echo \"$POSTGRES_PASSWORD\" | TZ=\"$TZ\" /usr/lib/postgresql/16/bin/initdb -A scram-sha-256 --pwfile=/dev/stdin $POSTGRES_INITDB_ARGS /var/lib/postgresql/data"
+    su postgres -c "echo \"$POSTGRES_PASSWORD\" | TZ=\"$TZ\" /usr/lib/postgresql/$PG_MAJOR/bin/initdb -A scram-sha-256 --pwfile=/dev/stdin $POSTGRES_INITDB_ARGS /var/lib/postgresql/data"
     rm -f $ARCHIVE_DIR/basebackup
     cp -r /var/lib/postgresql/data $ARCHIVE_DIR/basebackup
-    echo "local   all             all                                     trust" > /var/lib/postgresql/data/pg_hba.conf
-    echo "host    all             all             127.0.0.1/32            trust" >> /var/lib/postgresql/data/pg_hba.conf
-    echo "host    all             all             ::1/128                 trust" >> /var/lib/postgresql/data/pg_hba.conf
-    echo "local   replication     all                                     trust" >> /var/lib/postgresql/data/pg_hba.conf
-    echo "host    replication     all             127.0.0.1/32            trust" >> /var/lib/postgresql/data/pg_hba.conf
-    echo "host    replication     all             ::1/128                 trust" >> /var/lib/postgresql/data/pg_hba.conf
-    echo "host all all all scram-sha-256" >> /var/lib/postgresql/data/pg_hba.conf
+    write_pg_hba /var/lib/postgresql/data
 fi
 
 # Postgres bootstrap password is persisted in the JAAQL vault for local install fallback.
@@ -463,6 +526,11 @@ until psql -U "postgres" -d "jaaql" -c "select 1" > /dev/null 2>&1; do
   echo "Waiting for JAAQL db"
   sleep 1
 done
+
+if [ -f "$PG_DATA_DIR/.jaaql_needs_post_upgrade_analyze" ]; then
+  echo "Rebuilding planner statistics missing after the postgres major upgrade (in background)"
+  (su postgres -c "vacuumdb --all --analyze-in-stages --missing-stats-only" && rm -f $PG_DATA_DIR/.jaaql_needs_post_upgrade_analyze) &
+fi
 
 while :
 do

@@ -93,6 +93,19 @@ def create_app(override_config_path: str = None, controllers: [JAAQLControllerIn
 
     logging.getLogger("werkzeug").handlers.append(SensitiveHandler())
 
+    import psycopg
+    print("psycopg implementation: " + psycopg.pq.__impl__ + " (libpq " + str(psycopg.pq.version()) + ")")
+    if psycopg.pq.__impl__ == "python":
+        print("WARNING: psycopg is running the pure-python protocol implementation. Install psycopg[c] "
+              "(or psycopg[binary]) so the C implementation is used - it is significantly faster")
+
+    from jaaql.db.db_pg_interface import PIPELINE_SUPPORTED
+    if not PIPELINE_SUPPORTED:
+        print("FATAL: psycopg pipeline mode is unavailable (it requires libpq >= 14, found libpq " +
+              str(psycopg.pq.version()) + "). Session-authorization batching depends on it and JAAQL "
+              "refuses to boot degraded rather than silently fall back to per-statement round trips")
+        exit(1)
+
     config = load_config(is_gunicorn, override_config_path)
 
     mfa_name = config[CONFIG_KEY__security][CONFIG_KEY_SECURITY__mfa_label]

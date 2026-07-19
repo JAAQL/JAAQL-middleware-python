@@ -2438,8 +2438,10 @@ WHERE
             else:
                 inputs["query"][key] = self._lookup_cached_query(val.strip())
 
+        # Queries here come from the compiled application query cache (server-authored, single
+        # statements), so let postgres execute them as prepared statements
         return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
-                      self.cached_canned_query_service, as_objects=as_objects, singleton=singleton, db_cache=db_cache)
+                      self.cached_canned_query_service, as_objects=as_objects, singleton=singleton, db_cache=db_cache, prepare_statements=True)
 
     def call_proc(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
         parameters = inputs["parameters"]
