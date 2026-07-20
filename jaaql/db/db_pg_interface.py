@@ -328,14 +328,18 @@ class DBPGInterface(DBInterface):
                     if pending_auth:
                         auth_cursor = conn.jaaql_raw_cursor()
                         try:
-                            # Pipeline mode forces the extended protocol on every execute, and the
-                            # extended protocol rejects a multi-command string ("cannot insert
-                            # multiple commands into a prepared statement"). Only pipeline
-                            # single-command queries; a multi-command query (install scripts,
-                            # interpreted/canned SQL run during a bump) falls back to sequential
-                            # execution, where the main query runs under the simple protocol that
-                            # permits several commands.
-                            if PIPELINE_SUPPORTED and _statement_is_preparable(query):
+                            # Pipeline mode is unsafe for two kinds of statement, so restrict it to
+                            # single-command queries on transactional (non-autocommit) connections;
+                            # everything else falls back to sequential execution:
+                            #  - it forces the extended protocol on every execute, which rejects a
+                            #    multi-command string ("cannot insert multiple commands into a
+                            #    prepared statement"); the sequential fallback runs the main query
+                            #    under the simple protocol that permits several commands.
+                            #  - it wraps statements in an implicit transaction, which statements
+                            #    that cannot run in a transaction block (CREATE DATABASE, VACUUM,
+                            #    CREATE INDEX CONCURRENTLY, ...) reject. JAAQL runs those with
+                            #    autocommit=True, so skipping the pipeline there keeps them standalone.
+                            if PIPELINE_SUPPORTED and _statement_is_preparable(query) and not conn.autocommit:
                                 with conn.pipeline():
                                     for statement in pending_auth:
                                         auth_cursor.execute(statement)
