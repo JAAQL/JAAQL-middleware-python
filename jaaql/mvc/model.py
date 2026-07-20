@@ -1462,6 +1462,27 @@ WHERE
         # handed a dead connection whose commit silently fails. Runs once per wipe - no per-request cost.
         DBPGInterface.check_all_pools()
 
+        if self.is_container:
+            # A \wipe dbms reinstall leaves every gunicorn/gevent worker holding pooled connections to
+            # the now-wiped databases. The gunicorn was_installed + child_exit mechanism restarts the
+            # server to get fresh workers, but it fires on the NEXT worker exit - non-deterministic, so
+            # build requests race the bounce (504s / connections lost mid-transaction). Instead disable
+            # that path (remove the marker) and restart DETERMINISTICALLY just after this response is
+            # sent, so the caller's post-wipe health-wait sees a clean down-then-up and every subsequent
+            # request lands on a fresh worker. SIGQUIT to the gunicorn master (our parent) = the same
+            # bounce child_exit performs; the container relaunches it.
+            try:
+                os.unlink(os.path.join("vault", "was_installed"))
+            except FileNotFoundError:
+                pass
+            master_pid = os.getppid()
+
+            def _deterministic_restart():
+                time.sleep(1)  # let /internal/clean's 200 reach the caller before we bounce the server
+                os.kill(master_pid, signal.SIGQUIT)
+
+            threading.Thread(target=_deterministic_restart, daemon=True).start()
+
     def execute_migrations(self, connection: DBInterface):
         self.is_super_admin(connection)
 

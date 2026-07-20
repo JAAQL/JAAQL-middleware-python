@@ -1,8 +1,8 @@
 from jaaql.mvc.exception_queries import QUERY__fetch_application_schemas, KG__application_schema__application, KG__application__is_live, \
     KG__application_schema__name, KEY__is_default
 from queue import Queue
-from jaaql.db.db_utils import execute_supplied_statement, create_interface_for_db, ERR__schema_invalid
-from jaaql.exceptions.http_status_exception import HttpStatusException
+from jaaql.db.db_utils import execute_supplied_statement, create_interface_for_db, ERR__schema_invalid, CONN_LOST__max_attempts
+from jaaql.exceptions.http_status_exception import HttpStatusException, ConnectionLostError
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
 from jaaql.constants import KEY__application, KEY__database, KEY__schema, KEY__role, DB__jaaql, \
     KEY__read_only, KEY__prevent_unused_parameters
@@ -76,11 +76,23 @@ def submit(vault, config, db_crypt_key, jaaql_connection: DBInterface, inputs: d
 
     prevent_unused = inputs.pop(KEY__prevent_unused_parameters) if KEY__prevent_unused_parameters in inputs else True
 
-    ret = InterpretJAAQL(required_db, jaaql_connection
-                         ).transform(inputs, skip_commit=inputs.get(KEY__read_only), wait_hook=verification_hook,
-                                     encryption_key=db_crypt_key, conn=conn,
-                                     canned_query_service=cached_canned_query_service, prevent_unused_parameters=prevent_unused,
-                                     and_return_connection_mid_transaction=keep_alive_conn, prepare_statements=prepare_statements)
+    # A lost connection committed nothing, so re-running on a fresh connection is safe. \wipe dbms kills
+    # pooled connections, so a request landing on one dies at commit ("the connection is lost") - retry
+    # it. Only when transform owns the connection (conn is None); otherwise the caller manages the
+    # transaction and must handle the loss itself.
+    attempts = 0
+    while True:
+        attempts += 1
+        try:
+            ret = InterpretJAAQL(required_db, jaaql_connection
+                                 ).transform(inputs, skip_commit=inputs.get(KEY__read_only), wait_hook=verification_hook,
+                                             encryption_key=db_crypt_key, conn=conn,
+                                             canned_query_service=cached_canned_query_service, prevent_unused_parameters=prevent_unused,
+                                             and_return_connection_mid_transaction=keep_alive_conn, prepare_statements=prepare_statements)
+            break
+        except ConnectionLostError:
+            if conn is not None or attempts >= CONN_LOST__max_attempts:
+                raise
 
     if as_objects:
         ret = objectify(ret, singleton=singleton)

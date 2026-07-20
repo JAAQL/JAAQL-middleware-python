@@ -102,16 +102,20 @@ class JAAQLController(BaseJAAQLController):
         def prepare(http_inputs: dict, account_id: str):
             return self.model.fetch_domains(http_inputs, account_id)
 
+        # verification_hook (and ip_address, which follows it) are optional: the router only injects
+        # verification_hook when the method's parallel_verification is True. With it False these verify
+        # synchronously (verification_hook stays None), so there is no shared serial verifier thread to
+        # wedge/queue-stall - which is what timed out @dba requests during a \wipe dbms rebuild.
         @self.publish_route('/submit', DOCUMENTATION__submit)
-        def submit(http_inputs: dict, account_id: str, verification_hook: queue.Queue, ip_address: str):
+        def submit(http_inputs: dict, account_id: str, verification_hook: queue.Queue = None, ip_address: str = None):
             return self.model.submit(http_inputs, account_id, verification_hook=verification_hook, ip_address=ip_address)
 
         @self.publish_route('/execute', DOCUMENTATION__execute)
-        def execute(http_inputs: dict, account_id: str, verification_hook: queue.Queue):
+        def execute(http_inputs: dict, account_id: str, verification_hook: queue.Queue = None):
             return self.model.execute(http_inputs, account_id, verification_hook=verification_hook)
 
         @self.publish_route('/call-proc', DOCUMENTATION__execute)
-        def call_proc(http_inputs: dict, account_id: str, verification_hook: queue.Queue):
+        def call_proc(http_inputs: dict, account_id: str, verification_hook: queue.Queue = None):
             return self.model.call_proc(http_inputs, account_id, verification_hook=verification_hook)
 
         @self.publish_route('/internal/clean', DOCUMENTATION__clean)
