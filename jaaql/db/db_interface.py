@@ -68,6 +68,11 @@ class DBInterface(ABC):
     def get_conn(self):
         pass
 
+    def is_connection_error(self, ex) -> bool:
+        # Overridden by the concrete interface. True when a failure means the connection/backend went
+        # away (so nothing persisted and the operation is safe to retry on a fresh connection).
+        return False
+
     def log_warning(self, exc):
         if self.logging:
             logging.warning(exc, exc_info=False)
@@ -108,11 +113,20 @@ class DBInterface(ABC):
                     self.log_warning(ex)  # Serious error, connection failure to db or similar
                 raise ex
 
+    def __raise_commit_failure(self, commit_err):
+        # A failed commit persisted nothing; surface it (instead of the old silent swallow) so the
+        # caller cannot treat lost writes as success and hit a misleading error further on. A
+        # connection-loss failure is raised as a retriable marker so a self-contained caller can
+        # re-run on a fresh connection; any other commit failure is a genuine error.
+        if self.is_connection_error(commit_err):
+            raise ConnectionLostError(str(commit_err))
+        raise HttpStatusException("Commit failed, transaction not persisted: " + str(commit_err),
+                                  HTTPStatus.INTERNAL_SERVER_ERROR)
+
     def handle_error(self, conn, err, echo=ECHO__none):
         commit_err = self.__attempt_commit_rollback(conn, err)
         if err is None and commit_err is not None:
-            raise HttpStatusException("Commit failed, transaction not persisted: " + str(commit_err),
-                                      HTTPStatus.INTERNAL_SERVER_ERROR)
+            self.__raise_commit_failure(commit_err)
         self.__err_to_exception(err, echo)
 
     def put_conn_handle_error(self, conn, err, echo=ECHO__none, skip_rollback_commit: bool = False):
@@ -125,11 +139,8 @@ class DBInterface(ABC):
         except Exception as ex:
             self.log_warning(ex)
 
-        # A failed commit persisted nothing; surface it (instead of the old silent swallow) so the
-        # caller does not treat lost writes as success and hit a misleading error further on.
         if err is None and commit_err is not None:
-            raise HttpStatusException("Commit failed, transaction not persisted: " + str(commit_err),
-                                      HTTPStatus.INTERNAL_SERVER_ERROR)
+            self.__raise_commit_failure(commit_err)
 
         self.__err_to_exception(err, echo)
 

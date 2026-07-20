@@ -430,6 +430,12 @@ class DBPGInterface(DBInterface):
     def rollback(self, conn):
         conn.rollback()
 
+    def is_connection_error(self, ex) -> bool:
+        # psycopg raises OperationalError when the backend/connection went away (e.g. terminated by
+        # \wipe dbms). The same class the execute retry loop keys off; a commit that fails this way
+        # persisted nothing, so the operation is safe to retry on a fresh connection.
+        return isinstance(ex, OperationalError)
+
     def handle_db_error(self, err, echo):
         if isinstance(err, ProgrammingError) and hasattr(err, 'pgresult'):
             err = err.pgresult.error_message.decode("UTF-8")

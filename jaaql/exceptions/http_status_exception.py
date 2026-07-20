@@ -34,6 +34,15 @@ class HttpSingletonStatusException(HttpStatusException):
         self.actual_count = actual_count
 
 
+class ConnectionLostError(HttpStatusException):
+    # Raised when a database operation failed because its connection was lost (e.g. the backend was
+    # terminated by \wipe dbms's pg_terminate_backend) BEFORE anything committed. Nothing persisted,
+    # so a self-contained operation may safely be retried on a fresh connection. Subclasses
+    # HttpStatusException so that if retries are exhausted it still surfaces as a clean 500.
+    def __init__(self, message: str):
+        super().__init__("Commit failed, transaction not persisted: " + message, HTTPStatus.INTERNAL_SERVER_ERROR)
+
+
 class JaaqlInterpretableHandledError(Exception):
     def __init__(self, error_code: int, http_response_code: int,
                  table_name: str | None, index: int | None, message: str,

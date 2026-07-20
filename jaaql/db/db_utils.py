@@ -1,4 +1,4 @@
-from jaaql.exceptions.http_status_exception import HttpStatusException, HttpSingletonStatusException
+from jaaql.exceptions.http_status_exception import HttpStatusException, HttpSingletonStatusException, ConnectionLostError
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
 from jaaql.constants import ENCODING__utf, VAULT_KEY__super_db_credentials
 from typing import Union
@@ -15,6 +15,10 @@ ERR__duplicated_encryption_salt = "Duplicated value in encryption_salts list"
 ERR__expected_single_row = "Expected single row response but received '%d' rows"
 ERR__unsupported_interface = "Unsupported interface '%s'. We only support %s"
 ERR__schema_invalid = "Schema invalid!"
+
+# A lost connection persisted nothing, so a self-contained statement is re-run on a fresh connection.
+# Bounded so a genuinely-down database still surfaces an error rather than looping.
+CONN_LOST__max_attempts = 3
 
 KEY_CONFIG__db = "DATABASE"
 KEY_CONFIG__interface = "interface"
@@ -104,9 +108,21 @@ def execute_supplied_statement(db_interface, query: str, parameters: dict = None
         "decrypt": decrypt_columns
     }
 
-    data = InterpretJAAQL(db_interface).transform(statement, skip_commit=skip_commit, encryption_key=encryption_key, autocommit=autocommit,
-                                                  do_prepare_only=do_prepare_only, attempt_fetch_domain_types=attempt_fetch_domain_types,
-                                                  psql=psql, pre_psql=pre_psql)
+    # Retry only on a lost connection: nothing committed, so re-running on a fresh connection is safe.
+    # This closes the gap the deferred-auth optimisation opened - \wipe dbms terminates every backend,
+    # and a pooled connection handed out afterwards has no checkout probe and can die at commit. Params
+    # are already encrypted above, so the retry re-runs the transform only (never re-encrypts).
+    attempts = 0
+    while True:
+        attempts += 1
+        try:
+            data = InterpretJAAQL(db_interface).transform(statement, skip_commit=skip_commit, encryption_key=encryption_key, autocommit=autocommit,
+                                                          do_prepare_only=do_prepare_only, attempt_fetch_domain_types=attempt_fetch_domain_types,
+                                                          psql=psql, pre_psql=pre_psql)
+            break
+        except ConnectionLostError:
+            if attempts >= CONN_LOST__max_attempts:
+                raise
 
     if as_objects:
         data = objectify(data)
