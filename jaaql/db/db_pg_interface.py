@@ -328,7 +328,14 @@ class DBPGInterface(DBInterface):
                     if pending_auth:
                         auth_cursor = conn.jaaql_raw_cursor()
                         try:
-                            if PIPELINE_SUPPORTED:
+                            # Pipeline mode forces the extended protocol on every execute, and the
+                            # extended protocol rejects a multi-command string ("cannot insert
+                            # multiple commands into a prepared statement"). Only pipeline
+                            # single-command queries; a multi-command query (install scripts,
+                            # interpreted/canned SQL run during a bump) falls back to sequential
+                            # execution, where the main query runs under the simple protocol that
+                            # permits several commands.
+                            if PIPELINE_SUPPORTED and _statement_is_preparable(query):
                                 with conn.pipeline():
                                     for statement in pending_auth:
                                         auth_cursor.execute(statement)
