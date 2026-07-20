@@ -166,7 +166,7 @@ DOCUMENTATION__submit = SwaggerDocumentation(
         method=REST__POST,
         arguments=ARG_RESP__allow_all,
         response=RES__allow_all,
-        parallel_verification=False
+        parallel_verification=True
     )
 )
 
@@ -178,7 +178,7 @@ DOCUMENTATION__execute = SwaggerDocumentation(
         method=REST__POST,
         arguments=ARG_RESP__allow_all,
         response=RES__allow_all,
-        parallel_verification=False
+        parallel_verification=True
     )
 )
 
@@ -190,6 +190,6 @@ DOCUMENTATION__call_proc = SwaggerDocumentation(
         method=REST__POST,
         arguments=ARG_RESP__allow_all,
         response=RES__allow_all,
-        parallel_verification=False
+        parallel_verification=True
     )
 )
