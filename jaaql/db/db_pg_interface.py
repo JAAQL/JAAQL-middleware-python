@@ -148,6 +148,21 @@ class DBPGInterface(DBInterface):
         DBPGInterface.HOST_POOLS_QUEUES = {}
 
     @staticmethod
+    def check_all_pools():
+        # Force a synchronous liveness check of every pooled connection, discarding and replacing any
+        # that are broken. clean() reboots Postgres, and background activity (the per-minute cron, the
+        # auth verifier) can re-open pools DURING the reboot/reinstall window, caching connections to
+        # the old postmaster. psycopg_pool only detects those lazily, so the first real request after
+        # the wipe (e.g. \register @dba) gets handed a dead connection whose commit then fails "the
+        # connection is lost". Calling this once Postgres is stable makes the refresh deterministic.
+        for _, user_pool_dict in DBPGInterface.HOST_POOLS.items():
+            for _, pool in user_pool_dict.items():
+                try:
+                    pool.check()
+                except Exception:
+                    pass
+
+    @staticmethod
     def _process_returned_conn(username: str, db_name: str, conn, do_reset: bool):
         if isinstance(conn, JaaqlPGConnection) and conn.jaaql_has_pending_auth():
             # The deferred authorization statements were never sent, so the session still runs as

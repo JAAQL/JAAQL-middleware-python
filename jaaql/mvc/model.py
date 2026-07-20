@@ -1457,6 +1457,11 @@ WHERE
             self.vault.get_obj(VAULT_KEY__jaaql_db_password)
         )
 
+        # Postgres was just rebooted and reinstalled. Discard any connections opened against the old
+        # postmaster during that window (by the cron/verifier/install) so the next request cannot be
+        # handed a dead connection whose commit silently fails. Runs once per wipe - no per-request cost.
+        DBPGInterface.check_all_pools()
+
     def execute_migrations(self, connection: DBInterface):
         self.is_super_admin(connection)
 

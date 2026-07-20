@@ -77,6 +77,11 @@ class DBInterface(ABC):
             logging.warning(exc, exc_info=False)
 
     def __attempt_commit_rollback(self, conn, err):
+        # Returns the commit failure rather than swallowing it. A failed commit means the transaction
+        # did NOT persist, so the caller must not report success. Silently swallowing it turned lost
+        # writes into a misleading downstream error - e.g. create_account's CREATE ROLE lost on a
+        # connection killed by a \wipe dbms reboot, then "GRANT registered TO <role>" failing with
+        # "role does not exist" on the very next statement.
         try:
             if err is None:
                 self.commit(conn)
@@ -84,9 +89,11 @@ class DBInterface(ABC):
                 self.rollback(conn)
         except Exception as ex:
             if err is None:
-                self.log_warning(ex)  # error committing. User stuffed up the SQL
+                self.log_warning(ex)  # commit failed - the transaction did not persist
+                return ex
             else:
                 self.log_critical(ex)  # error rolling back. It is serious
+        return None
 
     def __err_to_exception(self, err, echo):
         if err is not None:
@@ -102,17 +109,27 @@ class DBInterface(ABC):
                 raise ex
 
     def handle_error(self, conn, err, echo=ECHO__none):
-        self.__attempt_commit_rollback(conn, err)
+        commit_err = self.__attempt_commit_rollback(conn, err)
+        if err is None and commit_err is not None:
+            raise HttpStatusException("Commit failed, transaction not persisted: " + str(commit_err),
+                                      HTTPStatus.INTERNAL_SERVER_ERROR)
         self.__err_to_exception(err, echo)
 
     def put_conn_handle_error(self, conn, err, echo=ECHO__none, skip_rollback_commit: bool = False):
+        commit_err = None
         if not skip_rollback_commit:
-            self.__attempt_commit_rollback(conn, err)
+            commit_err = self.__attempt_commit_rollback(conn, err)
 
         try:
             self.put_conn(conn)
         except Exception as ex:
             self.log_warning(ex)
+
+        # A failed commit persisted nothing; surface it (instead of the old silent swallow) so the
+        # caller does not treat lost writes as success and hit a misleading error further on.
+        if err is None and commit_err is not None:
+            raise HttpStatusException("Commit failed, transaction not persisted: " + str(commit_err),
+                                      HTTPStatus.INTERNAL_SERVER_ERROR)
 
         self.__err_to_exception(err, echo)
 
