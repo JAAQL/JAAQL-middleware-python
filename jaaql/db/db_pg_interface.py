@@ -22,6 +22,18 @@ PGCONN__max_conns = 10
 
 TIMEOUT = 2.5
 
+# Upper bound on how long a request waits for the parallel auth verifier's verdict before failing
+# closed. Kept below the nginx proxy read timeout so the worker unwinds and returns its connection
+# rather than the request dying at the proxy while the worker hangs on holding an open transaction.
+WAIT_HOOK__timeout = 30
+ERR__verification_timed_out = "Authorization verification timed out"
+
+# libpq TCP keepalives: detect a peer that vanishes (DB reboot, network drop) within ~25s so the
+# socket errors instead of a read blocking indefinitely. Without this the single serial
+# auth-verification thread can wedge forever on a dead connection and, via the wait below, take
+# every authenticated request down with it. Ignored by libpq for unix-socket connections.
+CONN_STR__keepalives = " keepalives=1 keepalives_idle=10 keepalives_interval=5 keepalives_count=3"
+
 ERR__invalid_role = "Role not allowed, invalid format!"
 ERR__must_use_canned_query = "Must use canned query as you are not an admin!"
 
@@ -199,6 +211,8 @@ class DBPGInterface(DBInterface):
                 if str(port) != "5432":
                     conn_str += " port=" + str(port)
 
+                conn_str += CONN_STR__keepalives
+
                 self.conn_str = conn_str
 
                 if self.db_name not in user_pool:
@@ -309,7 +323,14 @@ class DBPGInterface(DBInterface):
                     do_prepare = prepare and _statement_is_preparable(query)
 
                     if wait_hook:
-                        res, err, code = wait_hook.get()
+                        try:
+                            res, err, code = wait_hook.get(timeout=WAIT_HOOK__timeout)
+                        except queue.Empty:
+                            # The parallel verifier never delivered a verdict (its single serial thread
+                            # wedged, e.g. on a connection killed by a DB reboot). Fail closed and let
+                            # the worker unwind - without this bound the worker blocks forever holding
+                            # an open transaction, and enough of them starve the pool into nginx 504s.
+                            raise Exception(ERR__verification_timed_out)
                         if not res:
                             if code == 500:
                                 raise Exception(err)
