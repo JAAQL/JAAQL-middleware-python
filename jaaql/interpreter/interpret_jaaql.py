@@ -375,7 +375,25 @@ class InterpretJAAQL:
                     last_query = self.encrypt_literals(last_query, encryption_key)
                     found_params = {**found_parameter_dictionary, **enc_parameter_dictionary}
 
+                    temp_view_name = None
+                    provenance_res = None
+
                     if attempt_fetch_domain_types:
+                        described, provenance = self.describe_query_provenance(
+                            conn, last_query, found_params, wait_hook=wait_hook,
+                            requires_dba_check=check_required and canned_query_service is not None)
+                        wait_hook = None
+                        check_required = False
+                        self.db_interface.execute_query_fetching_results(conn, "SAVEPOINT __jaaql_provenance")
+                        try:
+                            provenance_res = self.fetch_domain_types_via_provenance(conn, last_query, described, provenance)
+                            self.db_interface.execute_query_fetching_results(conn, "RELEASE SAVEPOINT __jaaql_provenance")
+                        except Exception:
+                            traceback.print_exc()
+                            provenance_res = None
+                            self.db_interface.execute_query_fetching_results(conn, "ROLLBACK TO SAVEPOINT __jaaql_provenance")
+
+                    if attempt_fetch_domain_types and provenance_res is None:
                         temp_view_name = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
                         last_query = "CREATE TEMP VIEW \"temp_view__" + temp_view_name + "\" AS (" + last_query + ")"
                         self.db_interface.execute_query_fetching_results(conn, last_query, found_params, wait_hook=wait_hook,
@@ -436,23 +454,22 @@ WITH RECURSIVE column_hierarchy AS (
 			AND u.view_schema = ch.table_schema
 			AND u.view_name = ch.table_name
 			AND u.column_name = ch.column_name
+			AND c2.udt_name = ch.udt_name
+			AND c2.domain_name IS NOT DISTINCT FROM ch.domain_name
 		ORDER BY
-			CASE WHEN ch.domain_name IS NOT DISTINCT FROM c2.domain_name THEN 3 ELSE 0 END DESC,
-			CASE WHEN ch.udt_name = c2.udt_name THEN 2 ELSE 0 END DESC,
-			CASE WHEN ch.data_type = c2.data_type THEN 1 ELSE 0 END DESC,
 			c2.table_schema,
 			c2.table_name
 		LIMIT 1
 	) ref ON true
 ),
 deep AS (
-	SELECT DISTINCT ON (column_name)
+	SELECT
 		column_name,
 		data_type,
 		udt_name,
 		domain_name
 	FROM column_hierarchy
-	ORDER BY column_name, level DESC
+	WHERE level = 1
 ),
 nul AS (
 	SELECT
@@ -472,7 +489,7 @@ JOIN nul n USING (column_name)
 ORDER BY d.column_name;
 """
                         found_params = {}
-                    elif do_prepare_only and not psql:
+                    elif do_prepare_only and not attempt_fetch_domain_types and not psql:
                         arg_open = "(" if len(found_params) != 0 else ""
                         arg_close = ")" if len(found_params) != 0 else ""
                         last_query = "PREPARE _jaaql_query_check_" + do_prepare_only + arg_open + ", ".join(
@@ -509,6 +526,8 @@ ORDER BY d.column_name;
                             "rows": [result.stdout],
                             "type_codes": [""]
                         }
+                    elif provenance_res is not None:
+                        res = provenance_res
                     else:
                         res = self.db_interface.execute_query_fetching_results(conn, last_query, found_params, wait_hook=wait_hook,
                                                                                requires_dba_check=check_required and canned_query_service is not None,
@@ -518,7 +537,7 @@ ORDER BY d.column_name;
                         self.db_interface.execute_query_fetching_results(conn, "DEALLOCATE _jaaql_query_check_" + do_prepare_only, found_params,
                                                                          wait_hook=wait_hook,
                                                                          requires_dba_check=check_required and canned_query_service is not None)
-                    elif attempt_fetch_domain_types:
+                    elif attempt_fetch_domain_types and temp_view_name is not None:
                         self.db_interface.execute_query_fetching_results(conn, "DROP VIEW IF EXISTS \"temp_view__" + temp_view_name + "\"", found_params,
                                                                          wait_hook=wait_hook,
                                                                          requires_dba_check=check_required and canned_query_service is not None)
@@ -834,6 +853,148 @@ ORDER BY d.column_name;
             last_end_match = end_pos
 
         return new_query + query[last_end_match:]
+
+    PROVENANCE__max_view_depth = 8
+
+    def describe_query_provenance(self, conn, query, parameters, wait_hook: queue.Queue = None, requires_dba_check: bool = False):
+        provenance = []
+        described = self.db_interface.execute_query_fetching_results(
+            conn, "SELECT * FROM (" + query + "\n) __jaaql_provenance LIMIT 0", parameters, wait_hook=wait_hook,
+            requires_dba_check=requires_dba_check, capture_provenance=provenance)
+        return described, provenance
+
+    def fetch_domain_types_via_provenance(self, conn, query, described, provenance):
+        null_extended, plan_cost = self.fetch_null_extended_relations(conn, query)
+        result_types = self.fetch_result_types_via_temp_view(conn, query)
+        if len(result_types) != len(provenance):
+            raise Exception("Temp view column count does not match the described result")
+        sources = self.resolve_column_provenance_batch(conn, [(table_oid, table_column) for _, table_oid, table_column in provenance])
+
+        rows = []
+        for column_name, (data_type, udt_name, domain_name), (type_oid, table_oid, table_column) in zip(
+                described["columns"], result_types, provenance):
+            source = sources.get((table_oid, table_column))
+            if source is None:
+                is_nullable = True
+            else:
+                nspname, relname, attnotnull = source
+                is_nullable = not attnotnull or (nspname, relname) in null_extended
+            rows.append([column_name, data_type, udt_name, domain_name, is_nullable])
+
+        rows.sort(key=lambda row: row[0])
+        return {
+            "columns": ["column_name", "data_type", "udt_name", "domain_name", "is_nullable"],
+            "rows": rows,
+            "type_codes": [],
+            "plan_cost": plan_cost
+        }
+
+    def fetch_result_types_via_temp_view(self, conn, query):
+        temp_view_name = "temp_view__" + ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
+        self.db_interface.execute_query_fetching_results(conn, "CREATE TEMP VIEW \"" + temp_view_name + "\" AS (" + query + ")")
+        try:
+            res = self.db_interface.execute_query_fetching_results(conn, """
+SELECT format_type(COALESCE(bt.oid, t.oid), a.atttypmod) AS data_type,
+	COALESCE(bt.typname, t.typname) AS udt_name,
+	CASE WHEN t.typtype = 'd' THEN t.typname END AS domain_name
+FROM pg_attribute a
+JOIN pg_type t ON t.oid = a.atttypid
+LEFT JOIN pg_type bt ON t.typtype = 'd' AND bt.oid = t.typbasetype
+WHERE a.attrelid = '""" + temp_view_name + """'::regclass
+	AND a.attnum > 0
+ORDER BY a.attnum""")
+        finally:
+            try:
+                self.db_interface.execute_query_fetching_results(conn, "DROP VIEW IF EXISTS \"" + temp_view_name + "\"")
+            except Exception:
+                pass
+        return res["rows"]
+
+    def resolve_column_provenance_batch(self, conn, pairs):
+        view_cache = {}
+        current = {}
+        results = {}
+        for table_oid, table_column in pairs:
+            if table_oid and table_column > 0:
+                current[(table_oid, table_column)] = (table_oid, table_column)
+            else:
+                results[(table_oid, table_column)] = None
+
+        for _ in range(self.PROVENANCE__max_view_depth + 1):
+            pending = {}
+            for origin, cursor in current.items():
+                if origin not in results:
+                    pending.setdefault(cursor, []).append(origin)
+            if len(pending) == 0:
+                break
+            attributes = self.batch_attribute_lookup(conn, pending.keys())
+            for cursor, origins in pending.items():
+                attribute = attributes.get(cursor)
+                if attribute is None or attribute[4]:
+                    for origin in origins:
+                        results[origin] = None
+                    continue
+                relkind, nspname, relname, attnotnull, attisdropped = attribute
+                if relkind != "v":
+                    for origin in origins:
+                        results[origin] = (nspname, relname, attnotnull)
+                    continue
+                if cursor[0] not in view_cache:
+                    viewdef = self.db_interface.execute_query_fetching_results(
+                        conn, "SELECT pg_get_viewdef(" + str(int(cursor[0])) + ")")["rows"][0][0].strip().rstrip(";")
+                    inner_provenance = []
+                    self.db_interface.execute_query_fetching_results(
+                        conn, "SELECT * FROM (" + viewdef + "\n) __jaaql_provenance LIMIT 0", capture_provenance=inner_provenance)
+                    view_cache[cursor[0]] = inner_provenance
+                inner = view_cache[cursor[0]]
+                if cursor[1] > len(inner):
+                    for origin in origins:
+                        results[origin] = None
+                    continue
+                _, inner_oid, inner_column = inner[cursor[1] - 1]
+                if inner_oid and inner_column > 0:
+                    for origin in origins:
+                        current[origin] = (inner_oid, inner_column)
+                else:
+                    # The view column is an expression: its type is known but base nullability is not recoverable
+                    for origin in origins:
+                        results[origin] = (nspname, relname, False)
+
+        for origin in current:
+            results.setdefault(origin, None)
+        return results
+
+    def batch_attribute_lookup(self, conn, pairs):
+        values = ", ".join("(" + str(int(table_oid)) + ", " + str(int(table_column)) + ")" for table_oid, table_column in pairs)
+        res = self.db_interface.execute_query_fetching_results(conn, """
+SELECT c.oid, a.attnum, c.relkind, n.nspname, c.relname, a.attnotnull, a.attisdropped
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+JOIN pg_attribute a ON a.attrelid = c.oid
+WHERE (c.oid, a.attnum) IN (""" + values + ")")
+        return {(row[0], row[1]): tuple(row[2:]) for row in res["rows"]}
+
+    def fetch_null_extended_relations(self, conn, query):
+        plan_payload = self.db_interface.execute_query_fetching_results(
+            conn, "EXPLAIN (VERBOSE, FORMAT JSON) " + query)["rows"][0][0]
+        if isinstance(plan_payload, str):
+            plan_payload = json.loads(plan_payload)
+        null_extended = set()
+
+        def walk(node, is_null_extended):
+            if node.get("Parent Relationship") in ("InitPlan", "SubPlan"):
+                return
+            if is_null_extended and "Relation Name" in node:
+                null_extended.add((node.get("Schema"), node["Relation Name"]))
+            join_type = node.get("Join Type")
+            for child_idx, child in enumerate(node.get("Plans", [])):
+                walk(child, is_null_extended
+                     or (join_type == "Left" and child_idx == 1)
+                     or (join_type == "Right" and child_idx == 0)
+                     or join_type == "Full")
+
+        walk(plan_payload[0]["Plan"], False)
+        return null_extended, plan_payload[0]["Plan"].get("Total Cost")
 
     def pre_prepare_statement(self, query, parameters, match_regex: str = REGEX_query_argument, encryption_key: bytes = None,
                               require_presence: bool = True, for_prepare: bool = False, skipped_singletons: list[str] = None,

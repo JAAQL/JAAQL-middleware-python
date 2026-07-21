@@ -54,6 +54,8 @@ import requests
 
 from jaaql.migrations.migrations import run_migrations
 
+PREPARE__concurrency = 6
+
 NGINX_MARKER__first = "limit_req_status 429;\n    "
 NGINX_MARKER__second = "proxy_set_header X-Real-IP $remote_addr;\n    "
 NGINX_INSERT__frozen = "    return 503;\n    "
@@ -398,28 +400,16 @@ ORDER BY
 
         self.is_dba(db_connection)
 
-        res = []
-
-        for query in inputs["queries"]:
+        def prepare_one(query):
             my_uuid = str(uuid.uuid4()).replace("-", "_")
             exc = None
             cost = None
             type_resolution_method = None
             columns = None
 
-            try:
-                results = execute_supplied_statement(
-                    db_connection,
-                    query["query"].strip(),
-                    do_prepare_only=my_uuid
-                )
-                cost = float(results["rows"][0][0].split("..")[1].split(" ")[0])
-            except Exception as ex:
-                exc = str(ex).replace("PREPARE _jaaql_query_check_" + my_uuid + " as ", "").replace(
-                    " ... _jaaql_query_check_" + my_uuid + " as ", "")
-
-            if exc is None and not cost_only:
-                # Try temp_view domain type resolution first
+            if not cost_only:
+                # Try provenance/temp_view domain type resolution first; its EXPLAIN also yields the
+                # plan cost, so a success skips the separate PREPARE validation pass entirely
                 try:
                     domain_types = execute_supplied_statement(
                         db_connection,
@@ -428,6 +418,7 @@ ORDER BY
                         attempt_fetch_domain_types=True
                     )
                     type_resolution_method = "temp_view"
+                    cost = domain_types.get("plan_cost")
 
                     temp_columns = [row[0] for row in domain_types['rows']]
 
@@ -456,8 +447,22 @@ ORDER BY
                 except Exception:
                     pass  # This is fine
 
+            if columns is None and exc is None:
+                # Introspection unavailable (or cost_only): run the classic PREPARE pass for
+                # validation with canonical error messages, and the cost
+                try:
+                    results = execute_supplied_statement(
+                        db_connection,
+                        query["query"].strip(),
+                        do_prepare_only=my_uuid
+                    )
+                    cost = float(results["rows"][0][0].split("..")[1].split(" ")[0])
+                except Exception as ex:
+                    exc = str(ex).replace("PREPARE _jaaql_query_check_" + my_uuid + " as ", "").replace(
+                        " ... _jaaql_query_check_" + my_uuid + " as ", "")
+
                 # If temp_view didn't work, fallback to gdesc/psql
-                if columns is None and exc is None:
+                if exc is None and not cost_only:
                     try:
                         type_resolution_method = "gdesc"
                         psql = [
@@ -483,14 +488,20 @@ ORDER BY
                         type_resolution_method = "failed"
                         columns = None
 
-            res.append({
+            return {
                 "location": query["file"] + ":" + str(query["line_number"]),
                 "name": query["name"],
                 "cost": cost,
                 "columns": columns,
                 "exception": exc,
                 "type_resolution_method": type_resolution_method
-            })
+            }
+
+        try:
+            from gevent.pool import Pool as GeventPool
+            res = list(GeventPool(PREPARE__concurrency).map(prepare_one, inputs["queries"]))
+        except ImportError:
+            res = [prepare_one(query) for query in inputs["queries"]]
 
         if inputs.get("sort_cost", True):
             return sorted(

@@ -327,7 +327,8 @@ class DBPGInterface(DBInterface):
             return HttpStatusException(ERR__invalid_token, HTTPStatus.UNAUTHORIZED)
         return None
 
-    def execute_query(self, conn, query, parameters=None, wait_hook: queue.Queue = None, prepare: bool = False):
+    def execute_query(self, conn, query, parameters=None, wait_hook: queue.Queue = None, prepare: bool = False,
+                      capture_provenance: list = None):
         x = 0
         err = None
         while x < PGCONN__max_conns:
@@ -402,6 +403,12 @@ class DBPGInterface(DBInterface):
                     if cursor.description is None:
                         return [], [], []
                     else:
+                        if capture_provenance is not None:
+                            capture_provenance.clear()
+                            pgresult = cursor.pgresult
+                            capture_provenance.extend(
+                                (pgresult.ftype(idx), pgresult.ftable(idx), pgresult.ftablecol(idx))
+                                for idx in range(pgresult.nfields))
                         return [desc[0] for desc in cursor.description], [desc.type_code for desc in cursor.description], cursor.fetchall()
             except OperationalError as ex:
                 if ex.sqlstate is None or ex.sqlstate.startswith("08") or ex.sqlstate.startswith("57"):
