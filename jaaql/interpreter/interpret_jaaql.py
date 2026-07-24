@@ -384,14 +384,21 @@ class InterpretJAAQL:
                             requires_dba_check=check_required and canned_query_service is not None)
                         wait_hook = None
                         check_required = False
-                        self.db_interface.execute_query_fetching_results(conn, "SAVEPOINT __jaaql_provenance")
+                        # In autocommit mode a failed statement cannot poison a transaction, and
+                        # SAVEPOINT itself is rejected outside a transaction block
+                        provenance_savepoint = False
                         try:
+                            if not getattr(conn, "autocommit", False):
+                                self.db_interface.execute_query_fetching_results(conn, "SAVEPOINT __jaaql_provenance")
+                                provenance_savepoint = True
                             provenance_res = self.fetch_domain_types_via_provenance(conn, last_query, described, provenance)
-                            self.db_interface.execute_query_fetching_results(conn, "RELEASE SAVEPOINT __jaaql_provenance")
+                            if provenance_savepoint:
+                                self.db_interface.execute_query_fetching_results(conn, "RELEASE SAVEPOINT __jaaql_provenance")
                         except Exception:
                             traceback.print_exc()
                             provenance_res = None
-                            self.db_interface.execute_query_fetching_results(conn, "ROLLBACK TO SAVEPOINT __jaaql_provenance")
+                            if provenance_savepoint:
+                                self.db_interface.execute_query_fetching_results(conn, "ROLLBACK TO SAVEPOINT __jaaql_provenance")
 
                     if attempt_fetch_domain_types and provenance_res is None:
                         temp_view_name = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
