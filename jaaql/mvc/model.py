@@ -1544,6 +1544,14 @@ WHERE
 
             super_interface = create_interface(self.config, address, port, DB__jaaql, username, db_password)
             conn = super_interface.get_conn()
+            # A wipe leaves a window where background services (cron, EMS poller, auth verifier)
+            # reconnect and can abandon an open transaction holding locks on the fresh jaaql tables.
+            # The install DDL below would then queue behind that lock forever (no lock_timeout),
+            # wedging /internal/clean into an nginx 504. Kill the strays and bound every lock wait so
+            # a re-raced install fails fast (and can be retried) instead of hanging
+            super_interface.execute_query(conn, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                                                "WHERE datname = current_database() AND pid <> pg_backend_pid()")
+            super_interface.execute_query(conn, "SET lock_timeout TO '10s'")
             super_interface.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "01.install_domains.generated.sql"))
             super_interface.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "02.install_super_user.exceptions.sql"))
             super_interface.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "03.install_super_user.handwritten.sql"))
@@ -1560,6 +1568,7 @@ WHERE
 
             self.jaaql_lookup_connection = create_interface(self.config, address, port, DB__jaaql, ROLE__jaaql, jaaql_db_password)
             conn = self.jaaql_lookup_connection.get_conn()
+            self.jaaql_lookup_connection.execute_query(conn, "SET lock_timeout TO '10s'")
             self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts,
                                                                         "04.install_jaaql_data_structures.generated.sql"))
             self.jaaql_lookup_connection.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts,
