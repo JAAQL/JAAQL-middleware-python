@@ -446,7 +446,7 @@ elif [ "$IS_HTTPS" = "TRUE" ] && [ -d "$CERT_DIR" ] ; then
   service nginx restart || { echo "Failed to restart nginx. Reason: $(nginx -t 2>&1)"; exit 1; }
 fi
 
-docker-entrypoint.sh postgres &
+docker-entrypoint.sh postgres $(sh ${INSTALL_PATH:-/JAAQL-middleware-python}/docker/pg_dev_settings.sh) &
 
 # PID 1 is this shell, so the kernel discards any signal whose disposition is still the default:
 # a `docker stop` therefore waited out the full grace period and SIGKILLed the container, taking
