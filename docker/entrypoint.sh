@@ -461,7 +461,7 @@ stop_jaaql() {
     kill -TERM "$JAAQL_GUNICORN_PID" 2>/dev/null || true
     wait "$JAAQL_GUNICORN_PID" 2>/dev/null || true
   fi
-  su postgres -c "/usr/lib/postgresql/$PG_MAJOR/bin/pg_ctl -D $PG_DATA_DIR -m fast -w -t 30 stop" || true
+  su postgres -c "/usr/lib/postgresql/$PG_MAJOR/bin/pg_ctl -D $PG_DATA_DIR -m fast -w -t 30 stop" || exit 1
   exit 0
 }
 
@@ -555,7 +555,7 @@ while :
 do
   $GUNICORN_PATH -p app.pid --bind unix:jaaql.sock -m 777 --config /JAAQL-middleware-python/docker/gunicorn_config.py --access-logformat '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(M)sms"' --access-logfile $ACCESS_LOG_FILE --log-file $LOG_FILE --capture-output --log-level info 'wsgi_patch:build_app()' &
   JAAQL_GUNICORN_PID=$!
-  wait "$JAAQL_GUNICORN_PID" || true
+  wait "$JAAQL_GUNICORN_PID"
   JAAQL_GUNICORN_PID=""
   chmod +777 /JAAQL-middleware-python/base_reboot.sh
   /JAAQL-middleware-python/base_reboot.sh
