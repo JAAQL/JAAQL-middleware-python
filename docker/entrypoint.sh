@@ -448,6 +448,25 @@ fi
 
 docker-entrypoint.sh postgres &
 
+# PID 1 is this shell, so the kernel discards any signal whose disposition is still the default:
+# a `docker stop` therefore waited out the full grace period and SIGKILLed the container, taking
+# postgres down uncleanly. Trap both the image's STOPSIGNAL and SIGTERM and shut the cluster down.
+# Gunicorn is stopped with TERM, not QUIT: a background child of a non-interactive shell has INT and
+# QUIT set to ignored, so a QUIT here would leave the wait below hanging until docker's kill.
+JAAQL_GUNICORN_PID=""
+
+stop_jaaql() {
+  trap '' INT TERM
+  if [ -n "$JAAQL_GUNICORN_PID" ]; then
+    kill -TERM "$JAAQL_GUNICORN_PID" 2>/dev/null || true
+    wait "$JAAQL_GUNICORN_PID" 2>/dev/null || true
+  fi
+  su postgres -c "/usr/lib/postgresql/$PG_MAJOR/bin/pg_ctl -D $PG_DATA_DIR -m fast -w -t 30 stop" || true
+  exit 0
+}
+
+trap stop_jaaql INT TERM
+
 (
 	echo "TZ=$TZ"
 	echo "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -534,7 +553,10 @@ fi
 
 while :
 do
-  $GUNICORN_PATH -p app.pid --bind unix:jaaql.sock -m 777 --config /JAAQL-middleware-python/docker/gunicorn_config.py --access-logformat '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(M)sms"' --access-logfile $ACCESS_LOG_FILE --log-file $LOG_FILE --capture-output --log-level info 'wsgi_patch:build_app()'
+  $GUNICORN_PATH -p app.pid --bind unix:jaaql.sock -m 777 --config /JAAQL-middleware-python/docker/gunicorn_config.py --access-logformat '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(M)sms"' --access-logfile $ACCESS_LOG_FILE --log-file $LOG_FILE --capture-output --log-level info 'wsgi_patch:build_app()' &
+  JAAQL_GUNICORN_PID=$!
+  wait "$JAAQL_GUNICORN_PID" || true
+  JAAQL_GUNICORN_PID=""
   chmod +777 /JAAQL-middleware-python/base_reboot.sh
   /JAAQL-middleware-python/base_reboot.sh
   replace_config

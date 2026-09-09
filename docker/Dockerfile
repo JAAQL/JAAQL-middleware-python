@@ -226,4 +226,6 @@ RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini && \
     cd / && \
     mkdir -p $INSTALL_PATH/log
 
+STOPSIGNAL SIGTERM
+
 ENTRYPOINT ["sh", "entrypoint.sh"]
