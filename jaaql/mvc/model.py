@@ -1489,7 +1489,7 @@ WHERE
             master_pid = os.getppid()
 
             def _deterministic_restart():
-                time.sleep(1)  # let /internal/clean's 200 reach the caller before we bounce the server
+                time.sleep(0.2)  # let /internal/clean's 200 reach the caller before we bounce the server
                 os.kill(master_pid, signal.SIGQUIT)
 
             threading.Thread(target=_deterministic_restart, daemon=True).start()
