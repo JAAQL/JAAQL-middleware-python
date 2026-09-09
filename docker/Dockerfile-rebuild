@@ -21,8 +21,10 @@ RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini && \
     mv $INSTALL_PATH/docker/jaaql.sql /docker-entrypoint-initdb.d/01-jaaql.sql && \
     mv $INSTALL_PATH/docker/entrypoint.sh entrypoint.sh && \
     mv $INSTALL_PATH/docker/pg_reboot.sh pg_reboot.sh && \
+    mv $INSTALL_PATH/docker/pg_dev_settings.sh pg_dev_settings.sh && \
     dos2unix entrypoint.sh && \
     dos2unix pg_reboot.sh && \
+    dos2unix pg_dev_settings.sh && \
     dos2unix $INSTALL_PATH/base_reboot.sh
 
 STOPSIGNAL SIGTERM

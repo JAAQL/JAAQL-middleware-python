@@ -218,6 +218,8 @@ RUN rm -rf $INSTALL_PATH/jaaql/config/config.ini && \
     dos2unix recover.sh && \
     mv $INSTALL_PATH/docker/pg_reboot.sh pg_reboot.sh && \
     dos2unix pg_reboot.sh && \
+    mv $INSTALL_PATH/docker/pg_dev_settings.sh pg_dev_settings.sh && \
+    dos2unix pg_dev_settings.sh && \
     dos2unix $INSTALL_PATH/base_reboot.sh && \
     cd $INSTALL_PATH && \
     $PIP_PATH install -U setuptools wheel && \
