@@ -27,6 +27,7 @@ from jaaql.exceptions.jaaql_interpretable_handled_errors import *
 from jaaql.db.db_pg_interface import DBPGInterface, QUERY__dba_query_external
 from jaaql.email.email_manager_service import EmailAttachment
 from jaaql.mvc.base_model import BaseJAAQLModel, VAULT_KEY__jwt_crypt_key
+from jaaql.utilities.bootstrap_secrets import get_or_seed_vault_secret
 from jaaql.exceptions.http_status_exception import HttpStatusException, ERR__already_installed, HttpSingletonStatusException
 from os.path import join
 from jaaql.interpreter.interpret_jaaql import KEY_query, KEY_parameters
@@ -1518,6 +1519,21 @@ WHERE
         # every compiled queries.json by the BATON microcompiler.
         sql = self._lookup_cached_query(QUERY_CACHE_REF__health)
         execute_supplied_statement_singleton(self.jaaql_lookup_connection, sql, as_objects=True)
+
+    def install_on_bootup(self):
+        # Called from the gunicorn master (docker/gunicorn_config.py, when_ready) while preload_app has
+        # built this model and no worker has forked yet, so every worker starts already installed. The
+        # migrations manager still installs over HTTP if this does not run, but that path installs inside
+        # one worker and then has to bounce the whole master (child_exit) before the others can see it.
+        if not self.is_container or self.has_installed:
+            return
+        super_db_password = get_or_seed_vault_secret(self.vault, VAULT_KEY__super_db_password, "SUPER_PASSWORD", generate_if_missing=True)
+        jaaql_password = get_or_seed_vault_secret(self.vault, VAULT_KEY__jaaql_password, "JAAQL_PASSWORD", generate_if_missing=True)
+        self.install(None, jaaql_password, super_db_password, self.install_key, True, do_reboot=False)
+        # Nothing may carry a pooled connection across the fork; each worker opens its own in post_worker_init
+        if self.jaaql_lookup_connection is not None:
+            self.jaaql_lookup_connection.close()
+        DBPGInterface.close_all_pools()
 
     def install(self, db_connection_string: str, jaaql_password: str, super_db_password: str, install_key: str, allow_uninstall: bool,
                 do_reboot: bool = True, jaaql_db_password: str = None):

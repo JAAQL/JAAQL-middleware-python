@@ -10,6 +10,18 @@ preload_app = True
 has_checked_for_install = False
 
 
+def when_ready(server):
+    # preload_app has already built the app in this master and no worker has forked yet, so installing
+    # here starts every worker installed. The migrations manager's HTTP install still works as a fallback
+    # if this raises - it installs inside one worker and then bounces the whole master through child_exit
+    # below, which is a second gunicorn boot on every fresh container.
+    try:
+        server.app.wsgi().model.install_on_bootup()
+    except Exception:
+        import traceback
+        traceback.print_exc()
+
+
 def post_worker_init(worker):
     import signal
 
