@@ -40,7 +40,8 @@ def try_encode(salt: Union[str, bytes]) -> bytes:
     return salt
 
 
-def create_interface(config, address: str, port: int, database: str, username: str, password: str = None, role: str = None, sub_role: str = None):
+def create_interface(config, address: str, port: int, database: str, username: str, password: str = None, role: str = None, sub_role: str = None,
+                     session_settings: dict = None):
     interface = config[KEY_CONFIG__db][KEY_CONFIG__interface]
     supported = {
         INTERFACE__postgres_key: INTERFACE__postgres_class
@@ -51,7 +52,8 @@ def create_interface(config, address: str, port: int, database: str, username: s
 
     # interface_class = getattr(db, supported[interface])  To implement later for accessing non postgres databases
     interface_class = DBPGInterface
-    instance = interface_class(config, address, port, database, username, role=role, password=password, sub_role=sub_role)
+    instance = interface_class(config, address, port, database, username, role=role, password=password, sub_role=sub_role,
+                               session_settings=session_settings)
 
     return instance
 
@@ -192,7 +194,8 @@ def execute_supplied_statements(db_interface, queries: Union[str, list],
     return data
 
 
-def create_interface_for_db(vault, config, user_id: str, database: str, sub_role: str = None):
+def create_interface_for_db(vault, config, user_id: str, database: str, sub_role: str = None, session_settings: dict = None):
     jaaql_uri = vault.get_obj(VAULT_KEY__super_db_credentials)
     address, port, _, username, password = DBInterface.fracture_uri(jaaql_uri)
-    return create_interface(config, address, port, database, username, password=password, role=user_id, sub_role=sub_role)
+    return create_interface(config, address, port, database, username, password=password, role=user_id, sub_role=sub_role,
+                            session_settings=session_settings)

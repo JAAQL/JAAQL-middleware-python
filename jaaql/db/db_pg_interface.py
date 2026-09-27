@@ -39,6 +39,9 @@ ERR__must_use_canned_query = "Must use canned query as you are not an admin!"
 
 QUERY__dba_query = "SELECT pg_has_role(datdba::regrole, 'MEMBER') FROM pg_database WHERE datname = %(database)s;"
 QUERY__dba_query_external = "SELECT pg_has_role(datdba::regrole, 'MEMBER') FROM pg_database WHERE datname = current_database();"
+# Applies an interface's session_settings in one statement however many there are, names and values bound as parameters.
+# is_local = true: they end with the request's transaction (COMMIT or ROLLBACK), so they never reach a later checkout
+QUERY__apply_session_settings = "SELECT set_config(s.n, s.v, true) FROM unnest(%s::text[], %s::text[]) AS s(n, v)"
 
 try:
     # Pipeline mode needs libpq >= 14. create_app refuses to boot when this is False so a server
@@ -49,11 +52,19 @@ except Exception:
     PIPELINE_SUPPORTED = False
 
 
+def _execute_pending_statement(cursor, statement):
+    # A pending statement is SQL text, or a (SQL, parameters) pair when it carries client-supplied values
+    if isinstance(statement, tuple):
+        cursor.execute(statement[0], statement[1])
+    else:
+        cursor.execute(statement)
+
+
 class JaaqlPGConnection(psycopg.Connection):
     """
     Connection whose per-checkout session-authorization statements (jaaql__set_session_authorization
-    / SET ROLE) are deferred at checkout and sent pipelined with the first real query, saving a
-    network round trip per checkout.
+    / SET ROLE, then the transaction-local session settings) are deferred at checkout and sent
+    pipelined with the first real query, saving a network round trip per checkout.
 
     Safety property: authorization must never be skippable. Any cursor obtained through the normal
     cursor() call while statements are still pending executes them eagerly first, so raw connection
@@ -87,7 +98,7 @@ class JaaqlPGConnection(psycopg.Connection):
                 pending = self.jaaql_take_pending_auth()
                 with super().cursor() as flush_cursor:
                     for statement in pending:
-                        flush_cursor.execute(statement)
+                        _execute_pending_statement(flush_cursor, statement)
             finally:
                 self._jaaql_flushing = False
         return super().cursor(*args, **kwargs)
@@ -194,11 +205,15 @@ class DBPGInterface(DBInterface):
             except Exception:
                 pass  # Ignore, pool has likely been wiped
 
-    def __init__(self, config, host: str, port: int, db_name: str, username: str, role: str = None, password: str = None, sub_role: str = None):
+    def __init__(self, config, host: str, port: int, db_name: str, username: str, role: str = None, password: str = None, sub_role: str = None,
+                 session_settings: dict = None):
         super().__init__(config, host, username)
 
         self.role = role
         self.sub_role = sub_role
+        # {setting name: value}, applied transaction-locally after the authorization statements. Built server side (see
+        # pop_timeline_settings), never named by the client
+        self.session_settings = session_settings
         if sub_role is not None:
             if len([ch for ch in sub_role if not ch.isalnum() and ch not in ['_', '-']]) != 0:
                 raise HttpStatusException(ERR__invalid_role, HTTPStatus.UNAUTHORIZED)
@@ -255,7 +270,14 @@ class DBPGInterface(DBInterface):
             # without executing (defensive: every return path should already have cleared it).
             # Without this a later checkout could execute a previous user's authorization
             conn.jaaql_take_pending_auth()
-        if self.role is not None or self.sub_role is not None:
+        if conn.autocommit:
+            # A request that asked for autocommit hands its connection back still in autocommit and
+            # psycopg_pool does not reset it, so the next request to land on it would run statement by
+            # statement: a multi-query submit no longer atomic, a transaction-local setting gone before
+            # the query it was meant for. transform() applies autocommit again for requests that ask.
+            # The pool only hands out idle connections, so this cannot fail on an open transaction
+            conn.autocommit = False
+        if self.role is not None or self.sub_role is not None or self.session_settings:
             # Deferred: sent pipelined with the first query by execute_query, or flushed eagerly by
             # JaaqlPGConnection.cursor() if the connection is used rawly. Errors these statements
             # raise are translated by _translate_session_auth_error at execution time; dead pool
@@ -266,6 +288,10 @@ class DBPGInterface(DBInterface):
                 pending.append("SELECT jaaql_extension.jaaql__set_session_authorization('" + self.role + "', '" + conn.jaaql_reset_key + "');")
             if self.sub_role is not None:
                 pending.append("SET ROLE \"" + self.sub_role + "\"")
+            if self.session_settings:
+                # After the authorization statements, so the settings are applied as the user and only once the
+                # parallel verifier has accepted the request
+                pending.append((QUERY__apply_session_settings, (list(self.session_settings.keys()), list(self.session_settings.values()))))
             conn.jaaql_set_pending_auth(pending)
         return conn
 
@@ -379,11 +405,11 @@ class DBPGInterface(DBInterface):
                             if PIPELINE_SUPPORTED and _statement_is_preparable(query) and not conn.autocommit:
                                 with conn.pipeline():
                                     for statement in pending_auth:
-                                        auth_cursor.execute(statement)
+                                        _execute_pending_statement(auth_cursor, statement)
                                     execute_main_query()
                             else:
                                 for statement in pending_auth:
-                                    auth_cursor.execute(statement)
+                                    _execute_pending_statement(auth_cursor, statement)
                                 execute_main_query()
                         except (InternalError, UndefinedFunction, InvalidParameterValue) as ex:
                             translated = self._translate_session_auth_error(ex)

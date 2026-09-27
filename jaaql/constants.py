@@ -18,6 +18,7 @@ KEY__database = "database"
 KEY__role = "role"
 KEY__read_only = "read_only"
 KEY__prevent_unused_parameters = "prevent_unused_parameters"
+KEY__timelines = "timelines"
 KEY__install_key = "install_key"
 KEY__jaaql_password = "jaaql_password"
 KEY__super_db_password = "super_db_password"
@@ -62,6 +63,17 @@ CRON_dayOfWeek = "dayOfWeek"
 
 REGEX__dmbs_object_name = r'^[0-9a-zA-Z_]{1,63}$'
 REGEX__dmbs_procedure_name = r'^[0-9a-zA-Z_$-.\+]{1,63}$'
+
+# The optional request key KEY__timelines ({"<timeline>": "<ISO-8601 moment>" | null}) sets, for the request's transaction
+# only, the moment each timeline is viewed at. A moment becomes the transaction-local setting GUC__timeline_prefix + name,
+# which the generated timeline views read as nullif(current_setting('timeline.<name>', true), ''); the prefix must match the
+# DBMS package. Names are lower-cased before they are checked (setting names are case-insensitive). The patterns are for
+# re.fullmatch
+GUC__timeline_prefix = "timeline."
+TIMELINES__max_count = 16
+TIMELINE__max_moment_length = 64
+REGEX__timeline_name = r'^[a-z_][a-z0-9_]{0,62}$'
+REGEX__timeline_moment = r'^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])([T ]([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\.[0-9]{1,6})?)?(Z|[+-](0[0-9]|1[0-5]):[0-5][0-9])?)?$'
 
 SEPARATOR__comma_space = ", "
 SEPARATOR__comma = ","
@@ -132,6 +144,12 @@ ERR__document_id_not_found = "Document id not found"
 ERR__unlock_code_expired = "The short unlock code has expired. Please use the long link found in your email"
 ERR__invalid_lock = "Either security event does not exist, has already been used, has expired"
 ERR__incorrect_lock_code = "Incorrect lock code"
+ERR__timelines_malformed = "'timelines' must be an object mapping timeline names to moments"
+ERR__timelines_too_many = "'timelines' names %d timelines, at most %d are allowed"
+ERR__timeline_name_invalid = "Timeline name %s is invalid: expected a letter or underscore followed by at most 62 letters, digits or underscores"
+ERR__timeline_name_repeated = "Timeline '%s' is named more than once in 'timelines' (timeline names are case-insensitive)"
+ERR__timeline_moment_invalid = "Moment %s for timeline '%s' is invalid: expected null or an ISO-8601 date or date-time of at most %d characters, such as '2024-03-01', '2024-03-01T12:30:00' or '2024-03-01T12:30:00+01:00'"
+ERR__timelines_with_autocommit = "'timelines' cannot be combined with 'autocommit': a moment holds for the request's transaction, which autocommit ends after every statement"
 
 PG_ENV__password = "POSTGRES_PASSWORD"
 
