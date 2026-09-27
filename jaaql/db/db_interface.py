@@ -120,8 +120,17 @@ class DBInterface(ABC):
         # re-run on a fresh connection; any other commit failure is a genuine error.
         if self.is_connection_error(commit_err):
             raise ConnectionLostError(str(commit_err))
+        translated = self.translate_commit_error(commit_err)
+        if translated is not None:
+            raise translated
         raise HttpStatusException("Commit failed, transaction not persisted: " + str(commit_err),
                                   HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def translate_commit_error(self, commit_err):
+        # A deferred constraint trigger raises at COMMIT rather than during its statement. When what it
+        # raises is an error the statement path would have handed back as a handled error, a subclass
+        # returns that error here so the caller sees the same response either way; None keeps the 500
+        return None
 
     def handle_error(self, conn, err, echo=ECHO__none):
         commit_err = self.__attempt_commit_rollback(conn, err)

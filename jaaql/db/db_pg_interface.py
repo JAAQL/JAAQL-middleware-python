@@ -12,7 +12,7 @@ from jaaql.constants import ERR__invalid_token
 from jaaql.db.db_interface import DBInterface, ECHO__none, CHAR__newline
 from jaaql.exceptions.http_status_exception import *
 from jaaql.exceptions.custom_http_status import CustomHTTPStatus
-from jaaql.exceptions.jaaql_interpretable_handled_errors import UserUnauthorized
+from jaaql.exceptions.jaaql_interpretable_handled_errors import UserUnauthorized, handled_procedure_error_from_raise
 from jaaql.constants import KEY__database
 
 ERR__connect_db = "Could not create connection to database!"
@@ -442,6 +442,11 @@ class DBPGInterface(DBInterface):
         # \wipe dbms). The same class the execute retry loop keys off; a commit that fails this way
         # persisted nothing, so the operation is safe to retry on a fresh connection.
         return isinstance(ex, OperationalError)
+
+    def translate_commit_error(self, commit_err):
+        if not isinstance(commit_err, psycopg.Error):
+            return None
+        return handled_procedure_error_from_raise(commit_err)
 
     def handle_db_error(self, err, echo):
         if isinstance(err, ProgrammingError) and hasattr(err, 'pgresult'):

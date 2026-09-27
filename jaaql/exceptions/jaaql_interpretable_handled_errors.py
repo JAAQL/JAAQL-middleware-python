@@ -1,3 +1,6 @@
+import json
+
+from jaaql.constants import SQLStateJaaql
 from jaaql.exceptions.http_status_exception import JaaqlInterpretableHandledError
 
 
@@ -41,6 +44,19 @@ class HandledProcedureError(JaaqlInterpretableHandledError):
             index=index,
             descriptor=descriptor
         )
+
+
+def handled_procedure_error_from_raise(ex):
+    # A JQ000 raise carries a JSON array of error records, whether it surfaced during its statement or at
+    # COMMIT from a deferred trigger; one that does not is left to the caller as an unhandled error
+    diag = getattr(ex, "diag", None)
+    if diag is None or diag.sqlstate != SQLStateJaaql:
+        return None
+    try:
+        descriptor = json.loads(diag.message_primary)
+    except (TypeError, ValueError):
+        return None
+    return HandledProcedureError(message=None, index=None, table_name=None, descriptor=descriptor)
 
 
 class UnhandledQueryError(JaaqlInterpretableHandledError):

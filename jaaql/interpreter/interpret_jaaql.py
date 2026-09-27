@@ -14,8 +14,8 @@ import json
 from jaaql.db.db_interface import DBInterface, ECHO__none
 from psycopg.errors import OperationalError, Error
 from jaaql.constants import KEY__position, KEY__file, KEY__application, KEY__error, KEY__error_row_number, KEY__error_query, \
-    KEY__error_set, KEY__error_index, SQLStateJaaql, KEY__restrictions, REGEX__dmbs_object_name
-from jaaql.exceptions.jaaql_interpretable_handled_errors import DatabaseOperationalError, HandledProcedureError, UnhandledQueryError, UnhandledProcedureError, \
+    KEY__error_set, KEY__error_index, KEY__restrictions, REGEX__dmbs_object_name
+from jaaql.exceptions.jaaql_interpretable_handled_errors import handled_procedure_error_from_raise, DatabaseOperationalError, HandledProcedureError, UnhandledQueryError, UnhandledProcedureError, \
     SingletonExpected
 from typing import Union
 from functools import lru_cache
@@ -605,8 +605,9 @@ ORDER BY d.column_name;
                     }
                 )
             elif isinstance(ex, Error):
-                if ex.diag.sqlstate == SQLStateJaaql:
-                    err = HandledProcedureError(message=None, index=None, table_name=None, descriptor=json.loads(ex.diag.message_primary))
+                handled = handled_procedure_error_from_raise(ex)
+                if handled is not None:
+                    err = handled
                 elif query_key == "_jaaql_procedure":
                     err = UnhandledProcedureError(
                         message=str(ex),
