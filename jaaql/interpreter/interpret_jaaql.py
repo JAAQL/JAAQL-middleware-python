@@ -995,10 +995,11 @@ WHERE (c.oid, a.attnum) IN (""" + values + ")")
             if is_null_extended and "Relation Name" in node:
                 null_extended.add((node.get("Schema"), node["Relation Name"]))
             join_type = node.get("Join Type")
-            for child_idx, child in enumerate(node.get("Plans", [])):
+            for child in node.get("Plans", []):
+                relationship = child.get("Parent Relationship")
                 walk(child, is_null_extended
-                     or (join_type == "Left" and child_idx == 1)
-                     or (join_type == "Right" and child_idx == 0)
+                     or (join_type == "Left" and relationship == "Inner")
+                     or (join_type == "Right" and relationship == "Outer")
                      or join_type == "Full")
 
         walk(plan_payload[0]["Plan"], False)
