@@ -20,6 +20,7 @@ from jaaql.db import db_pg_interface
 from jaaql.db.db_pg_interface import DBPGInterface, QUERY__apply_session_settings, _execute_pending_statement
 from jaaql.db.db_utils_no_circ import pop_timeline_settings, get_required_db, submit
 from jaaql.exceptions.http_status_exception import HttpStatusException
+from jaaql.exceptions.jaaql_interpretable_handled_errors import SingletonExpected
 
 CONFIG = {"DEBUG": {"output_query_exceptions": "false"}, "DATABASE": {"interface": "postgres"}, "SYSTEM": {"logging": False}}
 
@@ -326,6 +327,25 @@ class TestTimelinesAgainstPostgres(unittest.TestCase):
         row = self.row(self.request({"query": self.PROBE}))
         self.assertIn(row["moment"], (None, ""))
         self.assertEqual("new", row["names"])
+
+    def optional_singleton(self, moment, assert_, singleton="SELECT id, name FROM person WHERE id = :id"):
+        return self.request({"query": {"singleton": {"query": singleton, "assert": assert_},
+                                       "dependent": "SELECT count(*) AS n, :singleton.id IS NULL AS absent FROM person P WHERE P.id = :singleton.id"},
+                             "parameters": {"id": 1}, KEY__timelines: {"registration": moment}})
+
+    def test_optional_singleton_without_a_row_answers_instead_of_failing(self):
+        found = self.optional_singleton("2021-01-01", "0..1")
+        self.assertEqual("old", self.row(found["singleton"])["name"])
+        self.assertEqual((1, False), (self.row(found["dependent"])["n"], self.row(found["dependent"])["absent"]))
+
+        absent = self.optional_singleton("2019-01-01", "0..1")
+        self.assertEqual((["id", "name"], []), (absent["singleton"]["columns"], absent["singleton"]["rows"]))
+        self.assertEqual((0, True), (self.row(absent["dependent"])["n"], self.row(absent["dependent"])["absent"]))
+
+        for moment, assert_, singleton in [("2019-01-01", 1, "SELECT id, name FROM person WHERE id = :id"),
+                                           ("2021-01-01", "0..1", "SELECT P.id, P.name FROM person P CROSS JOIN generate_series(1, 2) WHERE P.id = :id")]:
+            with self.assertRaises(SingletonExpected):
+                self.optional_singleton(moment, assert_, singleton)
 
 
 if __name__ == "__main__":

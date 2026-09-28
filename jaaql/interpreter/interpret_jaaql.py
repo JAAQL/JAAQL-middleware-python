@@ -76,7 +76,8 @@ ASSERT_one = 1
 ASSERT_one_plus = "1+"
 ASSERT_one_plus_minimum_allowed = 2
 ASSERT_one_plus_message = "more than 1"
-ASSERT_allowed = [ASSERT_zero, ASSERT_one, ASSERT_one_plus]
+ASSERT_zero_or_one = "0..1"
+ASSERT_allowed = [ASSERT_zero, ASSERT_one, ASSERT_one_plus, ASSERT_zero_or_one]
 
 REGEX_query_argument = r':([a-zA-Z0-9_.\-])+(?=[^\']*(?:\'[^\']*\'[^\']*)*$)'  # Match all :blah not in quotes
 REGEX_enc_query_argument = r'#([a-zA-Z0-9_.\-])+(?=[^\']*(?:\'[^\']*\'[^\']*)*$)'  # Match all #blah not in quotes
@@ -516,7 +517,7 @@ ORDER BY d.column_name;
                             "rows": [],
                             "type_codes": []
                         }
-                        if cur_assert == ASSERT_one:
+                        if cur_assert in (ASSERT_one, ASSERT_zero_or_one):
                             skipped_singletons.append(query_key)
 
                     elif psql is not None:
@@ -555,6 +556,9 @@ ORDER BY d.column_name;
                     if len(res['rows']) == 1 and not was_store:
                         for column, row in zip(res['columns'], res['rows'][0]):
                             past_parameters[query_key + "." + column] = row
+                    elif cur_assert == ASSERT_zero_or_one and len(res['rows']) == 0 and not was_store and query_key not in skip_as_restricted:
+                        for column in res['columns']:
+                            past_parameters[query_key + "." + column] = None
 
                     if is_dict_query:
                         if was_store:
@@ -567,7 +571,7 @@ ORDER BY d.column_name;
                     if cur_assert != ASSERT_none and query_key not in skip_as_restricted:
                         if cur_assert == ASSERT_zero and len(res["rows"]) != ASSERT_zero:
                             raise HttpStatusException(ERR_assert_expecting % (str(ASSERT_zero), len(res["rows"])), HTTPStatus.BAD_REQUEST)
-                        elif cur_assert == ASSERT_one and len(res["rows"]) != ASSERT_one:
+                        elif (cur_assert == ASSERT_one and len(res["rows"]) != ASSERT_one) or (cur_assert == ASSERT_zero_or_one and len(res["rows"]) > ASSERT_one):
                             raise SingletonExpected(exc_query_key, descriptor={
                                 "row_count": len(res["rows"]),
                                 "columns": res["rows"],
