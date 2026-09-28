@@ -165,11 +165,6 @@ class InterpretJAAQL:
         if (not isinstance(operation, dict)) and (not isinstance(operation, str)):
             raise HttpStatusException(ERR_malformed_operation_type, HTTPStatus.BAD_REQUEST)
 
-        was_conn_none = False
-        if conn is None:
-            conn = self.db_interface.get_conn()
-            was_conn_none = True
-
         is_dict_operation = isinstance(operation, dict)
         query = {"query": {KEY_query: operation, KEY_assert: None, KEY_decrypt: None, KEY_parameters: {}}}
         is_dict_query = False
@@ -190,9 +185,6 @@ class InterpretJAAQL:
         # execute as postgres prepared statements so parse/plan is skipped on hot connections
         canned_keys = set()
 
-        if autocommit:
-            conn.autocommit = autocommit
-
         if is_dict_operation:
             restrictions = operation.get(KEY__restrictions, {})
             if not isinstance(restrictions, dict):
@@ -209,10 +201,6 @@ class InterpretJAAQL:
                 raise Exception("You must provide the jaaql db interface if you plan to check for restrictions")
 
             query = operation.get(KEY_query)
-            if KEY_autocommit in operation:
-                if conn.autocommit != operation[KEY_autocommit]:
-                    conn.commit()
-                conn.autocommit = operation[KEY_autocommit]
 
             if query is None:
                 canned_query = canned_query_service.get_canned_query(operation[KEY__application],
@@ -267,6 +255,19 @@ class InterpretJAAQL:
             parameters = operation.get(KEY_parameters, {})
 
         unused_orig_parameters = set(parameters.keys())
+
+        # Checked out only once the request has been read: whatever above rejects it raises with no connection to give
+        # back (a rejection there used to keep its connection from the pool for good)
+        was_conn_none = False
+        if conn is None:
+            conn = self.db_interface.get_conn()
+            was_conn_none = True
+        if autocommit:
+            conn.autocommit = autocommit
+        if is_dict_operation and KEY_autocommit in operation:
+            if conn.autocommit != operation[KEY_autocommit]:
+                conn.commit()
+            conn.autocommit = operation[KEY_autocommit]
 
         was_store = None
         exc_query_key = None
