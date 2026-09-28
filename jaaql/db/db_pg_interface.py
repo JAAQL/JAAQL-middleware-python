@@ -1,7 +1,9 @@
+import re
 import uuid
 
 import psycopg
 from psycopg import OperationalError
+from psycopg.pq import TransactionStatus
 from psycopg_pool import ConnectionPool, PoolClosed
 import queue
 from psycopg.errors import ProgrammingError, InvalidParameterValue, UndefinedFunction, InternalError
@@ -12,10 +14,12 @@ from jaaql.constants import ERR__invalid_token
 from jaaql.db.db_interface import DBInterface, ECHO__none, CHAR__newline
 from jaaql.exceptions.http_status_exception import *
 from jaaql.exceptions.custom_http_status import CustomHTTPStatus
-from jaaql.exceptions.jaaql_interpretable_handled_errors import UserUnauthorized, handled_procedure_error_from_raise
+from jaaql.exceptions.jaaql_interpretable_handled_errors import UserUnauthorized, DatabaseOperationalError, handled_error_from_database_error, \
+    database_error_descriptor
 from jaaql.constants import KEY__database
 
 ERR__connect_db = "Could not create connection to database!"
+ERR__commit_outcome_unknown = "The connection was lost during COMMIT, so whether the transaction was persisted is unknown: "
 
 PGCONN__min_conns = 5
 PGCONN__max_conns = 10
@@ -111,6 +115,48 @@ def _statement_is_preparable(query: str) -> bool:
     return ";" not in query.rstrip().rstrip(";")
 
 
+REGEX__word = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*")
+STATEMENTS__ending_transaction = {"COMMIT", "END", "ROLLBACK", "ABORT"}
+
+
+def _leading_word(query: str, i: int = 0) -> (str, int):
+    # The first word at or after i, upper-cased, and where it ends. Whitespace, -- comments and /* */ comments, which nest, are
+    # skipped as Postgres skips them
+    n = len(query)
+    while i < n:
+        if query[i].isspace():
+            i += 1
+        elif query.startswith("--", i):
+            while i < n and query[i] not in "\r\n":
+                i += 1
+        elif query.startswith("/*", i):
+            depth = 0
+            while i < n:
+                if query.startswith("/*", i):
+                    depth += 1
+                    i += 2
+                elif query.startswith("*/", i):
+                    depth -= 1
+                    i += 2
+                    if depth == 0:
+                        break
+                else:
+                    i += 1
+        else:
+            break
+    match = REGEX__word.match(query, i)
+    return (match.group(0).upper(), match.end()) if match is not None else ("", i)
+
+
+def _statement_may_end_transaction(query: str) -> bool:
+    # True when running the text may end the transaction it runs in, persisting what ran before it: several statements, any of
+    # which may (a ';' in a literal counts too, erring towards True), or one COMMIT, END, ROLLBACK, ABORT or PREPARE TRANSACTION
+    if not _statement_is_preparable(query):
+        return True
+    word, end = _leading_word(query)
+    return word in STATEMENTS__ending_transaction or (word == "PREPARE" and _leading_word(query, end)[0] == "TRANSACTION")
+
+
 def _escape_unescaped_percent(query: str) -> str:
     # psycopg3 scans every '%' in the SQL when parameters are supplied and
     # rejects anything that isn't a placeholder or '%%'. JAAQL uses named
@@ -182,28 +228,35 @@ class DBPGInterface(DBInterface):
             conn.jaaql_take_pending_auth()
             do_reset = False
         if do_reset:
-            with conn.cursor() as cursor:
-                cursor.execute("RESET ROLE;")
-                did_close = False
-                if hasattr(conn, "jaaql_reset_key"):
-                    try:
+            try:
+                if conn.info.transaction_status != TransactionStatus.IDLE:
+                    # Whatever the request left open is not the putback's to persist (a read_only request, a caller that
+                    # returned a connection mid-transaction): the commit below is for the reset statements alone
+                    conn.rollback()
+                with conn.cursor() as cursor:
+                    cursor.execute("RESET ROLE;")
+                    if hasattr(conn, "jaaql_reset_key"):
                         cursor.execute("SELECT jaaql_extension.jaaql__reset_session_authorization('" + str(conn.jaaql_reset_key) + "');")
-                    except:
-                        did_close = True
-                        conn.close()
-                if not did_close:
                     cursor.execute("RESET ALL;")
-                    conn.commit()
+                conn.commit()
+            except Exception:
+                # A connection that could not be reset must never serve another request, and must not be kept from the pool
+                # either: closed, putconn discards it and the pool opens a replacement
+                conn.close()
         DBPGInterface.HOST_POOLS[username][db_name].putconn(conn)
 
     @staticmethod
     def put_conn_threaded(username: str, db_name: str, the_queue: queue.Queue):
         while True:
+            conn, do_reset = the_queue.get()
             try:
-                conn, do_reset = the_queue.get()
                 DBPGInterface._process_returned_conn(username, db_name, conn, do_reset)
             except Exception:
-                pass  # Ignore, pool has likely been wiped
+                # The pool has likely been wiped or replaced. Close the connection so it cannot linger outside any pool
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def __init__(self, config, host: str, port: int, db_name: str, username: str, role: str = None, password: str = None, sub_role: str = None,
                  session_settings: dict = None):
@@ -280,9 +333,9 @@ class DBPGInterface(DBInterface):
         if self.role is not None or self.sub_role is not None or self.session_settings:
             # Deferred: sent pipelined with the first query by execute_query, or flushed eagerly by
             # JaaqlPGConnection.cursor() if the connection is used rawly. Errors these statements
-            # raise are translated by _translate_session_auth_error at execution time; dead pool
-            # connections, previously detected here, are recycled by execute_query's
-            # OperationalError retry loop
+            # raise are translated by _translate_session_auth_error at execution time; a dead pool
+            # connection, previously detected here, surfaces at that first query, and the request
+            # is re-run on a fresh connection (InterpretJAAQL.transform, ConnectionLostError)
             pending = []
             if self.role is not None:
                 pending.append("SELECT jaaql_extension.jaaql__set_session_authorization('" + self.role + "', '" + conn.jaaql_reset_key + "');")
@@ -355,107 +408,102 @@ class DBPGInterface(DBInterface):
 
     def execute_query(self, conn, query, parameters=None, wait_hook: queue.Queue = None, prepare: bool = False,
                       capture_provenance: list = None):
-        x = 0
-        err = None
-        while x < PGCONN__max_conns:
-            x += 1
-            try:
-                cursor_factory = conn.jaaql_raw_cursor if isinstance(conn, JaaqlPGConnection) else conn.cursor
-                with cursor_factory() as cursor:
-                    do_prepare = prepare and _statement_is_preparable(query)
+        try:
+            cursor_factory = conn.jaaql_raw_cursor if isinstance(conn, JaaqlPGConnection) else conn.cursor
+            with cursor_factory() as cursor:
+                do_prepare = prepare and _statement_is_preparable(query)
 
-                    if wait_hook:
-                        try:
-                            res, err, code = wait_hook.get(timeout=WAIT_HOOK__timeout)
-                        except queue.Empty:
-                            # The parallel verifier never delivered a verdict (its single serial thread
-                            # wedged, e.g. on a connection killed by a DB reboot). Fail closed and let
-                            # the worker unwind - without this bound the worker blocks forever holding
-                            # an open transaction, and enough of them starve the pool into nginx 504s.
-                            raise Exception(ERR__verification_timed_out)
-                        if not res:
-                            if code == 500:
-                                raise Exception(err)
-                            raise UserUnauthorized()
+                if wait_hook:
+                    try:
+                        verdict = wait_hook.get(timeout=WAIT_HOOK__timeout)
+                    except queue.Empty:
+                        # The parallel verifier never delivered a verdict (its single serial thread
+                        # wedged, e.g. on a connection killed by a DB reboot). Fail closed and let
+                        # the worker unwind - without this bound the worker blocks forever holding
+                        # an open transaction, and enough of them starve the pool into nginx 504s.
+                        raise Exception(ERR__verification_timed_out)
+                    # The verdict belongs to the request, not to this attempt at it: left on the hook, a
+                    # request re-run on a fresh connection after losing its first one reads it again
+                    # instead of waiting out WAIT_HOOK__timeout for a second verdict that never comes
+                    wait_hook.put(verdict)
+                    res, err, code = verdict
+                    if not res:
+                        if code == 500:
+                            raise Exception(err)
+                        raise UserUnauthorized()
 
-                    def execute_main_query():
-                        if parameters is None or len(parameters.keys()) == 0:
-                            cursor.execute(query, prepare=do_prepare)
-                        else:
-                            cursor.execute(_escape_unescaped_percent(query), parameters, prepare=do_prepare)
+                def execute_main_query():
+                    if parameters is None or len(parameters.keys()) == 0:
+                        cursor.execute(query, prepare=do_prepare)
+                    else:
+                        cursor.execute(_escape_unescaped_percent(query), parameters, prepare=do_prepare)
 
-                    # Claimed only now, after the wait_hook: if verification rejects the request,
-                    # the statements remain pending and the putback thread discards them unsent
-                    pending_auth = conn.jaaql_take_pending_auth() if isinstance(conn, JaaqlPGConnection) else None
+                # Claimed only now, after the wait_hook: if verification rejects the request,
+                # the statements remain pending and the putback thread discards them unsent
+                pending_auth = conn.jaaql_take_pending_auth() if isinstance(conn, JaaqlPGConnection) else None
 
-                    if pending_auth:
-                        auth_cursor = conn.jaaql_raw_cursor()
-                        try:
-                            # Pipeline mode is unsafe for two kinds of statement, so restrict it to
-                            # single-command queries on transactional (non-autocommit) connections;
-                            # everything else falls back to sequential execution:
-                            #  - it forces the extended protocol on every execute, which rejects a
-                            #    multi-command string ("cannot insert multiple commands into a
-                            #    prepared statement"); the sequential fallback runs the main query
-                            #    under the simple protocol that permits several commands.
-                            #  - it wraps statements in an implicit transaction, which statements
-                            #    that cannot run in a transaction block (CREATE DATABASE, VACUUM,
-                            #    CREATE INDEX CONCURRENTLY, ...) reject. JAAQL runs those with
-                            #    autocommit=True, so skipping the pipeline there keeps them standalone.
-                            if PIPELINE_SUPPORTED and _statement_is_preparable(query) and not conn.autocommit:
-                                with conn.pipeline():
-                                    for statement in pending_auth:
-                                        _execute_pending_statement(auth_cursor, statement)
-                                    execute_main_query()
-                            else:
+                if pending_auth:
+                    auth_cursor = conn.jaaql_raw_cursor()
+                    try:
+                        # Pipeline mode is unsafe for two kinds of statement, so restrict it to
+                        # single-command queries on transactional (non-autocommit) connections;
+                        # everything else falls back to sequential execution:
+                        #  - it forces the extended protocol on every execute, which rejects a
+                        #    multi-command string ("cannot insert multiple commands into a
+                        #    prepared statement"); the sequential fallback runs the main query
+                        #    under the simple protocol that permits several commands.
+                        #  - it wraps statements in an implicit transaction, which statements
+                        #    that cannot run in a transaction block (CREATE DATABASE, VACUUM,
+                        #    CREATE INDEX CONCURRENTLY, ...) reject. JAAQL runs those with
+                        #    autocommit=True, so skipping the pipeline there keeps them standalone.
+                        if PIPELINE_SUPPORTED and _statement_is_preparable(query) and not conn.autocommit:
+                            with conn.pipeline():
                                 for statement in pending_auth:
                                     _execute_pending_statement(auth_cursor, statement)
                                 execute_main_query()
-                        except (InternalError, UndefinedFunction, InvalidParameterValue) as ex:
-                            translated = self._translate_session_auth_error(ex)
-                            if translated is not None:
-                                raise translated
-                            if isinstance(ex, InternalError):
-                                traceback.print_exc()
-                            raise ex
-                        finally:
-                            try:
-                                auth_cursor.close()
-                            except Exception:
-                                pass
-                    else:
-                        execute_main_query()
-
-                    if cursor.description is None:
-                        return [], [], []
-                    else:
-                        if capture_provenance is not None:
-                            capture_provenance.clear()
-                            pgresult = cursor.pgresult
-                            capture_provenance.extend(
-                                (pgresult.ftype(idx), pgresult.ftable(idx), pgresult.ftablecol(idx))
-                                for idx in range(pgresult.nfields))
-                        return [desc[0] for desc in cursor.description], [desc.type_code for desc in cursor.description], cursor.fetchall()
-            except OperationalError as ex:
-                if ex.sqlstate is None or ex.sqlstate.startswith("08") or ex.sqlstate.startswith("57"):
-                    if isinstance(conn, JaaqlPGConnection):
-                        # This putconn bypasses the reset queue, so make sure no unsent
-                        # authorization statements ride back into the pool where check() or a
-                        # later checkout could flush them as the wrong user
-                        conn.jaaql_take_pending_auth()
-                    DBPGInterface.HOST_POOLS[self.username][self.db_name].putconn(conn)
-                    DBPGInterface.HOST_POOLS[self.username][self.db_name].check()
-                    conn = self.get_conn()
-                    err = ex
+                        else:
+                            for statement in pending_auth:
+                                _execute_pending_statement(auth_cursor, statement)
+                            execute_main_query()
+                    except (InternalError, UndefinedFunction, InvalidParameterValue) as ex:
+                        translated = self._translate_session_auth_error(ex)
+                        if translated is not None:
+                            raise translated
+                        if isinstance(ex, InternalError):
+                            traceback.print_exc()
+                        raise ex
+                    finally:
+                        try:
+                            auth_cursor.close()
+                        except Exception:
+                            pass
                 else:
-                    raise ex
-            except Exception as ex:
-                if self.output_query_exceptions:
-                    traceback.print_exc()
-                raise ex
+                    execute_main_query()
 
-        if err:
-            raise err
+                if cursor.description is None:
+                    return [], [], []
+                else:
+                    if capture_provenance is not None:
+                        capture_provenance.clear()
+                        pgresult = cursor.pgresult
+                        capture_provenance.extend(
+                            (pgresult.ftype(idx), pgresult.ftable(idx), pgresult.ftablecol(idx))
+                            for idx in range(pgresult.nfields))
+                    return [desc[0] for desc in cursor.description], [desc.type_code for desc in cursor.description], cursor.fetchall()
+        except Exception as ex:
+            if isinstance(ex, OperationalError) and conn.closed:
+                # The connection is gone and the transaction on it with it. The query is not retried here on
+                # another connection: the caller holds this one and would go on to commit and return it, so
+                # the request is re-run as a whole by the owner of its connection (InterpretJAAQL.transform,
+                # ConnectionLostError). A database restart leaves every idle pooled connection dead, so have
+                # the pool replace those before that re-run checks one out
+                try:
+                    DBPGInterface.HOST_POOLS[self.username][self.db_name].check()
+                except Exception:
+                    pass
+            if self.output_query_exceptions:
+                traceback.print_exc()
+            raise ex
 
     def commit(self, conn):
         conn.commit()
@@ -463,16 +511,28 @@ class DBPGInterface(DBInterface):
     def rollback(self, conn):
         conn.rollback()
 
-    def is_connection_error(self, ex) -> bool:
-        # psycopg raises OperationalError when the backend/connection went away (e.g. terminated by
-        # \wipe dbms). The same class the execute retry loop keys off; a commit that fails this way
-        # persisted nothing, so the operation is safe to retry on a fresh connection.
-        return isinstance(ex, OperationalError)
+    def is_connection_closed(self, conn) -> bool:
+        # True once psycopg has seen the connection fail (backend terminated by \wipe dbms or a restart, network
+        # loss) or it was closed. Whatever transaction was open on it can no longer commit
+        return conn.closed
 
-    def translate_commit_error(self, commit_err):
+    def statement_may_end_transaction(self, query: str) -> bool:
+        return _statement_may_end_transaction(query)
+
+    def has_ended_transaction(self, conn) -> bool:
+        return not conn.autocommit and conn.info.transaction_status == TransactionStatus.IDLE
+
+    def translate_commit_error(self, conn, commit_err, error_set: str = None):
         if not isinstance(commit_err, psycopg.Error):
             return None
-        return handled_procedure_error_from_raise(commit_err)
+        if conn.closed:
+            # Lost while the COMMIT was in flight: the server may have committed before the connection went (a crash
+            # after the commit record was flushed, a network loss before the reply). The outcome is unknown, so this
+            # is reported as it stands and never re-run, which could apply the request twice
+            return DatabaseOperationalError(message=ERR__commit_outcome_unknown + str(commit_err), descriptor=database_error_descriptor(commit_err))
+        # The server refused the COMMIT (a deferred constraint, a serialization failure, ...), so the transaction
+        # was rolled back: the error maps exactly as it does when a statement raises it
+        return handled_error_from_database_error(commit_err, error_set)
 
     def handle_db_error(self, err, echo):
         if isinstance(err, ProgrammingError) and hasattr(err, 'pgresult'):

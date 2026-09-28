@@ -1,5 +1,7 @@
 import json
 
+from psycopg import OperationalError
+
 from jaaql.constants import SQLStateJaaql
 from jaaql.exceptions.http_status_exception import JaaqlInterpretableHandledError
 
@@ -54,7 +56,9 @@ def handled_procedure_error_from_raise(ex):
         return None
     try:
         descriptor = json.loads(diag.message_primary)
-    except (TypeError, ValueError):
+    except Exception:
+        # Not JSON, or JSON the parser cannot take (nested past its recursion limit, a RecursionError): whoever raised it, the
+        # answer is the unhandled error, never an exception out of the code answering it
         return None
     return HandledProcedureError(message=None, index=None, table_name=None, descriptor=descriptor)
 
@@ -85,6 +89,38 @@ class UnhandledProcedureError(JaaqlInterpretableHandledError):
             index=None,
             descriptor=descriptor
         )
+
+
+def database_error_descriptor(ex):
+    # The diagnostics of a psycopg error. One raised client side (a lost connection, a NUL byte in a parameter) has no SQLSTATE
+    sqlstate = ex.diag.sqlstate
+    return {
+        "class": None if sqlstate is None else sqlstate[0:2],
+        "constraint_name": ex.diag.constraint_name,
+        "context": ex.diag.context,
+        "datatype_name": ex.diag.datatype_name,
+        "message_detail": ex.diag.message_detail,
+        "message_primary": ex.diag.message_primary,
+        "message_hint": ex.diag.message_hint,
+        "schema_name": ex.diag.schema_name,
+        "severity": ex.diag.severity,
+        "sqlstate": sqlstate
+    }
+
+
+def handled_error_from_database_error(ex, query_set):
+    # The error a request answers with for a psycopg error, whether its statement raised it or its COMMIT did (a deferred
+    # constraint). query_set is the key of the request's query set the error is attributed to; "_jaaql_procedure" is /call-proc's
+    if isinstance(ex, OperationalError):
+        return DatabaseOperationalError(message=str(ex), descriptor=database_error_descriptor(ex))
+    handled = handled_procedure_error_from_raise(ex)
+    if handled is not None:
+        return handled
+    if query_set == "_jaaql_procedure":
+        return UnhandledProcedureError(message=str(ex), table_name=ex.diag.table_name, column_name=ex.diag.column_name,
+                                       descriptor=database_error_descriptor(ex))
+    return UnhandledQueryError(message=str(ex), _set=query_set, table_name=ex.diag.table_name, column_name=ex.diag.column_name,
+                               descriptor=database_error_descriptor(ex))
 
 
 class AccountAlreadyConfirmed(JaaqlInterpretableHandledError):

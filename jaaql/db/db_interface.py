@@ -68,9 +68,19 @@ class DBInterface(ABC):
     def get_conn(self):
         pass
 
-    def is_connection_error(self, ex) -> bool:
-        # Overridden by the concrete interface. True when a failure means the connection/backend went
-        # away (so nothing persisted and the operation is safe to retry on a fresh connection).
+    def is_connection_closed(self, conn) -> bool:
+        # Overridden by the concrete interface. True when the connection/backend went away, taking any
+        # uncommitted transaction with it (so that transaction persisted nothing)
+        return False
+
+    def statement_may_end_transaction(self, query: str) -> bool:
+        # Overridden by the concrete interface. True when running the text may end the transaction it runs
+        # in (a COMMIT of the request's own), so what ran before it may persist whatever happens after
+        return True
+
+    def has_ended_transaction(self, conn) -> bool:
+        # Overridden by the concrete interface. True when a transactional connection is out of its
+        # transaction after a statement succeeded: that statement ended it
         return False
 
     def log_warning(self, exc):
@@ -81,19 +91,25 @@ class DBInterface(ABC):
         if self.logging:
             logging.warning(exc, exc_info=False)
 
-    def __attempt_commit_rollback(self, conn, err):
+    def __attempt_commit_rollback(self, conn, err, commit: bool = True):
         # Returns the commit failure rather than swallowing it. A failed commit means the transaction
         # did NOT persist, so the caller must not report success. Silently swallowing it turned lost
         # writes into a misleading downstream error - e.g. create_account's CREATE ROLE lost on a
         # connection killed by a \wipe dbms reboot, then "GRANT registered TO <role>" failing with
         # "role does not exist" on the very next statement.
+        # commit False (a read_only request): nothing it did may persist, so it is rolled back like a
+        # failed request, never left open for whoever handles the connection next to commit
         try:
-            if err is None:
+            if err is None and commit:
+                if self.is_connection_closed(conn):
+                    # The COMMIT cannot reach the server, so nothing persisted: a caller that owns the
+                    # request may re-run it on a fresh connection
+                    return ConnectionLostError("the connection was closed before COMMIT")
                 self.commit(conn)
             else:
                 self.rollback(conn)
         except Exception as ex:
-            if err is None:
+            if err is None and commit:
                 self.log_warning(ex)  # commit failed - the transaction did not persist
                 return ex
             else:
@@ -113,43 +129,53 @@ class DBInterface(ABC):
                     self.log_warning(ex)  # Serious error, connection failure to db or similar
                 raise ex
 
-    def __raise_commit_failure(self, commit_err):
-        # A failed commit persisted nothing; surface it (instead of the old silent swallow) so the
-        # caller cannot treat lost writes as success and hit a misleading error further on. A
-        # connection-loss failure is raised as a retriable marker so a self-contained caller can
-        # re-run on a fresh connection; any other commit failure is a genuine error.
-        if self.is_connection_error(commit_err):
-            raise ConnectionLostError(str(commit_err))
-        translated = self.translate_commit_error(commit_err)
+    def __commit_failure(self, conn, commit_err, commit_error_set):
+        # A failed commit persisted nothing (or, lost in flight, possibly did); surface it (instead of the
+        # old silent swallow) so the caller cannot treat lost writes as success and hit a misleading error
+        # further on. A COMMIT that never reached the server is the retriable marker, so a self-contained
+        # caller can re-run on a fresh connection; any other commit failure is a genuine error.
+        if isinstance(commit_err, ConnectionLostError):
+            return commit_err
+        try:
+            translated = self.translate_commit_error(conn, commit_err, commit_error_set)
+        except Exception as ex:
+            # Translating reads what the database raised. Failing to must not cost the answer, nor (put_conn_handle_error) the
+            # connection, so the failure is answered untranslated
+            self.log_warning(ex)
+            translated = None
         if translated is not None:
-            raise translated
-        raise HttpStatusException("Commit failed, transaction not persisted: " + str(commit_err),
-                                  HTTPStatus.INTERNAL_SERVER_ERROR)
+            return translated
+        return HttpStatusException("Commit failed, transaction not persisted: " + str(commit_err),
+                                   HTTPStatus.INTERNAL_SERVER_ERROR)
 
-    def translate_commit_error(self, commit_err):
-        # A deferred constraint trigger raises at COMMIT rather than during its statement. When what it
-        # raises is an error the statement path would have handed back as a handled error, a subclass
-        # returns that error here so the caller sees the same response either way; None keeps the 500
+    def translate_commit_error(self, conn, commit_err, error_set: str = None):
+        # A deferred constraint raises at COMMIT rather than during its statement. A subclass returns the
+        # error the statement path would have handed back for it, attributed to error_set (the request's
+        # query set, when it has only one), so the caller sees the same response either way; None keeps the 500
         return None
 
-    def handle_error(self, conn, err, echo=ECHO__none):
+    def handle_error(self, conn, err, echo=ECHO__none, commit_error_set: str = None):
         commit_err = self.__attempt_commit_rollback(conn, err)
         if err is None and commit_err is not None:
-            self.__raise_commit_failure(commit_err)
+            raise self.__commit_failure(conn, commit_err, commit_error_set)
         self.__err_to_exception(err, echo)
 
-    def put_conn_handle_error(self, conn, err, echo=ECHO__none, skip_rollback_commit: bool = False):
-        commit_err = None
-        if not skip_rollback_commit:
-            commit_err = self.__attempt_commit_rollback(conn, err)
-
+    def put_conn_handle_error(self, conn, err, echo=ECHO__none, skip_commit: bool = False, commit_error_set: str = None):
+        commit_failure = None
         try:
-            self.put_conn(conn)
-        except Exception as ex:
-            self.log_warning(ex)
+            commit_err = self.__attempt_commit_rollback(conn, err, commit=not skip_commit)
+            # Decided before the connection goes back: from then on the putback thread is working on it
+            if err is None and commit_err is not None:
+                commit_failure = self.__commit_failure(conn, commit_err, commit_error_set)
+        finally:
+            # Whatever ending the transaction or deciding the answer raised, the connection goes back to the pool
+            try:
+                self.put_conn(conn)
+            except Exception as ex:
+                self.log_warning(ex)
 
-        if err is None and commit_err is not None:
-            self.__raise_commit_failure(commit_err)
+        if commit_failure is not None:
+            raise commit_failure
 
         self.__err_to_exception(err, echo)
 

@@ -36,11 +36,12 @@ class HttpSingletonStatusException(HttpStatusException):
 
 class ConnectionLostError(HttpStatusException):
     # Raised when a database operation failed because its connection was lost (e.g. the backend was
-    # terminated by \wipe dbms's pg_terminate_backend) BEFORE anything committed. Nothing persisted,
-    # so a self-contained operation may safely be retried on a fresh connection. Subclasses
-    # HttpStatusException so that if retries are exhausted it still surfaces as a clean 500.
+    # terminated by \wipe dbms's pg_terminate_backend) BEFORE anything committed: during a statement of
+    # a transaction, or before its COMMIT was sent. Nothing persisted, so a self-contained operation may
+    # safely be retried on a fresh connection. Subclasses HttpStatusException so that if retries are
+    # exhausted it still surfaces as a clean 500.
     def __init__(self, message: str):
-        super().__init__("Commit failed, transaction not persisted: " + message, HTTPStatus.INTERNAL_SERVER_ERROR)
+        super().__init__("Connection lost, transaction not persisted: " + message, HTTPStatus.INTERNAL_SERVER_ERROR)
 
 
 class JaaqlInterpretableHandledError(Exception):

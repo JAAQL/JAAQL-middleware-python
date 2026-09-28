@@ -15,7 +15,7 @@ from jaaql.db.db_interface import DBInterface, ECHO__none
 from psycopg.errors import OperationalError, Error
 from jaaql.constants import KEY__position, KEY__file, KEY__application, KEY__error, KEY__error_row_number, KEY__error_query, \
     KEY__error_set, KEY__error_index, KEY__restrictions, REGEX__dmbs_object_name
-from jaaql.exceptions.jaaql_interpretable_handled_errors import handled_procedure_error_from_raise, DatabaseOperationalError, HandledProcedureError, UnhandledQueryError, UnhandledProcedureError, \
+from jaaql.exceptions.jaaql_interpretable_handled_errors import handled_error_from_database_error, database_error_descriptor, DatabaseOperationalError, \
     SingletonExpected
 from typing import Union
 from functools import lru_cache
@@ -37,6 +37,8 @@ ERR_malformed_join = "Joins only allowed as list or string input at the moment!"
 ERR__missing_decrypt_column = "Decrypted column '%s' not found in the result set"
 ERR_missing_store = "Missing parameter for store operation '%s'"
 ERR_store_parameter_malformatted = "Parameter '%s' for store operation should be a list"
+ERR__connection_lost_outcome_unknown = "The connection was lost during a request whose own SQL can commit part of its work (transaction control, or " \
+                                       "several statements in one string), so what was persisted is unknown: "
 
 KEY_parameters = "parameters"
 KEY_decrypt = "decrypt"
@@ -181,6 +183,9 @@ class InterpretJAAQL:
         ret = {}
         err = None
         query_key = None
+        # Whether the request's own SQL may have ended its transaction (a COMMIT in it, or one of several statements in one
+        # string), so that part of its work may persist even if its connection is lost afterwards: such a request is never re-run
+        may_have_committed = False
         # Keys whose statements are server-authored (canned) and single: safe and worthwhile to
         # execute as postgres prepared statements so parse/plan is skipped on hot connections
         canned_keys = set()
@@ -375,6 +380,9 @@ class InterpretJAAQL:
 
                     last_query = self.encrypt_literals(last_query, encryption_key)
                     found_params = {**found_parameter_dictionary, **enc_parameter_dictionary}
+                    # Decided before the statement is sent: once it is, a COMMIT in it may take effect even if the connection
+                    # is lost before the answer comes back
+                    may_have_committed = may_have_committed or self.db_interface.statement_may_end_transaction(last_query)
 
                     temp_view_name = None
                     provenance_res = None
@@ -540,6 +548,8 @@ ORDER BY d.column_name;
                         res = self.db_interface.execute_query_fetching_results(conn, last_query, found_params, wait_hook=wait_hook,
                                                                                requires_dba_check=check_required and canned_query_service is not None,
                                                                                prepare=prepare_statements or query_key in canned_keys)
+                        # Should a statement end the transaction without statement_may_end_transaction foreseeing it
+                        may_have_committed = may_have_committed or self.db_interface.has_ended_transaction(conn)
 
                     if do_prepare_only and not attempt_fetch_domain_types and not psql:
                         self.db_interface.execute_query_fetching_results(conn, "DEALLOCATE _jaaql_query_check_" + do_prepare_only, found_params,
@@ -592,96 +602,65 @@ ORDER BY d.column_name;
                                  zip(row, res["columns"])] for row in res["rows"]]
         except Exception as ex:
             traceback.print_exc()
-            if isinstance(ex, OperationalError):
-                err = DatabaseOperationalError(
-                    message=str(ex),
-                    descriptor={
-                        "class": ex.diag.sqlstate[0:2],
-                        "constraint_name": ex.diag.constraint_name,
-                        "context": ex.diag.context,
-                        "datatype_name": ex.diag.datatype_name,
-                        "message_detail": ex.diag.message_detail,
-                        "message_primary": ex.diag.message_primary,
-                        "message_hint": ex.diag.message_hint,
-                        "schema_name": ex.diag.schema_name,
-                        "severity": ex.diag.severity,
-                        "sqlstate": ex.diag.sqlstate
-                    }
-                )
-            elif isinstance(ex, Error):
-                handled = handled_procedure_error_from_raise(ex)
-                if handled is not None:
-                    err = handled
-                elif query_key == "_jaaql_procedure":
-                    err = UnhandledProcedureError(
-                        message=str(ex),
-                        table_name=ex.diag.table_name,
-                        column_name=ex.diag.column_name,
-                        descriptor={
-                            "class": ex.diag.sqlstate[0:2],
-                            "constraint_name": ex.diag.constraint_name,
-                            "context": ex.diag.context,
-                            "datatype_name": ex.diag.datatype_name,
-                            "message_detail": ex.diag.message_detail,
-                            "message_primary": ex.diag.message_primary,
-                            "message_hint": ex.diag.message_hint,
-                            "schema_name": ex.diag.schema_name,
-                            "severity": ex.diag.severity,
-                            "sqlstate": ex.diag.sqlstate
-                        }
-                    )
-                else:
-                    err = UnhandledQueryError(
-                        message=str(ex),
-                        _set=query_key,
-                        table_name=ex.diag.table_name,
-                        column_name=ex.diag.column_name,
-                        descriptor={
-                            "class": ex.diag.sqlstate[0:2],
-                            "constraint_name": ex.diag.constraint_name,
-                            "context": ex.diag.context,
-                            "datatype_name": ex.diag.datatype_name,
-                            "message_detail": ex.diag.message_detail,
-                            "message_primary": ex.diag.message_primary,
-                            "message_hint": ex.diag.message_hint,
-                            "schema_name": ex.diag.schema_name,
-                            "severity": ex.diag.severity,
-                            "sqlstate": ex.diag.sqlstate
-                        }
-                    )
-            elif is_dict_query:
-                if isinstance(ex, JaaqlInterpretableHandledError):
-                    err = ex
-                    err.set = exc_query_key
-                else:
-                    new_ex = HttpStatusException(str(ex))
-                    if isinstance(ex, HttpStatusException):
-                        new_ex.response_code = ex.response_code
-                    ex = new_ex
+            try:
+                if isinstance(ex, OperationalError) and was_conn_none and not conn.autocommit and self.db_interface.is_connection_closed(conn):
+                    if may_have_committed:
+                        # Its own SQL may have committed part of the request before the connection went, and a re-run would
+                        # apply that part again: answered as it stands, like a COMMIT lost in flight
+                        err = DatabaseOperationalError(message=ERR__connection_lost_outcome_unknown + str(ex), descriptor=database_error_descriptor(ex))
+                    else:
+                        # The connection was lost mid-request and its uncommitted transaction with it, so nothing persisted: the
+                        # request is re-run from the start on a fresh connection by the caller that owns it (submit,
+                        # execute_supplied_statement). Not under autocommit, where earlier statements have committed and the
+                        # failing one may have, and not on a connection the caller lent, whose transaction is the caller's
+                        err = ConnectionLostError(str(ex))
+                elif isinstance(ex, Error):
+                    err = handled_error_from_database_error(ex, query_key)
+                elif is_dict_query:
+                    if isinstance(ex, JaaqlInterpretableHandledError):
+                        err = ex
+                        err.set = exc_query_key
+                    else:
+                        new_ex = HttpStatusException(str(ex))
+                        if isinstance(ex, HttpStatusException):
+                            new_ex.response_code = ex.response_code
+                        ex = new_ex
 
-                    ex.message = {
-                        KEY__error: ex.message,
-                        KEY__error_set: exc_query_key,
-                        KEY__error_query: exc_query,
-                        KEY_parameters: exc_parameters
-                    }
-                    if was_store:
-                        ex.message[KEY__error_row_number] = exc_row_number
-                        ex.message[KEY__error_index] = exc_row_idx
-                        ex.message[KEY_state] = exc_state
+                        ex.message = {
+                            KEY__error: ex.message,
+                            KEY__error_set: exc_query_key,
+                            KEY__error_query: exc_query,
+                            KEY_parameters: exc_parameters
+                        }
+                        if was_store:
+                            ex.message[KEY__error_row_number] = exc_row_number
+                            ex.message[KEY__error_index] = exc_row_idx
+                            ex.message[KEY_state] = exc_state
 
+                        err = ex
+                else:
                     err = ex
-            else:
+            except Exception:
+                # Working out the answer reads what the database raised. Failing to must not skip handing the connection back
+                # below, so the error is answered as raised
+                traceback.print_exc()
                 err = ex
 
         #
         # and_return_connection_mid_transaction
         # err
 
+        # An error raised at COMMIT (a deferred constraint) belongs to no one statement. It is attributed to the request's
+        # query set when there is only one, as the same error raised by that set's statement would be
+        commit_error_set = next(iter(query)) if len(query) == 1 else None
+        if err is None and may_have_committed and was_conn_none and not conn.autocommit and self.db_interface.is_connection_closed(conn):
+            # Closed before JAAQL's COMMIT is sent, which put_conn_handle_error would answer as retriable (ConnectionLostError): not
+            # when the request's own SQL may already have committed
+            err = DatabaseOperationalError(message=ERR__connection_lost_outcome_unknown + "the connection was closed before COMMIT")
         if was_conn_none:
-            self.db_interface.put_conn_handle_error(conn, err, skip_rollback_commit=skip_commit)
+            self.db_interface.put_conn_handle_error(conn, err, skip_commit=skip_commit, commit_error_set=commit_error_set)
         elif not and_return_connection_mid_transaction:
-            self.db_interface.handle_error(conn, err)
+            self.db_interface.handle_error(conn, err, commit_error_set=commit_error_set)
         elif err is not None:
             raise err
 
