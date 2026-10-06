@@ -25,6 +25,13 @@ BEGIN
         PERFORM dblink_exec('dbname=' || database, 'GRANT USAGE ON SCHEMA jaaql_extension TO PUBLIC;');
         PERFORM dblink_exec('dbname=' || database, 'CREATE EXTENSION IF NOT EXISTS jaaql;');
 
+        -- Only dba may create temporary objects. pg_temp is searched before every other schema, so a login could
+        -- otherwise create a temp view named like an application view and have the SECURITY DEFINER functions read
+        -- it instead (search_path cannot stop this: a login may set its own). dba keeps the right for /prepare and
+        -- for the procedures, which run as dba
+        PERFORM dblink_exec('dbname=' || database, 'REVOKE TEMPORARY ON DATABASE ' || quote_ident(database) || ' FROM PUBLIC;');
+        PERFORM dblink_exec('dbname=' || database, 'GRANT TEMPORARY ON DATABASE ' || quote_ident(database) || ' TO dba;');
+
         -- Federation schema: stores OIDC identity linkage for federated/invited users
         PERFORM dblink_exec('dbname=' || database, 'CREATE SCHEMA IF NOT EXISTS federation;');
         -- The public-schema copies are kept for backwards compatibility with code that
