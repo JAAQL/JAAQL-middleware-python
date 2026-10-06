@@ -172,6 +172,21 @@ def _keycloak_backchannel_origin(discovery_url: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}"
 
 
+def _explicit_type(explicit_types, parameter_key: str):
+    # The request's type for a parameter, which the caller splices into the SQL as '::<type>'. Anything but one bare
+    # identifier is refused, as it would be SQL of the caller's choosing (outside PREVENT_ARBITRARY_QUERIES)
+    if explicit_types is None:
+        return None
+    if not isinstance(explicit_types, dict):
+        raise HttpStatusException("Expected explicit_types to be an object")
+    explicit_type = explicit_types.get(parameter_key)
+    if explicit_type is None or explicit_type == "":
+        return None
+    if not isinstance(explicit_type, str) or re.fullmatch(REGEX__dmbs_type_name, explicit_type) is None:
+        raise HttpStatusException("Unsafe explicit type for parameter " + parameter_key)
+    return explicit_type
+
+
 class JAAQLModel(BaseJAAQLModel):
     VERIFICATION_QUEUE = None
 
@@ -2042,7 +2057,7 @@ WHERE
         introduced = False
         query = f"SELECT * FROM \"{proc_name}\"("
         for k in params.keys():
-            explicit_type = explicit_types.get(k)
+            explicit_type = _explicit_type(explicit_types, k)
             v = params[k]
 
             if introduced:
@@ -2521,7 +2536,7 @@ WHERE
         for parameter_key in parameter_keys:
             if re.match(REGEX__dmbs_object_name, parameter_key) is None:
                 raise HttpStatusException("Unsafe parameter key " + parameter_key)
-            explicit_type = explicit_types.get(parameter_key)
+            explicit_type = _explicit_type(explicit_types, parameter_key)
             parameter_value = parameters[parameter_key]
 
             if introduced:

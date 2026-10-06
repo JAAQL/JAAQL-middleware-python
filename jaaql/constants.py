@@ -63,6 +63,8 @@ CRON_dayOfWeek = "dayOfWeek"
 
 REGEX__dmbs_object_name = r'^[0-9a-zA-Z_]{1,63}$'
 REGEX__dmbs_procedure_name = r'^[0-9a-zA-Z_$-.\+]{1,63}$'
+# An explicit type is spliced into the SQL after '::', so it must be one bare identifier and nothing more (use fullmatch)
+REGEX__dmbs_type_name = r'[A-Za-z_][A-Za-z0-9_]{0,62}'
 
 # The optional request key KEY__timelines ({"<timeline>": "<ISO-8601 moment>" | null}) sets, for the request's transaction
 # only, the moment each timeline is viewed at. A moment becomes the transaction-local setting GUC__timeline_prefix + name,
