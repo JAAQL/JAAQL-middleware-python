@@ -2551,6 +2551,11 @@ WHERE
 
         query += " )"
 
+        # A federation procedure links an account to the application's users from the claims JAAQL vouches for, so
+        # only JAAQL may run it (as the jaaql role); a login calling it could link itself to someone else
+        if is_federation_procedure(self.jaaql_lookup_connection, query_name):
+            raise HttpStatusException("A federation procedure cannot be called directly", HTTPStatus.FORBIDDEN)
+
         inputs["query"] = {
             "_jaaql_procedure": query
         }

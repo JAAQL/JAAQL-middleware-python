@@ -24,3 +24,17 @@ def count_succeeded_for_security_event(
             KG__security_event__account: account,
         }, as_objects=True
     )[KEY__count]
+
+
+QUERY__is_federation_procedure = "SELECT name FROM federation_procedure WHERE name = :name"
+
+
+def is_federation_procedure(
+    connection: DBInterface,
+    name: str
+):
+    return len(execute_supplied_statement(
+        connection, QUERY__is_federation_procedure, {
+            KG__federation_procedure__name: name
+        }, as_objects=True
+    )) != 0

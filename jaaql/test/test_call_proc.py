@@ -1,9 +1,10 @@
 """
-The SQL that /call-proc and a security event's procedure call build from the request: names, parameter keys and explicit types.
+The SQL that /call-proc and a security event's procedure call build from the request: names, parameter keys and explicit types;
+and /call-proc's refusal of federation procedures.
 
     python -m unittest jaaql.test.test_call_proc
 
-Needs only the package's requirements: submit is replaced, so no database is reached
+Needs only the package's requirements: submit and the federation procedure lookup are replaced, so no database is reached
 """
 import unittest
 from http import HTTPStatus
@@ -11,7 +12,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from jaaql.exceptions.http_status_exception import HttpStatusException
-from jaaql.mvc import model
+from jaaql.mvc import handmade_queries, model
 from jaaql.mvc.model import JAAQLModel, _explicit_type
 
 # Every explicit type found in the generated __dbms__.ts of 41 projects is a FIESTA realm name: a bare identifier
@@ -81,10 +82,34 @@ class TestExplicitType(unittest.TestCase):
 
 class TestCallProc(unittest.TestCase):
 
-    def call_proc(self, inputs):
-        with mock.patch.object(model, "submit", return_value="submitted") as submitted:
+    def call_proc(self, inputs, federation_procedures=()):
+        with mock.patch.object(model, "submit", return_value="submitted") as submitted, \
+                mock.patch.object(model, "is_federation_procedure", side_effect=lambda _, name: name in federation_procedures) as looked_up:
+            self.looked_up = looked_up
             result = JAAQLModel.call_proc(stub_model(), inputs, "account")
         return result, submitted
+
+    def test_a_federation_procedure_is_refused(self):
+        with mock.patch.object(model, "submit") as submitted, \
+                mock.patch.object(model, "is_federation_procedure", return_value=True) as looked_up:
+            with self.assertRaises(HttpStatusException) as caught:
+                JAAQLModel.call_proc(stub_model(), {"query": "_system.federate", "parameters": {
+                    "account_id": "attacker", "email": "victim@example.com"}}, "attacker")
+        self.assertEqual(HTTPStatus.FORBIDDEN, caught.exception.response_code)
+        looked_up.assert_called_once_with(None, "_system.federate")
+        submitted.assert_not_called()
+
+    def test_other_procedures_are_looked_up_by_their_exact_name_and_called(self):
+        result, submitted = self.call_proc({"query": "project.federate_single_policy", "parameters": {"a": 1}},
+                                           federation_procedures=("_system.federate",))
+        self.assertEqual("submitted", result)
+        self.looked_up.assert_called_once_with(None, "project.federate_single_policy")
+
+    def test_a_bad_request_is_refused_before_the_lookup(self):
+        with self.assertRaises(HttpStatusException):
+            self.call_proc({"query": "_system.federate", "parameters": {"a": "1"}, "explicit_types": {"a": "text--"}},
+                           federation_procedures=("_system.federate",))
+        self.looked_up.assert_not_called()
 
     def test_a_generated_call_builds_the_same_sql_as_before(self):
         result, submitted = self.call_proc({
@@ -116,6 +141,17 @@ class TestCallProc(unittest.TestCase):
     def test_an_unsafe_type_is_refused_even_for_a_null_value(self):
         with self.assertRaises(HttpStatusException):
             self.call_proc({"query": "x", "parameters": {"a": None}, "explicit_types": {"a": "text) , b => (SELECT 1"}})
+
+
+class TestIsFederationProcedure(unittest.TestCase):
+
+    def test_the_registered_name_is_looked_up_exactly(self):
+        for rows, expected in [([{"name": "_system.federate"}], True), ([], False)]:
+            with self.subTest(rows=rows):
+                with mock.patch.object(handmade_queries, "execute_supplied_statement", return_value=rows) as executed:
+                    self.assertIs(expected, handmade_queries.is_federation_procedure("connection", "_system.federate"))
+                executed.assert_called_once_with("connection", "SELECT name FROM federation_procedure WHERE name = :name",
+                                                 {"name": "_system.federate"}, as_objects=True)
 
 
 class TestSecurityEventProcedure(unittest.TestCase):
