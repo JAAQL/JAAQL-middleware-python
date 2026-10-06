@@ -15,21 +15,32 @@ from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.mvc import handmade_queries, model
 from jaaql.mvc.model import JAAQLModel, _explicit_type
 
-# Every explicit type found in the generated __dbms__.ts of 41 projects is a FIESTA realm name: a bare identifier
+# The explicit types of the generated __dbms__.ts of 41 projects: a FIESTA realm name for the generated table functions, and
+# the Postgres datatype FIESTA writes for a realm (weaver_output.c) for the parameters of hand-written procedures
 TYPES__generated = ["project_code", "_datetime", "_string", "boolean", "jsonb", "postgres_user_id", "position_", "value_",
-                    "full_url_allowing_anchor_and_parameters", "kadastraal_registratienummer", "iso_weeknummer"]
+                    "full_url_allowing_anchor_and_parameters", "kadastraal_registratienummer", "iso_weeknummer",
+                    "integer", "smallint", "bigint", "bool", "date", "text", "timestamptz", "timestamp", "uuid", "bytea", "numeric",
+                    "numeric(12)", "numeric(4,2)", "numeric(5,2)", "character varying(16)", "character varying(64)",
+                    "character varying(4096)"]
 
 TYPES__unsafe = [
     "text) , other => (SELECT 1",
     "text||(SELECT email FROM person LIMIT 1)::int",
     "int; DROP TABLE person",
+    "numeric(5,2)) , other => (SELECT 1",
+    "character varying(64) , other => (SELECT 1)",
     "text--",
     "text/**/",
     "text\n",
+    "numeric(4,2)\n",
     " text",
     "text ",
-    "character varying",
-    "numeric(5,2)",
+    "character  varying(64)",
+    "character varying (64)",
+    "numeric(4, 2)",
+    "numeric(4,2,1)",
+    "numeric(a)",
+    "numeric()",
     "text[]",
     "public.text",
     "\"text\"",
@@ -124,6 +135,23 @@ class TestCallProc(unittest.TestCase):
                                               "\n\temail => :email,"
                                               "\n\tnote => :note,"
                                               "\n\tstart => :start )"},
+                         submitted.call_args.args[4]["query"])
+
+    def test_a_hand_written_procedure_call_builds_the_same_sql_as_before(self):
+        # LesBij's generated client for its lesson.save procedure
+        _, submitted = self.call_proc({
+            "application": "app",
+            "query": "lesson.save",
+            "parameters": {"number": 1, "location": "Almere", "start": 9.25, "is_kwaliteitsles": True, "comment": None},
+            "explicit_types": {"number": "integer", "location": "character varying(64)", "start": "numeric(4,2)",
+                               "is_kwaliteitsles": "bool", "comment": "text"}
+        })
+        self.assertEqual({"_jaaql_procedure": "SELECT * FROM \"lesson.save\"("
+                                              "\n\tnumber => :number::integer,"
+                                              "\n\tlocation => :location::character varying(64),"
+                                              "\n\tstart => :start::numeric(4,2),"
+                                              "\n\tis_kwaliteitsles => :is_kwaliteitsles::bool,"
+                                              "\n\tcomment => :comment )"},
                          submitted.call_args.args[4]["query"])
 
     def test_a_call_without_explicit_types_is_unchanged(self):
