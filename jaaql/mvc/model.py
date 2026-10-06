@@ -957,12 +957,12 @@ WHERE
             db_params[claim_name] = id_payload.get(claim_name, "")
 
         procedure_name = database_user_registry[KG__database_user_registry__federation_procedure]
-        if re.match(REGEX__dmbs_procedure_name, procedure_name) is None:
+        if re.fullmatch(REGEX__dmbs_procedure_name, procedure_name) is None:
             raise HttpStatusException("Unsafe data federation procedure")
 
         procedure_params = []
         for key, _ in db_params.items():
-            if re.match(REGEX__dmbs_object_name, key) is None:
+            if re.fullmatch(REGEX__dmbs_object_name, key) is None:
                 raise HttpStatusException("Unsafe data federation parameter " + key)
             procedure_params.append(f"{key} => :{key}")
 
@@ -2041,7 +2041,7 @@ WHERE
     def _gate_run_singleton(self, inputs: dict, account_id: str, security_event: dict) -> Any:
         # Fetch configured procedure
         proc_name = security_event[KG__security_event__database_procedure]
-        if re.match(REGEX__dmbs_procedure_name, proc_name) is None:
+        if re.fullmatch(REGEX__dmbs_procedure_name, proc_name) is None:
             raise HttpStatusException(
                 "Unsafe " + KG__security_event__database_procedure + " specified for security event"
             )
@@ -2050,7 +2050,7 @@ WHERE
         params = inputs[KEY__parameters]
         explicit_types = inputs.get("explicit_types", {})
         for k in params.keys():
-            if re.match(REGEX__dmbs_object_name, k) is None:
+            if re.fullmatch(REGEX__dmbs_object_name, k) is None:
                 raise HttpStatusException("Unsafe parameter specified for database procedure")
 
         # Build SELECT * FROM proc(arg => :arg::<type>, ...)
@@ -2523,7 +2523,7 @@ WHERE
     def call_proc(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
         parameters = inputs["parameters"]
         query_name = inputs["query"]
-        if re.match(REGEX__dmbs_procedure_name, query_name) is None:
+        if re.fullmatch(REGEX__dmbs_procedure_name, query_name) is None:
             raise HttpStatusException("Unsafe procedure name " + query_name)
         query = "SELECT * FROM \"" + query_name + "\"("
 
@@ -2534,7 +2534,7 @@ WHERE
         absent = ""
 
         for parameter_key in parameter_keys:
-            if re.match(REGEX__dmbs_object_name, parameter_key) is None:
+            if re.fullmatch(REGEX__dmbs_object_name, parameter_key) is None:
                 raise HttpStatusException("Unsafe parameter key " + parameter_key)
             explicit_type = _explicit_type(explicit_types, parameter_key)
             parameter_value = parameters[parameter_key]

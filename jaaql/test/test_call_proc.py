@@ -116,6 +116,15 @@ class TestCallProc(unittest.TestCase):
         self.assertEqual("submitted", result)
         self.looked_up.assert_called_once_with(None, "project.federate_single_policy")
 
+    def test_a_trailing_newline_does_not_pass_the_name_or_key_checks(self):
+        # Postgres truncates identifiers to 63 bytes, so "<63 characters>\n" would resolve to the procedure "<63 characters>"
+        for inputs in [{"query": "a" * 63 + "\n", "parameters": {}}, {"query": "x", "parameters": {"a\n": 1}}]:
+            with self.subTest(inputs=inputs):
+                with self.assertRaises(HttpStatusException) as caught:
+                    self.call_proc(inputs, federation_procedures=("a" * 63,))
+                self.assertEqual(HTTPStatus.UNPROCESSABLE_ENTITY, caught.exception.response_code)
+                self.looked_up.assert_not_called()
+
     def test_a_bad_request_is_refused_before_the_lookup(self):
         with self.assertRaises(HttpStatusException):
             self.call_proc({"query": "_system.federate", "parameters": {"a": "1"}, "explicit_types": {"a": "text--"}},
