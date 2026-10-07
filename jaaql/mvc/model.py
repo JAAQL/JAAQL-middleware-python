@@ -1746,9 +1746,11 @@ WHERE
                 incorrect_credentials = not exists_matching_validated_ip_address(self.jaaql_lookup_connection, encrypted_salted_ip_address)
             elif os.environ.get("JAAQL_ACCEPTANCE_PASSWORD") is not None:
                 incorrect_credentials = password != os.environ["JAAQL_ACCEPTANCE_PASSWORD"]
-            elif password is not None:
+            elif password is not None and account[KG__account__api_key] is not None:
                 incorrect_credentials = jaaql__decrypt(account[KG__account__api_key], self.get_db_crypt_key()) != password
             else:
+                # No password, or an account without an api_key (one that only ever logs in through its identity provider): such an
+                # account has no password to match, so the login is refused as wrong credentials rather than failing in decrypt
                 incorrect_credentials = True
 
         if incorrect_credentials:
