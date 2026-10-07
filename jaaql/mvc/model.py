@@ -1974,7 +1974,10 @@ WHERE
             return  # Silently ignore unknown emails to avoid user enumeration
         self._kc_send_verify_email(kc_token, kc_user_id)
 
-    def _kc_delete_pw_and_passkeys(self, access_token: str, user_id: str) -> None:
+    def _kc_delete_all_credentials(self, access_token: str, user_id: str) -> None:
+        # Every credential, whatever its type: the password and every second factor (otp, recovery-authn-codes, webauthn,
+        # webauthn-passwordless in Keycloak 26.6, and any type added later), so a reset leaves nothing a lost phone or a stolen
+        # password could still use. Group membership and other required actions are not credentials and stay as they are
         kc_base = os.environ.get("KEYCLOAK_URL", "http://localhost:8080").rstrip("/")
         kc_realm = os.environ["KEYCLOAK_REALM"]
         creds = requests.get(
@@ -1984,18 +1987,75 @@ WHERE
         )
         creds.raise_for_status()
         for c in creds.json():
-            ctype = (c.get("type") or "").lower()
             cid = c.get("id")
             if not cid:
                 continue
-            if ctype == "password" or ctype.startswith("webauthn"):
-                d = requests.delete(
-                    f"{kc_base}/admin/realms/{kc_realm}/users/{user_id}/credentials/{cid}",
-                    headers={"Authorization": f"Bearer {access_token}"},
-                    timeout=20,
-                )
-                if d.status_code != HTTPStatus.NO_CONTENT:
-                    d.raise_for_status()
+            d = requests.delete(
+                f"{kc_base}/admin/realms/{kc_realm}/users/{user_id}/credentials/{cid}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=20,
+            )
+            if d.status_code != HTTPStatus.NO_CONTENT:
+                d.raise_for_status()
+
+    def _kc_logout_user(self, access_token: str, user_id: str) -> None:
+        # Ends every Keycloak session of the user. Deleting credentials and resetting the password never touch sessions, and every
+        # browser flow starts with the SSO cookie, so without this a browser still holding the cookie would log in without a password
+        # or a factor, set its own new password and enrol its own factor
+        kc_base = os.environ.get("KEYCLOAK_URL", "http://localhost:8080").rstrip("/")
+        kc_realm = os.environ["KEYCLOAK_REALM"]
+        r = requests.post(
+            f"{kc_base}/admin/realms/{kc_realm}/users/{user_id}/logout",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=20,
+        )
+        if r.status_code != HTTPStatus.NO_CONTENT:
+            r.raise_for_status()
+
+    def _kc_wipe_and_reset(self, access_token: str, user_id: str) -> str:
+        """
+        The reset that R, and C on a Keycloak user that already exists, apply: delete every credential, set a new 16-char alphanumeric
+        TEMPORARY password (Keycloak asks for a new password at the next login, and a realm with login security has the user enrol a
+        second factor again) and end the user's Keycloak sessions. Returns the temporary password
+        """
+        self._kc_delete_all_credentials(access_token, user_id)
+        temp_pw = self._gen_alnum_16()
+        self._kc_set_temp_password(access_token, user_id, temp_pw)
+        self._kc_logout_user(access_token, user_id)
+        return temp_pw
+
+    def _end_jaaql_sessions(self, application: str, kc_user_id: str, email: str) -> None:
+        """
+        Ends the JAAQL sessions of the person behind the Keycloak user kc_user_id (username email) by deleting the validated_ip_address
+        rows of their JAAQL account(s): a refresh needs one (get_auth_token, is_refresh), so the next refresh is refused and an open app
+        session ends when its token expires (token_expiry_ms). The accounts are found from the Keycloak user, never from a caller
+        parameter: by sub, with the provider and tenant of the registry of the application's default database (federated accounts,
+        most of which have no username), and by username = the email (accounts seeded with a password). Either may not exist
+        """
+        account_ids = []
+
+        application_rec = application__select(self.jaaql_lookup_connection, application)
+        default_schema = application_schema__select(self.jaaql_lookup_connection, application, application_rec[KG__application__default_schema])
+        database = default_schema[KG__application_schema__database]
+        registries = database_user_registry__select_all(self.jaaql_lookup_connection, self.get_db_crypt_key())
+        registry = next((r for r in registries if r[KG__database_user_registry__database] == database), None)
+
+        if registry is not None:
+            try:
+                account_ids.append(fetch_account_from_sub(self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
+                                                          kc_user_id, registry[KG__database_user_registry__provider],
+                                                          registry[KG__database_user_registry__tenant])[KG__account__id])
+            except HttpSingletonStatusException:
+                pass
+
+        try:
+            account_ids.append(fetch_account_from_username(self.jaaql_lookup_connection, email)[KG__account__id])
+        except HttpSingletonStatusException:
+            pass
+
+        for account_id in dict.fromkeys(account_ids):
+            execute_supplied_statement(self.jaaql_lookup_connection, "DELETE FROM validated_ip_address WHERE account = :account",
+                                       {KG__validated_ip_address__account: account_id})
 
     def _kc_set_temp_password(self, access_token: str, user_id: str, temp_pw: str) -> None:
         kc_base = os.environ.get("KEYCLOAK_URL", "http://localhost:8080").rstrip("/")
@@ -2102,9 +2162,11 @@ WHERE
     ) -> Dict[str, Any]:
         """
         Gate via DB procedure (must return exactly one row), then:
-        - remove all password and passkey credentials,
+        - remove every credential of the Keycloak user (password and every second factor),
         - set a new 16-char alphanumeric TEMPORARY password,
-        - return { temporary_password, response }.
+        - end the user's Keycloak sessions,
+        - end the user's JAAQL sessions,
+        - return { temporary_password, response, subject }.
         """
         # 1) Gate (throws if fails)
         response_obj = self._gate_run_singleton(inputs, account_id, security_event)
@@ -2117,10 +2179,10 @@ WHERE
             # If you want to enforce existence only, raise; otherwise create:
             user_id = self._kc_create_user_if_missing(access_token, username)
 
-        self._kc_delete_pw_and_passkeys(access_token, user_id)
+        temp_pw = self._kc_wipe_and_reset(access_token, user_id)
 
-        temp_pw = self._gen_alnum_16()
-        self._kc_set_temp_password(access_token, user_id, temp_pw)
+        # 3) JAAQL sessions, after the Keycloak logout so that no new session can be started from the old login in between
+        self._end_jaaql_sessions(security_event[KG__security_event__application], user_id, username)
 
         return {
             "temporary_password": temp_pw,
@@ -2137,7 +2199,8 @@ WHERE
         """
         Gate via DB procedure (must return exactly one row), then:
         - deactivate federation entries for the account,
-        - delete the Keycloak user.
+        - end the JAAQL sessions of the Keycloak user's account(s),
+        - delete the Keycloak user (which ends its Keycloak sessions).
         Returns { response } (the singleton row from the gate).
         """
         # 1) Gate (throws if fails)
@@ -2169,6 +2232,10 @@ WHERE
         if not user_id:
             raise HttpStatusException("Keycloak user not found for delete")
 
+        # Before the delete: an open app session would otherwise go on refreshing after the user is gone, and should this fail, the
+        # Keycloak user still exists, so the D can be sent again (once the user is deleted, D answers "not found" before it gets here)
+        self._end_jaaql_sessions(application, user_id, username)
+
         kc_base = os.environ["KEYCLOAK_URL"].rstrip("/")
         kc_realm = os.environ["KEYCLOAK_REALM"]
         d = requests.delete(
@@ -2191,6 +2258,9 @@ WHERE
         Executes the configured database function for the security event (must return exactly 1 row),
         then ensures a Keycloak user exists for inputs["email"] with a newly-set TEMPORARY password,
         and creates a JAAQL account (postgres role) so the account_id is available immediately.
+        When the Keycloak user already existed, C is a reset exactly as R is: every credential (the password
+        and every second factor) is removed before the temporary password is set, and the user's Keycloak
+        and JAAQL sessions are ended.
 
         Returns:
             {
@@ -2211,7 +2281,10 @@ WHERE
         username = inputs["email"]  # username == email
         access_token = self._kc_get_token()
 
-        # Policy: if exactly one local account row -> reset password; if 0 or >1 -> create user
+        # Looked up before anything is created: a Keycloak user that already exists is reset, a new one is only given a password
+        existing_user_id = self._kc_find_user_id_by_username(access_token, username)
+
+        # Policy: if exactly one local account row with this username -> no new JAAQL account; if 0 or >1 -> create one (step 3)
         should_create_user = False
         try:
             _ = fetch_account_from_username(self.jaaql_lookup_connection, username)
@@ -2219,17 +2292,21 @@ WHERE
         except HttpSingletonStatusException:
             should_create_user = True
 
-        if should_create_user:
-            user_id = self._kc_create_user_if_missing(access_token, username)
-        else:
-            user_id = self._kc_find_user_id_by_username(access_token, username)
-            if not user_id:
-                # Local account exists but KC user missing -> create it
-                user_id = self._kc_create_user_if_missing(access_token, username)
+        if existing_user_id:
+            user_id = existing_user_id
 
-        # Set a new 16-char alphanumeric temporary password
-        temp_pw = self._gen_alnum_16()
-        self._kc_set_temp_password(access_token, user_id, temp_pw)
+            # Remove every credential, set a new 16-char alphanumeric temporary password and end the Keycloak sessions, as R does
+            temp_pw = self._kc_wipe_and_reset(access_token, user_id)
+
+            # Before the account creation below, so that its failing cannot leave the user's JAAQL sessions alive
+            self._end_jaaql_sessions(security_event[KG__security_event__application], user_id, username)
+        else:
+            # No Keycloak user yet (whether or not a local account exists) -> create it
+            user_id = self._kc_create_user_if_missing(access_token, username)
+
+            # Set a new 16-char alphanumeric temporary password
+            temp_pw = self._gen_alnum_16()
+            self._kc_set_temp_password(access_token, user_id, temp_pw)
 
         # 3) Create JAAQL account (postgres role) if it doesn't exist yet
         new_account_id = None
