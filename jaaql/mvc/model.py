@@ -30,7 +30,7 @@ from jaaql.mvc.base_model import BaseJAAQLModel, VAULT_KEY__jwt_crypt_key
 from jaaql.utilities.bootstrap_secrets import get_or_seed_vault_secret
 from jaaql.exceptions.http_status_exception import HttpStatusException, ERR__already_installed, HttpSingletonStatusException
 from os.path import join
-from jaaql.interpreter.interpret_jaaql import KEY_query, KEY_parameters
+from jaaql.interpreter.interpret_jaaql import KEY_query, KEY_parameters, KEY_store
 from jaaql.constants import *
 from jaaql.utilities.cron import check_if_should_fire_cron
 from jaaql.utilities.utils import get_jaaql_root, get_base_url
@@ -2511,6 +2511,9 @@ WHERE
 
         for key, val in inputs["query"].items():
             if isinstance(val, dict):
+                # A store query runs its other keys as SQL text, which would be the caller's own SQL here
+                if KEY_store in val:
+                    raise HttpStatusException("/execute does not run store queries; call a procedure instead")
                 val["query"] = self._lookup_cached_query(val["query"].strip())
             else:
                 inputs["query"][key] = self._lookup_cached_query(val.strip())
