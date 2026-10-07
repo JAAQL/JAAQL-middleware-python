@@ -1,7 +1,8 @@
 from jaaql.exceptions.http_status_exception import HttpStatusException, HttpSingletonStatusException, ConnectionLostError
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL
-from jaaql.constants import ENCODING__utf, VAULT_KEY__super_db_credentials
+from jaaql.constants import ENCODING__utf, VAULT_KEY__super_db_credentials, REGEX__dmbs_object_name
 from typing import Union
+import re
 import jaaql.utilities.crypt_utils as crypt_utils
 from jaaql.db.db_pg_interface import DBPGInterface
 from jaaql.db.db_interface import DBInterface
@@ -15,6 +16,7 @@ ERR__duplicated_encryption_salt = "Duplicated value in encryption_salts list"
 ERR__expected_single_row = "Expected single row response but received '%d' rows"
 ERR__unsupported_interface = "Unsupported interface '%s'. We only support %s"
 ERR__schema_invalid = "Schema invalid!"
+ERR__database_name_unsafe = "Unsafe database name"
 
 # A lost connection persisted nothing, so a self-contained statement is re-run on a fresh connection.
 # Bounded so a genuinely-down database still surfaces an error rather than looping.
@@ -192,6 +194,13 @@ def execute_supplied_statements(db_interface, queries: Union[str, list],
         data = [objectify(obj) for obj in data]
 
     return data
+
+
+def requested_database(database) -> str:
+    # A database named by the request itself: a plain name, as every database JAAQL uses has one
+    if not isinstance(database, str) or re.fullmatch(REGEX__dmbs_object_name, database) is None:
+        raise HttpStatusException(ERR__database_name_unsafe)
+    return database
 
 
 def create_interface_for_db(vault, config, user_id: str, database: str, sub_role: str = None, session_settings: dict = None):

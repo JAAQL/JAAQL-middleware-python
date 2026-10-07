@@ -4,7 +4,8 @@ from http import HTTPStatus
 from jaaql.mvc.exception_queries import QUERY__fetch_application_schemas, KG__application_schema__application, KG__application__is_live, \
     KG__application_schema__name, KEY__is_default
 from queue import Queue
-from jaaql.db.db_utils import execute_supplied_statement, create_interface_for_db, ERR__schema_invalid, CONN_LOST__max_attempts
+from jaaql.db.db_utils import execute_supplied_statement, create_interface_for_db, ERR__schema_invalid, CONN_LOST__max_attempts, \
+    requested_database
 from jaaql.exceptions.http_status_exception import HttpStatusException, ConnectionLostError
 from jaaql.interpreter.interpret_jaaql import InterpretJAAQL, KEY_autocommit
 from jaaql.constants import KEY__application, KEY__database, KEY__schema, KEY__role, DB__jaaql, \
@@ -122,6 +123,8 @@ def get_required_db(vault, config, jaaql_connection: DBInterface, inputs: dict, 
                 raise HttpStatusException(ERR__schema_invalid)
 
             inputs[KEY__database] = found_db
+        elif KEY__database in inputs:
+            requested_database(inputs[KEY__database])
 
         if KEY__database not in inputs:
             inputs[KEY__database] = DB__jaaql

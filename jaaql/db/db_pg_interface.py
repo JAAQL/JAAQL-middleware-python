@@ -3,6 +3,7 @@ import uuid
 
 import psycopg
 from psycopg import OperationalError
+from psycopg.conninfo import make_conninfo
 from psycopg.pq import TransactionStatus
 from psycopg_pool import ConnectionPool, PoolClosed
 import queue
@@ -286,15 +287,17 @@ class DBPGInterface(DBInterface):
 
         if password is not None:
             try:
-                conn_str = "user=" + username + " password=" + password + " dbname=" + db_name
+                conn_params = {"user": username, "password": password, "dbname": db_name}
                 # Important we don't list the host as this will force a unix socket
                 if host is not None and host not in ['localhost', '127.0.0.1']:
-                    conn_str += " host=" + host
+                    conn_params["host"] = host
 
                 if str(port) != "5432":
-                    conn_str += " port=" + str(port)
+                    conn_params["port"] = str(port)
 
-                conn_str += CONN_STR__keepalives
+                # make_conninfo quotes every value, so no value can add a setting of its own (a database named
+                # "x host=elsewhere" would otherwise send the superuser credentials to that host)
+                conn_str = make_conninfo(CONN_STR__keepalives.strip(), **conn_params)
 
                 self.conn_str = conn_str
 

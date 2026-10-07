@@ -34,7 +34,7 @@ from jaaql.interpreter.interpret_jaaql import KEY_query, KEY_parameters
 from jaaql.constants import *
 from jaaql.utilities.cron import check_if_should_fire_cron
 from jaaql.utilities.utils import get_jaaql_root, get_base_url
-from jaaql.db.db_utils import create_interface, jaaql__encrypt, create_interface_for_db, jaaql__decrypt
+from jaaql.db.db_utils import create_interface, jaaql__encrypt, create_interface_for_db, jaaql__decrypt, requested_database
 from jaaql.db.db_utils_no_circ import submit, get_required_db, objectify
 from jaaql.utilities import crypt_utils
 from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_OIDC, COOKIE_OIDC_RETURN, \
@@ -383,7 +383,7 @@ class JAAQLModel(BaseJAAQLModel):
         return columns
 
     def fetch_domains(self, inputs: dict, account_id: str):
-        db_connection = create_interface_for_db(self.vault, self.config, account_id, inputs[KEY__database], None)
+        db_connection = create_interface_for_db(self.vault, self.config, account_id, requested_database(inputs[KEY__database]), None)
         self.is_dba(db_connection)
 
         domains_query = """
@@ -412,7 +412,7 @@ ORDER BY
 
     def prepare_queries(self, inputs: dict, account_id: str):
         cost_only = inputs.get("cost_only", False)
-        db_connection = create_interface_for_db(self.vault, self.config, account_id, inputs[KEY__database], None)
+        db_connection = create_interface_for_db(self.vault, self.config, account_id, requested_database(inputs[KEY__database]), None)
 
         self.is_dba(db_connection)
 
