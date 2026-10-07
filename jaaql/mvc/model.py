@@ -792,6 +792,10 @@ WHERE
         token_endpoint = discovery.get("token_endpoint")
         if not token_endpoint:
             raise Exception(f"No token endpoint for {provider}, {tenant}")
+        # The audience of the client assertion below: the token endpoint as the realm advertises it, on the host the realm's frontendUrl
+        # names. Keycloak checks the assertion's aud against its own endpoint URLs for that host and refuses the backchannel URL the request
+        # is sent to with "Invalid token audience" (invalid_client), as the PAR's assertion already takes its aud from the discovery document
+        token_audience = token_endpoint
         # Force backchannel: hit Keycloak directly (skip the app same-origin proxy)
         # so the FAPI client cert presented at TLS handshake actually reaches Keycloak.
         token_endpoint = _rewrite_endpoint_to_origin(token_endpoint, _keycloak_backchannel_origin(user_registry[KG__user_registry__discovery_url]))
@@ -862,7 +866,7 @@ WHERE
             payload = {
                 "iss": database_user_registry[KG__database_user_registry__client_id],
                 "sub": database_user_registry[KG__database_user_registry__client_id],
-                "aud": token_endpoint,
+                "aud": token_audience,
                 "jti": str(uuid.uuid4()),
                 "iat": int(time.time()),
                 "exp": int(time.time()) + 300  # Token valid for 5 minutes
