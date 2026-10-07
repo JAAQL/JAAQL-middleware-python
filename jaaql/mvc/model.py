@@ -38,7 +38,7 @@ from jaaql.db.db_utils import create_interface, jaaql__encrypt, create_interface
 from jaaql.db.db_utils_no_circ import submit, get_required_db, objectify
 from jaaql.utilities import crypt_utils
 from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_OIDC, COOKIE_OIDC_RETURN, \
-    COOKIE_LOGIN_MARKER, get_sloppy_cookie_attrs
+    COOKIE_LOGIN_MARKER, get_sloppy_cookie_attrs, COOKIE_ATTR_MAX_AGE
 from jaaql.mvc.response import *
 import threading
 from datetime import datetime, timedelta
@@ -1208,6 +1208,14 @@ WHERE
 
         return str(account[KG__account__id]), sub, str(address), False, True
 
+    def _oidc_login_cookie_attrs(self):
+        # The oidc and oidc_return cookies carry a login through the identity provider, so they live as long as the OIDC session token
+        # in the oidc cookie (oidc_login_expiry_ms) instead of the 15 minutes of an inactivity cookie: a login that sets up a second
+        # factor or a passkey on the way can take longer, and its code exchange needs both cookies when it comes back
+        attributes = get_cookie_attrs(True, False, self.is_container)
+        attributes[COOKIE_ATTR_MAX_AGE] = str(self.oidc_login_expiry_ms // 1000)
+        return attributes
+
     def fetch_redirect_uri(self, inputs: dict, response: JAAQLResponse, request_headers=None, ip_address=None):
         # In EasyAuth mode, skip the OIDC redirect — authenticate via Azure headers and redirect back
         if self.use_easyauth:
@@ -1271,13 +1279,13 @@ WHERE
         }, JWT_PURPOSE__oidc, expiry_ms=self.oidc_login_expiry_ms)
 
         response.set_cookie(COOKIE_OIDC, value=oidc_session,
-                            attributes=get_cookie_attrs(True, False, self.is_container),
+                            attributes=self._oidc_login_cookie_attrs(),
                             is_https=self.is_https)
 
         # Store the return URL in a separate cookie so the exchange catch block can redirect correctly
         # even if the OIDC session cookie has been consumed by a prior exchange request
         response.set_cookie(COOKIE_OIDC_RETURN, value=real_redirect_uri,
-                            attributes=get_cookie_attrs(True, False, self.is_container),
+                            attributes=self._oidc_login_cookie_attrs(),
                             is_https=self.is_https)
 
         default_scopes = ["openid", "profile", "email"]
