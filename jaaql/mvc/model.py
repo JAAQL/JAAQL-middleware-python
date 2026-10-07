@@ -2269,7 +2269,8 @@ WHERE
         """
         Executes the configured database function for the security event (must return exactly 1 row),
         then ensures a Keycloak user exists for inputs["email"] with a newly-set TEMPORARY password,
-        and creates a JAAQL account (postgres role) so the account_id is available immediately.
+        and creates a JAAQL account (postgres role) so the account_id is available immediately, unless the Keycloak user already has
+        one, which is then returned.
         When the Keycloak user already existed, C is a reset exactly as R is: every credential (the password
         and every second factor) is removed before the temporary password is set, and the user's Keycloak
         and JAAQL sessions are ended.
@@ -2334,11 +2335,18 @@ WHERE
             if registry:
                 provider = registry[KG__database_user_registry__provider]
                 tenant = registry[KG__database_user_registry__tenant]
-                new_account_id = self.create_account_with_potential_api_key(
-                    self.jaaql_lookup_connection,
-                    sub=user_id, provider=provider, tenant=tenant,
-                    email=username, registered=False
-                )
+                # The Keycloak user may already have an account without a username (every account a federated login or an earlier C
+                # made): that account is the user's, so it is used, where creating another failed on the unique (sub, provider, tenant)
+                # after the reset above, and the admin never saw the temporary password
+                try:
+                    new_account_id = fetch_account_from_sub(self.jaaql_lookup_connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
+                                                            user_id, provider, tenant)[KG__account__id]
+                except HttpSingletonStatusException:
+                    new_account_id = self.create_account_with_potential_api_key(
+                        self.jaaql_lookup_connection,
+                        sub=user_id, provider=provider, tenant=tenant,
+                        email=username, registered=False
+                    )
 
                 # 4) Insert into federation.federated_user on the app database
                 encrypted_email = jaaql__encrypt(

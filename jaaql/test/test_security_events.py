@@ -185,14 +185,14 @@ class SecurityEventCase(unittest.TestCase):
     def execute_supplied_statement(self, connection, query, parameters=None, **kwargs):
         self.log.append(("db", "lookup" if connection is self.lookup else "app", query, dict(parameters or {})))
 
-    def run_event(self, event, email, parameters=None, create_account_error=None):
+    def run_event(self, event, email, parameters=None):
         jaaql_model = JAAQLModel.__new__(JAAQLModel)
         jaaql_model.vault = StubVault()
         jaaql_model.config = None
         jaaql_model.jaaql_lookup_connection = self.lookup
         jaaql_model.cached_canned_query_service = None
         jaaql_model._gate_run_singleton = mock.Mock(return_value={"gate": "row"})
-        jaaql_model.create_account_with_potential_api_key = mock.Mock(return_value="account-new", side_effect=create_account_error)
+        jaaql_model.create_account_with_potential_api_key = mock.Mock(return_value="account-new")
         jaaql_model._run_federation_procedure = mock.Mock()
         self.app_connection = AppConnection()
         inputs = {"application": APPLICATION, "name": SECURITY_EVENT["name"], "type": event, "email": email,
@@ -310,16 +310,27 @@ class TestCreate(SecurityEventCase):
         # The existing Keycloak user was looked up before anything could be created: no POST to /users
         self.assertNotIn(("POST", "/admin/realms/" + REALM + "/users"), self.kc_calls())
 
-    def test_c_on_an_existing_keycloak_user_ends_the_sessions_before_creating_an_account(self):
-        # A Keycloak user whose JAAQL account has no username: C still goes on to create a JAAQL account (unchanged), and the
-        # sessions have been ended before that, whether or not it succeeds
+    def test_c_on_an_existing_keycloak_user_whose_account_has_no_username_returns_that_account(self):
+        # Every account a federated login or an earlier C made has no username: C finds it by sub and returns it, where it used to
+        # create another one, fail on the unique (sub, provider, tenant) after the reset and never hand over the temporary password
         self.keycloak({"ben@example.com": EVERY_CREDENTIAL_TYPE})
         self.accounts_by_sub["kc-ben"] = "account-ben-federated"
-        with self.assertRaises(RuntimeError):
-            self.run_event("C", "ben@example.com", create_account_error=RuntimeError("duplicate key value violates unique constraint"))
+        result = self.run_event("C", "ben@example.com")
+        self.assertWiped("ben@example.com", result)
         self.assertEqual(["account-ben-federated"], self.session_deletes())
-        self.assertEqual(["password"], [c["type"] for c in self.kc.users["ben@example.com"]["credentials"]])
-        self.assertEqual(0, self.kc.sessions["kc-ben"])
+        self.assertEqual("account-ben-federated", result["account_id"])
+        self.model.create_account_with_potential_api_key.assert_not_called()
+        # The app's person row is still linked to the account, as for a new one
+        self.assertEqual("account-ben-federated", self.model._run_federation_procedure.call_args.args[3])
+
+    def test_c_on_an_existing_keycloak_user_without_a_jaaql_account_creates_one(self):
+        self.keycloak({"ben@example.com": EVERY_CREDENTIAL_TYPE})
+        result = self.run_event("C", "ben@example.com")
+        self.assertWiped("ben@example.com", result)
+        self.assertEqual([], self.session_deletes())
+        self.assertEqual("account-new", result["account_id"])
+        self.model.create_account_with_potential_api_key.assert_called_once()
+        self.assertEqual("kc-ben", self.model.create_account_with_potential_api_key.call_args.kwargs["sub"])
 
     def test_c_on_a_new_user_creates_it_with_a_temporary_password_as_before(self):
         self.keycloak({"ann@example.com": EVERY_CREDENTIAL_TYPE})
