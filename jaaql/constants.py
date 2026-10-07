@@ -239,5 +239,5 @@ ROLE__dba = "dba"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "5.3.21"
+VERSION = "5.3.22"
 
