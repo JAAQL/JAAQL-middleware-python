@@ -1,6 +1,6 @@
 """
-/execute runs only the application's compiled queries: the query a request names is replaced by its compiled text, and a store query,
-whose other keys would be run as SQL text, is refused.
+/execute runs only the application's compiled queries, in the application's databases: the query a request names is replaced by its
+compiled text, and a store query, whose other keys would be run as SQL text, is refused.
 
     python -m unittest jaaql.test.test_execute
 
@@ -39,6 +39,12 @@ class TestExecute(unittest.TestCase):
                 self.assertEqual("submitted", result)
                 sent = submitted.call_args.args[4]["query"]["person"]
                 self.assertEqual(COMPILED["frame:0"], sent if isinstance(sent, str) else sent["query"])
+
+    def test_the_queries_run_in_the_configured_application_whatever_the_request_names(self):
+        for extra in [{}, {"database": "jaaql"}, {"application": "other", "database": "postgres"}]:
+            with self.subTest(extra=extra):
+                _, submitted, _ = self.execute({"query": {"person": "frame:0"}, **extra})
+                self.assertEqual("app", submitted.call_args.args[4]["application"])
 
     def test_a_store_query_is_refused_before_anything_is_submitted(self):
         stub = stub_model()

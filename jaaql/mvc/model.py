@@ -2518,6 +2518,9 @@ WHERE
             else:
                 inputs["query"][key] = self._lookup_cached_query(val.strip())
 
+        # The compiled queries belong to the configured application: they run in its databases, never in one the request names
+        inputs[KEY__application] = self.query_caches["application"]
+
         # Queries here come from the compiled application query cache (server-authored, single
         # statements), so let postgres execute them as prepared statements
         return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
