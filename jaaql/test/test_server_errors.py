@@ -1665,10 +1665,16 @@ class TestServerErrorsAgainstPostgres(ServerErrorCase):
         self.stub.reset()
         stub_model = self.model
         stub_model.submit = lambda inputs, account_id, **kwargs: JAAQLModel.submit(stub_model, inputs, TEST_ROLE, **kwargs)
-        # As it was before the sender made it storable: refused, and the report lost
+        # As it was before the sender made it storable: refused by the ingest as it was (422, the report lost); the ingest now stores it with
+        # each such character as U+FFFD, noted after the stacktrace (jaaql/test/test_sentinel_ingest.py)
         raw = dict(payload, error_condensed=payload["error_condensed"].replace("\\0", "\x00"),
                    stacktrace=payload["stacktrace"].replace("a lone ? surrogate", "a lone \ud800 surrogate"))
-        self.assertEqual(422, self.client.post(ENDPOINT__report_sentinel_error, json=raw).status_code)
+        self.assertEqual(200, self.client.post(ENDPOINT__report_sentinel_error, json=raw).status_code)
+        [(error_condensed, stacktrace)] = self.admin("SELECT error_condensed, stacktrace FROM error")
+        self.assertEqual(raw["error_condensed"].replace("\x00", "�")[:200], error_condensed)
+        self.assertTrue(stacktrace.startswith(raw["stacktrace"].replace("\ud800", "�").replace("\x00", "�") +
+                                              "\n\nIngest adjustments:\n"), stacktrace[-300:])
+        self.admin("DELETE FROM error")
         accepted = self.client.post(ENDPOINT__report_sentinel_error, json=payload)
         self.assertEqual(200, accepted.status_code, accepted.data)
         self.assertEqual([(payload["error_condensed"], payload["stacktrace"])], self.admin("SELECT error_condensed, stacktrace FROM error"))

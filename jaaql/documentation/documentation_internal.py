@@ -624,7 +624,13 @@ DOCUMENTATION__report_sentinel_error = SwaggerDocumentation(
     methods=SwaggerMethod(
         name="Report error",
         description="Logs an application error (user_agent + ip_address encrypted at rest) and triggers Sentinel "
-                    "alert processing. Never returns 500 (would otherwise make JAAQL report itself recursively).",
+                    "alert processing. Never returns 500 (would otherwise make JAAQL report itself recursively). "
+                    "Any JSON object holding a report key is stored, whatever its Content-Type: a value that does not fit "
+                    "Sentinel's error table is adapted (cut, NULL for a line or column out of range, defaults for missing keys, "
+                    "unknown keys ignored), with each adaptation listed under 'Ingest adjustments:' in the stored stacktrace; a "
+                    "body over 2 MB keeps the start and end of its stacktrace. Refused are only a body holding no JSON object "
+                    "(400), an object with none of the report keys (400) and a body over 16 MiB (413). A stored report is "
+                    "answered 200 even if its alert processing fails.",
         method=REST__POST,
         body=[
             SwaggerArgumentResponse(name="location", description="URL/location where the error occurred", arg_type=str, example=["https://app/index.html"]),

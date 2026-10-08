@@ -14,7 +14,7 @@ import queue
 
 from jaaql.utilities.utils_no_project_imports import COOKIE_OIDC, COOKIE_OIDC_RETURN
 from jaaql.interpreter.interpret_jaaql import KEY_query, KEY_parameters
-from jaaql.utilities import server_errors
+from jaaql.utilities import server_errors, sentinel_ingest
 from jaaql.utilities.server_errors import ANSWERED__oidc_exchange
 
 
@@ -235,9 +235,24 @@ class JAAQLController(BaseJAAQLController):
             )
 
         @self.publish_route(ENDPOINT__report_sentinel_error, DOCUMENTATION__report_sentinel_error, True)
-        def report_sentinel_error(http_inputs: dict, ip_address: str):
+        def report_sentinel_error(ip_address: str):
             # Public error-reporting endpoint, moved here from the deprecated jaaql-sentinel-middleware.
             # MUST NEVER return a 500: a 500 makes JAAQL self-report (SENTINEL_URL=_) and recurse.
+            # Its callers are reporters that cannot be updated (browser tabs and deployed apps keep the BATON they loaded), so the body is
+            # read here rather than validated against the documentation: every report is stored, made to fit Sentinel's error table
+            # where it does not (jaaql/utilities/sentinel_ingest.py). It is read under the route's own size cap, since an older reporter
+            # sends whole parameter values: a body over MAX_CONTENT_LENGTH is stored with its stacktrace cut rather than answered 413
+            former_cap = request.max_content_length
+            request.max_content_length = sentinel_ingest.LIMIT__body
+            body = request.get_data()
+            try:
+                http_inputs = sentinel_ingest.read_report(body, request.content_type, dict(request.args), former_cap)
+            except HttpStatusException:
+                raise
+            except Exception as ex:
+                import traceback
+                traceback.print_exc()
+                raise HttpStatusException(str(ex))
             ins_error = (
                 "insert into error (location, source_file, user_agent, ip_address, error_condensed, stacktrace, "
                 "file_line_number, file_col_number, version, source_system) "
@@ -251,6 +266,11 @@ class JAAQLController(BaseJAAQLController):
                     {KEY_query: ins_error, KEY_parameters: http_inputs, KEY__application: "sentinel"},
                     ROLE__dba, as_objects=True, singleton=True, server_authored_query=True
                 )
+            except Exception as ex:
+                import traceback
+                traceback.print_exc()
+                raise HttpStatusException(str(ex))
+            try:
                 self.model.submit(
                     {
                         KEY_query: 'SELECT "error.process_alert"(:id, :raw_ip_address)',
@@ -259,7 +279,8 @@ class JAAQLController(BaseJAAQLController):
                     },
                     ROLE__dba, server_authored_query=True
                 )
-            except Exception as ex:
+            except Exception:
+                # The report is stored (the INSERT has committed): an error answer would only make the reporter send it again, as a
+                # second row, so the alert's failure is logged and the report answered as stored
                 import traceback
                 traceback.print_exc()
-                raise HttpStatusException(str(ex))

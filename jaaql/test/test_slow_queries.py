@@ -1062,10 +1062,18 @@ class TestSlowQueriesAgainstPostgres(SlowQueryCase):
             raw_agent = self.client.post(ENDPOINT__report_sentinel_error, json=dict(payload, source_file="raw", user_agent="Mozilla/5.0 (Ünïcode)"))
         self.assertEqual(200, accepted.status_code, accepted.data)
         self.assertEqual([(payload["source_file"], payload["source_system"], payload["error_condensed"], payload["stacktrace"])],
-                         self.admin("SELECT source_file, source_system, error_condensed, stacktrace FROM error"))
-        self.assertNotEqual(200, extra_key.status_code)
-        self.assertEqual(422, raw_agent.status_code, raw_agent.data)
-        self.assertEqual(1, self.admin("SELECT count(*) FROM error")[0][0])
+                         self.admin("SELECT source_file, source_system, error_condensed, stacktrace FROM error WHERE source_file = %s",
+                                    (payload["source_file"],)))
+        # The ingest stores what does not fit its table too, adapted, with each adaptation noted after the stacktrace
+        # (jaaql/test/test_sentinel_ingest.py)
+        self.assertEqual(200, extra_key.status_code, extra_key.data)
+        self.assertEqual(200, raw_agent.status_code, raw_agent.data)
+        self.assertEqual([("extra", payload["stacktrace"] + '\n\nIngest adjustments:\n\t- unknown key "extra" ignored: "x"'),
+                          ("raw", payload["stacktrace"] + "\n\nIngest adjustments:\n\t- user_agent: 2 non-ASCII character(s) stored as "
+                                                          "\\uXXXX escapes")],
+                         self.admin("SELECT source_file, stacktrace FROM error WHERE source_file <> %s ORDER BY source_file",
+                                    (payload["source_file"],)))
+        self.assertEqual(3, self.admin("SELECT count(*) FROM error")[0][0])
         self.assertNoReport()
 
 
