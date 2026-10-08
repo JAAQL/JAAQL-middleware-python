@@ -27,3 +27,5 @@ END
 $do$;
 
 ALTER SYSTEM SET max_connections = 300;
+ALTER SYSTEM SET jit = off;
+SELECT pg_reload_conf();
