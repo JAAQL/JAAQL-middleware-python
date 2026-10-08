@@ -77,6 +77,7 @@ Additional lines can be used
 
 JEQL_VERSION specifies the version of JEQL to use  
 SENTINEL_SLOW_QUERY_SECONDS (default 3) reports a JAAQL query request whose statements and COMMIT take longer than that many seconds to Sentinel (SENTINEL_URL) as a slow query, and prints it as one line in the log either way; 0 turns it off. The time is wall clock in the gunicorn worker, so a worker busy with other requests can make a fast statement look slow. jaaql-monitor's statements (deploy scripts, migrations) are never reported  
+SENTINEL_URL also receives JAAQL's own server errors: a request that fails because of JAAQL or its infrastructure (an unexpected exception, a 5xx, JAAQL's own SQL failing, the database server failing under any SQL: disk full, out of memory, corruption, an I/O error, a shutdown), never one that fails because of what the client sent (its SQL, a malformed body); each is printed as one line in the log either way. Only /submit, /execute and /call-proc show their inputs' values in a report, other routes name their inputs only  
 You can specify jaaql specific install scripts which will call the various endpoints with input data, after jaaql has been installed
     
 ## Usage

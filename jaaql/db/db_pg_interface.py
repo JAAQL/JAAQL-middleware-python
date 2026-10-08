@@ -19,6 +19,7 @@ from jaaql.exceptions.custom_http_status import CustomHTTPStatus
 from jaaql.exceptions.jaaql_interpretable_handled_errors import UserUnauthorized, DatabaseOperationalError, handled_error_from_database_error, \
     database_error_descriptor
 from jaaql.constants import KEY__database
+from jaaql.utilities import server_errors
 
 ERR__connect_db = "Could not create connection to database!"
 ERR__commit_outcome_unknown = "The connection was lost during COMMIT, so whether the transaction was persisted is unknown: "
@@ -108,6 +109,31 @@ class JaaqlPGConnection(psycopg.Connection):
             finally:
                 self._jaaql_flushing = False
         return super().cursor(*args, **kwargs)
+
+
+def await_verdict(wait_hook: queue.Queue):
+    """
+    Waits for the parallel verifier's verdict on the request, raising unless it accepted it
+    """
+    try:
+        verdict = wait_hook.get(timeout=WAIT_HOOK__timeout)
+    except queue.Empty:
+        # The parallel verifier never delivered a verdict (its single serial thread
+        # wedged, e.g. on a connection killed by a DB reboot). Fail closed and let
+        # the worker unwind - without this bound the worker blocks forever holding
+        # an open transaction, and enough of them starve the pool into nginx 504s.
+        # A server fault whatever SQL waited for it (jaaql/utilities/server_errors.py)
+        raise VerificationTimedOut(ERR__verification_timed_out)
+    # The verdict belongs to the request, not to this attempt at it: left on the hook, a
+    # request re-run on a fresh connection after losing its first one reads it again
+    # instead of waiting out WAIT_HOOK__timeout for a second verdict that never comes
+    wait_hook.put(verdict)
+    res, err, code = verdict
+    if not res:
+        if code == 500:
+            # The verifier failed, and reports that itself
+            raise VerificationFailed(err)
+        raise UserUnauthorized()
 
 
 def _statement_is_preparable(query: str) -> bool:
@@ -317,6 +343,9 @@ class DBPGInterface(DBInterface):
                     raise HttpStatusException("Database \"" + self.db_name + "\" does not exist",
                                               CustomHTTPStatus.DATABASE_NO_EXIST)
                 else:
+                    # Refused for another reason (the credentials, too many connections, a server not accepting): the server's, though
+                    # answered 422, so noted for a report should the request fail (jaaql/utilities/server_errors.py)
+                    server_errors.note_fault(ex, server_errors.FAULT__pool, database=self.db_name)
                     raise HttpStatusException(str(ex))
 
     def _get_conn(self):
@@ -421,23 +450,7 @@ class DBPGInterface(DBInterface):
                 do_prepare = prepare and _statement_is_preparable(query)
 
                 if wait_hook:
-                    try:
-                        verdict = wait_hook.get(timeout=WAIT_HOOK__timeout)
-                    except queue.Empty:
-                        # The parallel verifier never delivered a verdict (its single serial thread
-                        # wedged, e.g. on a connection killed by a DB reboot). Fail closed and let
-                        # the worker unwind - without this bound the worker blocks forever holding
-                        # an open transaction, and enough of them starve the pool into nginx 504s.
-                        raise Exception(ERR__verification_timed_out)
-                    # The verdict belongs to the request, not to this attempt at it: left on the hook, a
-                    # request re-run on a fresh connection after losing its first one reads it again
-                    # instead of waiting out WAIT_HOOK__timeout for a second verdict that never comes
-                    wait_hook.put(verdict)
-                    res, err, code = verdict
-                    if not res:
-                        if code == 500:
-                            raise Exception(err)
-                        raise UserUnauthorized()
+                    await_verdict(wait_hook)
 
                 if capture_timing is not None:
                     started = time.perf_counter()
@@ -546,7 +559,8 @@ class DBPGInterface(DBInterface):
             # Lost while the COMMIT was in flight: the server may have committed before the connection went (a crash
             # after the commit record was flushed, a network loss before the reply). The outcome is unknown, so this
             # is reported as it stands and never re-run, which could apply the request twice
-            return DatabaseOperationalError(message=ERR__commit_outcome_unknown + str(commit_err), descriptor=database_error_descriptor(commit_err))
+            return outcome_unknown(DatabaseOperationalError(message=ERR__commit_outcome_unknown + str(commit_err),
+                                                            descriptor=database_error_descriptor(commit_err)))
         # The server refused the COMMIT (a deferred constraint, a serialization failure, ...), so the transaction
         # was rolled back: the error maps exactly as it does when a statement raises it
         return handled_error_from_database_error(commit_err, error_set)

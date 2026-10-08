@@ -66,7 +66,8 @@ def execute_supplied_statement(db_interface, query: str, parameters: dict = None
                                encryption_salts: dict = None, skip_commit: bool = False,
                                autocommit: bool = False, do_prepare_only: str = None,
                                attempt_fetch_domain_types: bool = False, psql: list = None,
-                               pre_psql: str = None):
+                               pre_psql: str = None, client_sql: bool = False):
+    # client_sql: the query is the request's own SQL, whose errors are never JAAQL's server errors (jaaql/utilities/server_errors.py)
     if parameters is None:
         parameters = {}
 
@@ -122,7 +123,7 @@ def execute_supplied_statement(db_interface, query: str, parameters: dict = None
         try:
             data = InterpretJAAQL(db_interface).transform(statement, skip_commit=skip_commit, encryption_key=encryption_key, autocommit=autocommit,
                                                           do_prepare_only=do_prepare_only, attempt_fetch_domain_types=attempt_fetch_domain_types,
-                                                          psql=psql, pre_psql=pre_psql)
+                                                          psql=psql, pre_psql=pre_psql, client_sql=client_sql)
             break
         except ConnectionLostError:
             if attempts >= CONN_LOST__max_attempts:

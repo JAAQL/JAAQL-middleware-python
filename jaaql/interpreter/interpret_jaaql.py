@@ -20,7 +20,7 @@ from jaaql.exceptions.jaaql_interpretable_handled_errors import handled_error_fr
     SingletonExpected
 from typing import Union
 from functools import lru_cache
-from jaaql.utilities import slow_queries
+from jaaql.utilities import slow_queries, server_errors
 
 
 ERR_malformed_statement = "Malformed query, expecting string or dictionary"
@@ -162,7 +162,9 @@ class InterpretJAAQL:
 
     def transform(self, operation: Union[dict, str], *args, slow_query_label: slow_queries.Label = None, **kwargs):
         # One JAAQL query request: its statements' time and its COMMIT's are added up and, over the threshold, reported as a slow query
-        # (jaaql/utilities/slow_queries.py). Outside a request or background scope, or with the reports off, nothing is timed
+        # (jaaql/utilities/slow_queries.py). Outside a request or background scope, or with the reports off, nothing is timed.
+        # client_sql (passed on to _transform): the SQL is the request's own, supplied or named by it, so nothing it raises is ever a
+        # server fault of JAAQL's; otherwise it is JAAQL's own, whose failures may be (jaaql/utilities/server_errors.py)
         measurement = slow_queries.start(slow_query_label, operation, self.db_interface)
         if measurement is None:
             return self._transform(operation, *args, **kwargs)
@@ -177,7 +179,8 @@ class InterpretJAAQL:
     def _transform(self, operation: Union[dict, str], conn=None, skip_commit: bool = False, wait_hook: queue.Queue = None,
                    encryption_key: bytes = None, autocommit: bool = False, canned_query_service=None, prevent_unused_parameters: bool = True,
                    do_prepare_only: str = False, and_return_connection_mid_transaction: bool = False, attempt_fetch_domain_types: bool = False,
-                   psql: list = None, pre_psql: str = None, prepare_statements: bool = False, measurement: slow_queries.Measurement = None):
+                   psql: list = None, pre_psql: str = None, prepare_statements: bool = False, measurement: slow_queries.Measurement = None,
+                   client_sql: bool = False):
         if (not isinstance(operation, dict)) and (not isinstance(operation, str)):
             raise HttpStatusException(ERR_malformed_operation_type, HTTPStatus.BAD_REQUEST)
 
@@ -201,76 +204,79 @@ class InterpretJAAQL:
         # execute as postgres prepared statements so parse/plan is skipped on hot connections
         canned_keys = set()
 
-        if is_dict_operation:
-            restrictions = operation.get(KEY__restrictions, {})
-            if not isinstance(restrictions, dict):
-                raise HttpStatusException("Malformatted restriction dictionary", HTTPStatus.BAD_REQUEST)
-            else:
-                for key, val in restrictions.items():
-                    if not isinstance(key, str) or not isinstance(val, str) or not re.match(REGEX__dmbs_object_name, val):
-                        raise HttpStatusException("Malformatted restriction dictionary around " + key, HTTPStatus.BAD_REQUEST)
-
-            if len(restrictions) != 0 and do_prepare_only:
-                raise HttpStatusException("Supplying restrictions makes no sense when preparing! Choose one or the other")
-
-            if len(restrictions) != 0 and self.jaaql_db_interface is None:
-                raise Exception("You must provide the jaaql db interface if you plan to check for restrictions")
-
-            query = operation.get(KEY_query)
-
-            if query is None:
-                canned_query = canned_query_service.get_canned_query(operation[KEY__application],
-                                                                     operation[KEY__file], operation[KEY__position])
-                query = {"query": {KEY_query: canned_query, KEY_assert: operation.get(KEY_assert), KEY_decrypt: operation.get(KEY_decrypt),
-                                   KEY_parameters: {}}}
-                check_required = False
-                canned_keys.add("query")
-            else:
-                is_dict_query = isinstance(query, dict)
-                if not is_dict_query:
-                    query = {"query": {"query": query, KEY_assert: operation.get(KEY_assert), KEY_decrypt: operation.get(KEY_decrypt),
-                                       KEY_parameters: {}}}
+        # Reading the operation: what a key missing or a value of another type raises here is the client's when the operation is (client_sql),
+        # and raised on unchanged (jaaql/utilities/server_errors.py)
+        with server_errors.reading_request(client_sql):
+            if is_dict_operation:
+                restrictions = operation.get(KEY__restrictions, {})
+                if not isinstance(restrictions, dict):
+                    raise HttpStatusException("Malformatted restriction dictionary", HTTPStatus.BAD_REQUEST)
                 else:
-                    all_replaced = True
-                    for key, val in query.items():
-                        if isinstance(val, str):
-                            all_replaced = False
-                            query[key] = {KEY_query: val, KEY_assert: None, KEY_decrypt: None, KEY_parameters: {}}
-                        else:
-                            if KEY_store in val:
-                                store_all_canned = True
-                                for sub_key, sub_val in val.items():
-                                    if sub_key in [KEY_parameters, KEY_decrypt, KEY_store]:
-                                        continue
-                                    if isinstance(sub_val, str):
-                                        all_replaced = False
-                                        store_all_canned = False
-                                    else:
-                                        canned_query = canned_query_service.get_canned_query(operation[KEY__application],
-                                                                                             sub_val[KEY__file], sub_val[KEY__position])
-                                        val[sub_key] = canned_query
-                                if store_all_canned:
-                                    canned_keys.add(key)
-                                if KEY_parameters not in val:
-                                    val[KEY_parameters] = {}
-                                if KEY_decrypt not in val:
-                                    val[KEY_decrypt] = None
+                    for key, val in restrictions.items():
+                        if not isinstance(key, str) or not isinstance(val, str) or not re.match(REGEX__dmbs_object_name, val):
+                            raise HttpStatusException("Malformatted restriction dictionary around " + key, HTTPStatus.BAD_REQUEST)
+
+                if len(restrictions) != 0 and do_prepare_only:
+                    raise HttpStatusException("Supplying restrictions makes no sense when preparing! Choose one or the other")
+
+                if len(restrictions) != 0 and self.jaaql_db_interface is None:
+                    raise Exception("You must provide the jaaql db interface if you plan to check for restrictions")
+
+                query = operation.get(KEY_query)
+
+                if query is None:
+                    canned_query = canned_query_service.get_canned_query(operation[KEY__application],
+                                                                         operation[KEY__file], operation[KEY__position])
+                    query = {"query": {KEY_query: canned_query, KEY_assert: operation.get(KEY_assert), KEY_decrypt: operation.get(KEY_decrypt),
+                                       KEY_parameters: {}}}
+                    check_required = False
+                    canned_keys.add("query")
+                else:
+                    is_dict_query = isinstance(query, dict)
+                    if not is_dict_query:
+                        query = {"query": {"query": query, KEY_assert: operation.get(KEY_assert), KEY_decrypt: operation.get(KEY_decrypt),
+                                           KEY_parameters: {}}}
+                    else:
+                        all_replaced = True
+                        for key, val in query.items():
+                            if isinstance(val, str):
+                                all_replaced = False
+                                query[key] = {KEY_query: val, KEY_assert: None, KEY_decrypt: None, KEY_parameters: {}}
                             else:
-                                fetched_query = None
-                                if isinstance(val[KEY_query], str):
-                                    all_replaced = False
-                                    fetched_query = val[KEY_query]
+                                if KEY_store in val:
+                                    store_all_canned = True
+                                    for sub_key, sub_val in val.items():
+                                        if sub_key in [KEY_parameters, KEY_decrypt, KEY_store]:
+                                            continue
+                                        if isinstance(sub_val, str):
+                                            all_replaced = False
+                                            store_all_canned = False
+                                        else:
+                                            canned_query = canned_query_service.get_canned_query(operation[KEY__application],
+                                                                                                 sub_val[KEY__file], sub_val[KEY__position])
+                                            val[sub_key] = canned_query
+                                    if store_all_canned:
+                                        canned_keys.add(key)
+                                    if KEY_parameters not in val:
+                                        val[KEY_parameters] = {}
+                                    if KEY_decrypt not in val:
+                                        val[KEY_decrypt] = None
                                 else:
-                                    fetched_query = canned_query_service.get_canned_query(operation[KEY__application],
-                                                                                          val[KEY_query][KEY__file], val[KEY_query][KEY__position])
-                                    canned_keys.add(key)
-                                query[key] = {KEY_query: fetched_query, KEY_assert: val.get(KEY_assert), KEY_decrypt: val.get(KEY_decrypt),
-                                              KEY_parameters: val.get(KEY_parameters, {})}
-                    check_required = not all_replaced
+                                    fetched_query = None
+                                    if isinstance(val[KEY_query], str):
+                                        all_replaced = False
+                                        fetched_query = val[KEY_query]
+                                    else:
+                                        fetched_query = canned_query_service.get_canned_query(operation[KEY__application],
+                                                                                              val[KEY_query][KEY__file], val[KEY_query][KEY__position])
+                                        canned_keys.add(key)
+                                    query[key] = {KEY_query: fetched_query, KEY_assert: val.get(KEY_assert), KEY_decrypt: val.get(KEY_decrypt),
+                                                  KEY_parameters: val.get(KEY_parameters, {})}
+                        check_required = not all_replaced
 
-            parameters = operation.get(KEY_parameters, {})
+                parameters = operation.get(KEY_parameters, {})
 
-        unused_orig_parameters = set(parameters.keys())
+            unused_orig_parameters = set(parameters.keys())
 
         # Checked out only once the request has been read: whatever above rejects it raises with no connection to give
         # back (a rejection there used to keep its connection from the pool for good)
@@ -625,12 +631,14 @@ ORDER BY d.column_name;
                                  zip(row, res["columns"])] for row in res["rows"]]
         except Exception as ex:
             traceback.print_exc()
+            raised = ex
             try:
                 if isinstance(ex, OperationalError) and was_conn_none and not conn.autocommit and self.db_interface.is_connection_closed(conn):
                     if may_have_committed:
                         # Its own SQL may have committed part of the request before the connection went, and a re-run would
                         # apply that part again: answered as it stands, like a COMMIT lost in flight
-                        err = DatabaseOperationalError(message=ERR__connection_lost_outcome_unknown + str(ex), descriptor=database_error_descriptor(ex))
+                        err = outcome_unknown(DatabaseOperationalError(message=ERR__connection_lost_outcome_unknown + str(ex),
+                                                                       descriptor=database_error_descriptor(ex)))
                     else:
                         # The connection was lost mid-request and its uncommitted transaction with it, so nothing persisted: the
                         # request is re-run from the start on a fresh connection by the caller that owns it (submit,
@@ -668,6 +676,8 @@ ORDER BY d.column_name;
                 # below, so the error is answered as raised
                 traceback.print_exc()
                 err = ex
+            # Answered as a client error whatever caused it, so a server fault behind it is noted here, where its cause is still known
+            server_errors.transform_failed(raised, err, client_sql, self.db_interface, exc_query_key, exc_query)
 
         #
         # and_return_connection_mid_transaction
@@ -679,7 +689,9 @@ ORDER BY d.column_name;
         if err is None and may_have_committed and was_conn_none and not conn.autocommit and self.db_interface.is_connection_closed(conn):
             # Closed before JAAQL's COMMIT is sent, which put_conn_handle_error would answer as retriable (ConnectionLostError): not
             # when the request's own SQL may already have committed
-            err = DatabaseOperationalError(message=ERR__connection_lost_outcome_unknown + "the connection was closed before COMMIT")
+            err = outcome_unknown(DatabaseOperationalError(message=ERR__connection_lost_outcome_unknown + "the connection was closed before COMMIT"))
+            # Noted as the server's whoever wrote the SQL: nothing was raised here for transform_failed to see
+            server_errors.transform_failed(err, err, client_sql, self.db_interface)
         ending = None
         if measurement is not None and (was_conn_none or not and_return_connection_mid_transaction):
             # A deferred constraint trigger runs at COMMIT, so the COMMIT's time is the query's too
@@ -692,6 +704,11 @@ ORDER BY d.column_name;
                 self.db_interface.handle_error(conn, err, commit_error_set=commit_error_set)
             elif err is not None:
                 raise err
+        except Exception as ending_failure:
+            if err is None:
+                # The COMMIT was refused, and is answered as the statement's error would be
+                server_errors.commit_failed(ending_failure, client_sql, self.db_interface, commit_error_set)
+            raise
         finally:
             if ending is not None:
                 measurement.end_seconds = time.perf_counter() - ending

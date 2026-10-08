@@ -44,6 +44,43 @@ class ConnectionLostError(HttpStatusException):
         super().__init__("Connection lost, transaction not persisted: " + message, HTTPStatus.INTERNAL_SERVER_ERROR)
 
 
+class VerificationTimedOut(Exception):
+    # The parallel verifier gave no verdict in time. Answered as the plain Exception it replaces; a server fault whatever SQL waited for it
+    # (jaaql/utilities/server_errors.py)
+    pass
+
+
+class VerificationFailed(Exception):
+    # The parallel verifier failed with a server error. Answered as the plain Exception it replaces; the verifier reports it itself, the
+    # requests waiting for its verdict do not
+    pass
+
+
+class AuthorizationResponseError(Exception):
+    # The identity provider answered a login's authorization request with an error of its own (a JARM response carrying error=...). Never
+    # raised: the login is answered with its redirect, and the error reported unless the user caused it (jaaql/utilities/server_errors.py)
+    pass
+
+
+# An exception carrying this attribute set to True is the client's, whatever its status: it is never reported as a server error
+ATTR__client_fault = "jaaql_client_fault"
+# The database error a refused COMMIT raised, on the error it is answered with (translated as a statement's would be)
+ATTR__database_error = "jaaql_database_error"
+# Set to True on the error a request is answered with when its connection was lost after its SQL may have committed (a COMMIT lost in
+# flight, a connection gone after the request's own COMMIT): the outcome is unknown, whoever wrote the SQL, which is the server's to answer for
+ATTR__outcome_unknown = "jaaql_outcome_unknown"
+
+
+def outcome_unknown(ex):
+    setattr(ex, ATTR__outcome_unknown, True)
+    return ex
+
+
+def client_fault(ex):
+    setattr(ex, ATTR__client_fault, True)
+    return ex
+
+
 class JaaqlInterpretableHandledError(Exception):
     def __init__(self, error_code: int, http_response_code: int,
                  table_name: str | None, index: int | None, message: str,
@@ -61,8 +98,10 @@ class JaaqlInterpretableHandledError(Exception):
 
     @staticmethod
     def deserialize_from_json(obj):
-        return JaaqlInterpretableHandledError(
+        # An error a cloud procedure relays from its output, whatever its code: the procedure's own requests to JAAQL report their own
+        # server faults
+        return client_fault(JaaqlInterpretableHandledError(
             obj.get("error_code"), RESPONSE_CODE_LOOKUP.get(obj.get("error_code"), 422), obj.get("table_name"),
             obj.get("index"), obj.get("message"), obj.get("column_name"),
             obj.get("set"), obj.get("descriptor")
-        )
+        ))

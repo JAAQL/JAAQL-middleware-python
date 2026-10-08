@@ -256,6 +256,23 @@ SLOW_QUERY__unreported_routes = frozenset({
 # a bypass key in development and with a password on a box, while BATON names its application in every request it sends
 SLOW_QUERY__unreported_without_application = frozenset({"/submit"})
 
+# Routes whose failures are never reported as server errors (jaaql/utilities/server_errors.py): Sentinel's own ingest route, so a report
+# never reports itself, and the deploy-time ones
+SERVER_ERROR__unreported_routes = frozenset({
+    ENDPOINT__report_sentinel_error, ENDPOINT__install, "/internal/clean", ENDPOINT__execute_migrations
+})
+# The routes whose inputs a server-error report shows with their values: the query routes, whose SQL and parameters a slow-query report
+# shows too (values included, secrets redacted). Every other route's report names its inputs only: a login's email address, an
+# authorization code, a webhook's payload are never sent
+SERVER_ERROR__routes_with_inputs = frozenset({"/submit", "/execute", "/call-proc"})
+# The same limits as slow queries, in a budget of their own: one report per error per hour per process, its repeats counted into its next
+# report; at most this many reports an hour, this many of them for one account; this many errors kept track of
+SERVER_ERROR__max_reports_per_hour = 10
+SERVER_ERROR__max_reports_per_account_per_hour = 3
+SERVER_ERROR__max_tracked_errors = 1000
+# The server faults one request notes for its report at most
+SERVER_ERROR__max_faults = 5
+
 CONFIG__default = "Default config"
 CONFIG__default_desc = "Default config description"
 DATASET__default = "Default dataset"

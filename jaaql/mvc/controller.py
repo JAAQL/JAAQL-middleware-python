@@ -14,6 +14,8 @@ import queue
 
 from jaaql.utilities.utils_no_project_imports import COOKIE_OIDC, COOKIE_OIDC_RETURN
 from jaaql.interpreter.interpret_jaaql import KEY_query, KEY_parameters
+from jaaql.utilities import server_errors
+from jaaql.utilities.server_errors import ANSWERED__oidc_exchange
 
 
 class JAAQLController(BaseJAAQLController):
@@ -191,6 +193,9 @@ class JAAQLController(BaseJAAQLController):
                 import traceback
                 traceback.print_exc()
                 print(f"OIDC code exchange failed: {e}")
+                # Swallowed into the redirect, so seen here as any failed request would be: a server-side failure is reported, never a refused
+                # login (jaaql/utilities/server_errors.py)
+                server_errors.request_failed(e, ENDPOINT__oidc_get_token, self.model.has_installed, answered=ANSWERED__oidc_exchange)
                 # Redirect to the saved return URL if available (survives OIDC cookie consumption),
                 # otherwise fall back to the app root
                 return_url = request.cookies.get(COOKIE_OIDC_RETURN)

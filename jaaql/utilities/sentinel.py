@@ -1,6 +1,6 @@
 """
 The sender of every report JAAQL makes to Sentinel's ingest route (POST <SENTINEL_URL>/api/sentinel/reporting/error): the slow-query reports
-and the in-core 500 reporter's.
+and the server-error reports (jaaql/utilities/slow_queries.py, jaaql/utilities/server_errors.py).
 
 send() never waits and never raises: a report goes into a bounded queue, or is dropped and counted when the queue is full. One daemon
 sender per process takes it from there, with a connect and a read timeout and one attempt, so a Sentinel that is down, slow or refusing costs
@@ -127,12 +127,21 @@ def _send_forever(the_queue: queue.Queue):
             the_queue.task_done()
 
 
+def storable(payload: dict) -> dict:
+    """
+    The payload with every text one Sentinel's database can store: Postgres text holds no NUL character (shown as \\0) and only what UTF-8 can
+    encode (a lone surrogate, which a decoded request can carry, becomes ?). Either would make the ingest route refuse the whole report
+    """
+    return {key: value.replace("\x00", "\\0").encode("utf-8", "replace").decode("utf-8") if isinstance(value, str) else value
+            for key, value in payload.items()}
+
+
 def _post(payload: dict):
     url = _url
     if url is None:
         return
     try:
-        res = requests.post(url, json=payload, timeout=(SENTINEL__connect_timeout, SENTINEL__read_timeout))
+        res = requests.post(url, json=storable(payload), timeout=(SENTINEL__connect_timeout, SENTINEL__read_timeout))
     except Exception as ex:
         print(ERR__sentinel_unreachable % (type(ex).__name__, str(ex)[:200]))
         return

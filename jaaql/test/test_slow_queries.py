@@ -58,7 +58,6 @@ SOURCE_SYSTEM = "lesbij-test-app"
 CRYPT_KEY = b"k" * 32
 REPORT_KEYS = {"location", "source_file", "error_condensed", "file_line_number", "file_col_number", "version", "source_system", "stacktrace",
                "user_agent"}
-OLD_500_KEYS = {"location", "error_condensed", "version", "source_system", "source_file", "file_line_number", "stacktrace"}
 SLOW = 3.1
 FAST = 0.1
 
@@ -225,8 +224,8 @@ class StubModel:
     def execute(self, inputs, account_id, verification_hook=None):
         return JAAQLModel.execute(self, inputs, account_id, verification_hook=verification_hook)
 
-    def _lookup_cached_query(self, trimmed):
-        return JAAQLModel._lookup_cached_query(self, trimmed)
+    def _lookup_cached_query(self, trimmed, requested=True):
+        return JAAQLModel._lookup_cached_query(self, trimmed, requested)
 
     def submit(self, inputs, account_id, verification_hook=None, ip_address=None, **kwargs):
         return JAAQLModel.submit(self, inputs, account_id, verification_hook=verification_hook, ip_address=ip_address, **kwargs)
@@ -502,14 +501,16 @@ class TestReports(SlowQueryCase):
         self.assertIn("\nStatement 2 of 3 | query key b, compiled query week:1 | 2.80 s\n", trace)
 
     def test_the_500_reporter_still_reaches_sentinel(self):
+        # Through the one sender, now with the keys Sentinel binds and once, by the Flask handlers' fallback for a route added to the app
+        # directly (jaaql/utilities/server_errors.py)
         @self.controller.app.route("/test-internal-error")
         def internal_error():
             raise InternalServerError()
 
-        with contextlib.redirect_stderr(io.StringIO()):
+        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
             res = self.client.get("/test-internal-error")
         self.assertEqual(500, res.status_code)
-        self.assertEqual(OLD_500_KEYS, set(self.report()))
+        self.assertEqual(REPORT_KEYS, set(self.report()))
 
 
 class TestWhatIsNeverReported(SlowQueryCase):

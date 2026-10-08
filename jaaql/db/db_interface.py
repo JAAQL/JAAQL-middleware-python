@@ -144,6 +144,8 @@ class DBInterface(ABC):
             self.log_warning(ex)
             translated = None
         if translated is not None:
+            # Kept for jaaql/utilities/server_errors.py, which tells a refusal of JAAQL's own COMMIT from the client's by it
+            setattr(translated, ATTR__database_error, commit_err)
             return translated
         return HttpStatusException("Commit failed, transaction not persisted: " + str(commit_err),
                                    HTTPStatus.INTERNAL_SERVER_ERROR)

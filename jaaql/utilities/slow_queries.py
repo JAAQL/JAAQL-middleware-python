@@ -112,9 +112,16 @@ def configure(public_url: str = None, is_container: bool = False):
 
 
 class Scope:
-    __slots__ = ("route", "method", "path", "user_agent", "account_id", "application", "bypass", "background", "started")
+    """
+    One request, or one background job: who asked and on which route. Shared with the server-error reports (jaaql/utilities/server_errors.py),
+    which keep in it the request's inputs and the server faults noted while it runs; slow is whether its queries are timed for slow-query
+    reports
+    """
+    __slots__ = ("route", "method", "path", "user_agent", "account_id", "application", "bypass", "background", "started", "slow", "faults",
+                 "inputs")
 
-    def __init__(self, route: str = None, method: str = None, path: str = None, user_agent: str = None, background: str = None):
+    def __init__(self, route: str = None, method: str = None, path: str = None, user_agent: str = None, background: str = None,
+                 slow: bool = True):
         self.route = route
         self.method = method
         self.path = path
@@ -124,14 +131,21 @@ class Scope:
         self.bypass = False
         self.background = background
         self.started = time.perf_counter()
+        self.slow = slow
+        self.faults = []
+        self.inputs = None
 
 
 _scope = contextvars.ContextVar("jaaql_slow_query_scope", default=None)
 
 
+def current_scope() -> Scope:
+    return _scope.get()
+
+
 @contextmanager
-def request_scope(route: str, method: str, path: str, user_agent: str = None):
-    token = _scope.set(Scope(route=route, method=method, path=path, user_agent=user_agent))
+def request_scope(route: str, method: str, path: str, user_agent: str = None, slow: bool = True):
+    token = _scope.set(Scope(route=route, method=method, path=path, user_agent=user_agent, slow=slow))
     try:
         yield
     finally:
@@ -157,8 +171,11 @@ def note_caller(account_id, bypass: bool):
 
 def note_application(inputs):
     scope = _scope.get()
-    if scope is not None and isinstance(inputs, dict) and isinstance(inputs.get(KEY__application), str):
-        scope.application = inputs[KEY__application]
+    if scope is not None and isinstance(inputs, dict):
+        # Kept by reference, for a server-error report only: the model may change the inputs before one is made
+        scope.inputs = inputs
+        if isinstance(inputs.get(KEY__application), str):
+            scope.application = inputs[KEY__application]
 
 
 class Label:
@@ -205,25 +222,19 @@ class Measurement:
 
 def start(label: Label, operation, db_interface) -> Measurement:
     """
-    A measurement for one transform, or None (nothing is timed) when slow-query reports are off or the transform runs outside a scope
+    A measurement for one transform, or None (nothing is timed) when slow-query reports are off or the transform runs outside a scope that
+    times its queries
     """
     if not THRESHOLD_SECONDS > 0:
         return None
     scope = _scope.get()
-    if scope is None:
+    if scope is None or not scope.slow:
         return None
     application = operation.get(KEY__application) if isinstance(operation, dict) else None
     return Measurement(scope, label, application if isinstance(application, str) else None, getattr(db_interface, "db_name", None))
 
 
 # Throttle -----------------------------------------------------------------------------------------------------------------------------
-
-_throttle_lock = threading.Lock()
-# identity -> [monotonic time of its last report or None (never reported), slow runs since, slowest of those, time of its last slow run],
-# the one longest not slow first
-_identities = OrderedDict()
-# (monotonic time, account id or None) of each report in the last hour
-_reported_at = deque()
 
 DECISION__report = "reported"
 DECISION__repeat = "repeat, not reported"
@@ -235,59 +246,90 @@ def _now() -> float:
     return time.monotonic()
 
 
+class Throttle:
+    """
+    Which reports a process makes: one per identity an hour, counting its runs in between into its next report, at most max_per_hour reports
+    an hour and max_per_account of them for one account, and at most max_tracked identities kept track of. limits() gives those three, read
+    at every decision. Slow-query reports and server-error reports have one each, so neither spends the other's budget
+    """
+
+    def __init__(self, limits):
+        self.limits = limits
+        self.lock = threading.Lock()
+        # identity -> [monotonic time of its last report or None (never reported), runs since, slowest of those, time of its last run],
+        # the one longest not seen first
+        self.identities = OrderedDict()
+        # (monotonic time, account id or None) of each report in the last hour
+        self.reported_at = deque()
+
+    def reset(self):
+        with self.lock:
+            self.identities.clear()
+            self.reported_at.clear()
+
+    @staticmethod
+    def _recently_reported(entry, now) -> bool:
+        return entry[0] is not None and now - entry[0] < SLOW_QUERY__repeat_seconds
+
+    def _forget(self, now, max_per_hour: int, max_tracked: int):
+        # The identities not seen for a day, then beyond max_tracked the ones longest not seen, never one reported in the last hour (there
+        # are at most max_per_hour of those), which would be reported again
+        while self.identities:
+            identity, entry = next(iter(self.identities.items()))
+            if now - entry[3] < FORGET__seconds:
+                break
+            del self.identities[identity]
+        excess = len(self.identities) - max_tracked
+        if excess > 0:
+            oldest = islice(self.identities.items(), excess + max_per_hour)
+            for identity in [identity for identity, entry in oldest if not self._recently_reported(entry, now)][:excess]:
+                del self.identities[identity]
+
+    @staticmethod
+    def _counted(entry, seconds: float, decision: str):
+        entry[1] += 1
+        entry[2] = max(entry[2], seconds)
+        return decision, None
+
+    def decide(self, identity: str, seconds: float = 0.0, account_id=None):
+        """
+        (DECISION__report, (runs since its last report, slowest of those)) when a report is to be made, else (the reason, None)
+        """
+        max_per_hour, max_per_account, max_tracked = self.limits()
+        now = _now()
+        with self.lock:
+            entry = self.identities.pop(identity, None)
+            if entry is None:
+                entry = [None, 0, 0.0, now]
+            entry[3] = now
+            self.identities[identity] = entry
+            self._forget(now, max_per_hour, max_tracked)
+            if self._recently_reported(entry, now):
+                return self._counted(entry, seconds, DECISION__repeat)
+            while self.reported_at and now - self.reported_at[0][0] >= HOUR:
+                self.reported_at.popleft()
+            if len(self.reported_at) >= max_per_hour:
+                return self._counted(entry, seconds, "over %d reports this hour, not reported" % max_per_hour)
+            if account_id is not None and sum(1 for _, reported_for in self.reported_at if reported_for == account_id) >= max_per_account:
+                return self._counted(entry, seconds, "over %d reports this hour for this account, not reported" % max_per_account)
+            repeats = (entry[1], entry[2])
+            entry[0], entry[1], entry[2] = now, 0, 0.0
+            self.reported_at.append((now, account_id))
+            return DECISION__report, repeats
+
+
+_slow_query_throttle = Throttle(lambda: (SLOW_QUERY__max_reports_per_hour, SLOW_QUERY__max_reports_per_account_per_hour,
+                                         SLOW_QUERY__max_tracked_queries))
+_identities = _slow_query_throttle.identities
+_reported_at = _slow_query_throttle.reported_at
+
+
 def reset_throttle():
-    with _throttle_lock:
-        _identities.clear()
-        _reported_at.clear()
-
-
-def _recently_reported(entry, now) -> bool:
-    return entry[0] is not None and now - entry[0] < SLOW_QUERY__repeat_seconds
-
-
-def _forget(now):
-    # The queries not slow for a day, then beyond SLOW_QUERY__max_tracked_queries the ones longest not slow, never one reported in the last
-    # hour (there are at most SLOW_QUERY__max_reports_per_hour of those), which would be reported again
-    while _identities:
-        identity, entry = next(iter(_identities.items()))
-        if now - entry[3] < FORGET__seconds:
-            break
-        del _identities[identity]
-    excess = len(_identities) - SLOW_QUERY__max_tracked_queries
-    if excess > 0:
-        oldest = islice(_identities.items(), excess + SLOW_QUERY__max_reports_per_hour)
-        for identity in [identity for identity, entry in oldest if not _recently_reported(entry, now)][:excess]:
-            del _identities[identity]
-
-
-def _counted(entry, seconds: float, decision: str):
-    entry[1] += 1
-    entry[2] = max(entry[2], seconds)
-    return decision, None
+    _slow_query_throttle.reset()
 
 
 def _throttle(identity: str, seconds: float, account_id=None):
-    now = _now()
-    with _throttle_lock:
-        entry = _identities.pop(identity, None)
-        if entry is None:
-            entry = [None, 0, 0.0, now]
-        entry[3] = now
-        _identities[identity] = entry
-        _forget(now)
-        if _recently_reported(entry, now):
-            return _counted(entry, seconds, DECISION__repeat)
-        while _reported_at and now - _reported_at[0][0] >= HOUR:
-            _reported_at.popleft()
-        if len(_reported_at) >= SLOW_QUERY__max_reports_per_hour:
-            return _counted(entry, seconds, DECISION__capped)
-        if account_id is not None and \
-                sum(1 for _, reported_for in _reported_at if reported_for == account_id) >= SLOW_QUERY__max_reports_per_account_per_hour:
-            return _counted(entry, seconds, DECISION__account_capped)
-        repeats = (entry[1], entry[2])
-        entry[0], entry[1], entry[2] = now, 0, 0.0
-        _reported_at.append((now, account_id))
-        return DECISION__report, repeats
+    return _slow_query_throttle.decide(identity, seconds, account_id)
 
 
 # The report ---------------------------------------------------------------------------------------------------------------------------
@@ -478,7 +520,7 @@ def stacktrace_of(measurement: Measurement, total: float, label: str, applicatio
         account = ""
         so_far = ""
     else:
-        route = "Route: " + _where(scope) + " on " + (_public_url or _host)
+        route = "Route: " + _printable(_where(scope)) + " on " + (_public_url or _host)
         account = " | account: " + (str(scope.account_id) if scope.account_id is not None else "-")
         so_far = "; request time so far " + _seconds(time.perf_counter() - scope.started)
     lines = [
@@ -486,7 +528,7 @@ def stacktrace_of(measurement: Measurement, total: float, label: str, applicatio
         "Query: " + label,
         "Outcome: " + _outcome(measurement.failure, _secrets_of(measurement)),
         route,
-        "Application: " + (application or "-") + " | database: " + (measurement.database or "-") + account,
+        "Application: " + _printable(application or "-") + " | database: " + (measurement.database or "-") + account,
         "At: " + datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC") + " | JAAQL " + VERSION + " | worker pid " + str(os.getpid()),
         "Database time: " + _seconds(total) + " = statements " + _seconds(statement_seconds) + " + " + ended_with + " " +
         _seconds(measurement.end_seconds),
@@ -545,7 +587,8 @@ def _slow(measurement: Measurement, total: float):
     if is_tooling(scope, application):
         return
     label = label_of(measurement)
-    line = LINE__slow_query % (total, label, _where(scope), application or "-")
+    # One line, whatever the request named its application or path
+    line = LINE__slow_query % (total, label, _printable(_where(scope)), _printable(application or "-"))
     if not sentinel.is_configured():
         print(line)
         return

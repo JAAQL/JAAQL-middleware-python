@@ -16,6 +16,7 @@ from jaaql.db.db_interface import DBInterface
 from jaaql.utilities.utils_no_project_imports import objectify
 from jaaql.mvc.generated_queries import application__select
 from jaaql.utilities.slow_queries import Label
+from jaaql.utilities import server_errors
 
 ERROR_VALUE__max_length = 80
 
@@ -86,7 +87,10 @@ def pop_timeline_settings(inputs: dict):
     return settings
 
 
-def get_required_db(vault, config, jaaql_connection: DBInterface, inputs: dict, account_id: str, conn=None, interface: DBInterface = None, db_cache=None):
+def get_required_db(vault, config, jaaql_connection: DBInterface, inputs: dict, account_id: str, conn=None, interface: DBInterface = None, db_cache=None,
+                    clients: bool = False):
+    # clients: the inputs are the request's own, so a schema it names that the application lacks, or a value of a type no application or role
+    # name has, is the client's even where JAAQL's own code or query meets it (jaaql/utilities/server_errors.py)
     if not isinstance(inputs, dict):
         raise HttpStatusException("Expected object or string input")
 
@@ -99,7 +103,7 @@ def get_required_db(vault, config, jaaql_connection: DBInterface, inputs: dict, 
             if schemas is None:
                 schemas = execute_supplied_statement(jaaql_connection, QUERY__fetch_application_schemas, {
                     KG__application_schema__application: inputs[KEY__application]
-                }, as_objects=True)
+                }, as_objects=True, client_sql=clients and not isinstance(inputs[KEY__application], str))
                 if len(schemas) == 0:
                     application__select(jaaql_connection, inputs[KEY__application],
                                         singleton_message=f"Application '{inputs[KEY__application]}' does not exist. Are you sure you have installed it?")
@@ -110,7 +114,8 @@ def get_required_db(vault, config, jaaql_connection: DBInterface, inputs: dict, 
 
             found_db = None
             if KEY__schema in inputs and inputs[KEY__schema] is not None:
-                found_db = schemas[inputs[KEY__schema]][KEY__database]
+                with server_errors.reading_request(clients):
+                    found_db = schemas[inputs[KEY__schema]][KEY__database]
                 inputs.pop(KEY__schema)
             else:
                 if len(schemas) == 1:
@@ -132,7 +137,9 @@ def get_required_db(vault, config, jaaql_connection: DBInterface, inputs: dict, 
 
         sub_role = inputs.pop(KEY__role) if KEY__role in inputs else None
 
-        required_db = create_interface_for_db(vault, config, account_id, inputs[KEY__database], sub_role, session_settings=session_settings)
+        # A role of another type than a name is the client's, wherever making the interface trips over it
+        with server_errors.reading_request(clients and not isinstance(sub_role, (str, type(None)))):
+            required_db = create_interface_for_db(vault, config, account_id, inputs[KEY__database], sub_role, session_settings=session_settings)
     else:
         if interface is None:
             raise Exception("Must supply interface is connection is supplied!")
@@ -144,13 +151,16 @@ def get_required_db(vault, config, jaaql_connection: DBInterface, inputs: dict, 
 
 def submit(vault, config, db_crypt_key, jaaql_connection: DBInterface, inputs: dict, account_id: str, verification_hook: Queue = None,
            cached_canned_query_service=None, as_objects: bool = False, singleton: bool = False, keep_alive_conn: bool = False,
-           conn=None, interface: DBInterface = None, db_cache=None, prepare_statements: bool = False, slow_query_label: Label = None):
+           conn=None, interface: DBInterface = None, db_cache=None, prepare_statements: bool = False, slow_query_label: Label = None,
+           client_sql: bool = False):
     # slow_query_label names the request's queries in a slow-query report (jaaql/utilities/slow_queries.py); without one they are named
-    # from their SQL. Given here rather than set around the call, so the application lookup below is never reported under it
+    # from their SQL. client_sql says they are the request's own SQL, whose errors are never JAAQL's server errors
+    # (jaaql/utilities/server_errors.py). Both are given here rather than set around the call, so the application lookup below, JAAQL's
+    # own query, is never taken for the request's
     if not isinstance(inputs, dict):
         raise HttpStatusException("Expected object or string input")
 
-    required_db = get_required_db(vault, config, jaaql_connection, inputs, account_id, conn, interface, db_cache=db_cache)
+    required_db = get_required_db(vault, config, jaaql_connection, inputs, account_id, conn, interface, db_cache=db_cache, clients=client_sql)
 
     prevent_unused = inputs.pop(KEY__prevent_unused_parameters) if KEY__prevent_unused_parameters in inputs else True
 
@@ -167,7 +177,7 @@ def submit(vault, config, db_crypt_key, jaaql_connection: DBInterface, inputs: d
                                              encryption_key=db_crypt_key, conn=conn,
                                              canned_query_service=cached_canned_query_service, prevent_unused_parameters=prevent_unused,
                                              and_return_connection_mid_transaction=keep_alive_conn, prepare_statements=prepare_statements,
-                                             slow_query_label=slow_query_label)
+                                             slow_query_label=slow_query_label, client_sql=client_sql)
             break
         except ConnectionLostError:
             if conn is not None or attempts >= CONN_LOST__max_attempts:

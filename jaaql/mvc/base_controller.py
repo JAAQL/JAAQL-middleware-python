@@ -15,13 +15,12 @@ except ImportError:
 from datetime import datetime, date, time
 from jaaql.exceptions.custom_http_status import CustomHTTPStatus
 from jaaql.exceptions.jaaql_interpretable_handled_errors import UnhandledJaaqlServerError, NotYetInstalled
-import sys
 import dataclasses
 import decimal
 from queue import Queue
 from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_LOGIN_MARKER, COOKIE_ATTR_PATH
 from jaaql.utilities.utils import time_delta_ms, Profiler
-from jaaql.utilities import sentinel, slow_queries
+from jaaql.utilities import sentinel, slow_queries, server_errors
 from flask import Response, Flask, request, jsonify, current_app
 from flask.json.provider import DefaultJSONProvider
 from jaaql.constants import *
@@ -174,6 +173,8 @@ class BaseJAAQLController:
         # Reports reach Sentinel through one sender per process, started by the first report (jaaql/utilities/sentinel.py)
         BaseJAAQLController.internal_sentinel = sentinel.configure(os.environ.get(ENVIRON__sentinel_url), base_url)
         slow_queries.configure(getattr(model, "url", None), getattr(model, "is_container", False))
+        # A server error of a request that names no application is filed under the application this box serves
+        server_errors.configure(lambda: (getattr(model, "query_caches", None) or {}).get("application"))
 
     def diff_ms(self, start, now):
         return round((now - start).total_seconds() * 1000)
@@ -468,11 +469,16 @@ class BaseJAAQLController:
 
             @wraps(view_func)
             def routed_function(view_func_local, **kwargs):
-                # The request's scope for slow-query reports: who asked, on which route. Deploy and tooling routes have none
-                if route in SLOW_QUERY__unreported_routes or not slow_queries.enabled():
-                    return handle_route(view_func_local, **kwargs)
-                with slow_queries.request_scope(route, request.method, request.path, request.headers.get(HEADER__user_agent)):
-                    return handle_route(view_func_local, **kwargs)
+                # The request's scope: who asked, on which route, the server faults noted while it runs. Its queries are timed for
+                # slow-query reports unless those are off or the route is a deploy or tooling one. A failed request is seen here, before
+                # Flask answers it, for a server-error report (jaaql/utilities/server_errors.py), and raised on unchanged
+                with slow_queries.request_scope(route, request.method, request.path, request.headers.get(HEADER__user_agent),
+                                                slow=route not in SLOW_QUERY__unreported_routes and slow_queries.enabled()):
+                    try:
+                        return handle_route(view_func_local, **kwargs)
+                    except BaseException as ex:
+                        server_errors.request_failed(ex, route, self.model.has_installed)
+                        raise
 
             def handle_route(view_func_local, **kwargs):
                 if not self.model.has_installed and not route.startswith('/internal'):
@@ -558,7 +564,9 @@ class BaseJAAQLController:
                     ex_msg = None
                     try:
                         if ARG__http_inputs in view_func_args or any([key in view_func_args for key in kwargs.keys()]):
-                            validated = BaseJAAQLController.get_input_as_dictionary(the_method, self.is_prod, **kwargs)
+                            # A body of another shape than the route takes (a JSON scalar where an object goes) is the client's
+                            with server_errors.reading_request():
+                                validated = BaseJAAQLController.get_input_as_dictionary(the_method, self.is_prod, **kwargs)
                             slow_queries.note_application(validated)
                             if ARG__http_inputs in view_func_args:
                                 supply_dict[ARG__http_inputs] = validated
@@ -740,39 +748,30 @@ class BaseJAAQLController:
 
     @staticmethod
     def _init_error_handlers(app):
+        # Every handler first reports, by the rule of jaaql/utilities/server_errors.py, an exception no routed request has seen (a route added
+        # to the app directly); routed_function has already seen every other one. Flask picks the Exception handler for every exception that
+        # is not an HTTPException, so the 500 handler answers only an explicit InternalServerError
+
         @app.errorhandler(HTTPStatus.INTERNAL_SERVER_ERROR)
         def handle_server_error(error: InternalServerError):
-            if sentinel.is_configured():
-                orig = error.original_exception
-
-                tb_frame = sys.exc_info()[2]
-                while tb_frame.tb_next:
-                    tb_frame = tb_frame.tb_next
-                source_file = tb_frame.tb_frame.f_code.co_filename[len(os.getcwd()) + 1:]
-                source_file = source_file.replace("\\", "/")
-
-                sentinel.send({
-                    "location": BaseJAAQLController.base_url,
-                    "error_condensed": str(orig),
-                    "version": VERSION,
-                    "source_system": "Sentinel" if BaseJAAQLController.internal_sentinel else "JAAQL",
-                    "source_file": source_file,
-                    "file_line_number": tb_frame.tb_lineno,
-                    "stacktrace": ''.join(traceback.format_exception(type(orig), value=orig, tb=orig.__traceback__))
-                })
-
+            server_errors.unrouted_failure(error)
             traceback.print_tb(error.__traceback__)
             return BaseJAAQLController._cors(Response(RESP__default_err_message, RESP__default_err_code))
 
         @app.errorhandler(Exception)
         def handle_other_server_error(ex):
+            server_errors.unrouted_failure(ex)
             if isinstance(ex, HTTPException):
                 return ex
             traceback.print_tb(ex.__traceback__)
-            return handle_interpretable_pipeline_exception(UnhandledJaaqlServerError())
+            return interpretable_response(UnhandledJaaqlServerError())
 
         @app.errorhandler(JaaqlInterpretableHandledError)
         def handle_interpretable_pipeline_exception(error: JaaqlInterpretableHandledError):
+            server_errors.unrouted_failure(error)
+            return interpretable_response(error)
+
+        def interpretable_response(error: JaaqlInterpretableHandledError):
             res = jsonify({
                 "error_code": error.error_code,
                 "message": error.message,
@@ -787,6 +786,7 @@ class BaseJAAQLController:
 
         @app.errorhandler(HttpStatusException)
         def handle_pipeline_exception(error: HttpStatusException):
+            server_errors.unrouted_failure(error)
             if not isinstance(error.response_code, int) or isinstance(error.response_code, CustomHTTPStatus):
                 error.response_code = error.response_code.value
             if not isinstance(error.message, str):

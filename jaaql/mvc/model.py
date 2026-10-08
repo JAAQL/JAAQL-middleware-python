@@ -17,6 +17,7 @@ import re
 
 import jwt
 from jwcrypto import jwe
+from jwcrypto.common import JWException
 from io import BytesIO
 from flask import send_file
 
@@ -28,7 +29,7 @@ from jaaql.db.db_pg_interface import DBPGInterface, QUERY__dba_query_external
 from jaaql.email.email_manager_service import EmailAttachment
 from jaaql.mvc.base_model import BaseJAAQLModel, VAULT_KEY__jwt_crypt_key
 from jaaql.utilities.bootstrap_secrets import get_or_seed_vault_secret
-from jaaql.exceptions.http_status_exception import HttpStatusException, ERR__already_installed, HttpSingletonStatusException
+from jaaql.exceptions.http_status_exception import HttpStatusException, ERR__already_installed, HttpSingletonStatusException, client_fault
 from os.path import join
 from jaaql.interpreter.interpret_jaaql import KEY_query, KEY_parameters, KEY_store
 from jaaql.constants import *
@@ -36,7 +37,7 @@ from jaaql.utilities.cron import check_if_should_fire_cron
 from jaaql.utilities.utils import get_jaaql_root, get_base_url
 from jaaql.db.db_utils import create_interface, jaaql__encrypt, create_interface_for_db, jaaql__decrypt, requested_database
 from jaaql.db.db_utils_no_circ import submit, get_required_db, objectify
-from jaaql.utilities import crypt_utils, slow_queries
+from jaaql.utilities import crypt_utils, slow_queries, server_errors
 from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_OIDC, COOKIE_OIDC_RETURN, \
     COOKIE_LOGIN_MARKER, get_sloppy_cookie_attrs, COOKIE_ATTR_MAX_AGE
 from jaaql.mvc.response import *
@@ -87,6 +88,12 @@ ERR__document_created_file = "Document is a file, cannot be downloaded in this w
 
 PG__default_connection_string = "postgresql://postgres:%s@localhost:5432/jaaql"
 DIR__scripts = "scripts"
+
+# The failures verifying a JARM response that are the server's, reported though the login is answered with its redirect
+# (jaaql/utilities/server_errors.py): Keycloak's keys out of reach, and a response Keycloak signed (the signature is verified first) for
+# another issuer or audience than JAAQL's configuration expects. Anyone can send the rest: a key Keycloak does not publish, an algorithm
+# not allowed, a response expired or malformed
+JARM__servers_failures = (jwt.PyJWKClientConnectionError, jwt.InvalidIssuerError, jwt.InvalidAudienceError)
 
 MODIFIER__allow_conflicts = " ON CONFLICT DO NOTHING"
 
@@ -431,7 +438,8 @@ ORDER BY
                         db_connection,
                         query["query"].strip(),
                         do_prepare_only=my_uuid,
-                        attempt_fetch_domain_types=True
+                        attempt_fetch_domain_types=True,
+                        client_sql=True
                     )
                     type_resolution_method = "temp_view"
                     cost = domain_types.get("plan_cost")
@@ -470,7 +478,8 @@ ORDER BY
                     results = execute_supplied_statement(
                         db_connection,
                         query["query"].strip(),
-                        do_prepare_only=my_uuid
+                        do_prepare_only=my_uuid,
+                        client_sql=True
                     )
                     cost = float(results["rows"][0][0].split("..")[1].split(" ")[0])
                 except Exception as ex:
@@ -492,7 +501,8 @@ ORDER BY
                             query["query"].strip(),
                             do_prepare_only=my_uuid,
                             psql=psql,
-                            pre_psql="SET SESSION AUTHORIZATION \"" + account_id + "\";"
+                            pre_psql="SET SESSION AUTHORIZATION \"" + account_id + "\";",
+                            client_sql=True
                         )
 
                         # parse_gdesc_output now throws if duplicates exist
@@ -812,10 +822,19 @@ WHERE
                 raise UserUnauthorized()
         else:
             jarms_response = inputs["response"]
+            if jarms_response is None:
+                # Back on this route without the authorization response: the client's, refused as any failed login (the same redirect)
+                raise UserUnauthorized()
             if self.use_fapi_advanced:
-                jwe_token = jwe.JWE()
-                jwe_token.deserialize(jarms_response)
-                jwe_token.decrypt(self.fapi_enc_key)
+                try:
+                    jwe_token = jwe.JWE()
+                    jwe_token.deserialize(jarms_response)
+                    jwe_token.decrypt(self.fapi_enc_key)
+                except JWException as jwe_ex:
+                    # Anyone can send a response that is no JWE encrypted for JAAQL's key: the client's, never a server error
+                    # (jaaql/utilities/server_errors.py), and redirected as before
+                    client_fault(jwe_ex)
+                    raise
                 jarms_response = jwe_token.payload
             else:
                 jarms_response = jarms_response.encode('utf-8')
@@ -833,12 +852,18 @@ WHERE
                 # JARMS verification failed — likely an error response from Keycloak (e.g. authentication_expired)
                 # Redirect the user back to their original page rather than showing an error
                 print(f"JARMS decode failed: {jarms_ex}")
+                if isinstance(jarms_ex, JARM__servers_failures):
+                    server_errors.request_failed(jarms_ex, ENDPOINT__oidc_get_token, self.has_installed,
+                                                 answered=server_errors.ANSWERED__oidc_exchange)
                 response.response_code = HTTPStatus.FOUND
                 response.raw_headers["Location"] = oidc_state[KEY__redirect_uri]
                 return
 
             if jarms_payload.get("error"):
                 print(f"OIDC error response: {jarms_payload.get('error')} - {jarms_payload.get('error_description')}")
+                # Reported unless the user caused it (consent refused, a login page left open until it expired)
+                server_errors.authorization_response_failed(jarms_payload.get("error"), jarms_payload.get("error_description"),
+                                                            self.has_installed)
                 response.response_code = HTTPStatus.FOUND
                 response.raw_headers["Location"] = oidc_state[KEY__redirect_uri]
                 return
@@ -883,6 +908,9 @@ WHERE
         )
 
         token_data = token_response.json()
+        if token_data.get("error") == "invalid_grant":
+            # The code was used already or has expired, as a reload of the return page makes it: the client's, refused as any failed login
+            raise UserUnauthorized()
         id_token = token_data.get('id_token')
         access_token = token_data.get('access_token')
 
@@ -979,6 +1007,9 @@ WHERE
 
         print("Preparing federating procedure")
 
+        # Not the client's SQL: the browser only follows a redirect, the procedure is the one the registry names, run as the jaaql role with
+        # the identity provider's claims. Its refusals of the user's data or by a rule (22, 23, JQ, P0001) are still the client's, its other
+        # failures (an app migration that broke it) the server's (jaaql/utilities/server_errors.py)
         submit(self.vault, self.config, self.get_db_crypt_key(),
                self.jaaql_lookup_connection, submit_data, ROLE__jaaql,
                None, self.cached_canned_query_service, as_objects=True, singleton=True,
@@ -1545,7 +1576,7 @@ WHERE
         # performs, including the cache-miss self-heal - and runs it, so an empty,
         # partial or stale cache fails the check. The health query is injected into
         # every compiled queries.json by the BATON microcompiler.
-        sql = self._lookup_cached_query(QUERY_CACHE_REF__health)
+        sql = self._lookup_cached_query(QUERY_CACHE_REF__health, requested=False)
         execute_supplied_statement_singleton(self.jaaql_lookup_connection, sql, as_objects=True)
 
     def install_on_bootup(self):
@@ -1657,6 +1688,8 @@ WHERE
         with slow_queries.background("auth-verification"):
             while True:
                 auth_token, ip_address, complete = the_queue.get()
+                # Each verification notes server faults of its own (jaaql/utilities/server_errors.py), never an earlier one's
+                server_errors.fresh_faults()
                 try:
                     self.verify_auth_token(auth_token, ip_address)
                     complete.put((True, None, None))
@@ -1664,6 +1697,8 @@ WHERE
                     complete.put((False, ex.message, ex.response_code))
                 except Exception as ex:
                     complete.put((False, str(ex), 500))
+                    # Reported once, here, rather than by every request waiting for the verdict
+                    server_errors.background_failed(ex, "422 to the request waiting for this verification")
 
     def verify_auth_token_threaded(self, auth_token: str, ip_address: str, complete: Queue):
         try:
@@ -1899,7 +1934,8 @@ WHERE
         email_replacement_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection,
                                         submit_data, account_id, None, self.cached_canned_query_service,
                                         as_objects=True, singleton=True,
-                                        slow_query_label=slow_queries.Label("email", str(inputs[KEY__application]) + "." + str(inputs[KEY__template])))
+                                        slow_query_label=slow_queries.Label("email", str(inputs[KEY__application]) + "." + str(inputs[KEY__template])),
+                                        client_sql=True)
 
         # Inject the JAAQL system email params so templates can deep-link back to
         # the app via {{JAAQL__APP_URL}} (and {{JAAQL__APP_NAME}} / {{JAAQL__EMAIL_ADDRESS}}).
@@ -2169,6 +2205,7 @@ WHERE
             as_objects=True,
             singleton=True,
             slow_query_label=slow_queries.Label("security-event", proc_name),
+            client_sql=True,
         )
 
     def security_event__reset_user_password(
@@ -2439,10 +2476,13 @@ WHERE
             print(result.stdout)
             print(result.stderr)
             if result.returncode != 0:
-                raise UnhandledRemoteProcedureError()
+                raise server_errors.remote_procedure_crash(UnhandledRemoteProcedureError(), http_inputs[KG__remote_procedure__application],
+                                                           http_inputs[KG__remote_procedure__name], result.returncode, result.stdout, result.stderr)
 
             traceback.print_exc()
-            raise HttpStatusException("Could not intepret remote procedure result", HTTPStatus.INTERNAL_SERVER_ERROR)
+            raise server_errors.remote_procedure_crash(HttpStatusException("Could not intepret remote procedure result", HTTPStatus.INTERNAL_SERVER_ERROR),
+                                                       http_inputs[KG__remote_procedure__application], http_inputs[KG__remote_procedure__name],
+                                                       result.returncode, result.stdout, result.stderr)
 
     def handle_webhook(self, application: str, name: str, body: bytes, headers: dict, args: dict,
                        response: JAAQLResponse, username: str | None):
@@ -2509,9 +2549,11 @@ WHERE
             print("----- STDOUT -----\n", result.stdout, file=sys.stderr)
             print("----- STDERR -----\n", result.stderr, file=sys.stderr)
             if result.returncode != 0:
-                raise UnhandledRemoteProcedureError()
+                raise server_errors.remote_procedure_crash(UnhandledRemoteProcedureError(), application, name, result.returncode, result.stdout,
+                                                           result.stderr)
             traceback.print_exc()
-            raise HttpStatusException("Could not interpret webhook procedure result", HTTPStatus.INTERNAL_SERVER_ERROR)
+            raise server_errors.remote_procedure_crash(HttpStatusException("Could not interpret webhook procedure result", HTTPStatus.INTERNAL_SERVER_ERROR),
+                                                       application, name, result.returncode, result.stdout, result.stderr)
 
     def set_procedures(self, inputs: dict, connection: DBInterface):
         execute_supplied_statement(
@@ -2572,9 +2614,12 @@ WHERE
 
         os.kill(int(open("app.pid", "r").read()), signal.SIGUSR1)
 
-    def _lookup_cached_query(self, trimmed: str):
-        name = trimmed.split(":")[0]
-        index = int(trimmed.split(":")[1])
+    def _lookup_cached_query(self, trimmed: str, requested: bool = True):
+        # requested: the request named the query, as "<file>:<index>", so a name without them or naming no query of the application is the
+        # client's (jaaql/utilities/server_errors.py); not for JAAQL's own (deep_health's)
+        with server_errors.reading_request(requested):
+            name = trimmed.split(":")[0]
+            index = int(trimmed.split(":")[1])
         try:
             return self.query_caches["queries"][name][index]
         except (KeyError, IndexError):
@@ -2584,14 +2629,20 @@ WHERE
             # serves KeyErrors on the missing queries until the process restarts.
             # If a newer queries.json is on disk, reload once and retry so the
             # process self-heals in place instead of staying wedged.
-            if self.query_cache_is_stale():
+            stale = self.query_cache_is_stale()
+            if stale:
                 self.reload_cache()
                 try:
                     return self.query_caches["queries"][name][index]
                 except (KeyError, IndexError):
                     pass
-            raise HttpStatusException("Compiled query '%s' is not present in the query cache" % name,
-                                      response_code=HTTPStatus.INTERNAL_SERVER_ERROR)
+            missing = HttpStatusException("Compiled query '%s' is not present in the query cache" % name,
+                                          response_code=HTTPStatus.INTERNAL_SERVER_ERROR)
+            if requested and not stale:
+                # The cache is the application's queries.json as it is on disk: the request named a query the application does not have,
+                # answered 500 as ever but the client's. Only a cache that needed reloading is the server's
+                client_fault(missing)
+            raise missing
 
     def execute(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
         if not self.query_caches:
@@ -2615,15 +2666,20 @@ WHERE
 
         # The compiled query each key names ("<file>:<index>"), which is what a slow-query report calls it
         refs = {}
-        for key, val in inputs["query"].items():
+        # What the request names is read as the client's: a key missing or a value of another type is its own (jaaql/utilities/server_errors.py)
+        with server_errors.reading_request():
+            queries = inputs["query"].items()
+        for key, val in queries:
             if isinstance(val, dict):
                 # A store query runs its other keys as SQL text, which would be the caller's own SQL here
                 if KEY_store in val:
                     raise HttpStatusException("/execute does not run store queries; call a procedure instead")
-                refs[key] = val["query"].strip()
+                with server_errors.reading_request():
+                    refs[key] = val["query"].strip()
                 val["query"] = self._lookup_cached_query(refs[key])
             else:
-                refs[key] = val.strip()
+                with server_errors.reading_request():
+                    refs[key] = val.strip()
                 inputs["query"][key] = self._lookup_cached_query(refs[key])
 
         # The compiled queries belong to the configured application: they run in its databases, never in one the request names
@@ -2633,38 +2689,41 @@ WHERE
         # statements), so let postgres execute them as prepared statements
         return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
                       self.cached_canned_query_service, as_objects=as_objects, singleton=singleton, db_cache=db_cache, prepare_statements=True,
-                      slow_query_label=slow_queries.Label("execute", refs=refs))
+                      slow_query_label=slow_queries.Label("execute", refs=refs), client_sql=True)
 
     def call_proc(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
-        parameters = inputs["parameters"]
-        query_name = inputs["query"]
-        if re.fullmatch(REGEX__dmbs_procedure_name, query_name) is None:
-            raise HttpStatusException("Unsafe procedure name " + query_name)
-        query = "SELECT * FROM \"" + query_name + "\"("
+        # What the request sends is read as the client's: a key missing or a value of another type is its own
+        # (jaaql/utilities/server_errors.py)
+        with server_errors.reading_request():
+            parameters = inputs["parameters"]
+            query_name = inputs["query"]
+            if re.fullmatch(REGEX__dmbs_procedure_name, query_name) is None:
+                raise HttpStatusException("Unsafe procedure name " + query_name)
+            query = "SELECT * FROM \"" + query_name + "\"("
 
-        parameter_keys = list(parameters.keys())
-        introduced = False
-        explicit_types = inputs.get("explicit_types", {})
+            parameter_keys = list(parameters.keys())
+            introduced = False
+            explicit_types = inputs.get("explicit_types", {})
 
-        absent = ""
+            absent = ""
 
-        for parameter_key in parameter_keys:
-            if re.fullmatch(REGEX__dmbs_object_name, parameter_key) is None:
-                raise HttpStatusException("Unsafe parameter key " + parameter_key)
-            explicit_type = _explicit_type(explicit_types, parameter_key)
-            parameter_value = parameters[parameter_key]
+            for parameter_key in parameter_keys:
+                if re.fullmatch(REGEX__dmbs_object_name, parameter_key) is None:
+                    raise HttpStatusException("Unsafe parameter key " + parameter_key)
+                explicit_type = _explicit_type(explicit_types, parameter_key)
+                parameter_value = parameters[parameter_key]
 
-            if introduced:
-                query += ","
+                if introduced:
+                    query += ","
 
-            if explicit_type and parameter_value is not None and explicit_type[0] != "_":
-                query += f"\n\t{parameter_key} => :{parameter_key}::{explicit_type}"
-            else:
-                query += f"\n\t{parameter_key} => :{parameter_key}{absent}"
+                if explicit_type and parameter_value is not None and explicit_type[0] != "_":
+                    query += f"\n\t{parameter_key} => :{parameter_key}::{explicit_type}"
+                else:
+                    query += f"\n\t{parameter_key} => :{parameter_key}{absent}"
 
-            introduced = True
+                introduced = True
 
-        query += " )"
+            query += " )"
 
         # A federation procedure links an account to the application's users from the claims JAAQL vouches for, so
         # only JAAQL may run it (as the jaaql role); a login calling it could link itself to someone else
@@ -2677,17 +2736,18 @@ WHERE
 
         return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
                       self.cached_canned_query_service, as_objects=as_objects, singleton=singleton, db_cache=None,
-                      slow_query_label=slow_queries.Label("call-proc", query_name))
+                      slow_query_label=slow_queries.Label("call-proc", query_name), client_sql=True)
 
     def submit(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False, ip_address: str = None,
                server_authored_query: bool = False):
         # server_authored_query asserts the query text is a code literal, not client input. It exempts the caller from the
         # PREVENT_ARBITRARY_QUERIES guard, which exists to stop remote clients supplying their own query text
         if not server_authored_query and ip_address not in IPS__local and self.prevent_arbitrary_queries:
-            raise UnhandledJaaqlServerError("Not allowed to send queries to server!")
+            # Answered 500 as ever, but the client's: it sent a query from where none may be sent
+            raise client_fault(UnhandledJaaqlServerError("Not allowed to send queries to server!"))
 
         return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
-                      self.cached_canned_query_service, as_objects=as_objects, singleton=singleton)
+                      self.cached_canned_query_service, as_objects=as_objects, singleton=singleton, client_sql=not server_authored_query)
 
 
     def begin_oidc_logout(self, inputs: dict, response: JAAQLResponse):
