@@ -1,4 +1,5 @@
 import string
+import time
 import traceback
 import random
 
@@ -19,6 +20,7 @@ from jaaql.exceptions.jaaql_interpretable_handled_errors import handled_error_fr
     SingletonExpected
 from typing import Union
 from functools import lru_cache
+from jaaql.utilities import slow_queries
 
 
 ERR_malformed_statement = "Malformed query, expecting string or dictionary"
@@ -158,10 +160,24 @@ class InterpretJAAQL:
         self.db_interface = db_interface
         self.jaaql_db_interface = jaaql_db_interface
 
-    def transform(self, operation: Union[dict, str], conn=None, skip_commit: bool = False, wait_hook: queue.Queue = None,
-                  encryption_key: bytes = None, autocommit: bool = False, canned_query_service=None, prevent_unused_parameters: bool = True,
-                  do_prepare_only: str = False, and_return_connection_mid_transaction: bool = False, attempt_fetch_domain_types: bool = False,
-                  psql: list = None, pre_psql: str = None, prepare_statements: bool = False):
+    def transform(self, operation: Union[dict, str], *args, slow_query_label: slow_queries.Label = None, **kwargs):
+        # One JAAQL query request: its statements' time and its COMMIT's are added up and, over the threshold, reported as a slow query
+        # (jaaql/utilities/slow_queries.py). Outside a request or background scope, or with the reports off, nothing is timed
+        measurement = slow_queries.start(slow_query_label, operation, self.db_interface)
+        if measurement is None:
+            return self._transform(operation, *args, **kwargs)
+        try:
+            return self._transform(operation, *args, measurement=measurement, **kwargs)
+        except BaseException as ex:
+            measurement.failure = ex
+            raise
+        finally:
+            measurement.finish()
+
+    def _transform(self, operation: Union[dict, str], conn=None, skip_commit: bool = False, wait_hook: queue.Queue = None,
+                   encryption_key: bytes = None, autocommit: bool = False, canned_query_service=None, prevent_unused_parameters: bool = True,
+                   do_prepare_only: str = False, and_return_connection_mid_transaction: bool = False, attempt_fetch_domain_types: bool = False,
+                   psql: list = None, pre_psql: str = None, prepare_statements: bool = False, measurement: slow_queries.Measurement = None):
         if (not isinstance(operation, dict)) and (not isinstance(operation, str)):
             raise HttpStatusException(ERR_malformed_operation_type, HTTPStatus.BAD_REQUEST)
 
@@ -546,9 +562,15 @@ ORDER BY d.column_name;
                     elif provenance_res is not None:
                         res = provenance_res
                     else:
-                        res = self.db_interface.execute_query_fetching_results(conn, last_query, found_params, wait_hook=wait_hook,
-                                                                               requires_dba_check=check_required and canned_query_service is not None,
-                                                                               prepare=prepare_statements or query_key in canned_keys)
+                        timing = None if measurement is None else []
+                        try:
+                            res = self.db_interface.execute_query_fetching_results(conn, last_query, found_params, wait_hook=wait_hook,
+                                                                                   requires_dba_check=check_required and canned_query_service is not None,
+                                                                                   prepare=prepare_statements or query_key in canned_keys,
+                                                                                   capture_timing=timing)
+                        finally:
+                            if measurement is not None:
+                                measurement.statement(query_key, cur_query, found_parameter_dictionary, enc_parameter_dictionary.keys(), timing)
                         # Should a statement end the transaction without statement_may_end_transaction foreseeing it
                         may_have_committed = may_have_committed or self.db_interface.has_ended_transaction(conn)
 
@@ -658,12 +680,21 @@ ORDER BY d.column_name;
             # Closed before JAAQL's COMMIT is sent, which put_conn_handle_error would answer as retriable (ConnectionLostError): not
             # when the request's own SQL may already have committed
             err = DatabaseOperationalError(message=ERR__connection_lost_outcome_unknown + "the connection was closed before COMMIT")
-        if was_conn_none:
-            self.db_interface.put_conn_handle_error(conn, err, skip_commit=skip_commit, commit_error_set=commit_error_set)
-        elif not and_return_connection_mid_transaction:
-            self.db_interface.handle_error(conn, err, commit_error_set=commit_error_set)
-        elif err is not None:
-            raise err
+        ending = None
+        if measurement is not None and (was_conn_none or not and_return_connection_mid_transaction):
+            # A deferred constraint trigger runs at COMMIT, so the COMMIT's time is the query's too
+            measurement.ended_with = "COMMIT" if err is None and not (was_conn_none and skip_commit) else "ROLLBACK"
+            ending = time.perf_counter()
+        try:
+            if was_conn_none:
+                self.db_interface.put_conn_handle_error(conn, err, skip_commit=skip_commit, commit_error_set=commit_error_set)
+            elif not and_return_connection_mid_transaction:
+                self.db_interface.handle_error(conn, err, commit_error_set=commit_error_set)
+            elif err is not None:
+                raise err
+        finally:
+            if ending is not None:
+                measurement.end_seconds = time.perf_counter() - ending
 
         if is_dict_query:
             ret["_restrictions"] = skip_as_restricted

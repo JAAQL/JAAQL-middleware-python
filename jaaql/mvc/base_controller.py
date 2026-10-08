@@ -1,4 +1,3 @@
-import threading
 import traceback
 from werkzeug.datastructures import Headers
 import uuid
@@ -8,7 +7,6 @@ import typing as t
 from werkzeug.exceptions import InternalServerError, HTTPException
 import inspect
 import json
-import requests
 
 try:
     import orjson
@@ -23,6 +21,7 @@ import decimal
 from queue import Queue
 from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_LOGIN_MARKER, COOKIE_ATTR_PATH
 from jaaql.utilities.utils import time_delta_ms, Profiler
+from jaaql.utilities import sentinel, slow_queries
 from flask import Response, Flask, request, jsonify, current_app
 from flask.json.provider import DefaultJSONProvider
 from jaaql.constants import *
@@ -83,7 +82,6 @@ ERR__method_required_is_the_anonymous_user = "Method requires is_public input ye
 ERR__method_required_account_id = "Method requires account id input yet marked as not secure in documentation"
 ERR__method_required_user_connection = "Method requires user connection input yet marked as not secure in documentation"
 ERR__method_required_username = "Method requires username yet marked as not secure in documentation"
-ERR__sentinel_failed = "Sentinel failed. Reponse code '%d' and content '%s'"
 
 FLASK__json_sort_keys = "JSON_SORT_KEYS"
 FLASK__max_content_length = "MAX_CONTENT_LENGTH"
@@ -92,6 +90,7 @@ HEADER__allow_headers = "Access-Control-Allow-Headers"
 HEADER__allow_origin = "Access-Control-Allow-Origin"
 HEADER__allow_methods = "Access-Control-Allow-Methods"
 HEADER__real_ip = "X-Real-IP"
+HEADER__user_agent = "User-Agent"
 
 BOOL__allowed = {
     "True": True,
@@ -155,7 +154,6 @@ class JAAQLJSONProvider(DefaultJSONProvider):
 
 class BaseJAAQLController:
 
-    sentinel_errors = None
     internal_sentinel = False
     base_url = None
 
@@ -173,31 +171,9 @@ class BaseJAAQLController:
         self.profiling_request_ids = {}
         self.app.model = model
         self.is_prod = is_prod
-        BaseJAAQLController.sentinel_errors = Queue()
-        self.sentinel_url = os.environ.get(ENVIRON__sentinel_url)
-        if self.sentinel_url:
-            if self.sentinel_url == "_":
-                self.sentinel_url = base_url + ENDPOINT__report_sentinel_error
-                BaseJAAQLController.internal_sentinel = True
-            else:
-                if not self.sentinel_url.startswith("http"):
-                    self.sentinel_url = "https://" + self.sentinel_url
-                if not self.sentinel_url.endswith("/api") and not self.sentinel_url.endswith(ENDPOINT__report_sentinel_error):
-                    self.sentinel_url = self.sentinel_url + "/api"
-                if not self.sentinel_url.endswith(ENDPOINT__report_sentinel_error):
-                    self.sentinel_url = self.sentinel_url + ENDPOINT__report_sentinel_error
-
-            threading.Thread(target=self.sentinel_reporter).start()
-
-    def sentinel_reporter(self):
-        while True:
-            try:
-                se = BaseJAAQLController.sentinel_errors.get()
-                res = requests.post(self.sentinel_url, json=se)
-                if res.status_code != HTTPStatus.OK:
-                    raise Exception(ERR__sentinel_failed % (res.status_code, res.text))
-            except:
-                traceback.print_exc()
+        # Reports reach Sentinel through one sender per process, started by the first report (jaaql/utilities/sentinel.py)
+        BaseJAAQLController.internal_sentinel = sentinel.configure(os.environ.get(ENVIRON__sentinel_url), base_url)
+        slow_queries.configure(getattr(model, "url", None), getattr(model, "is_container", False))
 
     def diff_ms(self, start, now):
         return round((now - start).total_seconds() * 1000)
@@ -492,6 +468,13 @@ class BaseJAAQLController:
 
             @wraps(view_func)
             def routed_function(view_func_local, **kwargs):
+                # The request's scope for slow-query reports: who asked, on which route. Deploy and tooling routes have none
+                if route in SLOW_QUERY__unreported_routes or not slow_queries.enabled():
+                    return handle_route(view_func_local, **kwargs)
+                with slow_queries.request_scope(route, request.method, request.path, request.headers.get(HEADER__user_agent)):
+                    return handle_route(view_func_local, **kwargs)
+
+            def handle_route(view_func_local, **kwargs):
                 if not self.model.has_installed and not route.startswith('/internal'):
                     resp = Response("Still installing. Be patient", status=HTTPStatus.SERVICE_UNAVAILABLE)
                     self._cors(resp, use_cors)
@@ -528,6 +511,7 @@ class BaseJAAQLController:
                         security_key = auth_cookie
 
                     easyauth_resolved = False
+                    used_bypass = False
                     if self.model.use_easyauth and security_key is None:
                         easyauth_principal_id = request.headers.get("X-MS-CLIENT-PRINCIPAL-ID")
                         if easyauth_principal_id:
@@ -549,6 +533,7 @@ class BaseJAAQLController:
                                 raise HttpStatusException("Invalid bypass key", HTTPStatus.UNAUTHORIZED)
 
                             is_public = False
+                            used_bypass = True
                             username = USERNAME__super_db if bypass_super else USERNAME__jaaql
                             if bypass_user:
                                 username = bypass_user
@@ -565,6 +550,8 @@ class BaseJAAQLController:
                             account_id, username, ip_id, is_public, remember_me = self.model.verify_auth_token(security_key, ip_addr)
                             self.perform_profile(request_id, "Verify JWT")
 
+                    slow_queries.note_caller(account_id, used_bypass)
+
                     supply_dict = {}
 
                     throw_ex = None
@@ -572,6 +559,7 @@ class BaseJAAQLController:
                     try:
                         if ARG__http_inputs in view_func_args or any([key in view_func_args for key in kwargs.keys()]):
                             validated = BaseJAAQLController.get_input_as_dictionary(the_method, self.is_prod, **kwargs)
+                            slow_queries.note_application(validated)
                             if ARG__http_inputs in view_func_args:
                                 supply_dict[ARG__http_inputs] = validated
 
@@ -754,7 +742,7 @@ class BaseJAAQLController:
     def _init_error_handlers(app):
         @app.errorhandler(HTTPStatus.INTERNAL_SERVER_ERROR)
         def handle_server_error(error: InternalServerError):
-            if os.environ.get(ENVIRON__sentinel_url):
+            if sentinel.is_configured():
                 orig = error.original_exception
 
                 tb_frame = sys.exc_info()[2]
@@ -763,7 +751,7 @@ class BaseJAAQLController:
                 source_file = tb_frame.tb_frame.f_code.co_filename[len(os.getcwd()) + 1:]
                 source_file = source_file.replace("\\", "/")
 
-                BaseJAAQLController.sentinel_errors.put({
+                sentinel.send({
                     "location": BaseJAAQLController.base_url,
                     "error_condensed": str(orig),
                     "version": VERSION,

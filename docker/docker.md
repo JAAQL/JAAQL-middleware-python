@@ -71,10 +71,12 @@ Additional lines can be used
     -e LOG_TO_OUTPUT=TRUE \
     -e OUTPUT_QUERY_EXCEPTIONS=TRUE \
     -e JEQL_VERSION=3.0.6 \
-    -e SENTINEL_URL=jaaql.io:8443
+    -e SENTINEL_URL=jaaql.io:8443 \
+    -e SENTINEL_SLOW_QUERY_SECONDS=3 \
     --mount type=bind,source="$(pwd)"/install_scripts,target=/JAAQL-middleware-python/install_scripts \
 
 JEQL_VERSION specifies the version of JEQL to use  
+SENTINEL_SLOW_QUERY_SECONDS (default 3) reports a JAAQL query request whose statements and COMMIT take longer than that many seconds to Sentinel (SENTINEL_URL) as a slow query, and prints it as one line in the log either way; 0 turns it off. The time is wall clock in the gunicorn worker, so a worker busy with other requests can make a fast statement look slow. jaaql-monitor's statements (deploy scripts, migrations) are never reported  
 You can specify jaaql specific install scripts which will call the various endpoints with input data, after jaaql has been installed
     
 ## Usage

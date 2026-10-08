@@ -1,4 +1,5 @@
 import os
+import re
 import socket
 
 # Do not delete this as it's being used elsewhere
@@ -119,7 +120,30 @@ ENVIRON__local_install = "JAAQL_LOCAL_INSTALL"
 ENVIRON__jaaql_profiling = "JAAQL_PROFILING"
 ENVIRON__install_path = "INSTALL_PATH"
 ENVIRON__sentinel_url = "SENTINEL_URL"
+# The time in seconds over which a JAAQL query request (its statements and its COMMIT) is reported to Sentinel as a slow query; 0 or
+# less turns slow-query reports off. Read once per process, see jaaql/utilities/slow_queries.py
+ENVIRON__sentinel_slow_query_seconds = "SENTINEL_SLOW_QUERY_SECONDS"
 ENVIRON__canned_queries = "CANNED_QUERIES"
+
+SLOW_QUERY__default_seconds = 3
+# A slow query is reported at most once an hour per process; its slow runs in between are counted into its next report. A query that has
+# not been slow for this long is forgotten
+SLOW_QUERY__repeat_seconds = 3600
+# At most this many slow-query reports per process in any hour, so a database in trouble cannot push real errors out of Sentinel's list
+SLOW_QUERY__max_reports_per_hour = 10
+# Of those, at most this many for the queries of one account, so one login cannot spend them all
+SLOW_QUERY__max_reports_per_account_per_hour = 3
+# The queries a process keeps track of for the above; beyond it the one longest not slow is forgotten
+SLOW_QUERY__max_tracked_queries = 1000
+# A parameter whose name matches, at any depth of its value, is shown in a slow-query report as <redacted>. api_key holds a reversibly
+# encrypted password; a document_id fetches its rendered document without a login
+SLOW_QUERY__redacted_key = re.compile(r"pass(word|wd)|pwd|secret|token|api_?key|private_?key|credential|authori[sz]ation|document_id",
+                                      re.IGNORECASE)
+
+# Reports waiting for the per-process sender; a report that finds the queue full is dropped, never waited for
+SENTINEL__queue_size = 50
+SENTINEL__connect_timeout = 3.05
+SENTINEL__read_timeout = 10
 
 EMAIL_PARAM__unlock_key = "JAAQL__UNLOCK_KEY"
 EMAIL_PARAM__unlock_code = "JAAQL__UNLOCK_CODE"
@@ -220,6 +244,17 @@ ENDPOINT__install = "/internal/install"
 ENDPOINT__set_shared_var = "/set-shared-var"
 ENDPOINT__get_shared_var = "/get-shared-var"
 ENDPOINT__oidc_get_token = "/exchange-auth-code"
+
+# Routes whose queries are never reported as slow. Sentinel's own ingest route first: a report of it would be a report of a report.
+# The rest is deploy-time and development tooling, where slow statements are expected (/prepare type-checks every query of a build)
+SLOW_QUERY__unreported_routes = frozenset({
+    ENDPOINT__report_sentinel_error, ENDPOINT__install, "/internal/clean", ENDPOINT__execute_migrations, "/internal/freeze", "/internal/defrost",
+    "/internal/set-web-config", "/internal/dispatchers", "/prepare", "/domains", "/procedures", "/accounts", "/accounts/batch", "/build-time"
+})
+# Routes whose queries are not reported as slow when the request names no application, however it logged in: jaaql-monitor posts every
+# statement of a deploy script, a migration (migrate.sh), freeze, defrost and a procedure test run to /submit without one, logging in with
+# a bypass key in development and with a password on a box, while BATON names its application in every request it sends
+SLOW_QUERY__unreported_without_application = frozenset({"/submit"})
 
 CONFIG__default = "Default config"
 CONFIG__default_desc = "Default config description"

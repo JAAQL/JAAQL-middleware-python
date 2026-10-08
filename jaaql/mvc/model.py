@@ -36,7 +36,7 @@ from jaaql.utilities.cron import check_if_should_fire_cron
 from jaaql.utilities.utils import get_jaaql_root, get_base_url
 from jaaql.db.db_utils import create_interface, jaaql__encrypt, create_interface_for_db, jaaql__decrypt, requested_database
 from jaaql.db.db_utils_no_circ import submit, get_required_db, objectify
-from jaaql.utilities import crypt_utils
+from jaaql.utilities import crypt_utils, slow_queries
 from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_OIDC, COOKIE_OIDC_RETURN, \
     COOKIE_LOGIN_MARKER, get_sloppy_cookie_attrs, COOKIE_ATTR_MAX_AGE
 from jaaql.mvc.response import *
@@ -981,7 +981,8 @@ WHERE
 
         submit(self.vault, self.config, self.get_db_crypt_key(),
                self.jaaql_lookup_connection, submit_data, ROLE__jaaql,
-               None, self.cached_canned_query_service, as_objects=True, singleton=True)
+               None, self.cached_canned_query_service, as_objects=True, singleton=True,
+               slow_query_label=slow_queries.Label("federation", procedure_name))
 
         print("Federated user")
         print(submit_data)
@@ -1652,15 +1653,17 @@ WHERE
 
     def verification_thread(self, the_queue: Queue):
         print("Starting auth verification thread")
-        while True:
-            auth_token, ip_address, complete = the_queue.get()
-            try:
-                self.verify_auth_token(auth_token, ip_address)
-                complete.put((True, None, None))
-            except UserUnauthorized as ex:
-                complete.put((False, ex.message, ex.response_code))
-            except Exception as ex:
-                complete.put((False, str(ex), 500))
+        # Every authenticated request waits for this one thread's verdict, so its slow queries are reported too
+        with slow_queries.background("auth-verification"):
+            while True:
+                auth_token, ip_address, complete = the_queue.get()
+                try:
+                    self.verify_auth_token(auth_token, ip_address)
+                    complete.put((True, None, None))
+                except UserUnauthorized as ex:
+                    complete.put((False, ex.message, ex.response_code))
+                except Exception as ex:
+                    complete.put((False, str(ex), 500))
 
     def verify_auth_token_threaded(self, auth_token: str, ip_address: str, complete: Queue):
         try:
@@ -1895,7 +1898,8 @@ WHERE
         # We now get the data that can be shown in the email
         email_replacement_data = submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection,
                                         submit_data, account_id, None, self.cached_canned_query_service,
-                                        as_objects=True, singleton=True)
+                                        as_objects=True, singleton=True,
+                                        slow_query_label=slow_queries.Label("email", str(inputs[KEY__application]) + "." + str(inputs[KEY__template])))
 
         # Inject the JAAQL system email params so templates can deep-link back to
         # the app via {{JAAQL__APP_URL}} (and {{JAAQL__APP_NAME}} / {{JAAQL__EMAIL_ADDRESS}}).
@@ -2164,6 +2168,7 @@ WHERE
             self.cached_canned_query_service,
             as_objects=True,
             singleton=True,
+            slow_query_label=slow_queries.Label("security-event", proc_name),
         )
 
     def security_event__reset_user_password(
@@ -2608,14 +2613,18 @@ WHERE
         # snapshot - the reload still forces a schema refetch on the next execute.
         db_cache = self.db_cache
 
+        # The compiled query each key names ("<file>:<index>"), which is what a slow-query report calls it
+        refs = {}
         for key, val in inputs["query"].items():
             if isinstance(val, dict):
                 # A store query runs its other keys as SQL text, which would be the caller's own SQL here
                 if KEY_store in val:
                     raise HttpStatusException("/execute does not run store queries; call a procedure instead")
-                val["query"] = self._lookup_cached_query(val["query"].strip())
+                refs[key] = val["query"].strip()
+                val["query"] = self._lookup_cached_query(refs[key])
             else:
-                inputs["query"][key] = self._lookup_cached_query(val.strip())
+                refs[key] = val.strip()
+                inputs["query"][key] = self._lookup_cached_query(refs[key])
 
         # The compiled queries belong to the configured application: they run in its databases, never in one the request names
         inputs[KEY__application] = self.query_caches["application"]
@@ -2623,7 +2632,8 @@ WHERE
         # Queries here come from the compiled application query cache (server-authored, single
         # statements), so let postgres execute them as prepared statements
         return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
-                      self.cached_canned_query_service, as_objects=as_objects, singleton=singleton, db_cache=db_cache, prepare_statements=True)
+                      self.cached_canned_query_service, as_objects=as_objects, singleton=singleton, db_cache=db_cache, prepare_statements=True,
+                      slow_query_label=slow_queries.Label("execute", refs=refs))
 
     def call_proc(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
         parameters = inputs["parameters"]
@@ -2666,7 +2676,8 @@ WHERE
         }
 
         return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
-                      self.cached_canned_query_service, as_objects=as_objects, singleton=singleton, db_cache=None)
+                      self.cached_canned_query_service, as_objects=as_objects, singleton=singleton, db_cache=None,
+                      slow_query_label=slow_queries.Label("call-proc", query_name))
 
     def submit(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False, ip_address: str = None,
                server_authored_query: bool = False):

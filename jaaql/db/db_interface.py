@@ -188,7 +188,8 @@ class DBInterface(ABC):
         pass
 
     def execute_query_fetching_results(self, conn, query, parameters=None, echo=ECHO__none, as_objects=False, wait_hook: queue.Queue = None,
-                                       requires_dba_check: bool = False, prepare: bool = False, capture_provenance: list = None):
+                                       requires_dba_check: bool = False, prepare: bool = False, capture_provenance: list = None,
+                                       capture_timing: list = None):
         if echo not in ECHO__allowed:
             allowed_echoes = ", ".join([str(allowed_echo) for allowed_echo in ECHO__allowed])
             raise HttpStatusException(ERR__unknown_echo % (str(echo), allowed_echoes), HTTPStatus.BAD_REQUEST)
@@ -213,7 +214,7 @@ class DBInterface(ABC):
                     wait_hook = None
 
             columns, type_codes, rows = self.execute_query(conn, query, new_parameters, wait_hook, prepare=prepare,
-                                                           capture_provenance=capture_provenance)
+                                                           capture_provenance=capture_provenance, capture_timing=capture_timing)
 
             ret = {
                 RET__columns: columns,
@@ -290,7 +291,8 @@ class DBInterface(ABC):
 
     @abstractmethod
     def execute_query(self, conn, query, parameters: Optional[dict] = None, wait_hook: queue.Queue = None, prepare: bool = False,
-                      capture_provenance: list = None):
+                      capture_provenance: list = None, capture_timing: list = None):
+        # capture_timing, when given, is appended the seconds the statement took once the parallel verifier's verdict was in
         pass
 
     @abstractmethod

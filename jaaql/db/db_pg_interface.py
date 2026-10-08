@@ -9,6 +9,7 @@ from psycopg_pool import ConnectionPool, PoolClosed
 import queue
 from psycopg.errors import ProgrammingError, InvalidParameterValue, UndefinedFunction, InternalError
 import threading
+import time
 import traceback
 from jaaql.constants import ERR__invalid_token
 
@@ -410,7 +411,10 @@ class DBPGInterface(DBInterface):
         return None
 
     def execute_query(self, conn, query, parameters=None, wait_hook: queue.Queue = None, prepare: bool = False,
-                      capture_provenance: list = None):
+                      capture_provenance: list = None, capture_timing: list = None):
+        # The statement's time, for capture_timing, runs from the verifier's verdict to its last row fetched: the pipelined authorization
+        # statements, the execution, the transfer. The wait for the verdict is the verifier's, not the statement's
+        started = None
         try:
             cursor_factory = conn.jaaql_raw_cursor if isinstance(conn, JaaqlPGConnection) else conn.cursor
             with cursor_factory() as cursor:
@@ -434,6 +438,9 @@ class DBPGInterface(DBInterface):
                         if code == 500:
                             raise Exception(err)
                         raise UserUnauthorized()
+
+                if capture_timing is not None:
+                    started = time.perf_counter()
 
                 def execute_main_query():
                     if parameters is None or len(parameters.keys()) == 0:
@@ -494,6 +501,10 @@ class DBPGInterface(DBInterface):
                             for idx in range(pgresult.nfields))
                     return [desc[0] for desc in cursor.description], [desc.type_code for desc in cursor.description], cursor.fetchall()
         except Exception as ex:
+            if started is not None:
+                # Before the pool check below, which is not the statement's time
+                capture_timing.append(time.perf_counter() - started)
+                started = None
             if isinstance(ex, OperationalError) and conn.closed:
                 # The connection is gone and the transaction on it with it. The query is not retried here on
                 # another connection: the caller holds this one and would go on to commit and return it, so
@@ -507,6 +518,9 @@ class DBPGInterface(DBInterface):
             if self.output_query_exceptions:
                 traceback.print_exc()
             raise ex
+        finally:
+            if started is not None:
+                capture_timing.append(time.perf_counter() - started)
 
     def commit(self, conn):
         conn.commit()
