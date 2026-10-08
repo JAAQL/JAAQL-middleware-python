@@ -33,6 +33,7 @@ import types
 from datetime import datetime, timezone
 
 import psycopg
+import requests
 from flask import has_request_context, request, current_app
 from werkzeug.exceptions import HTTPException
 
@@ -123,6 +124,8 @@ REGEX__file_line = re.compile(r'File "([^"]+)", line')
 REGEX__parameter_name = re.compile(r"(?<![:\w]):([A-Za-z_][\w.\-]*)|(?<![#\w])#([A-Za-z_][\w.\-]*)")
 
 _CLIENT_GONE = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
+# Keycloak's own routes, admin and protocol alike: an answer it gives there, refusing or failing, is never reported
+_KEYCLOAK_ROUTES = "/realms/"
 _REPORTING_FILES = ("jaaql/utilities/server_errors.py", "jaaql/utilities/slow_queries.py")
 # Where every routed request enters JAAQL
 _ENTRY_FILE = "jaaql/mvc/base_controller.py"
@@ -238,8 +241,19 @@ def is_server_error(ex) -> bool:
     return status_of(ex) >= 500
 
 
+def is_keycloaks_answer(ex) -> bool:
+    """
+    Whether ex is Keycloak answering a request JAAQL sent it with an error status (raise_for_status), as opposed to Keycloak out of reach
+    """
+    if not isinstance(ex, requests.exceptions.HTTPError) or ex.response is None:
+        return False
+    url = ex.response.url or ""
+    keycloak = (os.environ.get("KEYCLOAK_URL") or "").rstrip("/")
+    return _KEYCLOAK_ROUTES in url or (keycloak != "" and url.startswith(keycloak + "/"))
+
+
 def is_clients(ex) -> bool:
-    return isinstance(ex, _CLIENT_GONE) or getattr(ex, ATTR__client_fault, False) is True
+    return isinstance(ex, _CLIENT_GONE) or getattr(ex, ATTR__client_fault, False) is True or is_keycloaks_answer(ex)
 
 
 def _mark_seen(ex):

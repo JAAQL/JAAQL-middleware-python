@@ -447,27 +447,36 @@ class TestWhatIsReported(ServerErrorCase):
         self.assertEqual(["jaaql/db/db_pg_interface.py", line_of(DBPGInterface.get_conn, "raise HttpStatusException(ERR__connect_db")],
                          [reports[0]["source_file"], reports[0]["file_line_number"]])
 
-    def test_keycloak_unreachable_or_refusing_without_the_url_query_string(self):
-        stub_keycloak = StubKeycloak(status=401)
+    def test_keycloak_unreachable_without_the_url_query_string(self):
         email = "someone" + "@example.com"
-        try:
-            for keycloak_url, expected in [("http://127.0.0.1:%d" % closed_port(), "ConnectionError"), (stub_keycloak.url, "HTTPError")]:
-                with self.subTest(expected=expected), mock.patch.dict(os.environ, {"KEYCLOAK_URL": keycloak_url, "KEYCLOAK_REALM": "lesbij"}), \
+        with mock.patch.dict(os.environ, {"KEYCLOAK_URL": "http://127.0.0.1:%d" % closed_port(), "KEYCLOAK_REALM": "lesbij"}), \
+                mock.patch.object(self.model, "call_proc", lambda inputs, account_id, verification_hook=None:
+                                  self.model.resend_verification_email(email)):
+            (status, _, _), reports = self.answers(self.call_proc)
+        self.assertEqual(500, status)
+        self.assertEqual(1, len(reports))
+        self.assertServerContract(reports[0])
+        self.assertTrue(reports[0]["error_condensed"].startswith("ConnectionError: "), reports[0]["error_condensed"])
+        self.assertEqual("jaaql/mvc/model.py", reports[0]["source_file"])
+        report = json.dumps(reports[0])
+        self.assertNotIn("someone", report)
+        self.assertNotIn("example.com", report)
+        self.assertNotIn("exact=true", report)
+
+    def test_keycloak_refusing_or_failing_is_not_reported(self):
+        # Keycloak's own answer, a refusal of what the admin typed or a failure of its own, is never reported; the answer is unchanged
+        for keycloak_status in (400, 401, 409, 500, 503):
+            stub_keycloak = StubKeycloak(status=keycloak_status)
+            try:
+                with self.subTest(keycloak_status=keycloak_status), \
+                        mock.patch.dict(os.environ, {"KEYCLOAK_URL": stub_keycloak.url, "KEYCLOAK_REALM": "lesbij"}), \
                         mock.patch.object(self.model, "call_proc", lambda inputs, account_id, verification_hook=None:
-                                          self.model.resend_verification_email(email)):
+                                          self.model.resend_verification_email("someone" + "@example.com")):
                     (status, _, _), reports = self.answers(self.call_proc)
                     self.assertEqual(500, status)
-                    self.assertEqual(1, len(reports))
-                    self.assertServerContract(reports[0])
-                    self.assertTrue(reports[0]["error_condensed"].startswith(expected + ": "), reports[0]["error_condensed"])
-                    self.assertEqual("jaaql/mvc/model.py", reports[0]["source_file"])
-                    report = json.dumps(reports[0])
-                    self.assertNotIn("someone", report)
-                    self.assertNotIn("example.com", report)
-                    self.assertNotIn("exact=true", report)
-            self.assertIn("/admin/realms/lesbij/users?<redacted>", reports[0]["error_condensed"])
-        finally:
-            stub_keycloak.close()
+                    self.assertEqual([], reports)
+            finally:
+                stub_keycloak.close()
 
     def test_a_result_json_cannot_serialise(self):
         # An interval column, say: a gap in JAAQL, answered 500
