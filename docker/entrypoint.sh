@@ -208,8 +208,12 @@ if [ -f /pki/ca.cert.pem ]; then
 	update-ca-certificates
 fi
 
-Xvfb -ac :99 -screen 0 1920x1080x16 &
-export DISPLAY=:99
+# The email service's Chrome runs headless and needs no display; the image no longer installs Xvfb, but an
+# image built on it may
+if command -v Xvfb > /dev/null 2>&1; then
+  Xvfb -ac :99 -screen 0 1920x1080x16 &
+  export DISPLAY=:99
+fi
 
 # ── EasyAuth ephemeral mode ──────────────────────────────────────────
 # Azure App Service preserves the container's writable layer across
