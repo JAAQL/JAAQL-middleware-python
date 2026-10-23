@@ -75,13 +75,16 @@ RUN apt-get update && apt-get -y upgrade && \
     ## refresh metadata
     apt-get update && \
 
+    ## fonts-urw-base35 (Nimbus, URW Bookman, URW Gothic, C059, P052, Z003 and fontconfig's aliases to them)
+    ## used to come with ImageMagick's ghostscript
     apt-get install -y --no-install-recommends \
         fontconfig \
         fonts-dejavu-core \
         fonts-liberation \
         fonts-noto-core \
         fonts-noto-cjk \
-        fonts-noto-color-emoji && \
+        fonts-noto-color-emoji \
+        fonts-urw-base35 && \
 
     mkdir -p /etc/fonts/conf.d && \
     fc-cache -f && \
