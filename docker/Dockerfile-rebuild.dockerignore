@@ -16,3 +16,12 @@ install_scripts
 www/*
 
 venv/*
+.venv
+.git
+.github
+.idea
+**/__pycache__
+build
+dist
+*.egg-info
+safety-scan.html
