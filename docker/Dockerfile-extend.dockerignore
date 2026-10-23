@@ -18,7 +18,5 @@ venv/*
 .github
 .idea
 **/__pycache__
-build
-dist
 *.egg-info
 safety-scan.html
