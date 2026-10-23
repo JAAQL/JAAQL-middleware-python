@@ -65,6 +65,9 @@ TIMEOUT__attachment_render = 60000
 TIMEOUT__page_load = 20
 TIMEOUT__pdf_generation = 60
 
+# The chromedriver the image installs for its Chrome (docker/Dockerfile)
+PATH__image_chromedriver = "/usr/local/bin/chromedriver"
+
 REGEX__html_tags = r'<(\/[a-zA-Z]+|(!?[a-zA-Z]+((\s)*((\"?[^(\">)]*\"?)|[a-zA-Z]*\s*=\s*\"[^\"]*\"))*))>'
 
 HTTP_ARG__oauth_token = "oauth_token"
@@ -154,7 +157,14 @@ class DrivenChrome:
 
         service_args = []
 
-        self.driver = webdriver.Chrome(options=options, service=Service(service_args=service_args))
+        # Naming the image's driver skips Selenium Manager, which on every Chrome start would otherwise look the driver up, sending
+        # usage statistics to plausible.io and waiting on the network when there is none. Outside the image Selenium Manager finds it
+        if os.path.exists(PATH__image_chromedriver):
+            service = Service(executable_path=PATH__image_chromedriver, service_args=service_args)
+        else:
+            service = Service(service_args=service_args)
+
+        self.driver = webdriver.Chrome(options=options, service=service)
 
         self.driver.set_page_load_timeout(self.page_load_timeout)
         self.driver.set_script_timeout(self.render_timeout)
