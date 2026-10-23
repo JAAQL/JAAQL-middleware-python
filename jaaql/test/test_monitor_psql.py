@@ -4,7 +4,8 @@ jaaql-monitor inside the container. jaaql-monitor 1.7 runs the files of consecut
 `[sudo] docker exec -i <container> sh -s`, every file preceded by SET SESSION AUTHORIZATION "<user>" and included as
 \\i /slurp-in/<file>. _execute_monitor_jaaql feeds that script to a local sh instead, connecting as postgres, with the
 SET SESSION AUTHORIZATION lines dropped from the script and from a copy of each file (the named user may lack CREATE on schema public),
-each file found relative to the input file whose \\psql line named it, as monitor 1.6 found it.
+each file found relative to the input file whose \\psql line named it, as monitor 1.6 found it. psql's messages, which name the file
+as the script included it, reach the monitor naming that file instead of its copy.
 
     python -m unittest jaaql.test.test_monitor_psql
 
@@ -50,7 +51,7 @@ def leftover_copy_dirs():
 class ShellStandIn:
     # Stands in for subprocess.run under psql__run: records each command, the script and the content of every file the script
     # includes (the copies are removed once _execute_monitor_jaaql returns), and answers with the markers psql would write to
-    # stderr, failing the file of index fail_index
+    # stderr, failing the file of index fail_index with the error psql reports, which names the file as the script included it
     def __init__(self, fail_index=None):
         self.calls = []
         self.fail_index = fail_index
@@ -59,15 +60,18 @@ class ShellStandIn:
         script = input.decode("utf-8")
         included = {}
         stderr = []
+        failing = False
         for line in script.split("\n"):
             if line.startswith("\\i "):
                 path = line[len("\\i "):]
                 with open(path, "r", encoding="utf-8") as f:
                     included[path] = f.read()
+                if failing:
+                    stderr.append("psql:%s:2: ERROR:  relation \"missing\" does not exist" % path)
+                    failing = False
             elif line.startswith("\\warn "):
                 stderr.append(line[len("\\warn "):])
-                if self.fail_index is not None and line == "\\warn @@B %d" % self.fail_index:
-                    stderr.append("ERROR:  relation \"missing\" does not exist")
+                failing = self.fail_index is not None and line == "\\warn @@B %d" % self.fail_index
         self.calls.append({"command": command, "script": script, "included": included})
         return subprocess.CompletedProcess(command, 0, stdout=b"", stderr="\n".join(stderr).encode("utf-8"))
 
@@ -148,6 +152,32 @@ class TestMonitorPsqlScript(unittest.TestCase):
         self.assertIn("Error executing: procedures/p.0000.dba", str(raised.exception))
         self.assert_restored()
 
+    def test_psql_s_messages_name_the_file_not_its_copy(self):
+        # The copies are gone by the time anyone reads the message, so it names the file the copy was made from, at psql's line
+        shell = ShellStandIn(fail_index=1)
+        with self.assertRaises(JAAQLMonitorException) as raised:
+            self.run_monitor(shell)
+
+        message = str(raised.exception)
+        self.assertIn("psql:%s:2: ERROR:  relation \"missing\" does not exist" % os.path.join(self.root, "procedures/p.0000.dba"), message)
+        self.assertNotIn("jaaql-psql-", message)
+        copy = [path for path in shell.calls[0]["included"] if path.endswith(".p.0000.dba")]
+        self.assertEqual(len(copy), 1)
+        self.assertNotIn(copy[0], message)
+        self.assert_restored()
+
+    def test_each_copy_s_path_becomes_its_source_s(self):
+        copies = {"/slurp-in/a.sql": "/tmp/jaaql-psql-x/0.a.sql", "/slurp-in/sub/b.sql": "/tmp/jaaql-psql-x/1.b.sql",
+                  "/slurp-in/c.sql": "/tmp/jaaql-psql-x/10.c.sql"}
+        stderr = ("@@B 0\npsql:/tmp/jaaql-psql-x/0.a.sql:3: ERROR:  boom\n@@E 0\n"
+                  "psql:/tmp/jaaql-psql-x/1.b.sql:12: NOTICE:  x\npsql:/tmp/jaaql-psql-x/10.c.sql:1: ERROR:  y")
+        self.assertEqual(migrations_manager_service._name_sources_in_psql_output(stderr, copies),
+                         "@@B 0\npsql:/slurp-in/a.sql:3: ERROR:  boom\n@@E 0\n"
+                         "psql:/slurp-in/sub/b.sql:12: NOTICE:  x\npsql:/slurp-in/c.sql:1: ERROR:  y")
+        self.assertIsNone(migrations_manager_service._name_sources_in_psql_output(None, copies))
+        # As monitor 1.7.17 finds the failing line of a file it included as \i /slurp-in/<file>
+        self.assertEqual(monitor_mod.psql__error_line(migrations_manager_service._name_sources_in_psql_output(stderr, copies), "c.sql"), 1)
+
     def test_a_missing_file_raises_and_still_restores_the_monitor(self):
         os.unlink(os.path.join(self.root, "domains.jsql"))
         with self.assertRaises(FileNotFoundError):
@@ -224,7 +254,8 @@ class TestMonitorPsqlAgainstPostgres(unittest.TestCase):
             self.run_monitor()
 
         self.assertIn("Error executing: broken.jsql", str(raised.exception))
-        self.assertIn("relation \"missing\" does not exist", str(raised.exception))
+        self.assertIn("psql:%s:1: ERROR:  relation \"missing\" does not exist" % os.path.join(self.root, "broken.jsql"), str(raised.exception))
+        self.assertNotIn("jaaql-psql-", str(raised.exception))
         with psycopg.connect(self.test_uri) as conn:
             self.assertIsNone(conn.execute("SELECT to_regclass('after_the_failure')").fetchone()[0])
         self.assertEqual(leftover_copy_dirs(), self.before)

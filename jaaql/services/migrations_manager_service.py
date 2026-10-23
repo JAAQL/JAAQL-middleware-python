@@ -221,6 +221,18 @@ def _localise_psql_script(script: str, input_dir: str, copy_dir: str, copies: di
     return "\n".join(lines)
 
 
+def _name_sources_in_psql_output(stderr: str | None, copies: dict) -> str | None:
+    # psql names the file a message comes from as it was included (psql:<file>:<line>: ERROR: ...), here the copy, which is gone once
+    # the run ends: each copy's path becomes the path of the file it was made from, so what the monitor reports names the real file, as
+    # psql:/slurp-in/<file>:<line>: when the input file is in /slurp-in. No copy's path is the start of another's, as each begins with
+    # its own number
+    if stderr is None:
+        return None
+    for source_path, copy_path in copies.items():
+        stderr = stderr.replace(copy_path, source_path)
+    return stderr
+
+
 def _execute_monitor_jaaql(base_url: str, bypass_header: dict, jaaql_files: list) -> None:
     """Run one or more .jaaql files through the monitor CLI with bypass credentials."""
     encoded_configs = _build_encoded_configs(bypass_header)
@@ -237,7 +249,8 @@ def _execute_monitor_jaaql(base_url: str, bypass_header: dict, jaaql_files: list
     _orig_psql_run = monitor_mod.psql__run
 
     def _local_psql_run(state, _command, script):
-        return _orig_psql_run(state, ["sh", "-s"], _localise_psql_script(script, dirname(state.file_name), copy_dir, copies))
+        stderr = _orig_psql_run(state, ["sh", "-s"], _localise_psql_script(script, dirname(state.file_name), copy_dir, copies))
+        return _name_sources_in_psql_output(stderr, copies)
 
     monitor_mod.psql__run = _local_psql_run
 
