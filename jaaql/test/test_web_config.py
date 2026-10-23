@@ -272,6 +272,12 @@ def merge(text, http3=None):
     return None if merged is None else "".join(merged)
 
 
+def server_named(text, server_name_line):
+    # The lines of the server block whose server_name line is server_name_line
+    servers = re.split(r"(?m)^(?=server \{)", text)
+    return [server for server in servers if "    " + server_name_line + "\n" in server][0].splitlines(keepends=True)
+
+
 class TestMergeWebConfig(unittest.TestCase):
     def assert_http3_once_before_listen_ssl(self, text):
         lines = text.splitlines(keepends=True)
@@ -378,6 +384,32 @@ class TestMergeWebConfig(unittest.TestCase):
         self.assertEqual(merged, "server {\n    listen 80;\n    server_name example.com;\n" + NEW_DATA + "\n}\n")
         self.assertEqual(merge(merged), merged)
         self.assertFalse(any(IPV6_TLS_LISTEN.match(line) for line in merged.splitlines()))
+
+    def test_the_localhost_server_loses_the_application_s_limit_req_and_the_others_keep_it(self):
+        # The entrypoint names it `server_name 127.0.0.1 localhost;`, which earlier versions never recognised, and its limit_req lines
+        # came in with the application's config as one piece, which they never looked into
+        for label, conf in {"certbot": CERTBOT_CONF, "legacy": LEGACY_CONF}.items():
+            for http3 in [None, "FALSE"]:
+                with self.subTest(conf=label, http3=http3):
+                    merged = merge(conf, http3=http3)
+                    localhost = server_named(merged, "server_name 127.0.0.1 localhost;")
+                    self.assertFalse([line for line in localhost if line.strip().startswith("limit_req")])
+                    self.assertIn("        proxy_pass http://unix://JAAQL-middleware-python/jaaql.sock:/;\n", localhost)
+                    tls = server_named(merged, "server_name example.com www.example.com;")
+                    self.assertIn(LISTEN_SSL, tls)
+                    self.assertEqual([line.strip() for line in tls if line.strip().startswith("limit_req")],
+                                     ["limit_req zone=httplimit burst=120 delay=80;", "limit_req_status 429;",
+                                      "limit_req zone=jaaqllimit burst=40 delay=30;", "limit_req_status 429;"])
+                    self.assertEqual(merge(merged, http3=http3), merged)
+        # The legacy file still has them, from the application's config, in its localhost server
+        self.assertIn("        limit_req zone=jaaqllimit burst=40 delay=30;\n", server_named(LEGACY_CONF, "server_name 127.0.0.1 localhost;"))
+
+    def test_only_a_server_name_that_lists_localhost_is_the_localhost_server(self):
+        for server_name, is_localhost in [("localhost", True), ("127.0.0.1 localhost", True), ("localhost 127.0.0.1", True),
+                                          ("_", False), ("127.0.0.1", False), ("localhost.example.com", False), ("notlocalhost", False)]:
+            with self.subTest(server_name=server_name):
+                merged = merge(f"server {{\n    listen 80;\n    server_name {server_name};\n    charset UTF-8;\n}}\n")
+                self.assertEqual("limit_req zone=jaaqllimit burst=40 delay=30;" not in merged, is_localhost)
 
     def test_losing_listen_ssl_aborts(self):
         self.assertIsNone(merge("server {\n    charset UTF-8;\n    index index.html;    listen 443 ssl;\n}\n"))

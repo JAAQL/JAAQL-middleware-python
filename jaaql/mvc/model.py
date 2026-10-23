@@ -214,6 +214,10 @@ WEB_CONFIG__ipv6_tls_listen = re.compile(r"listen\s+\[::\]:443\s(?![^;]*\bquic\b
 # it binds beside 0.0.0.0:443 and beside the UDP [::]:443 of QUIC, whose options are kept apart from TCP's; with no options of its own
 # it cannot clash with another server's options for [::]:443 either
 WEB_CONFIG__ipv6_tls_listen_line = "    listen [::]:443 ssl;\n"
+# The plain HTTP server for requests to 127.0.0.1 and localhost from inside the box (the cron curl, the migrations manager and
+# jaaql-monitor, whose restart wait polls every 0.1 s), which docker/entrypoint.sh names `server_name 127.0.0.1 localhost;`: any server
+# whose server_name lists localhost
+WEB_CONFIG__localhost_server_name = re.compile(r"server_name\s+(?:[^;]*\s)?localhost[\s;]")
 
 
 def _place_ipv6_tls_listens(lines: list) -> list:
@@ -265,8 +269,8 @@ def _merge_web_config(lines: list, new_data: str) -> list | None:
             in_section = True
             continue  # Skip to the next iteration
         elif (line.startswith('}') or line.strip().startswith("listen 443 ssl") or line.strip().startswith("# listen 443 ssl")) and in_section:
-            # Append new data before the end marker when in a section
-            updated_lines.append(new_data + "\n")
+            # Append new data before the end marker when in a section, line by line so that the second pass sees its limit_req lines
+            updated_lines.extend((new_data + "\n").splitlines(keepends=True))
             in_section = False
 
         if not in_section or line.startswith('}') or line.strip().startswith("listen 443 ssl") or line.strip().startswith("# listen 443 ssl"):
@@ -275,7 +279,7 @@ def _merge_web_config(lines: list, new_data: str) -> list | None:
     second_iteration_updated_lines = []
     in_localhost = False
     for line in updated_lines:
-        if line.strip().startswith("server_name localhost;"):
+        if WEB_CONFIG__localhost_server_name.match(line.strip()):
             in_localhost = True
 
         if line.startswith("}"):
