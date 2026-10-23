@@ -187,34 +187,61 @@ def _build_param_args() -> list:
     return args
 
 
+PSQL__slurp_in_include = "\\i /slurp-in/"
+
+
+def _is_session_authorization(line: str) -> bool:
+    return line.strip().upper().startswith("SET SESSION AUTHORIZATION")
+
+
+def _copy_without_session_authorization(source_path: str, copy_path: str) -> None:
+    # Each SET SESSION AUTHORIZATION line becomes an empty one, so psql's line numbers still match the source file
+    with open(source_path, "r", encoding="utf-8-sig") as src, open(copy_path, "w", encoding="utf-8") as dest:
+        for line in src:
+            dest.write("\n" if _is_session_authorization(line) else line)
+
+
+def _localise_psql_script(script: str, input_dir: str, copy_dir: str, copies: dict) -> str:
+    # The monitor's batch script switches to each file's user with SET SESSION AUTHORIZATION and then includes the file as
+    # \i /slurp-in/<file as the \psql line names it>. Here it runs as postgres: the switch is dropped and each include points
+    # at a copy of the file without SET SESSION AUTHORIZATION, the file found relative to the input file whose \psql line
+    # named it, as monitor 1.6 found it
+    lines = []
+    for line in script.split("\n"):
+        if _is_session_authorization(line):
+            continue
+        if line.startswith(PSQL__slurp_in_include):
+            source_path = join(input_dir, line[len(PSQL__slurp_in_include):])
+            if source_path not in copies:
+                copy_name = "%d.%s" % (len(copies), re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(source_path)))
+                copies[source_path] = join(copy_dir, copy_name)
+                _copy_without_session_authorization(source_path, copies[source_path])
+            line = "\\i " + copies[source_path]
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def _execute_monitor_jaaql(base_url: str, bypass_header: dict, jaaql_files: list) -> None:
     """Run one or more .jaaql files through the monitor CLI with bypass credentials."""
     encoded_configs = _build_encoded_configs(bypass_header)
     import tempfile
+    import shutil
     import monitor.main as monitor_mod
-    slurp_tmp = tempfile.mkdtemp(prefix="jaaql-slurp-")
+    copy_dir = tempfile.mkdtemp(prefix="jaaql-psql-")
+    copies = {}
 
-    # The monitor's \psql command uses `sudo docker exec` to run psql, which
-    # doesn't work inside the container.  Monkey-patch it to call psql directly
-    # and point at the actual slurp temp directory (not the hardcoded /slurp-in/).
-    _orig_construct = monitor_mod.construct_docker_command
+    # The monitor runs the files of consecutive \psql lines as one shell script it feeds to `[sudo] docker exec -i <container>
+    # sh -s`, which cannot work inside the container. Feed the script to a local sh instead, connecting as postgres without
+    # SET SESSION AUTHORIZATION: the named user may lack CREATE on schema public (PostgreSQL 15+ revoked default CREATE from
+    # PUBLIC on template0).
+    _orig_psql_run = monitor_mod.psql__run
 
-    def _local_psql(_container, sql_path, database):
-        actual_path = sql_path.replace("/slurp-in/", slurp_tmp + "/")
-        # Strip SET SESSION AUTHORIZATION — we run as postgres directly inside
-        # the container, and the named user may lack CREATE on public schema
-        # (PostgreSQL 15+ revoked default CREATE from PUBLIC on template0).
-        with open(actual_path, "r", encoding="utf-8") as fh:
-            lines = fh.readlines()
-        with open(actual_path, "w", encoding="utf-8") as fh:
-            for line in lines:
-                if not line.strip().upper().startswith("SET SESSION AUTHORIZATION"):
-                    fh.write(line)
-        return ["psql", "-U", "postgres", "-d", database, "-f", actual_path]
+    def _local_psql_run(state, _command, script):
+        return _orig_psql_run(state, ["sh", "-s"], _localise_psql_script(script, dirname(state.file_name), copy_dir, copies))
 
-    monitor_mod.construct_docker_command = _local_psql
+    monitor_mod.psql__run = _local_psql_run
 
-    additional_args = ["--jaaql-slurp-in-location", slurp_tmp]
+    additional_args = []
     for f in jaaql_files:
         additional_args.extend(["-i", f])
     additional_args.extend(_build_param_args())
@@ -227,7 +254,8 @@ def _execute_monitor_jaaql(base_url: str, bypass_header: dict, jaaql_files: list
             additional_args=additional_args,
         )
     finally:
-        monitor_mod.construct_docker_command = _orig_construct
+        monitor_mod.psql__run = _orig_psql_run
+        shutil.rmtree(copy_dir, ignore_errors=True)
 
 
 def _discover_handwritten_files(phase: str) -> list:
