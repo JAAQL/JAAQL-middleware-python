@@ -1,4 +1,8 @@
-FROM postgres:18.6-trixie
+# postgres:18.6-trixie as Docker Hub published it on 2026-10-21: the digest of its multi-arch index, whose
+# linux/amd64 image (sha256:9770878138a2e83abcb10856d30cc3f24dae0d317bb956db6ab9159de6c3c80d) is the
+# base the 5.3.25 release candidate was built and verified on. With a digest the tag is only a label, so
+# every build, --pull included, starts from this base until the digest here changes
+FROM postgres:18.6-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
 LABEL maintainer="jaaql.io"
 
 ARG POSTGRES_VERSION="18"
