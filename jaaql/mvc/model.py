@@ -85,6 +85,8 @@ ERR__reset_code_expired = "Reset code expired. Please use the link within the em
 ERR__incorrect_reset_code = "Incorrect reset code"
 ERR__as_attachment_unexpected = "Input 'as_attachment' unexpected as document is returned as a file link"
 ERR__document_created_file = "Document is a file, cannot be downloaded in this way"
+ERR__web_config_refused = "nginx -t refused the merged web config, so %s was put back as it was and nginx was not reloaded:\n%s"
+ERR__web_config_not_reloaded = "nginx -t accepted the merged web config, now in %s, but nginx -s reload failed:\n%s"
 
 PG__default_connection_string = "postgresql://postgres:%s@localhost:5432/jaaql"
 DIR__scripts = "scripts"
@@ -1541,10 +1543,13 @@ WHERE
                         print("Could not find config file '" + config_path + "'")
                         return
 
-            new_data = open(config_path, "r").read()
+            with open(config_path, "r") as config_file:
+                new_data = config_file.read()
             new_data = new_data.replace("{{JAAQL_INSTALL_LOCATION}}", os.environ.get("INSTALL_PATH"))
 
-            # Read the file content
+            # Read the file content, and keep its bytes to put back should nginx refuse what replaces it
+            with open(file_path, 'rb') as file:
+                previous_content = file.read()
             with open(file_path, 'r') as file:
                 lines = file.readlines()
 
@@ -1557,7 +1562,18 @@ WHERE
             with open(file_path, 'w') as file:
                 file.writelines(merged_lines)
 
-            subprocess.call(['nginx', '-s', 'reload'])
+            # nginx -t reads the whole configuration, this file included. One it refuses is never reloaded: the file is put back as it
+            # was, so nginx goes on serving what it has and starts again with it
+            nginx_test = subprocess.run(['nginx', '-t'], capture_output=True, text=True)
+            if nginx_test.returncode != 0:
+                with open(file_path, 'wb') as file:
+                    file.write(previous_content)
+                raise HttpStatusException(ERR__web_config_refused % (file_path, nginx_test.stderr.strip()), HTTPStatus.INTERNAL_SERVER_ERROR)
+
+            nginx_reload = subprocess.run(['nginx', '-s', 'reload'], capture_output=True, text=True)
+            if nginx_reload.returncode != 0:
+                raise HttpStatusException(ERR__web_config_not_reloaded % (file_path, nginx_reload.stderr.strip()),
+                                          HTTPStatus.INTERNAL_SERVER_ERROR)
         else:
             print("No headers set for local debugging server")
 

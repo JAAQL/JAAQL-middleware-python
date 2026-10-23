@@ -8,6 +8,9 @@ Whatever JAAQL_HTTP3 says, the server with Certbot's `listen 443 ssl` keeps exac
 `listen [::]:443 ssl ipv6only=on`, which it writes before or after `listen 443 ssl` and which earlier versions lost when it came before,
 or `listen [::]:443 ssl` where a file had lost it.
 
+nginx -t then checks the whole configuration: a merged config it refuses is replaced by the file as it was, byte for byte, nginx is not
+reloaded and the request fails with nginx's error; a failed nginx -s reload fails it too.
+
     python -m unittest jaaql.test.test_web_config
 
 The tests need only the package's requirements. With JAAQL_TEST_NGINX set to an nginx binary (as root, since nginx -t binds the ports;
@@ -22,10 +25,13 @@ import tempfile
 import unittest
 from unittest import mock
 
+from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.mvc import model
 from jaaql.mvc.model import JAAQLModel, _merge_web_config
 
 INSTALL_PATH = "/JAAQL-middleware-python"
+# subprocess.run itself, which run_set_web_config patches (model.subprocess is this module's subprocess)
+SUBPROCESS_RUN = subprocess.run
 
 # The shape of /etc/nginx/conf.d/jaaql.conf after docker/entrypoint.sh wrote it for an HTTPS box and Certbot 5.8.0's nginx installer
 # added the certificate and the redirect (certbot install --nginx --redirect), with fewer security headers
@@ -402,55 +408,120 @@ class TestMergeWebConfig(unittest.TestCase):
         self.assertIsNone(merge("server {\n    charset UTF-8;\n    listen [::]:443 ssl;\n}\n"))
 
 
+NGINX_TEST_OK = ("nginx: the configuration file /etc/nginx/nginx.conf syntax is ok\n"
+                 "nginx: configuration file /etc/nginx/nginx.conf test is successful\n")
+NGINX_TEST = ["nginx", "-t"]
+NGINX_RELOAD = ["nginx", "-s", "reload"]
+# An application config nginx refuses
+APP_CONFIG_REFUSED = APP_CONFIG + "\n    jaaql_test_unknown_directive on;"
+
+
+class NginxStandIn:
+    # Stands in for subprocess.run under set_web_config: records each command and answers nginx -t and nginx -s reload with the exit code
+    # and stderr given for each
+    def __init__(self, test=(0, NGINX_TEST_OK), reload=(0, "")):
+        self.calls = []
+        self.answers = {tuple(NGINX_TEST): test, tuple(NGINX_RELOAD): reload}
+
+    def __call__(self, command, **kwargs):
+        self.calls.append(command)
+        returncode, stderr = self.answers[tuple(command)]
+        return subprocess.CompletedProcess(command, returncode, stdout="", stderr=stderr)
+
+
+def run_set_web_config(site, run, app_config=APP_CONFIG, http3=None, directory=None):
+    # set_web_config with /etc/nginx/conf.d/jaaql.conf (holding site, text or bytes) and /nginx-mount/nginx.config (holding app_config)
+    # redirected to files in directory, a temporary one when None, and subprocess.run to run. Returns the bytes the site file holds
+    # afterwards and the HttpStatusException set_web_config raised, or None
+    real_open, real_exists = open, os.path.exists
+    with tempfile.TemporaryDirectory() as temporary:
+        directory = directory or temporary
+        paths = {"/etc/nginx/conf.d/jaaql.conf": os.path.join(directory, "jaaql.conf"),
+                 "/nginx-mount/nginx.config": os.path.join(directory, "nginx.config")}
+        with real_open(paths["/etc/nginx/conf.d/jaaql.conf"], "wb") as f:
+            f.write(site if isinstance(site, bytes) else site.encode("utf-8"))
+        with real_open(paths["/nginx-mount/nginx.config"], "w") as f:
+            f.write(app_config)
+
+        environ = {k: v for k, v in os.environ.items() if k not in ("JAAQL_HTTP3", "SET_WEB_CONFIG_OVERRIDE")}
+        environ["INSTALL_PATH"] = INSTALL_PATH
+        if http3 is not None:
+            environ["JAAQL_HTTP3"] = http3
+        stub = mock.Mock(is_container=True)
+        raised = None
+        with mock.patch.dict(os.environ, environ, clear=True), \
+                mock.patch("builtins.open", lambda path, *args, **kwargs: real_open(paths.get(path, path), *args, **kwargs)), \
+                mock.patch("os.path.exists", lambda path: real_exists(paths.get(path, path))), \
+                mock.patch.object(model.subprocess, "run", side_effect=run), \
+                mock.patch.object(model.subprocess, "call") as call:
+            try:
+                JAAQLModel.set_web_config(stub, connection=None)
+            except HttpStatusException as ex:
+                raised = ex
+
+        stub.is_super_admin.assert_called_once_with(None)
+        call.assert_not_called()
+        with real_open(paths["/etc/nginx/conf.d/jaaql.conf"], "rb") as f:
+            return f.read(), raised
+
+
 class TestSetWebConfig(unittest.TestCase):
     """
-    set_web_config itself, with /etc/nginx/conf.d/jaaql.conf and /nginx-mount/nginx.config redirected to temporary files
+    set_web_config itself, with /etc/nginx/conf.d/jaaql.conf and /nginx-mount/nginx.config redirected to temporary files and nginx stood in
+    for
     """
 
-    def run_set_web_config(self, site_text, http3=None):
-        real_open, real_exists = open, os.path.exists
-        with tempfile.TemporaryDirectory() as directory:
-            paths = {"/etc/nginx/conf.d/jaaql.conf": os.path.join(directory, "jaaql.conf"),
-                     "/nginx-mount/nginx.config": os.path.join(directory, "nginx.config")}
-            with real_open(paths["/etc/nginx/conf.d/jaaql.conf"], "w") as f:
-                f.write(site_text)
-            with real_open(paths["/nginx-mount/nginx.config"], "w") as f:
-                f.write(APP_CONFIG)
-
-            environ = {k: v for k, v in os.environ.items() if k not in ("JAAQL_HTTP3", "SET_WEB_CONFIG_OVERRIDE")}
-            environ["INSTALL_PATH"] = INSTALL_PATH
-            if http3 is not None:
-                environ["JAAQL_HTTP3"] = http3
-            stub = mock.Mock(is_container=True)
-            with mock.patch.dict(os.environ, environ, clear=True), \
-                    mock.patch("builtins.open", lambda path, *args, **kwargs: real_open(paths.get(path, path), *args, **kwargs)), \
-                    mock.patch("os.path.exists", lambda path: real_exists(paths.get(path, path))), \
-                    mock.patch.object(model.subprocess, "call") as call:
-                JAAQLModel.set_web_config(stub, connection=None)
-
-            stub.is_super_admin.assert_called_once_with(None)
-            with real_open(paths["/etc/nginx/conf.d/jaaql.conf"]) as f:
-                return f.read(), call.call_args_list
-
     def test_twice_on_a_certbot_config(self):
-        first, calls = self.run_set_web_config(CERTBOT_CONF)
-        second, _ = self.run_set_web_config(first)
+        nginx = NginxStandIn()
+        first, raised = run_set_web_config(CERTBOT_CONF, nginx)
+        self.assertIsNone(raised)
+        second, raised = run_set_web_config(first, nginx)
+        self.assertIsNone(raised)
 
-        self.assertEqual(first, merge(CERTBOT_CONF))
+        self.assertEqual(first.decode("utf-8"), merge(CERTBOT_CONF))
         self.assertEqual(second, first)
-        self.assertEqual(calls, [mock.call(["nginx", "-s", "reload"])])
+        self.assertEqual(nginx.calls, [NGINX_TEST, NGINX_RELOAD, NGINX_TEST, NGINX_RELOAD])
 
     def test_a_legacy_config_is_repaired_and_switched_off(self):
-        self.assertEqual(self.run_set_web_config(LEGACY_CONF)[0], merge(CERTBOT_CONF).replace(LISTEN_SSL_IPV6, LISTEN_SSL_IPV6_RESTORED))
-        self.assertEqual(self.run_set_web_config(LEGACY_CONF, http3="FALSE")[0],
+        self.assertEqual(run_set_web_config(LEGACY_CONF, NginxStandIn())[0].decode("utf-8"),
+                         merge(CERTBOT_CONF).replace(LISTEN_SSL_IPV6, LISTEN_SSL_IPV6_RESTORED))
+        self.assertEqual(run_set_web_config(LEGACY_CONF, NginxStandIn(), http3="FALSE")[0].decode("utf-8"),
                          merge(CERTBOT_CONF, http3="FALSE").replace(LISTEN_SSL_IPV6, LISTEN_SSL_IPV6_RESTORED))
 
     def test_an_abort_leaves_the_file_alone(self):
         broken = "server {\n    charset UTF-8;\n    index index.html;    listen 443 ssl;\n}\n"
-        text, calls = self.run_set_web_config(broken)
+        nginx = NginxStandIn()
+        text, raised = run_set_web_config(broken, nginx)
 
-        self.assertEqual(text, broken)
-        self.assertEqual(calls, [])
+        self.assertEqual(text.decode("utf-8"), broken)
+        self.assertIsNone(raised)
+        self.assertEqual(nginx.calls, [])
+
+    def test_a_config_nginx_refuses_is_put_back_byte_for_byte_and_not_reloaded(self):
+        # Line ends of CR LF and a last line without one, which a file read and written as text would not keep
+        error = "nginx: [emerg] unknown directive \"jaaql_test_unknown_directive\" in /etc/nginx/conf.d/jaaql.conf:30\n" \
+                "nginx: configuration file /etc/nginx/nginx.conf test failed\n"
+        for label, site in {"certbot": CERTBOT_CONF.encode("utf-8"), "legacy": LEGACY_CONF.encode("utf-8"),
+                            "CR LF, no last line end": CERTBOT_CONF.replace("\n", "\r\n").encode("utf-8")[:-2]}.items():
+            with self.subTest(site=label):
+                nginx = NginxStandIn(test=(1, error))
+                text, raised = run_set_web_config(site, nginx)
+
+                self.assertEqual(text, site)
+                self.assertEqual(nginx.calls, [NGINX_TEST])
+                self.assertEqual(raised.response_code, 500)
+                self.assertIn(error.strip(), raised.message)
+                self.assertIn("/etc/nginx/conf.d/jaaql.conf was put back as it was and nginx was not reloaded", raised.message)
+
+    def test_a_failed_reload_fails_the_request_and_keeps_the_config_nginx_accepted(self):
+        error = "nginx: [error] invalid PID number \"\" in \"/run/nginx.pid\"\n"
+        nginx = NginxStandIn(reload=(1, error))
+        text, raised = run_set_web_config(CERTBOT_CONF, nginx)
+
+        self.assertEqual(text.decode("utf-8"), merge(CERTBOT_CONF))
+        self.assertEqual(nginx.calls, [NGINX_TEST, NGINX_RELOAD])
+        self.assertEqual(raised.response_code, 500)
+        self.assertIn("nginx -s reload failed:\n" + error.strip(), raised.message)
 
 
 @unittest.skipUnless(os.environ.get("JAAQL_TEST_NGINX"), "JAAQL_TEST_NGINX is not set to an nginx binary")
@@ -503,12 +574,27 @@ class TestMergedConfigsWithNginx(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls.directory, ignore_errors=True)
 
-    def assert_nginx_accepts(self, text, allowed_warning=None):
+    def localise(self, text):
+        # Certbot's /etc/letsencrypt paths pointed at this class's, without DH parameters where Certbot is not installed
         text = text.replace("/etc/letsencrypt/", self.directory + "/letsencrypt/")
         if not self.has_dhparams:
             text = "".join(line for line in text.splitlines(keepends=True) if "ssl_dhparam" not in line)
+        return text
+
+    def run_nginx(self, command, **kwargs):
+        # nginx -t or nginx -s reload as set_web_config runs it, by the nginx under test with this class's nginx.conf, whose
+        # conf.d/jaaql.conf is the file set_web_config writes. No nginx runs with its pid file, so a reload fails as on a box whose nginx
+        # is not running
+        self.commands.append(command)
+        return SUBPROCESS_RUN([os.environ["JAAQL_TEST_NGINX"], *command[1:], "-e", self.directory + "/error.log", "-p", self.directory,
+                               "-c", self.directory + "/nginx.conf"], **kwargs)
+
+    def setUp(self):
+        self.commands = []
+
+    def assert_nginx_accepts(self, text, allowed_warning=None):
         with open(os.path.join(self.directory, "jaaql.conf"), "w") as f:
-            f.write(text)
+            f.write(self.localise(text))
         result = subprocess.run([os.environ["JAAQL_TEST_NGINX"], "-t", "-e", self.directory + "/error.log", "-p", self.directory,
                                  "-c", self.directory + "/nginx.conf"], capture_output=True, text=True)
         messages = [line for line in result.stderr.splitlines() if "[" in line and (allowed_warning is None or allowed_warning not in line)]
@@ -542,6 +628,44 @@ class TestMergedConfigsWithNginx(unittest.TestCase):
         with self.assertRaises(AssertionError) as raised:
             self.assert_nginx_accepts(doubled)
         self.assertIn("duplicate listen options for [::]:443", str(raised.exception))
+
+    def test_set_web_config_reloads_a_config_nginx_accepts(self):
+        # The reload stood in for, as no nginx runs here to take it
+        site = self.localise(CERTBOT_CONF)
+        reload = NginxStandIn()
+        text, raised = run_set_web_config(site, lambda command, **kwargs: self.run_nginx(command, **kwargs) if command == NGINX_TEST
+                                          else reload(command, **kwargs), directory=self.directory)
+
+        self.assertIsNone(raised)
+        self.assertEqual(text.decode("utf-8"), merge(site))
+        self.assertEqual(self.commands, [NGINX_TEST])
+        self.assertEqual(reload.calls, [NGINX_RELOAD])
+
+    def test_set_web_config_puts_back_a_config_nginx_refuses_byte_for_byte_and_does_not_reload(self):
+        # Line ends of CR LF and a last line without one, which a file read and written as text would not keep
+        for label, conf in {"certbot": CERTBOT_CONF, "legacy": LEGACY_CONF,
+                            "CR LF, no last line end": CERTBOT_CONF.replace("\n", "\r\n")[:-2]}.items():
+            with self.subTest(site=label):
+                self.commands = []
+                site = self.localise(conf).encode("utf-8")
+                text, raised = run_set_web_config(site, self.run_nginx, app_config=APP_CONFIG_REFUSED, directory=self.directory)
+
+                self.assertEqual(text, site)
+                self.assertEqual(self.commands, [NGINX_TEST])
+                self.assertEqual(raised.response_code, 500)
+                self.assertIn('[emerg] unknown directive "jaaql_test_unknown_directive" in ' + self.directory + '/jaaql.conf:', raised.message)
+                self.assertIn("test failed", raised.message)
+                self.assert_nginx_accepts(site.decode("utf-8"))
+
+    def test_a_failed_reload_fails_set_web_config_and_keeps_the_config_nginx_accepted(self):
+        site = self.localise(CERTBOT_CONF)
+        text, raised = run_set_web_config(site, self.run_nginx, directory=self.directory)
+
+        self.assertEqual(text.decode("utf-8"), merge(site))
+        self.assertEqual(self.commands, [NGINX_TEST, NGINX_RELOAD])
+        self.assertEqual(raised.response_code, 500)
+        self.assertIn("nginx -s reload failed:\n", raised.message)
+        self.assertIn(self.directory + "/nginx.pid", raised.message)
 
 
 if __name__ == "__main__":
