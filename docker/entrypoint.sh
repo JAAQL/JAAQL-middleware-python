@@ -78,6 +78,129 @@ refresh_collation_versions() {
   done
 }
 
+# pg_upgrade keeps each database's catalog entry for plpgsql_check at the version it had (2.5 on the postgres 16
+# volumes) while the server loads this image's newer library, which then refuses plpgsql_check_function, with which
+# every generated procedure is checked as it is installed, and plpgsql CREATE FUNCTION ("extension "plpgsql_check" is
+# not updated in system catalog"). Bring each database whose plpgsql_check is older than the image's default version
+# up to it, with ALTER EXTENSION ... UPDATE where the image has an update path. PGDG ships only the full script of the
+# current version, so otherwise it is dropped and created again in its own schema, in one transaction, and only if no
+# object outside it depends on it (DROP EXTENSION without CASCADE refuses a normal dependency, and an automatic one
+# would be dropped with it, so both are refused before), it belongs to postgres, has no configuration tables and its
+# functions all carry the same privileges, which its new functions are then given, so that default privileges in
+# force now (the jaaql database revokes EXECUTE from PUBLIC on functions postgres creates) change no one's access. A
+# failure is logged, leaves the database as it was and the next boot tries again; the boot carries on either way.
+PLPGSQL_CHECK__stale_sql="SELECT e.extversion, a.default_version, EXISTS (SELECT FROM pg_extension_update_paths('plpgsql_check') p WHERE p.source = e.extversion AND p.target = a.default_version AND p.path IS NOT NULL) FROM pg_extension e JOIN pg_available_extensions a ON a.name = e.extname WHERE e.extname = 'plpgsql_check' AND e.extversion ~ '^[0-9]+(\\.[0-9]+)*\$' AND a.default_version ~ '^[0-9]+(\\.[0-9]+)*\$' AND string_to_array(e.extversion, '.')::int[] < string_to_array(a.default_version, '.')::int[]"
+PLPGSQL_CHECK__recreate_sql=$(cat <<'SQL'
+DO $recreate$
+DECLARE
+    ext record;
+    new_version text;
+    dependents text;
+    privilege_sets bigint;
+    ext_privileges text[];
+    fn record;
+    item record;
+BEGIN
+    SELECT e.oid, e.extowner, e.extconfig, n.nspname INTO ext
+    FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace WHERE e.extname = 'plpgsql_check';
+    SELECT a.default_version INTO new_version FROM pg_available_extensions a WHERE a.name = 'plpgsql_check';
+
+    IF ext.extowner <> (SELECT r.oid FROM pg_roles r WHERE r.rolname = current_user) THEN
+        RAISE EXCEPTION 'plpgsql_check is not recreated: it belongs to %, not %', ext.extowner::regrole, current_user;
+    END IF;
+    IF ext.extconfig IS NOT NULL THEN
+        RAISE EXCEPTION 'plpgsql_check is not recreated: it has configuration tables';
+    END IF;
+    IF EXISTS (SELECT FROM pg_depend m WHERE m.refclassid = 'pg_extension'::regclass AND m.refobjid = ext.oid AND m.deptype = 'e'
+               AND m.classid <> 'pg_proc'::regclass) THEN
+        RAISE EXCEPTION 'plpgsql_check is not recreated: it has members other than functions';
+    END IF;
+
+    WITH members AS (
+        SELECT m.classid, m.objid FROM pg_depend m
+        WHERE m.refclassid = 'pg_extension'::regclass AND m.refobjid = ext.oid AND m.deptype = 'e'
+    )
+    SELECT string_agg(DISTINCT pg_describe_object(d.classid, d.objid, d.objsubid), ', ') INTO dependents
+    FROM pg_depend d
+    WHERE d.deptype <> 'e'
+      AND ((d.refclassid = 'pg_extension'::regclass AND d.refobjid = ext.oid) OR (d.refclassid, d.refobjid) IN (SELECT * FROM members))
+      AND (d.classid, d.objid) NOT IN (SELECT * FROM members);
+    IF dependents IS NOT NULL THEN
+        RAISE EXCEPTION 'plpgsql_check is not recreated: other objects depend on it (%)', dependents;
+    END IF;
+
+    SELECT count(DISTINCT f.privileges), coalesce(min(f.privileges), '{}') INTO privilege_sets, ext_privileges
+    FROM (SELECT array(SELECT a.grantee::text || ':' || a.is_grantable::text
+                       FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+                       WHERE a.grantee <> p.proowner ORDER BY 1) AS privileges
+          FROM pg_depend m JOIN pg_proc p ON p.oid = m.objid
+          WHERE m.classid = 'pg_proc'::regclass AND m.refclassid = 'pg_extension'::regclass AND m.refobjid = ext.oid
+            AND m.deptype = 'e') f;
+    IF privilege_sets > 1 THEN
+        RAISE EXCEPTION 'plpgsql_check is not recreated: its functions do not all carry the same privileges';
+    END IF;
+
+    DROP EXTENSION plpgsql_check;
+    EXECUTE format('CREATE EXTENSION plpgsql_check WITH SCHEMA %I VERSION %L', ext.nspname, new_version);
+
+    FOR fn IN SELECT p.oid::regprocedure AS signature, p.proowner, coalesce(p.proacl, acldefault('f', p.proowner)) AS acl
+              FROM pg_extension e
+              JOIN pg_depend m ON m.refclassid = 'pg_extension'::regclass AND m.refobjid = e.oid AND m.deptype = 'e'
+                              AND m.classid = 'pg_proc'::regclass
+              JOIN pg_proc p ON p.oid = m.objid
+              WHERE e.extname = 'plpgsql_check' LOOP
+        FOR item IN SELECT a.grantee FROM aclexplode(fn.acl) a
+                    WHERE a.grantee <> fn.proowner AND NOT (a.grantee::text || ':' || a.is_grantable::text) = ANY (ext_privileges) LOOP
+            EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %s', fn.signature,
+                           CASE WHEN item.grantee = 0 THEN 'PUBLIC' ELSE item.grantee::regrole::text END);
+        END LOOP;
+        FOR item IN SELECT split_part(g, ':', 1)::oid AS grantee, split_part(g, ':', 2)::boolean AS is_grantable
+                    FROM unnest(ext_privileges) g
+                    WHERE NOT g = ANY (array(SELECT a.grantee::text || ':' || a.is_grantable::text FROM aclexplode(fn.acl) a)) LOOP
+            EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %s%s', fn.signature,
+                           CASE WHEN item.grantee = 0 THEN 'PUBLIC' ELSE item.grantee::regrole::text END,
+                           CASE WHEN item.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END);
+        END LOOP;
+    END LOOP;
+END
+$recreate$;
+SQL
+)
+
+update_plpgsql_check() {
+  if ! PLPGSQL_CHECK_DBS="$(psql -U postgres -d postgres -X -A -t -c "SELECT datname FROM pg_database WHERE datallowconn AND NOT pg_is_in_recovery() ORDER BY datname")"; then
+    echo "Could not list the databases to compare their plpgsql_check with the server's; not updating it" >&2
+    return 0
+  fi
+
+  printf '%s\n' "$PLPGSQL_CHECK_DBS" | while IFS= read -r db; do
+    if [ -z "$db" ]; then
+      continue
+    fi
+    if ! stale="$(PGDATABASE="$db" psql -U postgres -X -A -t -F '|' -c "$PLPGSQL_CHECK__stale_sql")"; then
+      echo "Could not read the plpgsql_check version of database \"$db\"; not updating it" >&2
+      continue
+    fi
+    if [ -z "$stale" ]; then
+      continue
+    fi
+    old_version=$(printf '%s' "$stale" | cut -d'|' -f1)
+    new_version=$(printf '%s' "$stale" | cut -d'|' -f2)
+    if [ "$(printf '%s' "$stale" | cut -d'|' -f3)" = "t" ]; then
+      echo "Database \"$db\" has plpgsql_check $old_version in its catalog under the server's $new_version; updating it"
+      update_sql="ALTER EXTENSION plpgsql_check UPDATE TO '$new_version';"
+    else
+      echo "Database \"$db\" has plpgsql_check $old_version in its catalog under the server's $new_version, with no update script; recreating it"
+      update_sql="$PLPGSQL_CHECK__recreate_sql"
+    fi
+    if printf '%s\n' "$update_sql" | PGDATABASE="$db" psql -U postgres -X -q -1 -v ON_ERROR_STOP=1 -v VERBOSITY=terse; then
+      echo "plpgsql_check of database \"$db\" is now $new_version"
+    else
+      echo "Updating plpgsql_check of database \"$db\" failed; it stays at $old_version and the next boot tries again" >&2
+    fi
+  done
+}
+
 if [ -f /pki/ca.cert.pem ]; then
 	echo "Installing on-prem root CA from /pki/ca.cert.pem"
 	mkdir -p /usr/local/share/ca-certificates
@@ -502,9 +625,11 @@ stop_jaaql() {
 
 trap stop_jaaql INT TERM
 
-# Before any service connects. A cluster this boot initialised was made by this image's C library
+# Before any service connects. A cluster this boot initialised was made by this image's C library, and its
+# databases get this image's plpgsql_check
 if [ "$WAS_EMPTY" != "true" ]; then
   refresh_collation_versions
+  update_plpgsql_check
 fi
 
 (
