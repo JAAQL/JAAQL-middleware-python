@@ -379,6 +379,21 @@ class TestMergeWebConfig(unittest.TestCase):
         self.assertEqual(merge(merged), merged)
         self.assertFalse(any(IPV6_TLS_LISTEN.match(line) for line in merged.splitlines()))
 
+    def test_the_localhost_server_keeps_the_application_s_limit_req(self):
+        # In Certbot's layout the TLS server has no listen 80, so the entrypoint's localhost server is nginx's default server on port
+        # 80: plain HTTP to the box's address, or with a Host it does not serve, lands there, and must be as throttled as the TLS server
+        limits = ["limit_req zone=httplimit burst=120 delay=80;", "limit_req_status 429;",
+                  "limit_req zone=jaaqllimit burst=40 delay=30;", "limit_req_status 429;"]
+        for label, conf in {"certbot": CERTBOT_CONF, "legacy": LEGACY_CONF}.items():
+            for http3 in [None, "FALSE"]:
+                with self.subTest(conf=label, http3=http3):
+                    merged = merge(conf, http3=http3)
+                    servers = [server for server in re.split(r"(?m)^(?=server \{)", merged) if "\n    charset UTF-8;\n" in server]
+                    self.assertEqual(len(servers), 2)
+                    self.assertEqual(sum("\n    server_name 127.0.0.1 localhost;\n" in server for server in servers), 1)
+                    for server in servers:
+                        self.assertEqual([line.strip() for line in server.splitlines() if line.strip().startswith("limit_req")], limits)
+
     def test_losing_listen_ssl_aborts(self):
         self.assertIsNone(merge("server {\n    charset UTF-8;\n    index index.html;    listen 443 ssl;\n}\n"))
 
