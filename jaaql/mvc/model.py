@@ -194,6 +194,75 @@ def _explicit_type(explicit_types, parameter_key: str):
     return explicit_type
 
 
+# The HTTP/3 directives set_web_config puts before `listen 443 ssl`. It used to write them without line ends, glued onto the front of
+# that line, so they are matched wherever they are on a line and only they are removed from it
+WEB_CONFIG__http3_directive = re.compile(r"[ \t]*(?<![^\s;])(?:http3 on|quic_retry on|http3_max_concurrent_streams \d+"
+                                         r"|listen (?:\[::\]:)?443 quic[^;]*|add_header Alt-Svc 'h3=[^']*')[ \t]*;")
+WEB_CONFIG__http3_lines = [
+    "    http3 on;\n",
+    "    quic_retry on;\n",
+    "    http3_max_concurrent_streams 64;\n",
+    "    listen 443 quic reuseport;\n",
+    "    listen [::]:443 quic reuseport ipv6only=on;\n",
+    "    add_header Alt-Svc 'h3=\":443\"; ma=86400';\n",
+]
+
+
+def _merge_web_config(lines: list, new_data: str) -> list | None:
+    # The lines of /etc/nginx/conf.d/jaaql.conf with the application's nginx config in place of each section from `charset` to the end
+    # of its server block (or `listen 443 ssl`), HTTP/3 in front of `listen 443 ssl` unless JAAQL_HTTP3 is FALSE, and no limit_req in the
+    # localhost server; None when that would lose the `listen 443 ssl` Certbot put in
+    http3 = os.environ.get("JAAQL_HTTP3", "TRUE").upper() != "FALSE"
+
+    # Strip our existing HTTP/3 directives so they can be cleanly re-added in the second pass, keeping whatever else their line holds
+    stripped_lines = []
+    for line in lines:
+        stripped = WEB_CONFIG__http3_directive.sub("", line)
+        if stripped != line and stripped.strip() == "":
+            continue
+        stripped_lines.append(stripped)
+
+    # Initialize variables to track the current state and to store updated lines
+    in_section = False
+    updated_lines = []
+
+    for line in stripped_lines:
+        if line.strip().startswith('charset'):
+            in_section = True
+            continue  # Skip to the next iteration
+        elif (line.startswith('}') or line.strip().startswith("listen 443 ssl") or line.strip().startswith("# listen 443 ssl")) and in_section:
+            # Append new data before the end marker when in a section
+            updated_lines.append(new_data + "\n")
+            in_section = False
+
+        if not in_section or line.startswith('}') or line.strip().startswith("listen 443 ssl") or line.strip().startswith("# listen 443 ssl"):
+            updated_lines.append(line)
+
+    second_iteration_updated_lines = []
+    in_localhost = False
+    for line in updated_lines:
+        if line.strip().startswith("server_name localhost;"):
+            in_localhost = True
+
+        if line.startswith("}"):
+            in_localhost = False
+
+        if http3 and line.strip().startswith("listen 443 ssl"):
+            second_iteration_updated_lines.extend(WEB_CONFIG__http3_lines)
+
+        if not in_localhost or not line.strip().startswith("limit_req"):  # Ignore limit req for local requests
+            second_iteration_updated_lines.append(line)
+
+    # Defensive: if the input had `listen 443 ssl` (Certbot installed it) but our output dropped it, refuse to write. Better to leave
+    # Certbot's working config in place than overwrite with a broken one
+    input_had_ssl = any('listen 443 ssl' in line for line in lines)
+    output_has_ssl = any('listen 443 ssl' in line for line in second_iteration_updated_lines)
+    if input_had_ssl and not output_has_ssl:
+        return None
+
+    return second_iteration_updated_lines
+
+
 class JAAQLModel(BaseJAAQLModel):
     VERIFICATION_QUEUE = None
 
@@ -1443,59 +1512,14 @@ WHERE
             with open(file_path, 'r') as file:
                 lines = file.readlines()
 
-            # Strip existing QUIC/HTTP3 lines so they can be cleanly re-added
-            # in the second pass without preventing the config update.
-            lines = [l for l in lines if "listen 443 quic" not in l
-                     and "listen [::]:443 quic" not in l
-                     and "http3 on;" not in l.strip()
-                     and not (l.strip().startswith("add_header Alt-Svc") and "h3=" in l)]
-
-            # Initialize variables to track the current state and to store updated lines
-            in_section = False
-            updated_lines = []
-
-            for line in lines:
-                if line.strip().startswith('charset'):
-                    in_section = True
-                    continue  # Skip to the next iteration
-                elif (line.startswith('}') or line.strip().startswith("listen 443 ssl") or line.strip().startswith("# listen 443 ssl")) and in_section:
-                    # Append new data before the end marker when in a section
-                    updated_lines.append(new_data + "\n")
-                    in_section = False
-
-                if not in_section or line.startswith('}') or line.strip().startswith("listen 443 ssl") or line.strip().startswith("# listen 443 ssl"):
-                    updated_lines.append(line)
-
-            second_iteration_updated_lines = []
-            in_localhost = False
-            for line in updated_lines:
-                if line.strip().startswith("server_name localhost;"):
-                    in_localhost = True
-
-                if line.startswith("}"):
-                    in_localhost = False
-
-                if line.strip().startswith("listen 443 ssl"):
-                    second_iteration_updated_lines.append("    http3 on;")
-                    second_iteration_updated_lines.append("    listen 443 quic reuseport;")
-                    second_iteration_updated_lines.append("    listen [::]:443 quic reuseport ipv6only=on;")
-                    second_iteration_updated_lines.append("    add_header Alt-Svc 'h3=\":443\"; ma=86400';")
-
-                if not in_localhost or not line.strip().startswith("limit_req"):  # Ignore limit req for local requests
-                    second_iteration_updated_lines.append(line)
-
-            # Defensive: if the input had `listen 443 ssl` (Certbot installed it) but
-            # our output dropped it, refuse to write. Better to leave Certbot's working
-            # config in place than overwrite with a broken one.
-            input_had_ssl = any('listen 443 ssl' in l for l in open(file_path).readlines())
-            output_has_ssl = any('listen 443 ssl' in l for l in second_iteration_updated_lines)
-            if input_had_ssl and not output_has_ssl:
+            merged_lines = _merge_web_config(lines, new_data)
+            if merged_lines is None:
                 print('set_web_config aborting: would have lost listen 443 ssl', file=sys.stderr)
                 return
 
             # Write the updated content back to the file
             with open(file_path, 'w') as file:
-                file.writelines(second_iteration_updated_lines)
+                file.writelines(merged_lines)
 
             subprocess.call(['nginx', '-s', 'reload'])
         else:
