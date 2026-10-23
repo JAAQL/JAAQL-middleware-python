@@ -400,6 +400,9 @@ rm -rf /etc/nginx/conf.d/default.conf
 sed 's/\\n/\
 /g' -i $SITE_FILE
 grep -q '^[[:space:]]*server_tokens' /etc/nginx/nginx.conf || sed -i 's/http {/http {\n        server_tokens off;\n        server_names_hash_bucket_size 128;\n/g' /etc/nginx/nginx.conf
+# At most 100 header lines per request over HTTP/1.1, /2 and /3 (nginx allows 1000): browsers send about 30, and
+# every line a client sends is held in worker memory, which HTTP/3's QPACK makes cheap to multiply per stream
+grep -q '^[[:space:]]*max_headers' /etc/nginx/nginx.conf || sed -i 's/http {/http {\n        max_headers 100;/' /etc/nginx/nginx.conf
 sed 's/\\n/\
 /g' -i /etc/nginx/nginx.conf
 service nginx restart || { echo "Failed to restart nginx. Reason: $(nginx -t 2>&1)"; exit 1; }
