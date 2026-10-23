@@ -46,6 +46,11 @@ COPY ./plpgsql_check /plpgsql_check
 
 COPY docker/75-emoji.conf /etc/fonts/conf.d/75-emoji.conf
 
+# Chrome for Testing ships its own root store and, headless, neither fetches CRLSets nor enforces
+# certificate transparency, so it still trusted the eMudhra root and TLS intermediates whose private
+# keys became public in October 2026. It reads managed policies from this directory only
+COPY docker/chrome-policies/distrust-emudhra.json /etc/opt/chrome_for_testing/policies/managed/distrust-emudhra.json
+
 RUN apt-get update && apt-get -y upgrade && \
     apt-get install -y build-essential && \
     apt install -y libpq-dev && \
@@ -202,7 +207,20 @@ RUN sed -i 's/\[binary\]/[c]/g' $INSTALL_PATH/requirements.txt && \
     rm -f /usr/local/bin/llvm-profdata /usr/local/bin/llvm-ar /usr/local/bin/llvm-ranlib /usr/local/bin/llvm-nm && \
     apt-get autoremove --purge -y && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /var/tmp/* /tmp/*
+    rm -rf /var/lib/apt/lists/* /var/tmp/* /tmp/* && \
+    ## fail the build while any trust store in the image still accepts the compromised eMudhra root
+    ## "emSign ECC Root CA - G3" (SHA-256 86A1ECBA...6BBE6B): the system store (OpenSSL, curl, libpq,
+    ## Python's ssl), certifi (requests, certbot) and Node's bundled roots (BATON cloud procedures).
+    ## EMSIGN_G3 is the first base64 line of its PEM; ISRG_X1 is that of ISRG Root X1, which must be
+    ## found, so a store that could not be read cannot pass for a clean one
+    EMSIGN_G3=MIICTjCCAdOgAwIBAgIKPPYHqWhwDtqLhDAKBggqhkjOPQQDAzBrMQswCQYDVQQG && \
+    ISRG_X1=MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge 20250419+deb13u1 && \
+    grep -q "$ISRG_X1" /etc/ssl/certs/ca-certificates.crt && \
+    ! grep -q "$EMSIGN_G3" /etc/ssl/certs/ca-certificates.crt && \
+    $PY_PATH -I -c "import certifi, sys; pem = open(certifi.where()).read(); sys.exit(0 if '$ISRG_X1' in pem and '$EMSIGN_G3' not in pem else 1)" && \
+    node -e "const roots = require('tls').rootCertificates; process.exit(roots.some(c => c.includes('$ISRG_X1')) && !roots.some(c => c.includes('$EMSIGN_G3')) ? 0 : 1)" && \
+    grep -q "$EMSIGN_G3" /etc/opt/chrome_for_testing/policies/managed/distrust-emudhra.json
 
 COPY . $INSTALL_PATH
 
