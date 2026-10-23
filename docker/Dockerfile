@@ -141,11 +141,10 @@ RUN apt-get update && apt-get -y upgrade && \
     rm -rf ~/chromedriver-linux64 && \
     chown root:root /usr/local/bin/chromedriver && \
     chmod 0755 /usr/local/bin/chromedriver && \
-    apt-get install -y gstreamer1.0-libav libnss3-tools libatk-bridge2.0-0t64 libcups2-dev libxkbcommon-x11-0 libxcomposite-dev libxrandr2 libgbm-dev libgtk-3-0t64 && \
-    apt-get install -y xvfb && \
-    DEBIAN_FRONTEND=noninteractive apt-get -y install xorg xvfb gtk2-engines-pixbuf && \
-    apt-get -y install dbus-x11 xfonts-base xfonts-100dpi xfonts-75dpi xfonts-scalable && \
-    apt-get -y install imagemagick x11-apps && \
+    ## the libraries Chrome for Testing loads (its deb.deps), libasound2t64 and libvulkan1 included, which
+    ## gstreamer1.0-libav and xorg used to bring in. The email service runs Chrome --headless=new, which
+    ## needs no X server, so there is no xorg, Xvfb or X core fonts, nor FFmpeg or ImageMagick
+    apt-get install -y libnss3-tools libatk-bridge2.0-0t64 libcups2-dev libxkbcommon-x11-0 libxcomposite-dev libxrandr2 libgbm-dev libgtk-3-0t64 libasound2t64 libvulkan1 && \
     /bin/mkdir -p '/usr/share/postgresql/'${OLD_POSTGRES_VERSION}'/extension' && \
     /bin/mkdir -p '/usr/lib/postgresql/'${OLD_POSTGRES_VERSION}'/lib' && \
     /usr/bin/install -c -m 644 /pgextension/jaaql.control '/usr/share/postgresql/'${OLD_POSTGRES_VERSION}'/extension/' && \
