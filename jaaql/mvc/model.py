@@ -206,12 +206,43 @@ WEB_CONFIG__http3_lines = [
     "    listen [::]:443 quic reuseport ipv6only=on;\n",
     "    add_header Alt-Svc 'h3=\":443\"; ma=86400';\n",
 ]
+# HTTPS over IPv6 TCP. Certbot writes `listen [::]:443 ssl ipv6only=on;` next to `listen 443 ssl`, before it or after it, and earlier
+# versions lost it whenever it came before, as part of the section they replaced, which left a box with an AAAA record answering HTTP/3
+# over IPv6 but refusing HTTPS over IPv6 TCP
+WEB_CONFIG__ipv6_tls_listen = re.compile(r"listen\s+\[::\]:443\s(?![^;]*\bquic\b)[^;]*\bssl\b[^;]*;")
+# Written when a server has `listen 443 ssl` but no IPv6 TLS listen. nginx makes every [::] listen IPv6-only unless told otherwise, so
+# it binds beside 0.0.0.0:443 and beside the UDP [::]:443 of QUIC, whose options are kept apart from TCP's; with no options of its own
+# it cannot clash with another server's options for [::]:443 either
+WEB_CONFIG__ipv6_tls_listen_line = "    listen [::]:443 ssl;\n"
+
+
+def _place_ipv6_tls_listens(lines: list) -> list:
+    # Each server block with a `listen 443 ssl` gets exactly one IPv6 TLS listen, on the line after it: the one it had wherever it was
+    # (Certbot's, with its options and comment), else WEB_CONFIG__ipv6_tls_listen_line. Server blocks end with a `}` in the first column
+    servers = [[]]
+    for line in lines:
+        servers[-1].append(line)
+        if line.startswith("}"):
+            servers.append([])
+
+    placed_lines = []
+    for server in servers:
+        listen_ssl_at = next((at for at, line in enumerate(server) if line.strip().startswith("listen 443 ssl")), None)
+        if listen_ssl_at is not None:
+            ipv6_listens = [line for line in server if WEB_CONFIG__ipv6_tls_listen.match(line.strip())]
+            ipv6_listen = ipv6_listens[0].rstrip("\n") + "\n" if ipv6_listens else WEB_CONFIG__ipv6_tls_listen_line
+            listen_ssl = server[listen_ssl_at]
+            server = [line for line in server if not WEB_CONFIG__ipv6_tls_listen.match(line.strip())]
+            listen_ssl_at = server.index(listen_ssl) + 1
+            server[listen_ssl_at:listen_ssl_at] = [ipv6_listen]
+        placed_lines.extend(server)
+    return placed_lines
 
 
 def _merge_web_config(lines: list, new_data: str) -> list | None:
     # The lines of /etc/nginx/conf.d/jaaql.conf with the application's nginx config in place of each section from `charset` to the end
-    # of its server block (or `listen 443 ssl`), HTTP/3 in front of `listen 443 ssl` unless JAAQL_HTTP3 is FALSE, and no limit_req in the
-    # localhost server; None when that would lose the `listen 443 ssl` Certbot put in
+    # of its server block (or `listen 443 ssl`), HTTP/3 in front of `listen 443 ssl` unless JAAQL_HTTP3 is FALSE, one IPv6 TLS listen
+    # after it, and no limit_req in the localhost server; None when that would lose a TLS listen Certbot put in
     http3 = os.environ.get("JAAQL_HTTP3", "TRUE").upper() != "FALSE"
 
     # Strip our existing HTTP/3 directives so they can be cleanly re-added in the second pass, keeping whatever else their line holds
@@ -221,6 +252,9 @@ def _merge_web_config(lines: list, new_data: str) -> list | None:
         if stripped != line and stripped.strip() == "":
             continue
         stripped_lines.append(stripped)
+
+    # Before the section is replaced, so that an IPv6 TLS listen inside it is moved out instead of being replaced with it
+    stripped_lines = _place_ipv6_tls_listens(stripped_lines)
 
     # Initialize variables to track the current state and to store updated lines
     in_section = False
@@ -253,11 +287,13 @@ def _merge_web_config(lines: list, new_data: str) -> list | None:
         if not in_localhost or not line.strip().startswith("limit_req"):  # Ignore limit req for local requests
             second_iteration_updated_lines.append(line)
 
-    # Defensive: if the input had `listen 443 ssl` (Certbot installed it) but our output dropped it, refuse to write. Better to leave
-    # Certbot's working config in place than overwrite with a broken one
+    # Defensive: if the input had `listen 443 ssl` or `listen [::]:443 ssl` (Certbot installed them) but our output dropped one, refuse to
+    # write. Better to leave Certbot's working config in place than overwrite with a broken one
     input_had_ssl = any('listen 443 ssl' in line for line in lines)
     output_has_ssl = any('listen 443 ssl' in line for line in second_iteration_updated_lines)
-    if input_had_ssl and not output_has_ssl:
+    input_had_ipv6_ssl = any(WEB_CONFIG__ipv6_tls_listen.match(line.strip()) for line in lines)
+    output_has_ipv6_ssl = any(WEB_CONFIG__ipv6_tls_listen.match(line.strip()) for line in second_iteration_updated_lines)
+    if (input_had_ssl and not output_has_ssl) or (input_had_ipv6_ssl and not output_has_ipv6_ssl):
         return None
 
     return second_iteration_updated_lines
@@ -1514,7 +1550,7 @@ WHERE
 
             merged_lines = _merge_web_config(lines, new_data)
             if merged_lines is None:
-                print('set_web_config aborting: would have lost listen 443 ssl', file=sys.stderr)
+                print('set_web_config aborting: would have lost listen 443 ssl or listen [::]:443 ssl', file=sys.stderr)
                 return
 
             # Write the updated content back to the file
