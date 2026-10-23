@@ -34,6 +34,13 @@ ARG PYTHON_MAJOR_VERSION="3.14"
 ARG PYTHON_VERSION="${PYTHON_MAJOR_VERSION}.9"
 ARG PYTHON_SHA256="e02d9ac21cebda6e46435369744a92c65cc7cd8669697694122cf97ffacd1e53"
 ARG NGINX_VERSION="1.31.8"
+# The primary keys nginx.org's nginx_signing.key must hold, by fingerprint. nginx.org's install guide
+# for Debian (https://nginx.org/en/linux_packages.html) publishes 573BFD6B...BF62 ("nginx signing key",
+# rsa2048 of 2011, expires 2027-05-24) and says the file can hold other keys that sign the packages: the
+# rsa4096 keys of 2024-05-29 signing-key-2 (8540A6F1...6B46, which signs the trixie mainline repository)
+# and signing-key-3 (9E9BE90E...A2B3), each certified by 573BFD6B...BF62. nginx's official Docker image
+# (github.com/nginx/docker-nginx) trusts these same three
+ARG NGINX_SIGNING_FINGERPRINTS="573BFD6B3D8FBC641079A6ABABF5BD827BD9BF62 8540A6F18833A80E9C1653A42FD21310B49F6B46 9E9BE90EACBCDE69FE9B204CBCDCD8A38D88A2B3"
 ARG NODE_VERSION="24.22.1"
 ARG NODE_SHA256="6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6"
 
@@ -59,9 +66,16 @@ RUN apt-get update && apt-get -y upgrade && \
     apt-get install -y --no-install-recommends \
         curl gnupg2 ca-certificates lsb-release && \
 
-    ## import the signing key
-    curl -fsSL https://nginx.org/keys/nginx_signing.key \
-      | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg && \
+    ## import nginx.org's signing keys only if nginx_signing.key holds exactly the primary keys
+    ## NGINX_SIGNING_FINGERPRINTS names, and fail the build on any other set
+    curl -fsSL -o /tmp/nginx_signing.key https://nginx.org/keys/nginx_signing.key && \
+    mkdir -m 700 /tmp/nginx-gnupg && \
+    NGINX_KEYS="$(gpg --homedir /tmp/nginx-gnupg --batch --show-keys --with-colons /tmp/nginx_signing.key \
+      | awk -F: '$1 == "pub" { primary = 1; next } $1 == "fpr" && primary { print $10; primary = 0 }' | sort | xargs)" && \
+    if [ "$NGINX_KEYS" != "$(printf '%s\n' $NGINX_SIGNING_FINGERPRINTS | sort | xargs)" ]; then \
+      echo "nginx_signing.key holds the keys '$NGINX_KEYS', expected exactly $NGINX_SIGNING_FINGERPRINTS" >&2; exit 1; fi && \
+    gpg --homedir /tmp/nginx-gnupg --batch --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg /tmp/nginx_signing.key && \
+    rm -rf /tmp/nginx_signing.key /tmp/nginx-gnupg && \
 
     ## add the nginx.org *mainline* repo for this Debian release
     echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
