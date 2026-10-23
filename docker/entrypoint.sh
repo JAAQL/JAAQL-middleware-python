@@ -46,6 +46,38 @@ write_pg_hba() {
   echo "host all all all scram-sha-256" >> $1/pg_hba.conf
 }
 
+# Every database records the version of the C library collation its text indexes were sorted by. A volume
+# created under another glibc (bookworm's 2.36 booted on trixie's 2.41, or the other way round) keeps the old
+# version: postgres warns on every connection, CREATE DATABASE refuses such a database as its template, and an
+# index whose order the new library changes can miss rows. Rebuild the indexes of each such database, then
+# record the version it now matches. The ALTER runs only after the REINDEX succeeded, so a database leaves the
+# list only once it is consistent, and a failed or interrupted run is repeated on the next boot. template0
+# allows no connections and records no version, so it is never listed.
+refresh_collation_versions() {
+  until psql -U postgres -d postgres -c "select 1" > /dev/null 2>&1; do
+    echo "Waiting for postgres server"
+    sleep 1
+  done
+
+  if ! STALE_COLLATION_DBS="$(psql -U postgres -d postgres -X -A -t -F '|' -c "SELECT coalesce(datcollversion, ''), coalesce(pg_database_collation_actual_version(oid), ''), datname FROM pg_database WHERE datallowconn AND datcollversion IS DISTINCT FROM pg_database_collation_actual_version(oid) AND NOT pg_is_in_recovery() ORDER BY datname")"; then
+    echo "Could not compare the collation versions of the databases with the operating system's; not refreshing them" >&2
+    return 0
+  fi
+
+  printf '%s\n' "$STALE_COLLATION_DBS" | while IFS='|' read -r recorded_version actual_version db; do
+    if [ -z "$db" ]; then
+      continue
+    fi
+    echo "Database \"$db\" records collation version ${recorded_version:-(none)} but the operating system provides ${actual_version:-(none)}; rebuilding its indexes"
+    refresh_started=$(date +%s)
+    if printf '%s\n' 'SET statement_timeout = 0;' 'REINDEX DATABASE :"db";' 'ALTER DATABASE :"db" REFRESH COLLATION VERSION;' | PGDATABASE="$db" psql -U postgres -X -q -v ON_ERROR_STOP=1 -v db="$db"; then
+      echo "Rebuilt the indexes of database \"$db\" and recorded collation version ${actual_version:-(none)} in $(($(date +%s) - refresh_started)) s"
+    else
+      echo "Rebuilding the indexes of database \"$db\" failed; its collation version is left unchanged so the next boot tries again" >&2
+    fi
+  done
+}
+
 if [ -f /pki/ca.cert.pem ]; then
 	echo "Installing on-prem root CA from /pki/ca.cert.pem"
 	mkdir -p /usr/local/share/ca-certificates
@@ -469,6 +501,11 @@ stop_jaaql() {
 }
 
 trap stop_jaaql INT TERM
+
+# Before any service connects. A cluster this boot initialised was made by this image's C library
+if [ "$WAS_EMPTY" != "true" ]; then
+  refresh_collation_versions
+fi
 
 (
 	echo "TZ=$TZ"
