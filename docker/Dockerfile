@@ -1,4 +1,4 @@
-FROM postgres:18.4-bookworm
+FROM postgres:18.6-trixie
 LABEL maintainer="jaaql.io"
 
 ARG POSTGRES_VERSION="18"
@@ -27,9 +27,15 @@ ENV LANG en_GB.UTF-8
 ENV LANGUAGE en_GB:en
 ENV LC_ALL en_GB.UTF-8
 
-ARG CHROME_VERSION="137.0.7151.70"
+ARG CHROME_VERSION="156.0.8078.47"
+ARG CHROME_SHA256="e6c94490f0b6b337225aeb2d2a5034858516b7017356980ba94f5176d8774a50"
+ARG CHROMEDRIVER_SHA256="2a5024610c53f340a1aaa5d9a3e2a4fa448be7d71cca5238bd8c3c7f16181df4"
 ARG PYTHON_MAJOR_VERSION="3.14"
-ARG PYTHON_VERSION="${PYTHON_MAJOR_VERSION}.6"
+ARG PYTHON_VERSION="${PYTHON_MAJOR_VERSION}.9"
+ARG PYTHON_SHA256="e02d9ac21cebda6e46435369744a92c65cc7cd8669697694122cf97ffacd1e53"
+ARG NGINX_VERSION="1.31.8"
+ARG NODE_VERSION="24.22.1"
+ARG NODE_SHA256="6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6"
 
 VOLUME /etc/letsencrypt
 VOLUME $INSTALL_PATH/vault
@@ -40,9 +46,10 @@ COPY ./plpgsql_check /plpgsql_check
 
 COPY docker/75-emoji.conf /etc/fonts/conf.d/75-emoji.conf
 
-RUN apt-get update && apt-get install -y build-essential && apt update && \
+RUN apt-get update && apt-get -y upgrade && \
+    apt-get install -y build-essential && \
     apt install -y libpq-dev && \
-    apt-get install -y cron && \
+    apt-get install -y --no-install-recommends cron && \
     mkdir -p /etc/letsencrypt/live && \
     apt-get install -y --no-install-recommends \
         curl gnupg2 ca-certificates lsb-release && \
@@ -51,7 +58,7 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     curl -fsSL https://nginx.org/keys/nginx_signing.key \
       | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg && \
 
-    ## add the *mainline* repo for Debian 12 (“bookworm”)
+    ## add the nginx.org *mainline* repo for this Debian release
     echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
       http://nginx.org/packages/mainline/debian $(lsb_release -cs) nginx" \
       > /etc/apt/sources.list.d/nginx.list && \
@@ -59,12 +66,6 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     ## pin nginx.org above Debian’s copy so upgrades stay on the newer track
     printf 'Package: *\nPin: origin nginx.org\nPin-Priority: 900\n' \
       > /etc/apt/preferences.d/99nginx && \
-
-    ## LLVM apt repo: clang 19+ enables CPython's tail-call interpreter build
-    curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key \
-      | gpg --dearmor -o /usr/share/keyrings/llvm-archive-keyring.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-19 main" \
-      > /etc/apt/sources.list.d/llvm.list && \
 
     ## refresh metadata
     apt-get update && \
@@ -80,13 +81,14 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     mkdir -p /etc/fonts/conf.d && \
     fc-cache -f && \
 
-    ## install *exactly* 1.29.0 (pattern allows the “‑1~bookworm” suffix)
-    apt-get install -y --no-install-recommends nginx=1.29.0* && \
+    ## install exactly NGINX_VERSION for this Debian release, fail the build if apt resolved anything
+    ## else or the build lacks HTTP/3, and show the full build (OpenSSL, modules) in the build log
+    apt-get install -y --no-install-recommends nginx=${NGINX_VERSION}-1~$(lsb_release -cs) && \
+    nginx -v 2>&1 | grep -qx "nginx version: nginx/${NGINX_VERSION}" && \
+    nginx -V 2>&1 | grep -q -- "--with-http_v3_module" && \
+    nginx -V && \
 
-    ## show the version in the build log for sanity
-    nginx -v && \
-
-    ## clang 19 + llvm tooling (PGO/LTO) for the CPython build; purged after use.
+    ## clang 19 + llvm tooling (PGO/LTO) for the CPython build, from Debian main; purged after use.
     ## libclang-rt-19-dev supplies libclang_rt.profile.a, required by PGO instrumentation
     apt-get install -y --no-install-recommends clang-19 llvm-19 libclang-rt-19-dev && \
     ln -s /usr/bin/llvm-profdata-19 /usr/local/bin/llvm-profdata && \
@@ -101,16 +103,16 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     apt-get install -y --no-install-recommends postgresql-${OLD_POSTGRES_VERSION} \
       postgresql-server-dev-${POSTGRES_VERSION} postgresql-${POSTGRES_VERSION}-plpgsql-check && \
 
-    apt-get -y install libzbar0 && \
     apt-get -y install libbz2-dev && \
     apt-get install dos2unix && \
     apt -y install bzip2 && \
     apt -y install wget && \
     wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tar.xz && \
+    echo "${PYTHON_SHA256}  Python-${PYTHON_VERSION}.tar.xz" | sha256sum -c - && \
     tar xf Python-${PYTHON_VERSION}.tar.xz && \
     rm -rf Python-${PYTHON_VERSION}.tar.xz && \
     apt install build-essential zlib1g-dev -y \
-    libncurses5-dev libgdbm-dev libnss3-dev -y \
+    libncurses-dev libgdbm-dev libnss3-dev -y \
     libssl-dev libreadline-dev libffi-dev libbz2-dev curl -y && \
     cd /Python-${PYTHON_VERSION} && \
     CC=clang-19 CXX=clang++-19 ./configure --enable-optimizations --with-lto --with-tail-call-interp --disable-test-modules --without-doc-strings --prefix=/usr/local --with-ensurepip=install && \
@@ -119,20 +121,22 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     rm -rf /Python-${PYTHON_VERSION} && \
     $PY_PATH -m ensurepip --default-pip && \
     $PY_PATH -mpip install -U pip wheel && \
-    $PY_PATH -mpip install certbot-nginx==4.1.1 certbot==5.7.0 acme==5.7.0 cryptography==44.0.2 && \
+    $PY_PATH -mpip install certbot==5.8.0 certbot-nginx==5.8.0 acme==5.8.0 cryptography==50.0.2 pyOpenSSL==26.4.0 && \
     apt-get install unzip && \
     wget --no-verbose -O /tmp/chrome.zip https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-linux64.zip && \
+    echo "${CHROME_SHA256}  /tmp/chrome.zip" | sha256sum -c - && \
     unzip /tmp/chrome.zip -d /opt/ && \
     ln -s /opt/chrome-linux64/chrome /usr/bin/google-chrome && \
     rm /tmp/chrome.zip && \
     wget -N https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chromedriver-linux64.zip -P ~/ && \
+    echo "${CHROMEDRIVER_SHA256}  $HOME/chromedriver-linux64.zip" | sha256sum -c - && \
     unzip ~/chromedriver-linux64.zip -d ~/ && \
     rm ~/chromedriver-linux64.zip && \
     mv -f ~/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver && \
     rm -rf ~/chromedriver-linux64 && \
     chown root:root /usr/local/bin/chromedriver && \
     chmod 0755 /usr/local/bin/chromedriver && \
-    apt-get install -y gstreamer1.0-libav libnss3-tools libatk-bridge2.0-0 libcups2-dev libxkbcommon-x11-0 libxcomposite-dev libxrandr2 libgbm-dev libgtk-3-0 && \
+    apt-get install -y gstreamer1.0-libav libnss3-tools libatk-bridge2.0-0t64 libcups2-dev libxkbcommon-x11-0 libxcomposite-dev libxrandr2 libgbm-dev libgtk-3-0t64 && \
     apt-get install -y xvfb && \
     DEBIAN_FRONTEND=noninteractive apt-get -y install xorg xvfb gtk2-engines-pixbuf && \
     apt-get -y install dbus-x11 xfonts-base xfonts-100dpi xfonts-75dpi xfonts-scalable && \
@@ -185,13 +189,16 @@ RUN apt-get update && apt-get install -y build-essential && apt update && \
     apt-get -y install locales && \
     sed -i '/en_GB.UTF-8/s/^# //g' /etc/locale.gen && \
     locale-gen && \
-    curl -fsSL https://nodejs.org/dist/v20.12.0/node-v20.12.0-linux-x64.tar.xz | tar -xJf - -C /usr/local --strip-components=1
+    curl -fsSLo /tmp/node.tar.xz https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz && \
+    echo "${NODE_SHA256}  /tmp/node.tar.xz" | sha256sum -c - && \
+    tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 && \
+    rm /tmp/node.tar.xz
 
 COPY requirements.txt $INSTALL_PATH/requirements.txt
 
 RUN sed -i 's/\[binary\]/[c]/g' $INSTALL_PATH/requirements.txt && \
     $PY_PATH -mpip install -r $INSTALL_PATH/requirements.txt && \
-    apt-get purge -y --auto-remove build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev libbz2-dev unzip bzip2 wget clang-19 llvm-19 libclang-rt-19-dev postgresql-server-dev-${POSTGRES_VERSION} && \
+    apt-get purge -y --auto-remove build-essential zlib1g-dev libncurses-dev libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev libbz2-dev unzip bzip2 wget clang-19 llvm-19 libclang-rt-19-dev postgresql-server-dev-${POSTGRES_VERSION} && \
     rm -f /usr/local/bin/llvm-profdata /usr/local/bin/llvm-ar /usr/local/bin/llvm-ranlib /usr/local/bin/llvm-nm && \
     apt-get autoremove --purge -y && \
     apt-get clean && \
