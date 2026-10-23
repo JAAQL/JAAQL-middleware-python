@@ -210,18 +210,26 @@ RUN sed -i 's/\[binary\]/[c]/g' $INSTALL_PATH/requirements.txt && \
     apt-get autoremove --purge -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /var/tmp/* /tmp/* && \
-    ## fail the build while any trust store in the image still accepts the compromised eMudhra root
-    ## "emSign ECC Root CA - G3" (SHA-256 86A1ECBA...6BBE6B): the system store (OpenSSL, curl, libpq,
-    ## Python's ssl), certifi (requests, certbot) and Node's bundled roots (BATON cloud procedures).
-    ## EMSIGN_G3 is the first base64 line of its PEM; ISRG_X1 is that of ISRG Root X1, which must be
-    ## found, so a store that could not be read cannot pass for a clean one
+    ## fail the build while any trust store in the image still accepts a root the compromised eMudhra
+    ## intermediates chain to: "emSign ECC Root CA - G3" (SHA-256 86A1ECBA...6BBE6B), or "AAA Certificate
+    ## Services" (Comodo AAA Services root, SHA-256 D7A7A0FB...699EF4), the Sectigo root that cross-signed
+    ## the same keys, which ca-certificates 20250419+deb13u1 blocklists too. The stores: the system bundle
+    ## and /etc/ssl/certs beside it, the CApath that OpenSSL and Python's ssl also look in, by file name and
+    ## by hash link (OpenSSL, curl, libpq, Python's ssl); certifi (requests, certbot); pip's own copy of
+    ## certifi; and Node's bundled roots (BATON cloud procedures). EMSIGN_G3 and COMODO_AAA are the first
+    ## base64 lines of their PEMs; ISRG_X1 is that of ISRG Root X1, which must be found, so a store that
+    ## could not be read cannot pass for a clean one. grep -R answers 1 only when it read every file there
+    ## and none matched
     EMSIGN_G3=MIICTjCCAdOgAwIBAgIKPPYHqWhwDtqLhDAKBggqhkjOPQQDAzBrMQswCQYDVQQG && \
+    COMODO_AAA=MIIEMjCCAxqgAwIBAgIBATANBgkqhkiG9w0BAQUFADB7MQswCQYDVQQGEwJHQjEb && \
     ISRG_X1=MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw && \
     dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge 20250419+deb13u1 && \
     grep -q "$ISRG_X1" /etc/ssl/certs/ca-certificates.crt && \
-    ! grep -q "$EMSIGN_G3" /etc/ssl/certs/ca-certificates.crt && \
-    $PY_PATH -I -c "import certifi, sys; pem = open(certifi.where()).read(); sys.exit(0 if '$ISRG_X1' in pem and '$EMSIGN_G3' not in pem else 1)" && \
-    node -e "const roots = require('tls').rootCertificates; process.exit(roots.some(c => c.includes('$ISRG_X1')) && !roots.some(c => c.includes('$EMSIGN_G3')) ? 0 : 1)" && \
+    grep -q "$ISRG_X1" /etc/ssl/certs/ISRG_Root_X1.pem && \
+    { grep -Rqs -e "$EMSIGN_G3" -e "$COMODO_AAA" /etc/ssl/certs/; [ $? -eq 1 ]; } && \
+    [ -z "$(find /etc/ssl/certs/ -iname 'emSign_ECC_Root_CA_-_G3*' -o -iname 'Comodo_AAA*')" ] && \
+    $PY_PATH -I -c "import certifi, pip._vendor.certifi, sys; pems = [open(where()).read() for where in (certifi.where, pip._vendor.certifi.where)]; sys.exit(0 if all('$ISRG_X1' in pem and '$EMSIGN_G3' not in pem and '$COMODO_AAA' not in pem for pem in pems) else 1)" && \
+    node -e "const roots = require('tls').rootCertificates; process.exit(roots.some(c => c.includes('$ISRG_X1')) && !roots.some(c => c.includes('$EMSIGN_G3') || c.includes('$COMODO_AAA')) ? 0 : 1)" && \
     grep -q "$EMSIGN_G3" /etc/opt/chrome_for_testing/policies/managed/distrust-emudhra.json
 
 COPY . $INSTALL_PATH
