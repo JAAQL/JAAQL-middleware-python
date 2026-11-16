@@ -1,14 +1,24 @@
-# postgres:18.6-trixie as Docker Hub published it on 2026-10-21: the digest of its multi-arch index, whose
-# linux/amd64 image (sha256:9770878138a2e83abcb10856d30cc3f24dae0d317bb956db6ab9159de6c3c80d) is the
-# base the 5.3.25 release candidate was built and verified on. With a digest the tag is only a label, so
-# every build, --pull included, starts from this base until the digest here changes
-FROM postgres:18.6-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
+# postgres:18.7-trixie as Docker Hub publishes it for the PostgreSQL security release of 2026-11-12: the
+# digest of its multi-arch index (docker-library/postgres 185fae3, 18/trixie), whose linux/amd64 image
+# (sha256:c7fedce47eff6a78cb35dad6b627f0d684107f75ab15c0870e40c093766ba452, config
+# sha256:3cccc725163a95947178f4da5e9bf16add75cb286170ac5a2cd2f6513534955d) carries postgresql-18
+# 18.7-1.pgdg13+2 on libc6 2.41-12+deb13u4. With a digest the tag is only a label, so every build,
+# --pull included, starts from this base until the digest here changes
+FROM postgres:18.7-trixie@sha256:2ea8630df176ad090ec92136dee850397c5af8781e4bcf2e4162593691c61bbc
 LABEL maintainer="jaaql.io"
 
 ARG POSTGRES_VERSION="18"
 # Old volumes hold clusters of this version; its binaries are kept in the image so the
 # entrypoint can pg_upgrade them in place
 ARG OLD_POSTGRES_VERSION="16"
+# The first PGDG builds that carry the fixes of the 2026-11-12 security release (CVE-2026-6460 and 51
+# more). CVE-2026-6460's composite-type versioning protects only C code compiled against the new
+# headers, so the PGDG plpgsql_check must be its rebuild against them (2.10.16-1.pgdg13+2, which
+# depends on postgresql-18 >> 18.7) and the jaaql extension, compiled below, needs the dev headers
+# of exactly the server the image runs; the build fails on anything older
+ARG POSTGRES_MIN_PACKAGE="18.7-1.pgdg13+2"
+ARG OLD_POSTGRES_MIN_PACKAGE="16.16-1.pgdg13+1"
+ARG PLPGSQL_CHECK_MIN_PACKAGE="2.10.16-1.pgdg13+2"
 
 # The postgres 18 image moved its default data directory to /var/lib/postgresql/18/docker;
 # pin the pre-18 path so existing volume mounts keep working
@@ -128,6 +138,18 @@ RUN apt-get update && apt-get -y upgrade && \
     echo "create_main_cluster = false" > /etc/postgresql-common/createcluster.d/jaaql-no-main.conf && \
     apt-get install -y --no-install-recommends postgresql-${OLD_POSTGRES_VERSION} \
       postgresql-server-dev-${POSTGRES_VERSION} postgresql-${POSTGRES_VERSION}-plpgsql-check && \
+    ## fail unless the server, plpgsql_check and the old cluster's binaries are at least the builds of the
+    ## 2026-11-12 security release and the dev headers the jaaql extension is compiled with are exactly
+    ## the server's, and show what was installed in the build log
+    PG_PKG="$(dpkg-query -W -f='${Version}' postgresql-${POSTGRES_VERSION})" && \
+    PG_DEV_PKG="$(dpkg-query -W -f='${Version}' postgresql-server-dev-${POSTGRES_VERSION})" && \
+    PLPGSQL_CHECK_PKG="$(dpkg-query -W -f='${Version}' postgresql-${POSTGRES_VERSION}-plpgsql-check)" && \
+    OLD_PG_PKG="$(dpkg-query -W -f='${Version}' postgresql-${OLD_POSTGRES_VERSION})" && \
+    echo "postgresql-${POSTGRES_VERSION} $PG_PKG, postgresql-server-dev-${POSTGRES_VERSION} $PG_DEV_PKG, postgresql-${POSTGRES_VERSION}-plpgsql-check $PLPGSQL_CHECK_PKG, postgresql-${OLD_POSTGRES_VERSION} $OLD_PG_PKG" && \
+    if ! dpkg --compare-versions "$PG_PKG" ge "${POSTGRES_MIN_PACKAGE}" || [ "$PG_DEV_PKG" != "$PG_PKG" ] || \
+       ! dpkg --compare-versions "$PLPGSQL_CHECK_PKG" ge "${PLPGSQL_CHECK_MIN_PACKAGE}" || \
+       ! dpkg --compare-versions "$OLD_PG_PKG" ge "${OLD_POSTGRES_MIN_PACKAGE}"; then \
+      echo "expected postgresql-${POSTGRES_VERSION} >= ${POSTGRES_MIN_PACKAGE} with dev headers of the same version, postgresql-${POSTGRES_VERSION}-plpgsql-check >= ${PLPGSQL_CHECK_MIN_PACKAGE} and postgresql-${OLD_POSTGRES_VERSION} >= ${OLD_POSTGRES_MIN_PACKAGE}" >&2; exit 1; fi && \
 
     apt-get -y install libbz2-dev && \
     apt-get install dos2unix && \
