@@ -479,12 +479,15 @@ def _run_folder_migration(folder_path: str, folder_name: str,
         "postgres", app_database,
     )
 
+    # public is re-created as a new database has it: owned by pg_database_owner, so that the database's owner (dba) creates
+    # the model in it, and USAGE without CREATE for every other role
     drop_recreate = (
         "SET search_path = public, pg_catalog; "
         "DROP EXTENSION IF EXISTS plpgsql_check; "
         "DROP SCHEMA IF EXISTS public CASCADE; "
-        "CREATE SCHEMA public; "
-        "GRANT USAGE, CREATE ON SCHEMA public TO PUBLIC; "
+        "CREATE SCHEMA public AUTHORIZATION pg_database_owner; "
+        "COMMENT ON SCHEMA public IS 'standard public schema'; "
+        "GRANT USAGE ON SCHEMA public TO PUBLIC; "
         "CREATE EXTENSION IF NOT EXISTS plpgsql_check SCHEMA public; "
     )
     for ext in public_extensions:
