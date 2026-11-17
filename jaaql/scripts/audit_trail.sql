@@ -6,8 +6,11 @@
 -- the columns that changed, and an UPDATE that changes nothing is not recorded. Columns that hold secrets (passwords, hashes,
 -- tokens, keys, ciphertext; see audit.is_withheld, and audit.withheld_column for more) are never copied: the log shows
 -- "(withheld)" instead, and a withheld column that is part of the primary key appears in row_key as a salted hash. A bulk load
--- with COPY by a role that may read server files (dba, a superuser) is recorded as one LOAD row with the row count, because those
--- are the reference and test data an install loads from the model. Reads are not recorded.
+-- by a role that may read server files (dba, a superuser) is recorded as one LOAD row with the row count: a COPY, which is how an
+-- install loads the reference and test data of the model, and the reload of a wipe-and-reload migration, which puts back every
+-- row it saved in migration.*_json. Recorded row by row, that reload would copy the whole database into the log at every release,
+-- and an erasure, which follows a row back to its INSERT, would stop at the reload and keep the history before it. Reads are not
+-- recorded.
 --
 -- The schema is outside public, so a DROP SCHEMA public CASCADE (a FIESTA wipe-and-reload migration) leaves it and its rows
 -- alone. The event trigger audit_attach attaches the triggers to every table that is created or altered, and audit_reattach puts
@@ -141,8 +144,9 @@ LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $body$
         || convert_to(args[2], current_setting('server_encoding')) || '\x00'::bytea
 $body$;
 
--- A COPY by a role that may read server files, which is what an install or a wipe-and-reload migration does to load the data
--- of a model; no application user can do it. Called only when the statement text starts with COPY
+-- A role that may read server files: dba or a superuser, who load the data of a model in an install (COPY) and in a
+-- wipe-and-reload migration (INSERT ... SELECT from migration.*_json); no application user is one. Called only for those
+-- two kinds of statement
 CREATE OR REPLACE FUNCTION audit.is_bulk_loader() RETURNS boolean
 LANGUAGE sql STABLE AS $body$
     SELECT coalesce((SELECT R.rolsuper FROM pg_catalog.pg_roles R WHERE R.rolname = session_user), false)
@@ -233,7 +237,8 @@ BEGIN
     END IF;
 
     IF TG_OP = 'INSERT' THEN
-        IF left(current_query(), 4000) ~* '^\s*((--[^\n]*\n|/\*.*?\*/)\s*)*copy\s' AND audit.is_bulk_loader() THEN
+        IF (left(current_query(), 4000) ~* '^\s*((--[^\n]*\n|/\*.*?\*/)\s*)*copy\s' OR current_query() ~* '\mfrom\s+migration\.\w+_json\M')
+           AND audit.is_bulk_loader() THEN
             SELECT count(*) INTO loaded FROM new_rows;
             INSERT INTO audit.record_change (table_name, operation, new_values) VALUES (tname, 'LOAD', jsonb_build_object('rows', loaded));
             RETURN NULL;

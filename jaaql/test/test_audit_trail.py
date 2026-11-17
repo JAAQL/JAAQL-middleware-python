@@ -1,6 +1,6 @@
 """
 The audit trail of record changes (jaaql/scripts/audit_trail.sql) that JAAQL installs into every application database: who changed
-which row of which table, when, with the old and new values; secret columns withheld (and hashed in a key); COPY loads summarised;
+which row of which table, when, with the old and new values; secret columns withheld (and hashed in a key); COPY loads and a migration's reload summarised;
 the history of erased rows deleted; records purged after keep_changes and rows after their retention rule; none of it readable or
 writable by an application user; and nothing a table owner adds running as a superuser inside it.
 
@@ -226,6 +226,55 @@ class TestAuditTrail(unittest.TestCase):
             self.conn.execute("RESET SESSION AUTHORIZATION")
         self.assertEqual(self.changes("person"), [(self.conn.info.user, "public.person", "LOAD", None, None, {"rows": 250})])
         self.assertEqual([c[2:4] for c in self.changes("service")], [("INSERT", {"code": "2op2"}), ("INSERT", {"code": "3op3"})])
+
+    def test_the_reload_of_a_migration_is_one_load_row_and_an_erasure_still_reaches_back_past_it(self):
+        # what FIESTA's migrate.dynamic_data.01.pre-wipe and 02.post-structure do, as dba: save every row in migration.*_json,
+        # drop public, re-create the model, put the rows back with INSERT ... SELECT from migration.*_json
+        self.as_role(ALICE, "INSERT INTO person (name, email) VALUES ('Before Reload', 'before@example.test'), ('Stays', NULL)")
+        self.as_role(BOB, "UPDATE person SET name = 'Before Reload 2' WHERE id = 1")
+        self.as_role(ALICE, "INSERT INTO lesson (person, at, note) VALUES (1, '2026-01-05', 'lesson before reload'), (2, '2026-01-05', NULL)")
+        try:
+            self.conn.execute("CREATE SCHEMA migration")
+            self.conn.execute("CREATE TABLE migration.person_json AS SELECT to_jsonb(P.*) AS row_json FROM public.person P")
+            self.conn.execute("CREATE TABLE migration.lesson_json AS SELECT to_jsonb(L.*) AS row_json FROM public.lesson L")
+            self.conn.execute("DROP SCHEMA public CASCADE")
+            self.conn.execute("CREATE SCHEMA public")
+            self.conn.execute(SCHEMA)
+            self.conn.execute("""DO $post$
+BEGIN
+    insert into public.person (id, name, email)
+    select (row_json->>'id')::integer, row_json->>'name', row_json->>'email'
+    from migration.person_json;
+    insert into public.lesson (id, person, at, note)
+    select (row_json->>'id')::integer, (row_json->>'person')::integer, (row_json->>'at')::date, row_json->>'note'
+    from migration.lesson_json;
+END $post$""")
+        finally:
+            self.conn.execute("DROP SCHEMA IF EXISTS migration CASCADE")
+        self.conn.execute("SELECT setval('person_id_seq', 2)")
+        self.assertEqual([c[1:] for c in self.changes() if c[0] == self.conn.info.user], [
+            ("public.person", "LOAD", None, None, {"rows": 2}), ("public.lesson", "LOAD", None, None, {"rows": 2})])
+        self.as_role(BOB, "UPDATE person SET name = 'After Reload' WHERE id = 1")
+        with self.conn.transaction():
+            self.conn.execute("SELECT audit.begin_erasure('erasure request E-3')")
+            self.conn.execute("DELETE FROM person WHERE id = 1")
+        everything = self.everything()
+        for gone in ("Before Reload", "before@example.test", "After Reload", "lesson before reload"):
+            self.assertNotIn(gone, everything)
+        self.assertIn("Stays", everything)
+
+    def test_an_insert_from_migration_tables_is_itemised_unless_an_installer_reloads(self):
+        try:
+            self.conn.execute("CREATE SCHEMA migration")
+            self.conn.execute("CREATE TABLE migration.person_json AS SELECT jsonb_build_object('name', 'From JSON') AS row_json")
+            self.conn.execute("GRANT USAGE ON SCHEMA migration TO PUBLIC")
+            self.conn.execute("GRANT SELECT ON migration.person_json TO PUBLIC")
+            self.as_role(ALICE, "INSERT INTO person (name) SELECT row_json->>'name' FROM migration.person_json")
+        finally:
+            self.conn.execute("DROP SCHEMA IF EXISTS migration CASCADE")
+        self.conn.execute("INSERT INTO service VALUES ('fix', 'a fix by an operator')")
+        self.assertEqual([c[:3] for c in self.changes()], [
+            (ALICE, "public.person", "INSERT"), (self.conn.info.user, "public.service", "INSERT")])
 
     def test_erasure_deletes_the_history_of_the_row_and_of_what_cascades(self):
         self.as_role(ALICE, "INSERT INTO person (name, email) VALUES ('Erase Me', 'erase@example.test'), ('Keep Me', 'keep@example.test')")
