@@ -81,6 +81,10 @@ BEGIN
         PERFORM dblink_exec('dbname=' || database, 'GRANT USAGE ON SCHEMA federation TO jaaql;');
         PERFORM dblink_exec('dbname=' || database, 'GRANT SELECT, INSERT, UPDATE ON federation.account TO jaaql;');
         PERFORM dblink_exec('dbname=' || database, 'GRANT SELECT, INSERT, UPDATE ON federation.federated_user TO jaaql;');
+
+        -- Audit trail of record changes (scripts/audit_trail.sql): schema audit, outside public, with an event trigger that
+        -- attaches it to every table created from here on. The container entrypoint brings existing databases up to date at boot
+        PERFORM dblink_exec('dbname=' || database, audit_trail_install_script());
     else
         raise notice 'You do not own this database'
                  'You cannot install the jaaql extension';

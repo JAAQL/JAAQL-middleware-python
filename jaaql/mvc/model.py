@@ -90,6 +90,23 @@ ERR__web_config_not_reloaded = "nginx -t accepted the merged web config, now in 
 
 PG__default_connection_string = "postgresql://postgres:%s@localhost:5432/jaaql"
 DIR__scripts = "scripts"
+FILE__audit_trail = "audit_trail.sql"
+TAG__audit_trail_function = "$jaaql_audit_trail_function$"
+TAG__audit_trail_script = "$jaaql_audit_trail_script$"
+
+
+def audit_trail_install_function() -> str:
+    # configure_database_for_use_with_jaaql installs the audit trail (scripts/audit_trail.sql) into each new application database
+    # through dblink, so the jaaql database keeps the script as the result of a function. Installed with the other superuser
+    # scripts, which run on a fresh cluster and after every wipe, i.e. before any application database is created
+    with open(join(get_jaaql_root(), DIR__scripts, FILE__audit_trail), encoding="utf-8") as file:
+        script = file.read()
+    if TAG__audit_trail_function in script or TAG__audit_trail_script in script:
+        raise Exception("The audit trail script must not contain " + TAG__audit_trail_function + " or " + TAG__audit_trail_script)
+    return ("CREATE OR REPLACE FUNCTION audit_trail_install_script() RETURNS text LANGUAGE sql IMMUTABLE AS " + TAG__audit_trail_function +
+            " SELECT " + TAG__audit_trail_script + script + TAG__audit_trail_script + "::text " + TAG__audit_trail_function + "; "
+            "REVOKE ALL ON FUNCTION audit_trail_install_script() FROM PUBLIC;")
+
 
 # The failures verifying a JARM response that are the server's, reported though the login is answered with its redirect
 # (jaaql/utilities/server_errors.py): Keycloak's keys out of reach, and a response Keycloak signed (the signature is verified first) for
@@ -1706,6 +1723,7 @@ WHERE
             super_interface.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "01.install_domains.generated.sql"))
             super_interface.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "02.install_super_user.exceptions.sql"))
             super_interface.execute_script_file(conn, join(get_jaaql_root(), DIR__scripts, "03.install_super_user.handwritten.sql"))
+            super_interface.execute_query(conn, audit_trail_install_function())
             if jaaql_db_password is not None:
                 super_interface.execute_query(conn, QUERY__setup_jaaql_role_with_password, {KEY__password: jaaql_db_password})
             else:

@@ -201,6 +201,36 @@ update_plpgsql_check() {
   done
 }
 
+# Every application database carries the audit trail of record changes (jaaql/scripts/audit_trail.sql, schema audit). A new
+# database gets it from configure_database_for_use_with_jaaql; this brings every existing one up to date at boot, before any
+# service connects: it installs the schema where it is missing, replaces its functions with this image's and attaches the
+# triggers to any table that lacks them. Each database is done in one transaction; a failure is logged and the next boot
+# tries again. The jaaql database and postgres are not application databases
+AUDIT_TRAIL__sql="$INSTALL_PATH/jaaql/scripts/audit_trail.sql"
+
+install_audit_trail() {
+  until psql -U postgres -d postgres -c "select 1" > /dev/null 2>&1; do
+    echo "Waiting for postgres server"
+    sleep 1
+  done
+
+  if ! AUDIT_TRAIL_DBS="$(psql -U postgres -d postgres -X -A -t -c "SELECT datname FROM pg_database WHERE datallowconn AND NOT datistemplate AND datname NOT IN ('postgres', 'jaaql') AND NOT pg_is_in_recovery() ORDER BY datname")"; then
+    echo "Could not list the databases to install the audit trail into; not installing it" >&2
+    return 0
+  fi
+
+  printf '%s\n' "$AUDIT_TRAIL_DBS" | while IFS= read -r db; do
+    if [ -z "$db" ]; then
+      continue
+    fi
+    if coverage="$(PGDATABASE="$db" PGOPTIONS='-c client_min_messages=warning' psql -U postgres -X -q -A -t -1 -v ON_ERROR_STOP=1 -f "$AUDIT_TRAIL__sql" -c "SELECT count(*) FILTER (WHERE status = 'audited') || ' of ' || count(*) || ' tables audited, ' || count(*) FILTER (WHERE status = 'excluded') || ' excluded' FROM audit.coverage")"; then
+      echo "Audit trail of database \"$db\" is up to date: $coverage"
+    else
+      echo "Installing the audit trail into database \"$db\" failed; the next boot tries again" >&2
+    fi
+  done
+}
+
 if [ -f /pki/ca.cert.pem ]; then
 	echo "Installing on-prem root CA from /pki/ca.cert.pem"
 	mkdir -p /usr/local/share/ca-certificates
@@ -315,6 +345,8 @@ service cron start
 
 CRON_FILE=/etc/cron.d/jaaql_cron
 echo "* * * * * root curl -fsS --retry 3 --max-time 20 http://127.0.0.1/api/cron >/dev/null 2>&1" > "$CRON_FILE"
+# Nightly: records of the audit trail older than 24 months and the rows of its retention rules (docker/audit_purge.sh)
+echo "17 3 * * * root sh $INSTALL_PATH/docker/audit_purge.sh >> $INSTALL_PATH/log/audit_purge.log 2>&1" >> "$CRON_FILE"
 chmod 0644 "$CRON_FILE"
 service cron reload
 
@@ -635,6 +667,7 @@ if [ "$WAS_EMPTY" != "true" ]; then
   refresh_collation_versions
   update_plpgsql_check
 fi
+install_audit_trail
 
 (
 	echo "TZ=$TZ"
@@ -667,12 +700,12 @@ if [ "$SKIP_EMAIL_SERVICE" = "TRUE" ]; then
 	echo "Skipping email service (SKIP_EMAIL_SERVICE=TRUE)"
 elif [ -f /pki/ca.cert.pem ]; then
 	echo "Starting patch_ems.py with IGNORE_CERTS=TRUE"
-	IGNORE_CERTS=TRUE $PY_PATH /JAAQL-middleware-python/jaaql/email/patch_ems.py &> $LOG_FILE_EMAILS &
+	IGNORE_CERTS=TRUE $PY_PATH /JAAQL-middleware-python/jaaql/email/patch_ems.py > $LOG_FILE_EMAILS 2>&1 &
 else
-	$PY_PATH /JAAQL-middleware-python/jaaql/email/patch_ems.py &> $LOG_FILE_EMAILS &
+	$PY_PATH /JAAQL-middleware-python/jaaql/email/patch_ems.py > $LOG_FILE_EMAILS 2>&1 &
 fi
-$PY_PATH /JAAQL-middleware-python/jaaql/services/patch_mms.py &> $LOG_FILE_MIGRATIONS &
-$PY_PATH /JAAQL-middleware-python/jaaql/services/patch_shared_var_service.py &> $LOG_FILE_SHARED_VAR_SERVICE &
+$PY_PATH /JAAQL-middleware-python/jaaql/services/patch_mms.py > $LOG_FILE_MIGRATIONS 2>&1 &
+$PY_PATH /JAAQL-middleware-python/jaaql/services/patch_shared_var_service.py > $LOG_FILE_SHARED_VAR_SERVICE 2>&1 &
 
 echo "from jaaql.patch import monkey_patch" >> wsgi_patch.py
 echo "monkey_patch()" >> wsgi_patch.py
