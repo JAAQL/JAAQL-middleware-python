@@ -77,7 +77,7 @@ KEY__attachment_application = "application"
 KEY__template_base = "template_base"
 
 
-QUERY__purge_rendered_documents = "DELETE FROM document_request rd USING document_template able WHERE rd.template = able.name AND completed is not null and completed > current_timestamp + interval '5 minutes' RETURNING rd.uuid as document_id, rd.create_file, 'pdf' as render_as"
+QUERY__purge_rendered_documents = "DELETE FROM document_request rd USING document_template able WHERE rd.template = able.name AND completed is not null and completed < current_timestamp - interval '5 minutes' RETURNING rd.uuid as document_id, rd.create_file, 'pdf' as render_as"
 QUERY__fetch_unrendered_document = "SELECT able.content_path as url, a.base_url, 'pdf' as render_as, rd.uuid as document_id, rd.encrypted_parameters as parameters, rd.create_file, rd.encrypted_access_token as oauth_token FROM document_request rd INNER JOIN document_template able ON rd.template = able.name INNER JOIN application a ON rd.application = a.name WHERE rd.completed is null ORDER BY rd.request_timestamp LIMIT 1"
 QUERY__mark_rendered_document_completed = "UPDATE document_request SET completed = current_timestamp, file_name = :file_name, content = :content WHERE uuid = :document_id"
 QUERY__mark_rendered_document_completed_with_error = "UPDATE document_request SET completed = current_timestamp WHERE uuid = :document_id"
