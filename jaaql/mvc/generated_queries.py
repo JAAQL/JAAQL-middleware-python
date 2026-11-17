@@ -223,16 +223,19 @@ KG__email_dispatcher__port = "port"
 KG__email_dispatcher__username = "username"
 KG__email_dispatcher__password = "password"
 KG__email_dispatcher__whitelist = "whitelist"
+KG__email_dispatcher__from_address = "from_address"
 
 # Generated queries for table 'email_dispatcher'
 QG__email_dispatcher_delete = "DELETE FROM email_dispatcher WHERE application = :application AND name = :name"
 QG__email_dispatcher_insert = """
     INSERT INTO email_dispatcher (application, name, display_name,
         protocol, url, port,
-        username, password, whitelist)
+        username, password, whitelist,
+        from_address)
     VALUES (:application, :name, :display_name,
         :protocol, :url, :port,
-        :username, :password, :whitelist)
+        :username, :password, :whitelist,
+        :from_address)
 """
 QG__email_dispatcher_select_all = "SELECT * FROM email_dispatcher"
 QG__email_dispatcher_select = "SELECT * FROM email_dispatcher WHERE application = :application AND name = :name"
@@ -246,7 +249,8 @@ QG__email_dispatcher_update = """
         port = COALESCE(:port, port),
         username = COALESCE(:username, username),
         password = COALESCE(:password, password),
-        whitelist = COALESCE(:whitelist, whitelist)
+        whitelist = COALESCE(:whitelist, whitelist),
+        from_address = COALESCE(:from_address, from_address)
     WHERE
         application = :application AND name = :name
 """
@@ -272,7 +276,7 @@ def email_dispatcher__update(
     application, name,
     display_name=None, protocol=None, url=None,
     port=None, username=None, password=None,
-    whitelist=None,
+    whitelist=None, from_address=None,
     encryption_salts=None
 ):
     execute_supplied_statement(
@@ -289,7 +293,8 @@ def email_dispatcher__update(
             KG__email_dispatcher__port: port,
             KG__email_dispatcher__username: username,
             KG__email_dispatcher__password: password,
-            KG__email_dispatcher__whitelist: whitelist
+            KG__email_dispatcher__whitelist: whitelist,
+            KG__email_dispatcher__from_address: from_address
         }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
             KG__email_dispatcher__password
         ]
@@ -330,6 +335,7 @@ def email_dispatcher__insert(
     application, name, display_name,
     protocol=None, url=None, port=None,
     username=None, password=None, whitelist=None,
+    from_address=None,
     encryption_salts=None
 ):
     execute_supplied_statement(
@@ -343,7 +349,8 @@ def email_dispatcher__insert(
             KG__email_dispatcher__port: port,
             KG__email_dispatcher__username: username,
             KG__email_dispatcher__password: password,
-            KG__email_dispatcher__whitelist: whitelist
+            KG__email_dispatcher__whitelist: whitelist,
+            KG__email_dispatcher__from_address: from_address
         }, encryption_key=encryption_key, encryption_salts=encryption_salts, encrypt_parameters=[
             KG__email_dispatcher__password
         ]

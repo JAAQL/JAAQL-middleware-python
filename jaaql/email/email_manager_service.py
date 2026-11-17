@@ -15,7 +15,7 @@ from urllib.parse import quote
 from jaaql.exceptions.http_status_exception import HttpStatusException
 from jaaql.utilities.utils import load_config, await_jaaql_installation, get_jaaql_connection
 from jaaql.utilities.utils_no_project_imports import check_allowable_file_path, time_delta_ms
-from email.utils import formatdate, make_msgid
+from email.utils import formatdate, make_msgid, formataddr
 from smtplib import SMTP, SMTPException, SMTPAuthenticationError
 import base64
 from base64 import urlsafe_b64encode as b64e
@@ -809,6 +809,11 @@ class EmailManagerService:
 
         self.driven_chrome = DrivenChrome(connection, self.db_crypt_key, self.is_gunicorn)
 
+    @staticmethod
+    def sender_address(dispatcher_info: dict) -> str:
+        # Transactional mail services log in with a generated username that is not an address
+        return dispatcher_info.get(KG__email_dispatcher__from_address) or dispatcher_info[KG__email_dispatcher__username]
+
     def construct_message(self, dispatcher_info: dict, email: Email) -> (str, MIMEMultipart):
         send_body = email.body
 
@@ -826,7 +831,7 @@ class EmailManagerService:
         send_name = dispatcher_info[KG__email_dispatcher__display_name]
         if email.override_send_name is not None:
             send_name = email.override_send_name
-        message_final[EMAIL__from] = send_name + " <" + dispatcher_info[KG__email_dispatcher__username] + ">"
+        message_final[EMAIL__from] = formataddr((send_name, self.sender_address(dispatcher_info)))
         message_final[EMAIL__subject] = email.subject
         message_final[EMAIL__date] = formatdate()
         message_final[EMAIL__message_id] = make_msgid()
@@ -952,13 +957,14 @@ class EmailManagerService:
         formatted_body, to_send = self.construct_message(dispatcher_info, email)
 
         if self.is_gunicorn:
-            conn.send_message(to_send, dispatcher_info[KG__email_dispatcher__display_name], send_to)
+            conn.send_message(to_send, self.sender_address(dispatcher_info), send_to)
         else:
             print("==============================================")
             print("Sending Email from '" + dispatcher_key + "'")
             print(email.subject)
             print(email.body)
             print(dispatcher_info[KG__email_dispatcher__display_name])
+            print(self.sender_address(dispatcher_info))
             print(send_to)
             print("==============================================")
 
@@ -984,13 +990,12 @@ class EmailManagerService:
                         # The dispatcher has been removed from the database AND all emails in the queue have been removed
                         email = queue.get(timeout=10)
                         new_dispatcher_info = self.get_dispatcher_info_from_key(dispatcher_key)
-                        if new_dispatcher_info is not None:
-                            dispatcher_info = new_dispatcher_info
-                        else:
-                            new_dispatcher_info = dispatcher_info  # Done for hashing purposes
-
-                        if self.hash_dispatcher_info(dispatcher_info) != self.hash_dispatcher_info(new_dispatcher_info):
+                        if new_dispatcher_info is not None and \
+                                self.hash_dispatcher_info(new_dispatcher_info) != self.hash_dispatcher_info(dispatcher_info):
+                            # Reloaded with other settings: the open connection is still logged in with the old ones
                             self.try_close_conn(conn)
+                            conn = None
+                            dispatcher_info = new_dispatcher_info
 
                         if not self.is_connected(conn):
                             conn = self.fetch_conn(dispatcher_key, dispatcher_info[KG__email_dispatcher__url],

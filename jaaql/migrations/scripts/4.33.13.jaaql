@@ -1,0 +1,3 @@
+ALTER TABLE email_dispatcher ADD COLUMN IF NOT EXISTS from_address email_server_username;
+
+\g

@@ -98,6 +98,7 @@ create table email_dispatcher (
 	username email_server_username,
 	password encrypted__email_server_password,
 	whitelist text,
+	from_address email_server_username,
 	primary key (application, name),
 	check (port between 1 and 65536) );
 -- jaaql...

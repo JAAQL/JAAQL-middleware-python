@@ -203,6 +203,14 @@ DOCUMENTATION__dispatchers = SwaggerDocumentation(
                 description="The password with which the dispatcher will authenticate",
                 arg_type=str,
                 example="pa55word"
+            ),
+            SwaggerArgumentResponse(
+                name=KG__email_dispatcher__from_address,
+                description="The address the dispatcher sends from, when it is not the username",
+                arg_type=str,
+                required=False,
+                condition="If the username is not the sending address. Left unchanged when absent",
+                example=["no-reply@relay-systems.com"]
             )
         ]
     )
