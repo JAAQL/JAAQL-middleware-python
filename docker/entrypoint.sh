@@ -466,8 +466,48 @@ if [ -f "$SITE_FILE" ] ; then
     rm -rf $SITE_FILE
   fi
 fi
+
+# JAAQL's password log-in (/api/oauth/token and /api/oauth/cookie) answers only the box's own tools, which call http://localhost from
+# inside the container's network namespace (a box runs it with --net=host), or from Docker's bridge gateway in development. The peer is
+# $realip_remote_addr, the address of the TCP or QUIC connection itself, so no X-Real-IP or X-Forwarded-For a client sends, nor any
+# set_real_ip_from added later, makes a request local. From anywhere else /api/oauth/token is refused and /api/oauth/cookie logs in as
+# the anonymous account whatever its body says, which is the log-in BATON's public frames send (PUBLIC_CREDENTIALS in BATON.jaaql.ts,
+# PASSWORD__anonymous in jaaql/constants.py), so no password sent from the internet is ever checked: no api_key and no
+# JAAQL_ACCEPTANCE_PASSWORD. The rule sits before each server's charset, as set_web_config replaces a server from its charset on with
+# the application's nginx.config, and matches the normalised $uri, so no encoding, dot segment or doubled slash gets past it
+write_password_login_rule() {
+  echo "    if (\$jaaql_password_login = refuse) { return 403; }" >> $SITE_FILE
+  echo "    if (\$jaaql_password_login = anonymous) { rewrite ^ /__jaaql_anonymous_login__? last; }" >> $SITE_FILE
+  echo "    location = /__jaaql_anonymous_login__ {" >> $SITE_FILE
+  echo "        internal;" >> $SITE_FILE
+  if [ "$ALLOW_UNLIMITED_REQUESTS" != "TRUE" ]; then
+    echo "        limit_req zone=jaaqllimit burst=40 delay=30;" >> $SITE_FILE
+    echo "        limit_req_status 429;" >> $SITE_FILE
+  fi
+  echo "        proxy_pass http://unix:$INSTALL_PATH/jaaql.sock:/oauth/cookie;" >> $SITE_FILE
+  echo "        proxy_set_body '{\"username\": \"anonymous\", \"password\": \"jaaql_public_password\", \"remember_me\": true}';" >> $SITE_FILE
+  echo "        proxy_set_header Content-Type      application/json;" >> $SITE_FILE
+  echo "        proxy_set_header X-Real-IP         \$remote_addr;" >> $SITE_FILE
+  echo "        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;" >> $SITE_FILE
+  echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> $SITE_FILE
+  echo "        proxy_set_header Host              \$http_host;" >> $SITE_FILE
+  echo "    }" >> $SITE_FILE
+}
+
 if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   echo "Writing nginx config file"
+  echo "geo \$realip_remote_addr \$jaaql_peer_is_local {" >> $SITE_FILE
+  echo "    default    0;" >> $SITE_FILE
+  echo "    127.0.0.1  1;" >> $SITE_FILE
+  echo "    ::1        1;" >> $SITE_FILE
+  echo "    172.17.0.1 1;" >> $SITE_FILE
+  echo "}" >> $SITE_FILE
+  echo "map \"\$jaaql_peer_is_local \$uri\" \$jaaql_password_login {" >> $SITE_FILE
+  echo "    volatile;" >> $SITE_FILE
+  echo "    default                \"\";" >> $SITE_FILE
+  echo "    \"0 /api/oauth/token\"  refuse;" >> $SITE_FILE
+  echo "    \"0 /api/oauth/cookie\" anonymous;" >> $SITE_FILE
+  echo "}" >> $SITE_FILE
   if [ "$ALLOW_UNLIMITED_REQUESTS" = "TRUE" ]; then
     echo "Allowing unlimited requests"
   else
@@ -487,6 +527,7 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   if [ "$IS_HTTPS" = "TRUE" ] ; then
     echo "    if (\$host = www.$SERVER_ADDRESS) { return 301 https://$SERVER_ADDRESS\$request_uri; }"
   fi
+  write_password_login_rule
   echo "$SECURITY_HEADERS$HSTS_HEADER" >> $SITE_FILE
   echo "    root $INSTALL_PATH/www;" >> $SITE_FILE
   echo "    index index.html;" >> $SITE_FILE
@@ -527,6 +568,7 @@ if [ "$DO_OVERWRITE" = "TRUE" ] ; then
   echo "    listen 80;" >> $SITE_FILE
   echo "    listen [::]:80;" >> $SITE_FILE
   echo "    server_name 127.0.0.1 localhost;" >> $SITE_FILE
+  write_password_login_rule
   echo "$SECURITY_HEADERS" >> $SITE_FILE
   echo "    root $INSTALL_PATH/www;" >> $SITE_FILE
   echo "    location /api/ {" >> $SITE_FILE
