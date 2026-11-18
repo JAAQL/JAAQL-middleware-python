@@ -175,6 +175,8 @@ DESCRIPTION__webhook_process = (" in a node process of its own, which answers it
                                  "with Retry-After")
 DESCRIPTION__webhook_query = (". The query parameters reach the webhook as they came, as its parameters, whatever their names, a name or "
                               "application among them; the path's application and name say which webhook runs")
+DESCRIPTION__webhook_no_head = (". A HEAD is answered 405 and starts no webhook, which cannot tell a HEAD from a GET and would act on it as "
+                                "on the GET")
 DESCRIPTION__webhook_post_size = (" reaches the webhook byte for byte on the process's stdin, whatever its size up to the request size limit "
                                   "(Flask's MAX_CONTENT_LENGTH, 2 MiB, and before it nginx's client_max_body_size, by default 1 MiB, each "
                                   "answering 413)")
@@ -202,7 +204,8 @@ DOCUMENTATION__webhook = SwaggerDocumentation(
     methods=[
         SwaggerMethod(
             name="Receive Webhook GET",
-            description="Receives a webhook as a GET" + DESCRIPTION__webhook_process + DESCRIPTION__webhook_query,
+            description="Receives a webhook as a GET" + DESCRIPTION__webhook_process + DESCRIPTION__webhook_query +
+                        DESCRIPTION__webhook_no_head,
             method=REST__GET,
             arguments=ARG_RES__proc + [ARG_RES__parameters],
             response=[RES__webhook_answer, RES__webhook_busy],
@@ -226,7 +229,8 @@ DOCUMENTATION__secure_webhook = SwaggerDocumentation(
     methods=[
         SwaggerMethod(
             name="Receive Webhook GET",
-            description="Receives a webhook as a GET" + DESCRIPTION__webhook_process + DESCRIPTION__webhook_query,
+            description="Receives a webhook as a GET" + DESCRIPTION__webhook_process + DESCRIPTION__webhook_query +
+                        DESCRIPTION__webhook_no_head,
             method=REST__GET,
             arguments=ARG_RES__proc + [ARG_RES__parameters],
             response=[RES__webhook_answer, RES__webhook_busy],

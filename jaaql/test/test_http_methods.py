@@ -1,8 +1,9 @@
 """
 The HTTP methods of JAAQL's routes. Every route that takes GET also answers HEAD, as HTTP has it (RFC 9110, 9.3.2): with the status and
 the headers the GET would have had and no body, so that an uptime checker sending HEAD to /internal/is-alive or /internal/deep-health
-(neither needs a login) sees what Pingdom's GET sees. A method a route does not take is answered 405 with an Allow header naming the
-methods it does, as the client's and never as JAAQL's server error: no SERVER ERROR line, no report to Sentinel.
+(neither needs a login) sees what Pingdom's GET sees; a route whose GET acts, as a webhook's runs the application's process, can be
+published so that it answers HEAD 405 instead. A method a route does not take is answered 405 with an Allow header naming the methods it
+does, as the client's and never as JAAQL's server error: no SERVER ERROR line, no report to Sentinel.
 
     python -m unittest jaaql.test.test_http_methods
 
@@ -221,6 +222,27 @@ class TestRoutesOfMoreThanOneDocumentation(MethodCase):
                                                        SwaggerMethod(name="Two", description="Two", method=REST__GET)])
         with self.assertRaisesRegex(Exception, "HTTP method 'GET' is declared twice for the route '/test/twice'"):
             self.controller.publish_route("/test/twice", [documentation(REST__GET, False, "one"), documentation(REST__GET, False, "two")])
+
+
+class TestARouteThatDoesNotAnswerHead(MethodCase):
+    """
+    A route published with answers_head False, as the webhook routes are, whose GET acts
+    """
+
+    def test_head_is_405_and_never_runs_the_get(self):
+        ran = []
+
+        @self.controller.publish_route("/test/no-head", documentation(REST__GET, False, "acted"), answers_head=False)
+        def no_head(ip_address: str):
+            ran.append(ip_address)
+            return "acted"
+        answered, reports = self.request("HEAD", "/test/no-head")
+        self.assertEqual((405, ["GET", "OPTIONS"], b"", []), (answered[0], allowed(answered), answered[2], reports))
+        self.assertEqual([], ran)
+        got, reports = self.request("GET", "/test/no-head")
+        self.assertEqual((200, b'"acted"\n', []), (got[0], got[2], reports))
+        self.assertNotEqual([], ran)
+        self.assertEqual([], self.lines())
 
 
 class TestOnABoxThatIsNoContainer(MethodCase):

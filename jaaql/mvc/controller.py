@@ -158,11 +158,11 @@ class JAAQLController(BaseJAAQLController):
         def flush_cache(ip_address: str):
             self.model.flush_cache(ip_address)
 
-        @self.publish_route('/webhook/<application>/<name>', DOCUMENTATION__webhook)
+        @self.publish_route('/webhook/<application>/<name>', DOCUMENTATION__webhook, answers_head=False)
         def handle_webhook(application: str, name: str, body: bytes, headers: dict, args: dict, response: JAAQLResponse):
             self.model.handle_webhook(application, name, body, headers, args, response, None)
 
-        @self.publish_route('/secure/<application>/<name>', DOCUMENTATION__secure_webhook)
+        @self.publish_route('/secure/<application>/<name>', DOCUMENTATION__secure_webhook, answers_head=False)
         def handle_secure_webhook(application: str, name: str, body: bytes, headers: dict, args: dict,
                                   response: JAAQLResponse, username: str):
             # Pass the username, not the account id: the proc runtime forwards this value as the bypass

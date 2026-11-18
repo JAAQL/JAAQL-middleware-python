@@ -301,6 +301,19 @@ class TestWebhookBody(WebhookCase):
         seen = self.assertDelivered(json_body(150 * KB), SECURE_ROUTE, {HEADER__security_bypass: SUPER_KEY}, argc=4)
         self.assertIsNotNone(seen["user"])
 
+    def test_a_head_is_405_and_starts_no_webhook(self):
+        # The webhook is not told the method, so it would act on a HEAD as on the GET, run by every link or uptime checker that sends one.
+        # Up to 5.3.29 a HEAD failed in JAAQL's routing before the webhook (500, reported)
+        for route, headers in [(ROUTE, {}), (SECURE_ROUTE, {HEADER__security_bypass: SUPER_KEY}), (SECURE_ROUTE, {})]:
+            with self.subTest(route=route, login=bool(headers)):
+                (status, answered, data), reports = self.answers(lambda: self.client.head(route + "?x=1", headers=headers))
+                self.assertEqual((405, "GET, OPTIONS, POST", b"", []), (status, dict(answered)["Allow"], data, reports))
+        self.run_calls.assert_not_called()
+        self.selected.assert_not_called()
+        self.assertEqual([], self.lines())
+        (status, _, data), reports = self.answers(lambda: self.client.get(ROUTE + "?x=1"))
+        self.assertEqual((200, {"x": "1"}, []), (status, self.seen(data)["parameters"], reports))
+
     def test_the_command_line_has_the_marker_in_the_bodys_place_and_the_preload_first(self):
         self.answers(lambda: self.post(b'{"a": 1}'))
         argv = self.run_calls.call_args[0][0]

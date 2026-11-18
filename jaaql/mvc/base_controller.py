@@ -256,13 +256,14 @@ class BaseJAAQLController:
         BaseJAAQLController.validate_data_rec(method.arguments + method.body, data, is_prod, fill_missing)
 
     @staticmethod
-    def resolve_method(documentations: [SwaggerDocumentation]):
+    def resolve_method(documentations: [SwaggerDocumentation], answers_head: bool = True):
         """
         The documentation of the route and its method that answer the request, or (None, None) when none of them declares the request's
         method. A HEAD that no documentation declares is answered by the route's GET, as HTTP has it (RFC 9110, 9.3.2): with the GET's
-        status and headers, which werkzeug sends without the body. Flask routes HEAD to every view that takes GET
+        status and headers, which werkzeug sends without the body. Flask routes HEAD to every view that takes GET. Not on a route published
+        with answers_head False, whose GET does what a HEAD must not (a webhook's)
         """
-        wanted = [request.method] + ([REST__GET] if request.method == REST__HEAD else [])
+        wanted = [request.method] + ([REST__GET] if request.method == REST__HEAD and answers_head else [])
         for method_name in wanted:
             for documentation in documentations:
                 for method in documentation.methods:
@@ -480,7 +481,10 @@ class BaseJAAQLController:
         """
         return json.dumps(self.log_safe_dump_recursive(data))
 
-    def publish_route(self, route: str, swagger_documentation: Union[list, SwaggerDocumentation], use_cors: bool = False):
+    def publish_route(self, route: str, swagger_documentation: Union[list, SwaggerDocumentation], use_cors: bool = False,
+                      answers_head: bool = True):
+        # answers_head False: a HEAD is not answered by the route's GET but 405, for a route whose GET acts, as a webhook's runs a process
+        # of the application's, which cannot tell a HEAD from a GET, so a link checker or an uptime checker sending HEAD would run it
         documentation_as_lists = swagger_documentation
         if not isinstance(documentation_as_lists, list):
             documentation_as_lists = [documentation_as_lists]
@@ -499,9 +503,9 @@ class BaseJAAQLController:
         if use_cors:
             methods.append(REST__OPTIONS)
 
-        # What the route's 405 names (a request with a method it does not declare): its methods, HEAD wherever it has GET, and OPTIONS,
-        # which it declares above or Flask answers itself
-        allowed = sorted(set(methods) | {REST__OPTIONS} | ({REST__HEAD} if REST__GET in methods else set()))
+        # What the route's 405 names (a request with a method it does not declare): its methods, HEAD wherever it has GET and answers it,
+        # and OPTIONS, which it declares above or Flask answers itself
+        allowed = sorted(set(methods) | {REST__OPTIONS} | ({REST__HEAD} if REST__GET in methods and answers_head else set()))
 
         def wrap_func(view_func):
             # getfullargspec is expensive and the result never changes for a given view function, so
@@ -524,10 +528,11 @@ class BaseJAAQLController:
             def handle_route(view_func_local, **kwargs):
                 the_documentation, the_method = None, None
                 if not BaseJAAQLController.is_options():
-                    the_documentation, the_method = BaseJAAQLController.resolve_method(documentation_as_lists)
+                    the_documentation, the_method = BaseJAAQLController.resolve_method(documentation_as_lists, answers_head)
                     if the_method is None:
                         # Flask answers a method the route does not take with 405 before it gets here; one it takes that no documentation
-                        # of the route declares is answered the same way, as the client's and never as a server error
+                        # of the route declares is answered the same way, as the client's and never as a server error, as is a HEAD to a
+                        # route that does not answer it
                         raise MethodNotAllowed(valid_methods=allowed)
                 if not self.model.has_installed and not route.startswith('/internal'):
                     resp = Response("Still installing. Be patient", status=HTTPStatus.SERVICE_UNAVAILABLE)
