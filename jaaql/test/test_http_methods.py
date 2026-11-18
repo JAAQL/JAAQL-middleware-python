@@ -20,7 +20,7 @@ import psycopg.errors as pg
 from jaaql.constants import ENVIRON__deep_health_application, QUERY_CACHE_KEY__health
 from jaaql.db import db_utils_no_circ
 from jaaql.mvc import model
-from jaaql.mvc.base_controller import BaseJAAQLController
+from jaaql.mvc.base_controller import BaseJAAQLController, JAAQLRule
 from jaaql.mvc.model import JAAQLModel
 from jaaql.documentation import documentation_internal
 from jaaql.mvc.response import JAAQLResponse
@@ -347,6 +347,20 @@ class TestGetRoutesThatAct(MethodCase):
                 with self.subTest(route=route, method=method):
                     answered, reports = self.request(method, route)
                     self.assertEqual((405, allow, []), (answered[0], dict(answered[1])["Allow"], reports))
+
+
+class TestTheRuleOfARoute(unittest.TestCase):
+
+    def test_werkzeugs_arguments_are_werkzeugs_by_position_or_by_keyword(self):
+        # answers_head is a keyword only, so a rule built as werkzeug's Rule(string, defaults, subdomain, methods, ...) is werkzeug's
+        for rule in [JAAQLRule("/x", {"b": 1}, None, ["GET"]), JAAQLRule("/x", defaults={"b": 1}, methods=["GET"])]:
+            with self.subTest(rule=repr(rule)):
+                self.assertEqual(({"b": 1}, {"GET", "HEAD"}, True), (rule.defaults, rule.methods, rule.answers_head))
+        rule = JAAQLRule("/x", {"b": 1}, None, ["GET"], answers_head=False)
+        self.assertEqual(({"b": 1}, {"GET"}, False), (rule.defaults, rule.methods, rule.answers_head))
+        # werkzeug's copy of a rule (Rule.empty, from get_empty_kwargs) is the same rule, still without HEAD
+        copy = rule.empty()
+        self.assertEqual((JAAQLRule, {"b": 1}, {"GET"}, False), (type(copy), copy.defaults, copy.methods, copy.answers_head))
 
 
 class TestOnABoxThatIsNoContainer(MethodCase):

@@ -160,11 +160,12 @@ class JAAQLRule(Rule):
     """
     The rule of a route. werkzeug gives every rule that takes GET HEAD too; the rule of a route published with answers_head False, whose GET
     acts, is left without it, so that Flask's router answers a HEAD to the route 405 before any of JAAQL's code runs, and Flask's own answer
-    to OPTIONS does not name HEAD among the methods the route takes
+    to OPTIONS does not name HEAD among the methods the route takes. answers_head is a keyword only: werkzeug's own arguments, by position
+    (defaults, subdomain, methods, ...) or by keyword, are werkzeug's
     """
 
-    def __init__(self, string: str, answers_head: bool = True, **kwargs):
-        super().__init__(string, **kwargs)
+    def __init__(self, string: str, *args, answers_head: bool = True, **kwargs):
+        super().__init__(string, *args, **kwargs)
         self.answers_head = answers_head
         if not answers_head and self.methods is not None:
             self.methods.discard(REST__HEAD)
