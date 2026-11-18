@@ -116,8 +116,9 @@ DOCUMENTATION__deep_health = SwaggerDocumentation(
         description="Resolves a query through the compiled query cache and runs it, so a stale, partial or "
                     "unloaded cache fails the check (unlike is-alive, which only pings the database). When the "
                     "environment variable JAAQL_DEEP_HEALTH_APPLICATION names an application, it then reads that "
-                    "application's view deep_health.fault and answers 503 naming every cause it returns, or naming "
-                    "why the view could not be read",
+                    "application's view deep_health.fault and answers 503 naming every cause it returns, or, when the "
+                    "view cannot be read, 503 saying the application check is unavailable, the reason going to the "
+                    "server's log only, as the route needs no login",
         method=REST__GET,
         response=[
             SwaggerFlatResponse(),

@@ -72,7 +72,10 @@ ERR__lacking_permissions = "Only an administrator can perform this action!"
 ERR__cant_send_attachments = "Cannot send attachments to other people"
 ERR__keep_alive_failed = "Keep alive failed"
 ERR__deep_health_faults = "Deep health: %s"
-ERR__deep_health_faults_unavailable = "deep_health.fault unavailable: %s"
+ERR__deep_health_faults_unavailable = "Deep health: application check unavailable"
+LINE__deep_health_unavailable = "Deep health %s answered 503: deep_health.fault could not be read (%s); %d more since the last line"
+DEEP_HEALTH__print_seconds = 60
+DEEP_HEALTH__reason_length = 500
 ERR__template_not_signup = "Sign up template does not have the correct type"
 ERR__template_not_already = "Already signed up template does not have the correct type"
 ERR__template_not_reset = "Reset template does not have the correct type"
@@ -359,6 +362,40 @@ def answer_busy(response: JAAQLResponse, message: str):
     response.response_type = CONTENT__text
     response.raw_response = message
     response.is_binary = False
+
+
+class DeepHealthUnavailable:
+    """
+    Why an application's view deep_health.fault could not be read, for the server's log only, as deep-health's public body says no more
+    than that the check is unavailable. Printed at most once every DEEP_HEALTH__print_seconds in this process (gunicorn worker), with the
+    number held back since the line before: Pingdom polls every minute for as long as the cause lasts. A line of its own, never a SERVER
+    ERROR line, and never reported to Sentinel
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._printed_at = None
+        self._held = 0
+
+    def reset(self):
+        with self._lock:
+            self._printed_at = None
+            self._held = 0
+
+    def note(self, application: str, ex: BaseException):
+        with self._lock:
+            now = time.monotonic()
+            if self._printed_at is not None and now - self._printed_at < DEEP_HEALTH__print_seconds:
+                self._held += 1
+                return
+            self._printed_at = now
+            held, self._held = self._held, 0
+        first_line = (str(ex).strip().splitlines() or [""])[0]
+        reason = slow_queries._printable(type(ex).__name__ + (": " + first_line if first_line else ""))[:DEEP_HEALTH__reason_length]
+        print(LINE__deep_health_unavailable % (slow_queries._printable(application), reason, held))
+
+
+DEEP_HEALTH__unavailable = DeepHealthUnavailable()
 
 
 class JAAQLModel(BaseJAAQLModel):
@@ -1707,9 +1744,11 @@ WHERE
         execute_supplied_statement_singleton(self.jaaql_lookup_connection, sql, as_objects=True)
 
         # Then, when JAAQL_DEEP_HEALTH_APPLICATION names one, that application's own verdict: each row of its view deep_health.fault
-        # names a cause, and any row, or a view that cannot be read, answers 503 naming them. Never a server error of JAAQL's
-        # (client_fault): it is the application's answer, Pingdom pages on the 503, and a report for every poll would fill Sentinel's
-        # error table for as long as the cause lasts
+        # names a cause, and any row answers 503 naming them, a view that cannot be read 503 saying the check is unavailable. Never a
+        # server error of JAAQL's (client_fault): it is the application's answer, Pingdom pages on the 503, and a report for every poll
+        # would fill Sentinel's error table for as long as the cause lasts. The body is public (nginx passes the route on with no login, as
+        # Pingdom polls it), so why the view could not be read, a database error that can name the database's internals, is printed for
+        # the server's log instead, at most once a minute (DeepHealthUnavailable); the causes are the view's own, generic by design
         application = os.environ.get(ENVIRON__deep_health_application)
         if not application:
             return
@@ -1718,8 +1757,8 @@ WHERE
                                server_authored_query=True)
             causes = [str(row["cause"]) for row in rows]
         except Exception as ex:
-            reason = (str(ex).strip().splitlines() or [type(ex).__name__])[0][:200]
-            raise client_fault(HttpStatusException(ERR__deep_health_faults_unavailable % reason, HTTPStatus.SERVICE_UNAVAILABLE))
+            DEEP_HEALTH__unavailable.note(application, ex)
+            raise client_fault(HttpStatusException(ERR__deep_health_faults_unavailable, HTTPStatus.SERVICE_UNAVAILABLE))
         if causes:
             raise client_fault(HttpStatusException(ERR__deep_health_faults % "; ".join(causes), HTTPStatus.SERVICE_UNAVAILABLE))
 

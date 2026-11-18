@@ -1,8 +1,10 @@
 """
 Deep health with an application's own verdict: when JAAQL_DEEP_HEALTH_APPLICATION names an application, /internal/deep-health reads that
-application's view deep_health.fault as dba after JAAQL's own check, and answers 503 naming every cause it returns, in its order, or naming
-why the view could not be read. None of those answers is reported to Sentinel: they are the application's verdict, polled every minute.
-Unset, deep-health is what it was: JAAQL's own cache query alone, and a missing cache query is still the server error it always was.
+application's view deep_health.fault as dba after JAAQL's own check, and answers 503 naming every cause it returns, in its order, or, when
+the view cannot be read, 503 "Deep health: application check unavailable": the body is public, so why the view could not be read is printed
+for the server's log only, at most once a minute, and never as a SERVER ERROR line. None of those answers is reported to Sentinel: they are
+the application's verdict, polled every minute. Unset, deep-health is what it was: JAAQL's own cache query alone, and a missing cache query
+is still the server error it always was.
 
     python -m unittest jaaql.test.test_deep_health_application
 
@@ -17,12 +19,14 @@ import psycopg.errors as pg
 from jaaql.constants import ENVIRON__deep_health_application, QUERY__deep_health_faults, QUERY_CACHE_KEY__health, ROLE__dba, KEY__application
 from jaaql.db import db_utils_no_circ
 from jaaql.interpreter.interpret_jaaql import KEY_query
+from jaaql.mvc import model
 from jaaql.mvc.model import JAAQLModel
 from jaaql.test.test_server_errors import ServerErrorCase
 from jaaql.test.test_slow_queries import TimedInterface
 
 APPLICATION_WITH_VIEW = "sentinel"
 DEEP_HEALTH = "/internal/deep-health"
+UNAVAILABLE = b"Deep health: application check unavailable"
 
 
 class Causes(TimedInterface):
@@ -52,10 +56,15 @@ class TestDeepHealthApplication(ServerErrorCase):
         self.model.jaaql_lookup_connection = TimedInterface()
         self.real = mock.patch.object(self.model, "deep_health", lambda: JAAQLModel.deep_health(self.model), create=True)
         self.real.start()
+        model.DEEP_HEALTH__unavailable.reset()
 
     def tearDown(self):
+        model.DEEP_HEALTH__unavailable.reset()
         self.real.stop()
         super().tearDown()
+
+    def unavailable_lines(self):
+        return [line for line in self.printed.getvalue().splitlines() if line.startswith("Deep health ")]
 
     def deep_health(self, interface, application=APPLICATION_WITH_VIEW):
         environ = {ENVIRON__deep_health_application: application} if application is not None else {}
@@ -97,19 +106,47 @@ class TestDeepHealthApplication(ServerErrorCase):
     def test_a_view_that_cannot_be_read_is_unhealthy_and_never_reported(self):
         interface = Causes(make=lambda: pg.UndefinedTable('relation "deep_health.fault" does not exist\nLINE 1: SELECT cause FROM deep_health...'))
         (status, _, data), reports, _ = self.deep_health(interface)
-        self.assertEqual(503, status)
-        self.assertTrue(data.startswith(b"deep_health.fault unavailable: "), data)
-        self.assertIn(b'relation "deep_health.fault" does not exist', data)
-        self.assertNotIn(b"\n", data)
+        # The public body is generic; the reason is in the log, once for the three requests answers() made, as no SERVER ERROR
+        self.assertEqual((503, UNAVAILABLE), (status, data))
         self.assertEqual([], reports)
         self.assertEqual([], self.lines())
+        self.assertEqual(['Deep health sentinel answered 503: deep_health.fault could not be read (UnhandledQueryError: relation '
+                          '"deep_health.fault" does not exist); 0 more since the last line'], self.unavailable_lines())
 
     def test_the_database_failing_under_the_view_is_unhealthy_and_never_reported(self):
-        interface = Causes(make=lambda: pg.DiskFull("could not extend file: No space left on device"))
+        interface = Causes(make=lambda: pg.DiskFull('could not extend file "base/16384/2619": No space left on device'))
         (status, _, data), reports, _ = self.deep_health(interface)
-        self.assertEqual(503, status)
-        self.assertTrue(data.startswith(b"deep_health.fault unavailable: "), data)
+        self.assertEqual((503, UNAVAILABLE), (status, data))
         self.assertEqual([], reports)
+        self.assertEqual([], self.lines())
+        self.assertEqual(['Deep health sentinel answered 503: deep_health.fault could not be read (DatabaseOperationalError: could not '
+                          'extend file "base/16384/2619": No space left on device); 0 more since the last line'], self.unavailable_lines())
+
+    def test_the_reason_is_printed_at_most_once_a_minute_with_the_number_held_back(self):
+        interface = Causes(make=lambda: pg.ConnectionTimeout('connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed: '
+                                                             'timeout expired\nIs the server running locally?'))
+        with mock.patch.dict(os.environ, {ENVIRON__deep_health_application: APPLICATION_WITH_VIEW}), \
+                mock.patch.object(db_utils_no_circ, "get_required_db", return_value=interface):
+            for _ in range(4):
+                res = self.client.get(DEEP_HEALTH)
+                self.assertEqual((503, UNAVAILABLE), (res.status_code, res.get_data()))
+            line = 'Deep health sentinel answered 503: deep_health.fault could not be read (DatabaseOperationalError: connection to ' \
+                   'server on socket "/var/run/postgresql/.s.PGSQL.5432" failed: timeout expired); %d more since the last line'
+            self.assertEqual([line % 0], self.unavailable_lines())
+            # A minute on, the next is printed with the three held back since the line before
+            model.DEEP_HEALTH__unavailable._printed_at -= model.DEEP_HEALTH__print_seconds
+            self.client.get(DEEP_HEALTH)
+            self.client.get(DEEP_HEALTH)
+        self.assertEqual([line % 0, line % 3], self.unavailable_lines())
+        self.assertEqual([], self.lines())
+        self.assertNoReport()
+
+    def test_causes_and_health_print_nothing(self):
+        for causes, expected in [(["gateway heartbeat: stale"], (503, b"Deep health: gateway heartbeat: stale")), ([], (200, b'"OK"\n'))]:
+            with self.subTest(causes=causes):
+                (status, _, data), reports, _ = self.deep_health(Causes(causes))
+                self.assertEqual((expected, []), ((status, data), reports))
+        self.assertEqual([], self.unavailable_lines())
 
     def test_jaaqls_own_check_still_comes_first_and_is_still_a_server_error(self):
         del self.model.query_caches["queries"][QUERY_CACHE_KEY__health]
