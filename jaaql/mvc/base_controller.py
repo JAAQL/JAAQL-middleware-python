@@ -5,6 +5,7 @@ from functools import wraps
 
 import typing as t
 from werkzeug.exceptions import InternalServerError, HTTPException, MethodNotAllowed
+from werkzeug.routing import Rule
 import inspect
 import json
 
@@ -153,6 +154,23 @@ class JAAQLJSONProvider(DefaultJSONProvider):
             return orjson.loads(s)
 
 
+class JAAQLRule(Rule):
+    """
+    The rule of a route. werkzeug gives every rule that takes GET HEAD too; the rule of a route published with answers_head False, whose GET
+    acts, is left without it, so that Flask's router answers a HEAD to the route 405 before any of JAAQL's code runs, and Flask's own answer
+    to OPTIONS does not name HEAD among the methods the route takes
+    """
+
+    def __init__(self, string: str, answers_head: bool = True, **kwargs):
+        super().__init__(string, **kwargs)
+        self.answers_head = answers_head
+        if not answers_head and self.methods is not None:
+            self.methods.discard(REST__HEAD)
+
+    def get_empty_kwargs(self) -> t.Mapping[str, t.Any]:
+        return dict(super().get_empty_kwargs(), answers_head=self.answers_head)
+
+
 class BaseJAAQLController:
 
     internal_sentinel = False
@@ -162,6 +180,7 @@ class BaseJAAQLController:
         super().__init__()
         BaseJAAQLController.base_url = base_url
         self.app = Flask(__name__, instance_relative_config=True)
+        self.app.url_rule_class = JAAQLRule
         self.json_serializer = JAAQLJSONProvider(self.app)
         self.app.config[FLASK__json_sort_keys] = False
         self.app.config[FLASK__max_content_length] = 1024 * 1024 * 2  # 2 MB
@@ -260,8 +279,8 @@ class BaseJAAQLController:
         """
         The documentation of the route and its method that answer the request, or (None, None) when none of them declares the request's
         method. A HEAD that no documentation declares is answered by the route's GET, as HTTP has it (RFC 9110, 9.3.2): with the GET's
-        status and headers, which werkzeug sends without the body. Flask routes HEAD to every view that takes GET. Not on a route published
-        with answers_head False, whose GET does what a HEAD must not (a webhook's)
+        status and headers, which werkzeug sends without the body. Flask routes HEAD to every view that takes GET but one published with
+        answers_head False, whose GET does what a HEAD must not (JAAQLRule)
         """
         wanted = [request.method] + ([REST__GET] if request.method == REST__HEAD and answers_head else [])
         for method_name in wanted:
@@ -483,8 +502,9 @@ class BaseJAAQLController:
 
     def publish_route(self, route: str, swagger_documentation: Union[list, SwaggerDocumentation], use_cors: bool = False,
                       answers_head: bool = True):
-        # answers_head False: a HEAD is not answered by the route's GET but 405, for a route whose GET acts, as a webhook's runs a process
-        # of the application's, which cannot tell a HEAD from a GET, so a link checker or an uptime checker sending HEAD would run it
+        # answers_head False: a HEAD is not answered by the route's GET but 405 (by Flask's router, JAAQLRule), for a route whose GET acts
+        # (a webhook's runs a process of the application's, which cannot tell a HEAD from a GET; /cron starts jobs; a login or a logout
+        # sets and consumes its cookies), so that a link checker, a mail scanner or an uptime checker sending HEAD never does what it does
         documentation_as_lists = swagger_documentation
         if not isinstance(documentation_as_lists, list):
             documentation_as_lists = [documentation_as_lists]
@@ -530,9 +550,9 @@ class BaseJAAQLController:
                 if not BaseJAAQLController.is_options():
                     the_documentation, the_method = BaseJAAQLController.resolve_method(documentation_as_lists, answers_head)
                     if the_method is None:
-                        # Flask answers a method the route does not take with 405 before it gets here; one it takes that no documentation
-                        # of the route declares is answered the same way, as the client's and never as a server error, as is a HEAD to a
-                        # route that does not answer it
+                        # Flask answers a method the route does not take with 405 before it gets here, a HEAD to a route that does not
+                        # answer it among them (JAAQLRule); one it takes that no documentation of the route declares is answered the same
+                        # way, as the client's and never as a server error
                         raise MethodNotAllowed(valid_methods=allowed)
                 if not self.model.has_installed and not route.startswith('/internal'):
                     resp = Response("Still installing. Be patient", status=HTTPStatus.SERVICE_UNAVAILABLE)
@@ -792,7 +812,7 @@ class BaseJAAQLController:
                 return resp
 
             self.app.add_url_rule(route, view_func=lambda **kwargs: routed_function(view_func, **kwargs), methods=methods,
-                                  endpoint=route)
+                                  endpoint=route, answers_head=answers_head)
 
             return routed_function
 
@@ -814,6 +834,9 @@ class BaseJAAQLController:
         def handle_other_server_error(ex):
             server_errors.unrouted_failure(ex)
             if isinstance(ex, HTTPException):
+                if isinstance(ex, MethodNotAllowed) and ex.valid_methods:
+                    # Flask's router names the methods a route takes in no fixed order, which differs from one worker to the next
+                    ex.valid_methods = sorted(ex.valid_methods)
                 return ex
             traceback.print_tb(ex.__traceback__)
             return interpretable_response(UnhandledJaaqlServerError())

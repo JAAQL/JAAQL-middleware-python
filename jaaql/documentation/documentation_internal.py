@@ -305,12 +305,15 @@ DOCUMENTATION__last_successful_build_timestamp = SwaggerDocumentation(
     ]
 )
 
+# Of a GET route whose GET acts, which is published so that it answers HEAD 405 (BaseJAAQLController.publish_route, answers_head False)
+DESCRIPTION__head_refused = ". A HEAD is answered 405 (Allow: GET, OPTIONS) and does nothing, as the GET does more than read"
+
 DOCUMENTATION__flush_cache = SwaggerDocumentation(
     tags="Cache",
     security=False,
     methods=SwaggerMethod(
         name="Flush JAAQL Cache",
-        description="Triggers a cache flush",
+        description="Triggers a cache flush" + DESCRIPTION__head_refused,
         method=REST__GET,
     )
 )
@@ -320,7 +323,7 @@ DOCUMENTATION__cron = SwaggerDocumentation(
     security=False,
     methods=SwaggerMethod(
         name="Trigger cron jobs",
-        description="Internal only method that will trigger cron jobs",
+        description="Internal only method that will trigger cron jobs" + DESCRIPTION__head_refused,
         method=REST__GET
     )
 )
@@ -353,7 +356,8 @@ DOCUMENTATION__oidc_user_registries = SwaggerDocumentation(
     security=False,
     methods=SwaggerMethod(
         name="Fetch OIDC registries",
-        description="Fetches OIDC registries for specified database and tenant",
+        description="Fetches OIDC registries for specified database and tenant, with EasyAuth provisioning the rows its login needs on first "
+                    "use" + DESCRIPTION__head_refused,
         method=REST__GET,
         arguments=[
             ARG_RES__tenant,
@@ -384,7 +388,8 @@ DOCUMENTATION__oidc_redirect_url = SwaggerDocumentation(
     security=False,
     methods=SwaggerMethod(
         name="Fetch OIDC base redirect",
-        description="Fetches OIDC base redirect URL",
+        description="Fetches OIDC base redirect URL, pushing the authorization request and setting the login's cookies (with EasyAuth, "
+                    "logging in)" + DESCRIPTION__head_refused,
         method=REST__GET,
         arguments=[
             ARG_RES__tenant,
@@ -409,7 +414,7 @@ DOCUMENTATION__oidc_exchange_code = SwaggerDocumentation(
     security=False,
     methods=SwaggerMethod(
         name="Fetch OIDC code",
-        description="Exchanges OIDC auth code for auth token, returns the token",
+        description="Exchanges OIDC auth code for auth token, returns the token" + DESCRIPTION__head_refused,
         method=REST__GET,
         arguments=[
             SwaggerArgumentResponse(
@@ -600,7 +605,7 @@ DOCUMENTATION__oidc_begin_logout = SwaggerDocumentation(
 	security=False,
 	methods=SwaggerMethod(
 		name="Begin OIDC logout",
-		description="Clears the app session, sets a logout state cookie, and redirects the browser to the OP end-session endpoint. After logout, the OP redirects to /api/oidc/post-logout.",
+		description="Clears the app session, sets a logout state cookie, and redirects the browser to the OP end-session endpoint. After logout, the OP redirects to /api/oidc/post-logout" + DESCRIPTION__head_refused,
 		method=REST__GET,
 		arguments=[
 			ARG_RES__tenant,
@@ -623,7 +628,7 @@ DOCUMENTATION__oidc_post_logout = SwaggerDocumentation(
 	security=False,
 	methods=SwaggerMethod(
 		name="OIDC post-logout redirect",
-		description="Receives the OP redirect after logout, validates state, clears the cookie, and redirects to the final app URL.",
+		description="Receives the OP redirect after logout, validates state, clears the cookie, and redirects to the final app URL" + DESCRIPTION__head_refused,
 		method=REST__GET,
 		arguments=SwaggerArgumentResponse(
 			name="state",

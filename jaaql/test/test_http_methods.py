@@ -1,9 +1,11 @@
 """
 The HTTP methods of JAAQL's routes. Every route that takes GET also answers HEAD, as HTTP has it (RFC 9110, 9.3.2): with the status and
 the headers the GET would have had and no body, so that an uptime checker sending HEAD to /internal/is-alive or /internal/deep-health
-(neither needs a login) sees what Pingdom's GET sees; a route whose GET acts, as a webhook's runs the application's process, can be
-published so that it answers HEAD 405 instead. A method a route does not take is answered 405 with an Allow header naming the methods it
-does, as the client's and never as JAAQL's server error: no SERVER ERROR line, no report to Sentinel.
+(neither needs a login) sees what Pingdom's GET sees. A route whose GET acts (a webhook's runs the application's process, /cron starts the
+cron jobs, /flush-cache flushes every worker's cache, the OIDC routes push an authorization request, set and consume the login's cookies,
+exchange a code) is published so that it answers HEAD 405 instead, from Flask's router before any of JAAQL's code runs, and Flask's answer to
+OPTIONS on it does not name HEAD. A method a route does not take is answered 405 with an Allow header naming the methods it does, in order,
+as the client's and never as JAAQL's server error: no SERVER ERROR line, no report to Sentinel.
 
     python -m unittest jaaql.test.test_http_methods
 
@@ -20,8 +22,10 @@ from jaaql.db import db_utils_no_circ
 from jaaql.mvc import model
 from jaaql.mvc.base_controller import BaseJAAQLController
 from jaaql.mvc.model import JAAQLModel
+from jaaql.documentation import documentation_internal
+from jaaql.mvc.response import JAAQLResponse
 from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, SwaggerFlatResponse, SwaggerException, REST__GET, \
-    REST__POST
+    REST__POST, RESPONSE__200_ok
 from jaaql.test.test_deep_health_application import Causes
 from jaaql.test.test_health_checks import Version, DEEP_HEALTH, IS_ALIVE, JAAQL_FAILED, KEEP_ALIVE_FAILED
 from jaaql.test.test_server_errors import ServerErrorCase
@@ -29,6 +33,20 @@ from jaaql.test.test_slow_queries import TimedInterface, SUPER_KEY
 from monitor.main import HEADER__security_bypass
 
 USER_AGENT = {"User-Agent": "UptimeChecker/1.0 (Test)"}
+# The GET routes whose GET acts, each with the model's method that acts and a query its GET is answered with; the webhooks'; those whose GET
+# reads only
+ACTING = {
+    "/cron": ("execute_cron_jobs", {}),
+    "/flush-cache": ("flush_cache", {}),
+    "/fetch-user-registries-for-tenant": ("fetch_user_registries_for_tenant", {"tenant": "t", "application": "a"}),
+    "/oidc-redirect-url": ("fetch_redirect_uri", {"tenant": "t", "provider": "p", "application": "a", "redirect_uri": "index.html"}),
+    "/exchange-auth-code": ("exchange_auth_code", {"code": "c", "state": "s"}),
+    "/oidc/logout": ("begin_oidc_logout", {"tenant": "t", "provider": "p", "application": "a", "redirect_uri": "index.html"}),
+    "/oidc/post-logout": ("finish_oidc_logout", {"state": "s"}),
+}
+WEBHOOKS = {"/webhook/<application>/<name>", "/secure/<application>/<name>"}
+READ_ONLY = {"/internal/is_installed", "/internal/is-alive", "/internal/deep-health", "/internal/frozen", "/build-time", "/.well-known/jwks",
+             "/documents", "/rendered_documents"}
 UNDECLARED = ["POST", "PUT", "DELETE", "PATCH"]
 TWO_DOCUMENTATIONS = "/test/two-documentations"
 
@@ -245,6 +263,92 @@ class TestARouteThatDoesNotAnswerHead(MethodCase):
         self.assertEqual([], self.lines())
 
 
+class TestGetRoutesThatAct(MethodCase):
+    """
+    The GET routes of JAAQL's controller whose GET acts, published with answers_head False
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        # As create_app's produce_all_documentation leaves them at boot: a method that declares no 200 answers 200 OK
+        for doc in vars(documentation_internal).values():
+            if isinstance(doc, SwaggerDocumentation):
+                for method in doc.methods:
+                    if not any(response.code == 200 for response in method.responses):
+                        method.responses.append(SwaggerFlatResponse(RESPONSE__200_ok))
+
+    def setUp(self):
+        super().setUp()
+        self.acted = {}
+        for route, (name, _) in ACTING.items():
+            patch = mock.patch.object(self.model, name, create=True, side_effect=self.acts(route))
+            self.acted[route] = patch.start()
+            self.addCleanup(patch.stop)
+
+    @staticmethod
+    def acts(route):
+        # Answers as the route's GET does once it has acted: the providers, or a redirect
+        def act(*args, **kwargs):
+            if route == "/fetch-user-registries-for-tenant":
+                return {"providers": []}
+            for value in list(args) + list(kwargs.values()):
+                if isinstance(value, JAAQLResponse):
+                    value.response_code = 302
+                    value.raw_headers["Location"] = "https://app.example/"
+        return act
+
+    def test_every_get_route_answers_head_by_its_get_or_is_one_that_acts(self):
+        # A GET route added later must be put in one or the other
+        rules = {rule.rule: rule for rule in self.controller.app.url_map.iter_rules() if "GET" in rule.methods and rule.endpoint != "static"}
+        self.assertEqual(READ_ONLY | set(ACTING) | WEBHOOKS, set(rules))
+        for route, rule in rules.items():
+            with self.subTest(route=route):
+                self.assertEqual(route in READ_ONLY, "HEAD" in rule.methods)
+
+    def test_head_is_405_and_never_acts(self):
+        for route, (_, query) in ACTING.items():
+            for headers in (USER_AGENT, dict(USER_AGENT, **{HEADER__security_bypass: SUPER_KEY})):
+                with self.subTest(route=route, login=len(headers) > 1):
+                    answered, reports = self.request("HEAD", route, query_string=query, headers=headers)
+                    self.assertEqual((405, "GET, OPTIONS", b"", []), (answered[0], dict(answered[1])["Allow"], answered[2], reports))
+                    self.acted[route].assert_not_called()
+        self.assertEqual([], self.lines())
+
+    def test_options_does_not_name_head(self):
+        for route in ACTING:
+            with self.subTest(route=route):
+                answered, reports = self.request("OPTIONS", route)
+                self.assertEqual((200, "GET, OPTIONS", []), (answered[0], ", ".join(sorted(allowed(answered))), reports))
+        for route in ("/webhook/app/hook", "/secure/app/hook"):
+            with self.subTest(route=route):
+                answered, reports = self.request("OPTIONS", route)
+                self.assertEqual((200, "GET, OPTIONS, POST", []), (answered[0], ", ".join(allowed(answered)), reports))
+        answered, _ = self.request("OPTIONS", DEEP_HEALTH)
+        self.assertEqual(["GET", "HEAD", "OPTIONS"], allowed(answered))
+        for route in ACTING:
+            self.acted[route].assert_not_called()
+
+    def test_the_get_still_acts(self):
+        for route, (_, query) in ACTING.items():
+            with self.subTest(route=route):
+                answered, reports = self.request("GET", route, query_string=query)
+                self.assertIn(answered[0], (200, 302))
+                self.assertEqual([], reports)
+                # Once for each of the three answers answers() makes
+                self.assertEqual(3, self.acted[route].call_count)
+        self.assertEqual([], self.lines())
+
+    def test_a_405_names_the_methods_in_order(self):
+        # Flask's router names them in no fixed order, which differs from one worker to the next; JAAQL's own 405 sorts them as well
+        for route, allow in [("/webhook/app/hook", "GET, OPTIONS, POST"), ("/cron", "GET, OPTIONS"), (DEEP_HEALTH, "GET, HEAD, OPTIONS"),
+                             ("/build-time", "GET, HEAD, OPTIONS, POST"), ("/submit", "OPTIONS, POST")]:
+            for method in ("PUT", "DELETE", "PATCH"):
+                with self.subTest(route=route, method=method):
+                    answered, reports = self.request(method, route)
+                    self.assertEqual((405, allow, []), (answered[0], dict(answered[1])["Allow"], reports))
+
+
 class TestOnABoxThatIsNoContainer(MethodCase):
     """
     JAAQL run outside its container (is_container false) answers CORS: its routes declare OPTIONS themselves
@@ -267,6 +371,17 @@ class TestOnABoxThatIsNoContainer(MethodCase):
         self.assertEqual((200, []), (options[0], reports))
         answered, reports = self.request("PUT", DEEP_HEALTH)
         self.assertEqual((405, ["GET", "HEAD", "OPTIONS"], []), (answered[0], allowed(answered), reports))
+        self.assertEqual([], self.lines())
+
+    def test_a_get_route_that_acts(self):
+        # Its OPTIONS is the route's own, with CORS; its HEAD still Flask's 405
+        with mock.patch.object(self.model, "execute_cron_jobs", create=True) as cron:
+            answered, reports = self.request("HEAD", "/cron")
+            self.assertEqual((405, "GET, OPTIONS", []), (answered[0], dict(answered[1])["Allow"], reports))
+            options, reports = self.request("OPTIONS", "/cron")
+            self.assertEqual((200, []), (options[0], reports))
+            self.assertIn(("Access-Control-Allow-Origin", "*"), options[1])
+        cron.assert_not_called()
         self.assertEqual([], self.lines())
 
 

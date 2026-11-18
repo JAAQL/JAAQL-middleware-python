@@ -143,7 +143,11 @@ class JAAQLController(BaseJAAQLController):
         def send_email(is_the_anonymous_user: bool, account_id: str, http_inputs: dict, username: str, auth_token: str):
             return self.model.send_email(is_the_anonymous_user, account_id, http_inputs, username, auth_token)
 
-        @self.publish_route('/cron', DOCUMENTATION__cron)
+        # Every GET route below published with answers_head False acts, so a HEAD to it is answered 405 and does nothing (JAAQLRule): /cron
+        # starts the cron jobs due, /flush-cache flushes every worker's cache, the OIDC routes begin, complete and end a login (a pushed
+        # authorization request, the login's cookies set and consumed, a code exchanged, an account federated; with EasyAuth a login and its
+        # rows provisioned), as do the webhooks below
+        @self.publish_route('/cron', DOCUMENTATION__cron, answers_head=False)
         def cron(ip_address: str):
             self.model.execute_cron_jobs(ip_address)
 
@@ -154,7 +158,7 @@ class JAAQLController(BaseJAAQLController):
             else:
                 return self.model.get_last_successful_build_time()
 
-        @self.publish_route('/flush-cache', DOCUMENTATION__flush_cache)
+        @self.publish_route('/flush-cache', DOCUMENTATION__flush_cache, answers_head=False)
         def flush_cache(ip_address: str):
             self.model.flush_cache(ip_address)
 
@@ -178,15 +182,15 @@ class JAAQLController(BaseJAAQLController):
         def set_web_config(connection: DBInterface):
             self.model.set_web_config(connection)
 
-        @self.publish_route('/fetch-user-registries-for-tenant', DOCUMENTATION__oidc_user_registries)
+        @self.publish_route('/fetch-user-registries-for-tenant', DOCUMENTATION__oidc_user_registries, answers_head=False)
         def fetch_user_providers_for_tenant(http_inputs: dict):
             return self.model.fetch_user_registries_for_tenant(http_inputs)
 
-        @self.publish_route('/oidc-redirect-url', DOCUMENTATION__oidc_redirect_url)
+        @self.publish_route('/oidc-redirect-url', DOCUMENTATION__oidc_redirect_url, answers_head=False)
         def fetch_redirect_url(http_inputs: dict, response: JAAQLResponse, request_headers=None, ip_address=None):
             self.model.fetch_redirect_uri(http_inputs, response, request_headers=request_headers, ip_address=ip_address)
 
-        @self.publish_route(ENDPOINT__oidc_get_token, DOCUMENTATION__oidc_exchange_code)
+        @self.publish_route(ENDPOINT__oidc_get_token, DOCUMENTATION__oidc_exchange_code, answers_head=False)
         def exchange_auth_code(http_inputs: dict, ip_address: str, response: JAAQLResponse):
             try:
                 self.model.exchange_auth_code(http_inputs, request.cookies.get(COOKIE_OIDC), ip_address, response)
@@ -223,12 +227,12 @@ class JAAQLController(BaseJAAQLController):
             # A HEAD is answered as the GET is but leaves the document, which the GET downloads and deletes, to the GET
             return self.model.fetch_document_stream(http_inputs, purge=not self.is_head())
 
-        @self.publish_route('/oidc/logout', DOCUMENTATION__oidc_begin_logout)
+        @self.publish_route('/oidc/logout', DOCUMENTATION__oidc_begin_logout, answers_head=False)
         def begin_oidc_logout(http_inputs: dict, response: JAAQLResponse):
             # inputs: application, tenant, provider, optional schema, redirect_uri, optional id_token_hint
             self.model.begin_oidc_logout(http_inputs, response)
 
-        @self.publish_route('/oidc/post-logout', DOCUMENTATION__oidc_post_logout)
+        @self.publish_route('/oidc/post-logout', DOCUMENTATION__oidc_post_logout, answers_head=False)
         def finish_oidc_logout(http_inputs: dict, response: JAAQLResponse):
             # KC returns ?state=... here; validate against cookie and bounce to final app URL
             self.model.finish_oidc_logout(
