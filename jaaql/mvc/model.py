@@ -98,6 +98,9 @@ FILE__audit_trail = "audit_trail.sql"
 # The module node preloads into every webhook process, as the file URL --import takes on every platform
 WEBHOOK__body_preload_url = pathlib.Path(get_jaaql_root(), DIR__scripts, FILE__webhook_body_preload).resolve().as_uri()
 NODE__executables = ("node", "nodejs")
+ENVIRON__node_options = "NODE_OPTIONS"
+# The longest command a cloud procedure is started with as it is, below MAX_ARG_STRLEN (131,072 bytes with its NUL) for sh -c
+PROCEDURE__max_command_bytes = 100000
 HEADER__retry_after = "Retry-After"
 CONTENT__text = "text/plain"
 TAG__audit_trail_function = "$jaaql_audit_trail_function$"
@@ -2677,8 +2680,17 @@ WHERE
         encoded_account_id = base64.b64encode(account_id.encode(ENCODING__utf)).decode(ENCODING__utf)
 
         command = [rpc[KG__remote_procedure__command], encoded_args, encoded_access_token, encoded_username, encoded_ip_address, encoded_account_id]
+        stdin, env = None, None
+        if len(" ".join(command).encode(ENCODING__utf)) > PROCEDURE__max_command_bytes:
+            # sh -c takes the whole command as one argument, which Linux allows at most 128 KiB (MAX_ARG_STRLEN), so args too large for it
+            # failed to spawn (OSError, E2BIG) and were answered 500 as JAAQL's own server error. Such args go to the process's stdin instead,
+            # with the webhook's marker in their place, and node, preloading jaaql/scripts/webhook_body.mjs through NODE_OPTIONS, puts them
+            # back there as base64, where BATON's cloud runtime reads them (initialize, process.argv[2]). Args that fit stay where they were
+            command[1] = WEBHOOK__body_on_stdin
+            stdin = json.dumps(args)
+            env = {**os.environ, ENVIRON__node_options: (os.environ.get(ENVIRON__node_options, "") + " --import=" + WEBHOOK__body_preload_url).strip()}
         command = " ".join(command)
-        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
+        result = subprocess.run(command, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True, env=env)
 
         try:
             res = json.loads(result.stdout)
