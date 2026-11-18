@@ -325,6 +325,24 @@ class TestLineWriter(unittest.TestCase):
                           b"the next line\n"], self.writes)
         self.assertTrue(all(data.endswith(b"\n") for data in self.writes))
 
+    def test_a_signal_handler_printing_as_the_handlers_lines_are_taken_to_be_written_is_written_too(self):
+        # The second handler runs once the first one's line has been taken (bytes() has returned) and before it is removed from what the
+        # handlers printed: clearing all of it there lost the second handler's line
+        real_bytes = bytes
+        second = [lambda: print("from the second", file=self.writer)]
+
+        def taking(*args):
+            taken = real_bytes(*args)
+            if args and args[0] is self.writer._interrupted and second:
+                second.pop()()
+            return taken
+        with self.interrupting(lambda: print("from the first", file=self.writer)), \
+                mock.patch.object(line_output, "bytes", side_effect=taking, create=True):
+            print("the line being written", file=self.writer)
+        self.assertEqual([b"the line being written\n", b"from the first\n", b"from the second\n"], self.writes)
+        self.assertEqual(b"the line being written\nfrom the first\nfrom the second\n", self.logged())
+        self.assertEqual(b"", real_bytes(self.writer._interrupted))
+
     @unittest.skipUnless(hasattr(os, "fork"), "needs fork")
     def test_a_forked_process_does_not_write_its_parent_s_line_not_complete(self):
         run_script(self, FORK, self.path)

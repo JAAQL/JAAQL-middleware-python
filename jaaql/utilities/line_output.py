@@ -170,10 +170,11 @@ class LineWriter(io.TextIOBase):
 
     def _write_interrupted(self):
         # What handlers printed while this thread was writing, all of it in one write (a handler has returned before the thread it
-        # interrupted goes on), again while one prints during that write
+        # interrupted goes on), again while one prints during that write. Only what was taken is removed: a handler can print between the
+        # taking and the removing, and its line is written on the next turn
         while self._interrupted:
             interrupted = bytes(self._interrupted)
-            self._interrupted.clear()
+            del self._interrupted[:len(interrupted)]
             _write_all(self._fd, interrupted)
 
     def flush(self):
