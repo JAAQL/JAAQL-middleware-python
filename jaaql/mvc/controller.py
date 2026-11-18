@@ -170,8 +170,9 @@ class JAAQLController(BaseJAAQLController):
             self.model.handle_webhook(application, name, body, headers, args, response, username)
 
         @self.publish_route('/remote_procedure', DOCUMENTATION__remote_procedures)
-        def handle_remote_procedure(http_inputs: dict, is_the_anonymous_user: bool, auth_token: str, username: str, ip_address: str, account_id: str):
-            return self.model.handle_procedure(http_inputs, is_the_anonymous_user, auth_token, username, ip_address, account_id)
+        def handle_remote_procedure(http_inputs: dict, is_the_anonymous_user: bool, auth_token: str, username: str, ip_address: str, account_id: str,
+                                    response: JAAQLResponse):
+            return self.model.handle_procedure(http_inputs, is_the_anonymous_user, auth_token, username, ip_address, account_id, response)
 
         @self.publish_route('/internal/set-web-config', DOCUMENTATION__set_web_config)
         def set_web_config(connection: DBInterface):

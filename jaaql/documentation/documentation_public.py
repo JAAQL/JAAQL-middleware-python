@@ -140,11 +140,22 @@ ARG_RES__proc = [
     )
 ]
 
+RES__public_procedure_busy = SwaggerFlatResponse(
+    description="The procedure is public and the worker already runs PUBLIC_PROCEDURE_MAX_RUNNING public procedures and no place came free "
+                "in time, so the procedure is not started. Retry-After gives the seconds to wait",
+    code=HTTPStatus.SERVICE_UNAVAILABLE,
+    body="Too many public procedures are running. Try again later"
+)
+
 DOCUMENTATION__remote_procedures = SwaggerDocumentation(
     tags="Remote Procedure",
     methods=SwaggerMethod(
         name="Execute remote procedure",
-        description="Executes a remote procedure",
+        description="Executes a remote procedure in a node process of its own. A worker runs at most PUBLIC_PROCEDURE_MAX_RUNNING (default " +
+                    str(PUBLIC_PROCEDURE__default_max_running) + ") public procedures at once, and at most PUBLIC_PROCEDURE_MAX_WAITING "
+                    "(default " + str(PUBLIC_PROCEDURE__default_max_waiting) + ") more wait for a place, each at most " +
+                    str(SLOT__wait_seconds) + " s. A public procedure that finds no place is not started, and the answer is 503 with "
+                    "Retry-After. Private procedures are not bounded",
         method=REST__POST,
         body=ARG_RES__proc + [
             SwaggerArgumentResponse(
@@ -153,7 +164,7 @@ DOCUMENTATION__remote_procedures = SwaggerDocumentation(
                 description="The arguments that will be passed through to the function, as a JSON object"
             )
         ],
-        response=RES__allow_all
+        response=[RES__allow_all, RES__public_procedure_busy]
     )
 )
 

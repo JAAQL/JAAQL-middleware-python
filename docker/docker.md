@@ -78,6 +78,8 @@ Additional lines can be used
     -e RESEND_VERIFY_EMAIL_MAX_PER_HOUR=5 \
     -e WEBHOOK_MAX_RUNNING=4 \
     -e WEBHOOK_MAX_WAITING=32 \
+    -e PUBLIC_PROCEDURE_MAX_RUNNING=4 \
+    -e PUBLIC_PROCEDURE_MAX_WAITING=32 \
     --mount type=bind,source="$(pwd)"/install_scripts,target=/JAAQL-middleware-python/install_scripts \
 
 JEQL_VERSION specifies the version of JEQL to use  
@@ -86,6 +88,7 @@ SENTINEL_URL also receives JAAQL's own server errors: a request that fails becau
 JAAQL_DEEP_HEALTH_APPLICATION (unset by default) names one application whose view deep_health.fault (cause text) /internal/deep-health also reads, as dba, after JAAQL's own check: any row answers 503 Deep health followed by every cause, and a view that cannot be read 503 deep_health.fault unavailable, neither of which is reported as a server error. Unset, deep-health checks JAAQL alone. Sentinel's box sets it to sentinel. Both 503 bodies are public: nginx passes /api/internal/deep-health on with no login, as Pingdom polls it, so anyone can read the causes the view names and the first line (at most 200 characters) of a database error under it. A view must therefore name causes fit for anyone to read (Sentinel's names servers and projects only, never addresses or personal data)  
 RESEND_VERIFY_EMAIL_COOLDOWN_SECONDS (default 60) and RESEND_VERIFY_EMAIL_MAX_PER_HOUR (default 5) limit how often /resend-verify-email, which needs no login, has Keycloak send one account its verification mail: at most once in that many seconds and that many times an hour, the send at the account's first sign-in included; a resend inside the limits sends nothing and answers as the last send did. 0 lifts a limit. Each gunicorn worker (GUNICORN_WORKERS) counts on its own  
 WEBHOOK_MAX_RUNNING (default 4) is the most webhook processes (node, one per request to /webhook/... or /secure/...) one gunicorn worker runs at once, and WEBHOOK_MAX_WAITING (default 32) the most webhooks that wait for a place in it at once, each at most 5 seconds and served in the order they came, so that a burst is served a few at a time; a webhook that finds no place is not started and is answered 503 with Retry-After: 5, never as a server error. WEBHOOK_MAX_RUNNING 0 lifts the bound, WEBHOOK_MAX_WAITING 0 refuses at once. A box runs at most GUNICORN_WORKERS times as many. A webhook's body reaches it on its stdin, so its size is bounded only by the request size limit: nginx's client_max_body_size (JAAQL's nginx config sets none, so nginx's default of 1 MiB holds) and Flask's MAX_CONTENT_LENGTH of 2 MiB behind it, each answering 413  
+PUBLIC_PROCEDURE_MAX_RUNNING (default 4) and PUBLIC_PROCEDURE_MAX_WAITING (default 32) bound public cloud procedures (/remote_procedure of a procedure of access public, which the anonymous user may call) in the same way, with places of their own, so that webhooks and public procedures never keep each other out; one that finds no place is not started and is answered 503 with Retry-After: 5. Private procedures, which need a login, are not bounded  
 You can specify jaaql specific install scripts which will call the various endpoints with input data, after jaaql has been installed
     
 ## Usage

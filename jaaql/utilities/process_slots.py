@@ -1,20 +1,24 @@
 """
 How many node processes of one kind one gunicorn worker runs at once. Every request to /webhook/<application>/<name> or
-/secure/<application>/<name> starts a node process of its own (about 50 MB, for a fraction of a second), /webhook needs no login, and a
-gevent worker serves up to 100 requests at once (worker_connections), so without a bound a flood of webhook requests from many addresses,
-which nginx's limit per client address does not hold back, could start some 500 node processes on a box of 5 workers and run it out of
-memory, its database with it.
+/secure/<application>/<name> starts a node process of its own (about 50 MB, for a fraction of a second), and so does every call of a public
+cloud procedure (/remote_procedure, a procedure of access public); /webhook and public procedures need no login, and a gevent worker serves
+up to 100 requests at once (worker_connections), so without a bound a flood of such requests from many addresses, which nginx's limit per
+client address does not hold back, could start some 500 node processes on a box of 5 workers and run it out of memory, its database with it.
+Webhooks (WEBHOOKS) and public procedures (PUBLIC_PROCEDURES) have places of their own, so that a flood of one never keeps the other out.
+Private procedures are not bounded: they need a login, which is accountable and held back by nginx's limit per address, and Securium's,
+which page through an outside API, can run longer than a request could wait for a place.
 
-A Slots runs at most max_running() processes at once (WEBHOOKS: WEBHOOK_MAX_RUNNING, default WEBHOOK__default_max_running, 4). A request
-asked for while that many run waits for a place, at most SLOT__wait_seconds (5), and at most max_waiting() of them wait at once (WEBHOOKS:
-WEBHOOK_MAX_WAITING, default WEBHOOK__default_max_waiting, 32): a burst, such as a page loading many documents through one webhook, is
-served a few at a time instead of refused. The waiting are served in the order they came: a place given back goes straight to the one that
+A Slots runs at most max_running() processes at once (WEBHOOKS: WEBHOOK_MAX_RUNNING, default WEBHOOK__default_max_running, 4;
+PUBLIC_PROCEDURES: PUBLIC_PROCEDURE_MAX_RUNNING, default 4). A request asked for while that many run waits for a place, at most
+SLOT__wait_seconds (5), and at most max_waiting() of them wait at once (WEBHOOK_MAX_WAITING, default WEBHOOK__default_max_waiting, 32;
+PUBLIC_PROCEDURE_MAX_WAITING, default 32): a burst, such as a page loading many documents through one webhook, is served a few at a time
+instead of refused. The waiting are served in the order they came: a place given back goes straight to the one that
 has waited longest, and a newcomer takes a free place only when nobody waits. A request that finds as many waiting, or that waits in vain,
 is not started and is answered 503 with Retry-After (SLOT__retry_after_seconds), never as a server error, and a webhook sender retries a
 503; the bound on waiting keeps a flood from holding the worker's connections, which the app's other routes need. Both settings are read at
 every request; a max_running() of 0 lifts the bound, and a max_waiting() of 0 refuses at once. A box runs at most GUNICORN_WORKERS
 (default 5) times as many. The webhooks in use, Sentinel's gateway heartbeat (one every 5 minutes) and Securium's document downloads, never
-come near it. A refusal is printed, at most once a minute for each kind, with the number refused since the line before
+come near it, and no app in use has a public procedure (thewashingforecast's, deprecated, is the only one). A refusal is printed, at most once a minute for each kind, with the number refused since the line before
 """
 import collections
 import os
@@ -22,7 +26,8 @@ import threading
 import time
 
 from jaaql.constants import ENVIRON__webhook_max_running, ENVIRON__webhook_max_waiting, WEBHOOK__default_max_running, \
-    WEBHOOK__default_max_waiting, SLOT__wait_seconds
+    WEBHOOK__default_max_waiting, SLOT__wait_seconds, ENVIRON__public_procedure_max_running, ENVIRON__public_procedure_max_waiting, \
+    PUBLIC_PROCEDURE__default_max_running, PUBLIC_PROCEDURE__default_max_waiting
 
 LINE__refused = "%s %s/%s answered 503: this worker already runs %d %s processes (%s) and %s; %d refused since the last line"
 REASON__queue_full = "%d more wait (%s)"
@@ -158,3 +163,5 @@ class Slots:
 
 WEBHOOKS = Slots("Webhook", "webhook", ENVIRON__webhook_max_running, ENVIRON__webhook_max_waiting, WEBHOOK__default_max_running,
                  WEBHOOK__default_max_waiting)
+PUBLIC_PROCEDURES = Slots("Public procedure", "public procedure", ENVIRON__public_procedure_max_running, ENVIRON__public_procedure_max_waiting,
+                          PUBLIC_PROCEDURE__default_max_running, PUBLIC_PROCEDURE__default_max_waiting)

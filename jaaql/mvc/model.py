@@ -91,6 +91,7 @@ ERR__document_created_file = "Document is a file, cannot be downloaded in this w
 ERR__web_config_refused = "nginx -t refused the merged web config, so %s was put back as it was and nginx was not reloaded:\n%s"
 ERR__web_config_not_reloaded = "nginx -t accepted the merged web config, now in %s, but nginx -s reload failed:\n%s"
 ERR__webhook_busy = "Too many webhooks are running. Try again later"
+ERR__public_procedure_busy = "Too many public procedures are running. Try again later"
 
 PG__default_connection_string = "postgresql://postgres:%s@localhost:5432/jaaql"
 DIR__scripts = "scripts"
@@ -349,6 +350,15 @@ def _keycloak_failure_description(ex) -> str:
         return type(ex).__name__
     status = getattr(getattr(ex, "response", None), "status_code", None)
     return type(ex).__name__ + ("" if status is None else " (Keycloak answered %s)" % status)
+
+
+def answer_busy(response: JAAQLResponse, message: str):
+    # No place for the node process: 503 with Retry-After, the route's own answer, never a server error (jaaql/utilities/process_slots.py)
+    response.response_code = HTTPStatus.SERVICE_UNAVAILABLE.value
+    response.raw_headers = {HEADER__retry_after: str(SLOT__retry_after_seconds)}
+    response.response_type = CONTENT__text
+    response.raw_response = message
+    response.is_binary = False
 
 
 class JAAQLModel(BaseJAAQLModel):
@@ -2660,7 +2670,8 @@ WHERE
             "account_id": new_account_id
         }
 
-    def handle_procedure(self, http_inputs: dict, is_the_anonymous_user: bool, auth_token: str, username: str, ip_address: str, account_id: str):
+    def handle_procedure(self, http_inputs: dict, is_the_anonymous_user: bool, auth_token: str, username: str, ip_address: str, account_id: str,
+                         response: JAAQLResponse):
         rpc = remote_procedure__select(self.jaaql_lookup_connection, http_inputs[KG__remote_procedure__application], http_inputs[KG__remote_procedure__name])
 
         args = http_inputs[KEY__args]
@@ -2690,7 +2701,19 @@ WHERE
             stdin = json.dumps(args)
             env = {**os.environ, ENVIRON__node_options: (os.environ.get(ENVIRON__node_options, "") + " --import=" + WEBHOOK__body_preload_url).strip()}
         command = " ".join(command)
-        result = subprocess.run(command, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True, env=env)
+
+        # A public procedure, which the anonymous user may call, runs in one of PUBLIC_PROCEDURE_MAX_RUNNING places per worker, a few more
+        # waiting for one in the order they came; one that finds none is not started and is answered 503 with Retry-After. A private one,
+        # which needs a login, is not bounded (jaaql/utilities/process_slots.py)
+        slots = process_slots.PUBLIC_PROCEDURES if rpc[KG__remote_procedure__access] == RPC_ACCESS__public else None
+        if slots is not None and not slots.claim(http_inputs[KG__remote_procedure__application], http_inputs[KG__remote_procedure__name]):
+            answer_busy(response, ERR__public_procedure_busy)
+            return None
+        try:
+            result = subprocess.run(command, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True, env=env)
+        finally:
+            if slots is not None:
+                slots.release()
 
         try:
             res = json.loads(result.stdout)
@@ -2751,11 +2774,7 @@ WHERE
         # finds none is not started and the answer is 503 with Retry-After, the webhook route's own answer and never a server error
         # (jaaql/utilities/process_slots.py)
         if not process_slots.WEBHOOKS.claim(application, name):
-            response.response_code = HTTPStatus.SERVICE_UNAVAILABLE.value
-            response.raw_headers = {HEADER__retry_after: str(SLOT__retry_after_seconds)}
-            response.response_type = CONTENT__text
-            response.raw_response = ERR__webhook_busy
-            response.is_binary = False
+            answer_busy(response, ERR__webhook_busy)
             return
 
         # No shell; pass argv list. The output is read as UTF-8 text.

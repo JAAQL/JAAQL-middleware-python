@@ -146,6 +146,12 @@ ENVIRON__webhook_max_running = "WEBHOOK_MAX_RUNNING"
 ENVIRON__webhook_max_waiting = "WEBHOOK_MAX_WAITING"
 WEBHOOK__default_max_running = 4
 WEBHOOK__default_max_waiting = 32
+# The same for public cloud procedures (/remote_procedure of access public, which the anonymous user may call), with places of their own.
+# Private ones, which need a login, are not bounded
+ENVIRON__public_procedure_max_running = "PUBLIC_PROCEDURE_MAX_RUNNING"
+ENVIRON__public_procedure_max_waiting = "PUBLIC_PROCEDURE_MAX_WAITING"
+PUBLIC_PROCEDURE__default_max_running = 4
+PUBLIC_PROCEDURE__default_max_waiting = 32
 SLOT__wait_seconds = 5
 SLOT__retry_after_seconds = 5
 # What a webhook's command line holds in place of its body, which goes to the process's stdin; jaaql/scripts/webhook_body.mjs, which node
