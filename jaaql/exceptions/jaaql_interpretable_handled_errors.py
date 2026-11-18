@@ -339,12 +339,13 @@ class TooManyPasswordResetRequests(JaaqlInterpretableHandledError):
 
 
 class DocumentStillRendering(JaaqlInterpretableHandledError):
-    def __init__(self, descriptor=None):
+    # A document asked for before its render has finished: 425, as the document routes answer it (a 425 raised with a message alone)
+    def __init__(self, descriptor=None, message="The document has not finished rendering yet, please wait before requesting again."):
         super().__init__(
             error_code=1018,
-            http_response_code=422,
+            http_response_code=425,
             table_name="document_request",
-            message="The document has not finished rendering yet, please wait before requesting again.",
+            message=message,
             column_name="render_timestamp",
             _set=None,
             index=None,
@@ -531,8 +532,8 @@ class RequestTooLarge(JaaqlInterpretableHandledError):
 
 
 class RequestRefused(JaaqlInterpretableHandledError):
-    # Any other client error (4xx) JAAQL answers with a status and a message alone: 422 unless the route answers another (a document still
-    # rendering 425, a database that does not exist 460)
+    # Any other client error (4xx) JAAQL answers with a status and a message alone: 422 unless the route answers another (a database that
+    # does not exist 460)
     def __init__(self, message, http_response_code=422, descriptor=None):
         super().__init__(
             error_code=1033,
@@ -555,7 +556,8 @@ CLIENT_ERRORS__by_status = {
     404: ResourceNotFound,
     405: UnsupportedMethod,
     409: RequestConflict,
-    413: RequestTooLarge
+    413: RequestTooLarge,
+    425: lambda message: DocumentStillRendering(message=message)
 }
 
 

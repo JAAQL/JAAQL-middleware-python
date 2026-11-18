@@ -232,7 +232,9 @@ class TestRefusals(ServerErrorCase):
 
 ERROR_BODY__keys = {"error_code", "message", "table_name", "index", "column_name", "descriptor", "set"}
 # The error code of a client error raised with a status and a message alone, by its status
-CODES__by_status = {400: 1029, 401: 1009, 403: 1028, 404: 1030, 405: 1031, 409: 1027, 413: 1032, 422: 1033, 425: 1033, 460: 1033}
+CODES__by_status = {400: 1029, 401: 1009, 403: 1028, 404: 1030, 405: 1031, 409: 1027, 413: 1032, 422: 1033, 425: 1018, 460: 1033}
+# The table and the column an error code names, where it names any: DocumentStillRendering, as BATON's DOCUMENT_STILL_RENDERING knows it
+DESCRIBED__by_code = {1018: ("document_request", "render_timestamp")}
 
 
 class TestTheErrorBody(ServerErrorCase):
@@ -244,7 +246,7 @@ class TestTheErrorBody(ServerErrorCase):
     they always did
     """
 
-    def assertErrorBody(self, answered, status, code, message, startswith=False):
+    def assertErrorBody(self, answered, status, code, message, startswith=False, described=(None, None)):
         (got, headers, data), reports = answered
         self.assertEqual((status, []), (got, reports), data)
         self.assertTrue(dict(headers)["Content-Type"].startswith("application/json"), headers)
@@ -255,7 +257,8 @@ class TestTheErrorBody(ServerErrorCase):
             self.assertTrue(body["message"].startswith(message), body)
         else:
             self.assertEqual(message, body["message"])
-        self.assertEqual([None] * 5, [body[key] for key in ("table_name", "index", "column_name", "descriptor", "set")])
+        self.assertEqual([described[0], None, described[1], None, None], [body[key] for key in ("table_name", "index", "column_name",
+                                                                                                "descriptor", "set")])
         return dict(headers)
 
     def assertAsEver(self, answered, status, content_type, body):
@@ -267,7 +270,8 @@ class TestTheErrorBody(ServerErrorCase):
         for status, code in CODES__by_status.items():
             refusal = HttpStatusException("Refused with %d" % status, CustomHTTPStatus.DATABASE_NO_EXIST if status == 460 else status)
             with self.subTest(status=status), mock.patch.object(self.model, "submit", raiser(lambda: refusal), create=True):
-                self.assertErrorBody(self.answers(self.submit), status, code, "Refused with %d" % status)
+                self.assertErrorBody(self.answers(self.submit), status, code, "Refused with %d" % status,
+                                     described=DESCRIBED__by_code.get(code, (None, None)))
         self.assertEqual([], self.lines())
 
     def test_a_malformed_request(self):

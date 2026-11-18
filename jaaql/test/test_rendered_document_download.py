@@ -111,9 +111,9 @@ class TestRenderedDocumentDownload(ServerErrorCase):
     def test_a_document_still_rendering_or_not_there_is_answered_as_documented(self):
         # 425 and 404, as GET /documents documents them, unreported. Up to 5.3.30 a download of a document still rendering was answered 500
         # and reported (Exception: Response with code '425' was not expected, as the route documented no 425), and an id not found 422 on
-        # both routes. /rendered_documents answers with JAAQL's error body; /documents as plain text (text/plain), as BATON's render
-        # polling (pollDocumentRender) reads it and polls again: on JAAQL's error body BATON would throw at a render's first poll, alert the
-        # user and report it
+        # both routes. /rendered_documents answers with JAAQL's error body, the 425 as DocumentStillRendering (error_code 1018, as BATON's
+        # DOCUMENT_STILL_RENDERING); /documents as plain text (text/plain), as BATON's render polling (pollDocumentRender) reads it and polls
+        # again: on JAAQL's error body BATON would throw at a render's first poll, alert the user and report it
         documents_get = mock.patch.object(self.model, "fetch_document", create=True,
                                           side_effect=lambda inputs, response: JAAQLModel.fetch_document(self.model, inputs, response))
 
@@ -125,7 +125,7 @@ class TestRenderedDocumentDownload(ServerErrorCase):
 
         with documents_get:
             self.documents.completed = None
-            self.assertEqual((425, "application/json", 1033, "Document still rendering"), answered(RENDERED_DOCUMENTS))
+            self.assertEqual((425, "application/json", 1018, "Document still rendering"), answered(RENDERED_DOCUMENTS))
             self.assertEqual((425, "text/plain; charset=utf-8", "Document still rendering"), answered("/documents"))
             self.assertEqual({DOCUMENT_ID: CONTENT}, self.documents.rows)
             self.documents.rows.clear()

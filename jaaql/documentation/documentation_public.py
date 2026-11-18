@@ -363,7 +363,7 @@ DOCUMENTATION__rendered_document = SwaggerDocumentation(
                 body=BODY__file
             ),
             SwaggerFlatResponse(
-                description="Document still rendering",
+                description="Document still rendering, as JAAQL's error body with error_code 1018 (DocumentStillRendering)",
                 code=HTTPStatus.TOO_EARLY,
                 body=ERR__document_still_rendering
             ),
