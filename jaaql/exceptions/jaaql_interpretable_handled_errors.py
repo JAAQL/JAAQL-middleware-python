@@ -7,13 +7,31 @@ from jaaql.exceptions.http_status_exception import JaaqlInterpretableHandledErro
 
 
 class AccountAlreadyExists(JaaqlInterpretableHandledError):
-    def __init__(self, descriptor=None):
+    # The account a request asks for (/accounts, /accounts/batch) exists already, or the role it would attach as does: the request's conflict
+    # with what exists, the client's (409). column_name names what it shares with what exists: the role (id), the username, the identity
+    # provider's user (sub)
+    def __init__(self, message="A user like this already exists", column_name="sub", descriptor=None):
         super().__init__(
             error_code=1001,
-            http_response_code=422,
+            http_response_code=409,
             table_name="account",
-            message="A user like this already exists",
-            column_name="sub",
+            message=message,
+            column_name=column_name,
+            _set=None,
+            index=None,
+            descriptor=descriptor
+        )
+
+
+class RequestConflict(JaaqlInterpretableHandledError):
+    # A request that would create something twice, or something that exists already: the client's (409)
+    def __init__(self, message, table_name=None, column_name=None, descriptor=None):
+        super().__init__(
+            error_code=1027,
+            http_response_code=409,
+            table_name=table_name,
+            message=message,
+            column_name=column_name,
             _set=None,
             index=None,
             descriptor=descriptor

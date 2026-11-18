@@ -37,7 +37,9 @@ DOCUMENTATION__create_account = SwaggerDocumentation(
                 required=False,
                 condition="Defaults to true"
             )
-        ]
+        ],
+        exceptions=SwaggerResponseException(HTTPStatus.CONFLICT, "error_code 1001, an account with this username, or the role it would "
+                                                                 "attach as, exists already")
     )
 )
 
@@ -72,7 +74,9 @@ DOCUMENTATION__create_account_batch = SwaggerDocumentation(
                     example="my-role"
                 )
             )
-        )
+        ),
+        exceptions=SwaggerResponseException(HTTPStatus.CONFLICT, "error_code 1001, an account with one of these usernames, or for one of "
+                                                                 "these users of an identity provider, exists already")
     )
 )
 

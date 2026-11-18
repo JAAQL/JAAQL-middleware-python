@@ -89,7 +89,7 @@ class JAAQLController(BaseJAAQLController):
                 registered = True
             self.model.create_account_with_potential_api_key(connection, username=http_inputs[KEY__username],
                                                              api_key=http_inputs[KEY__password], attach_as=http_inputs[KEY__attach_as],
-                                                             registered=registered, sub=None)
+                                                             registered=registered, sub=None, requested=True)
 
         @self.publish_route('/accounts/batch', DOCUMENTATION__create_account_batch)
         def accounts(connection: DBInterface, http_inputs: dict):

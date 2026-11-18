@@ -587,7 +587,9 @@ DOCUMENTATION__procedures = SwaggerDocumentation(
                     )
                 )
             )
-        ]
+        ],
+        exceptions=SwaggerResponseException(HTTPStatus.CONFLICT, "error_code 1027, a procedure is named more than once, and nothing "
+                                                                 "is changed")
     )
 )
 

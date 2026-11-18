@@ -105,6 +105,19 @@ ERR__call_proc_query_malformed = "Expected 'query' to be the name of the procedu
 ERR__call_proc_parameters_malformed = "Expected 'parameters' to be an object of the procedure's arguments by name, not %s"
 ERR__prepare_database_missing = "Expected 'database'"
 ERR__prepare_queries_malformed = "Expected 'queries' to be a list of objects, each with its query, file, line_number and name, not %s"
+ERR__account_role_exists = "The role '%s' already exists, so no account can be created as it"
+ERR__account_id_exists = "An account as the role '%s' already exists"
+ERR__account_username_exists = "An account with the username '%s' already exists"
+ERR__account_sub_exists = "An account for this user of the identity provider already exists"
+ERR__procedure_repeated = "The procedure '%s' is named more than once"
+
+# What create_account raises when what a request asks for exists already, as the database names it: the role the account attaches as
+# (CREATE ROLE, duplicate_object), and the account's unique keys (unique_violation): its role, its username, its identity provider's user
+SQLSTATE__duplicate_object = "42710"
+SQLSTATE__unique_violation = "23505"
+CONSTRAINT__account_id = "account_pkey"
+CONSTRAINT__account_username = "account_username_key"
+CONSTRAINT__account_sub = "account_sub_provider_tenant_key"
 
 PG__default_connection_string = "postgresql://postgres:%s@localhost:5432/jaaql"
 DIR__scripts = "scripts"
@@ -119,6 +132,29 @@ HEADER__retry_after = "Retry-After"
 CONTENT__text = "text/plain"
 TAG__audit_trail_function = "$jaaql_audit_trail_function$"
 TAG__audit_trail_script = "$jaaql_audit_trail_script$"
+
+
+def account_conflict(ex, username, attach_as):
+    """
+    The answer to a request for an account (/accounts, /accounts/batch) whose create_account raised ex, when ex says that what the request
+    asks for exists already: AccountAlreadyExists (409), the client's, never a server error. None for any other error, which is raised as ever:
+    only the database's own diagnostics of create_account's statements are read (its SQLSTATE and constraint), never its message
+    """
+    descriptor = getattr(ex, "descriptor", None)
+    if not isinstance(ex, JaaqlInterpretableHandledError) or not isinstance(descriptor, dict):
+        return None
+    sqlstate = descriptor.get("sqlstate")
+    constraint = descriptor.get("constraint_name")
+    # The role, the only object create_account makes, and the account's id are only named by the request when it attaches as a role
+    if attach_as is not None and sqlstate == SQLSTATE__duplicate_object:
+        return client_fault(AccountAlreadyExists(ERR__account_role_exists % attach_as, KG__account__id))
+    if attach_as is not None and sqlstate == SQLSTATE__unique_violation and constraint == CONSTRAINT__account_id:
+        return client_fault(AccountAlreadyExists(ERR__account_id_exists % attach_as, KG__account__id))
+    if sqlstate == SQLSTATE__unique_violation and constraint == CONSTRAINT__account_username:
+        return client_fault(AccountAlreadyExists(ERR__account_username_exists % username, KG__account__username))
+    if sqlstate == SQLSTATE__unique_violation and constraint == CONSTRAINT__account_sub:
+        return client_fault(AccountAlreadyExists(ERR__account_sub_exists, KG__account__sub))
+    return None
 
 
 def audit_trail_install_function() -> str:
@@ -470,14 +506,23 @@ class JAAQLModel(BaseJAAQLModel):
                                               username: str = None,
                                               email: str = None, attach_as: str = None,
                                               api_key: str = None, already_exists: bool = False, allow_already_exists: bool = False,
-                                              registered: bool = False):
+                                              registered: bool = False, requested: bool = False):
+        # requested: the account is the one a request asks for (/accounts, /accounts/batch), so an account or a role that exists already is
+        # the request's conflict with what exists, answered 409 and never reported (account_conflict). JAAQL's own accounts (the install's,
+        # a login's federation, a security event's) are not: what they find existing is JAAQL's own state, whatever it raises a server error
         if sub is None:
             sub = username
 
-        account_id = create_account(connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
-                                    username, sub, email, provider,
-                                    tenant, api_key,
-                                    attach_as, already_exists, allow_already_exists)
+        try:
+            account_id = create_account(connection, self.get_db_crypt_key(), self.get_vault_repeatable_salt(),
+                                        username, sub, email, provider,
+                                        tenant, api_key,
+                                        attach_as, already_exists, allow_already_exists)
+        except JaaqlInterpretableHandledError as ex:
+            conflict = account_conflict(ex, username, attach_as) if requested else None
+            if conflict is None:
+                raise
+            raise conflict from ex
 
         if account_id == "account_already_existed":
             account_id = attach_as
@@ -505,7 +550,7 @@ class JAAQLModel(BaseJAAQLModel):
                     connection,
                     sub, provider, tenant,
                     username, attach_as=cur_input[KEY__attach_as],
-                    api_key=cur_input[KEY__password], allow_already_exists=True, registered=True
+                    api_key=cur_input[KEY__password], allow_already_exists=True, registered=True, requested=True
                 )
 
                 # Insert into federation.federated_user on the app database
@@ -2914,6 +2959,13 @@ WHERE
                                                        application, name, result.returncode, result.stdout, result.stderr)
 
     def set_procedures(self, inputs: dict, connection: DBInterface):
+        # A procedure named twice is the request's conflict with itself, answered 409 before anything is deleted: each statement below
+        # commits on its own, so its second INSERT, refused by the primary key, left the application with the procedures listed before it
+        names = [proc.get(KG__remote_procedure__name) for proc in inputs["procs"]]
+        repeated = next((name for idx, name in enumerate(names) if name in names[:idx]), None)
+        if repeated is not None:
+            raise RequestConflict(ERR__procedure_repeated % repeated, "remote_procedure", KG__remote_procedure__name)
+
         execute_supplied_statement(
             connection,
             "DELETE FROM remote_procedure WHERE application = :application",
