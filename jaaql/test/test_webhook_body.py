@@ -4,7 +4,8 @@ passes a marker in its place on the command line, where Linux allows one argumen
 jaaql/scripts/webhook_body.mjs, puts the body back in that place as base64 before the webhook's modules run, which is where BATON's cloud
 runtime has always read it. Before, the body went onto the command line, so a body over about 98,000 bytes failed to spawn (E2BIG) and was
 answered 500 as JAAQL's own server error. A body over the request size limit (Flask's MAX_CONTENT_LENGTH) is answered 413 and never starts the
-webhook. A body's keys are no longer merged with the path's application and name. A worker runs at most WEBHOOK_MAX_RUNNING webhook processes
+webhook. Neither a body's keys nor the query's are merged with the path's application and name, which say which webhook runs, and the query
+reaches the webhook unchanged, a key "name" or "application" in it too. A worker runs at most WEBHOOK_MAX_RUNNING webhook processes
 at once, at most WEBHOOK_MAX_WAITING more waiting for a place in the order they came, and a webhook that finds no place is answered 503
 with Retry-After without starting one. None of these is reported to Sentinel; a webhook that crashes still is, as before.
 
@@ -129,7 +130,7 @@ class WebhookCase(ServerErrorCase):
             self.registration.stop()
         self.registration = mock.patch.object(model, "remote_procedure__select", return_value={
             "command": command, "access": model.RPC_ACCESS__webhook})
-        self.registration.start()
+        self.selected = self.registration.start()
 
     def post(self, body: bytes, route=ROUTE, headers=None):
         return self.client.post(route, data=body, headers=dict(JSON, **(headers or {})))
@@ -204,6 +205,41 @@ class TestWebhookBody(WebhookCase):
         self.assertEqual(200, status)
         seen = self.seen(data)
         self.assertEqual(("application/json", {"page": "2", "sort": "name"}), (seen["content_type"], seen["parameters"]))
+
+    def test_a_query_naming_a_name_or_an_application_reaches_the_webhook_unchanged_and_the_path_says_which_runs(self):
+        # Before, the query was merged with the path's application and name, and such a key was answered 400 Field duplicated in request
+        query = "?name=Jane&application=other&parameters=x&page=2&naam=Ren%C3%A9e&amp=%26%3D"
+        expected = {"name": "Jane", "application": "other", "parameters": "x", "page": "2", "naam": "Ren\u00e9e", "amp": "&="}
+        for what, request, argc in [
+                ("GET", lambda: self.client.get(ROUTE + query), 3),
+                ("POST", lambda: self.client.post(ROUTE + query, data=b'{"name": "in the body"}', headers=JSON), 3),
+                ("secure GET", lambda: self.client.get(SECURE_ROUTE + query, headers={HEADER__security_bypass: SUPER_KEY}), 4),
+                ("secure POST", lambda: self.client.post(SECURE_ROUTE + query, data=b'{"a": 1}', headers=dict(JSON, **{
+                    HEADER__security_bypass: SUPER_KEY})), 4)]:
+            with self.subTest(what=what):
+                self.selected.reset_mock()
+                (status, _, data), reports = self.answers(request)
+                self.assertEqual((200, []), (status, reports), data[:300])
+                seen = self.seen(data)
+                self.assertEqual((expected, argc), (seen["parameters"], seen["argc"]))
+                self.assertEqual((APPLICATION, WEBHOOK), self.selected.call_args[0][1:])
+        self.assertEqual([], self.lines())
+
+    def test_a_get_with_a_form_encoded_body_keeps_its_body(self):
+        # Before, request.form parsed the body, which it consumed, and its key "name" was a duplicated field (400)
+        body = b"id=tr_1&name=Jane"
+        (status, _, data), reports = self.answers(lambda: self.client.get(ROUTE, data=body, headers={
+            "Content-Type": "application/x-www-form-urlencoded"}))
+        self.assertEqual(200, status, data[:300])
+        seen = self.seen(data)
+        self.assertEqual(([], len(body), sha256(body), {}), (reports, seen["length"], seen["sha256"], seen["parameters"]))
+
+    def test_a_query_key_alone_is_no_path(self):
+        # A route without the application or the name in its path is still no webhook, whatever the query names
+        for route in ["/webhook/%s?name=%s" % (APPLICATION, WEBHOOK), "/webhook?application=%s&name=%s" % (APPLICATION, WEBHOOK)]:
+            with self.subTest(route=route):
+                self.assertEqual(404, self.client.get(route).status_code)
+        self.run_calls.assert_not_called()
 
     def test_a_secure_webhook_gets_its_body_and_the_user(self):
         seen = self.assertDelivered(json_body(150 * KB), SECURE_ROUTE, {HEADER__security_bypass: SUPER_KEY}, argc=4)

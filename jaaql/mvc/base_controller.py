@@ -361,6 +361,20 @@ class BaseJAAQLController:
         return real_resp
 
     @staticmethod
+    def get_raw_request_inputs(method: SwaggerMethod, was_allow_all: bool, is_prod: bool, fill_missing: bool, **kwargs):
+        # A webhook's request (raw_request): the webhook gets the query, the headers and the body as they came (handle_webhook), so
+        # neither the query nor the body is merged with the path's application and name, which are authoritative: a key "name" or
+        # "application" in either is no duplicated field (400) and reaches the webhook, a JSON string, number or null is no mapping (500).
+        # The inputs are the path variables alone. A POST's body is JSON, which must parse (400 otherwise)
+        if len(method.body) != 0 or was_allow_all:
+            BaseJAAQLController.enforce_content_type_json()
+            request.get_json()
+        data = dict(kwargs)
+        if not was_allow_all:
+            BaseJAAQLController.validate_data(method, data, is_prod, fill_missing)
+        return data
+
+    @staticmethod
     def get_input_as_dictionary(method: SwaggerMethod, is_prod: bool, fill_missing: bool = True, **kwargs):
         data = {}
 
@@ -369,15 +383,13 @@ class BaseJAAQLController:
             if method.arguments[0] == ARG_RESP__allow_all:
                 was_allow_all = True
 
+        if method.raw_request:
+            return BaseJAAQLController.get_raw_request_inputs(method, was_allow_all, is_prod, fill_missing, **kwargs)
+
         only_args = False
         if len(method.body) != 0 or was_allow_all:
             BaseJAAQLController.enforce_content_type_json()
             data = request.json
-            if was_allow_all and len(kwargs) != 0:
-                # A webhook's POST, the one route that takes any body and has path variables, hands the body to the webhook as it came
-                # (handle_webhook): whatever JSON it is, it is not merged with the path's application and name, so a key "name" or
-                # "application" in it is no duplicated field (400) and a JSON string, number or null is no mapping (500)
-                data = {}
         else:
             content_type = request.headers.get('Content-Type', '')
             if 'charset=' not in content_type and len(kwargs) == 0:

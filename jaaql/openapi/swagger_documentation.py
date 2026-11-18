@@ -307,7 +307,7 @@ class SwaggerMethod:
 
     def __init__(self, name: str, description: str, method: str, arguments: TYPE__flat_argument_response = None,
                  body: TYPE__argument_response = None, response: TYPE__responses = None,
-                 exceptions: TYPE__exceptions = None, parallel_verification: bool = False):
+                 exceptions: TYPE__exceptions = None, parallel_verification: bool = False, raw_request: bool = False):
         self._validate_exceptions(exceptions)
         self._validate_responses(response)
         validate_argument_responses(arguments)
@@ -317,6 +317,9 @@ class SwaggerMethod:
         self.description = description
         self.method = method
         self.parallel_verification = parallel_verification
+        # raw_request: the view reads the request's query and body as they came (a webhook's), so neither is merged with the path
+        # variables, which are authoritative, nor validated
+        self.raw_request = raw_request
 
         self.responses = response if isinstance_union(response, TYPE__swagger_list_like) else force_list(response)
         self.arguments = force_list(arguments)
