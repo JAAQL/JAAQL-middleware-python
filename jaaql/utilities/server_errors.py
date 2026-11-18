@@ -49,7 +49,7 @@ from jaaql.utilities import sentinel, slow_queries
 
 __all__ = ["configure", "request_failed", "background_failed", "unrouted_failure", "transform_failed", "commit_failed", "note_fault",
            "fresh_faults", "client_fault", "reading_request", "remote_procedure_crash", "authorization_response_failed", "reset_throttle",
-           "FAULT__pool", "ANSWERED__oidc_exchange"]
+           "in_place_of", "FAULT__pool", "ANSWERED__oidc_exchange"]
 
 ERR__report_failed = "Server error report failed: %s: %s"
 LINE__server_error = "SERVER ERROR %s at %s (%s, %s) answered %s"
@@ -61,6 +61,8 @@ ATTR__seen = "jaaql_server_error_seen"
 # detail line in place of what it printed
 ATTR__report_source = "jaaql_report_source"
 ATTR__report_detail = "jaaql_report_detail"
+# Set on a generic answer a public route gives in place of an exception whose text is not for anyone to read (in_place_of): the exception
+ATTR__in_place_of = "jaaql_in_place_of"
 
 FAULT__internal_sql = "JAAQL's own query"
 FAULT__internal = "JAAQL's own code, running its own query"
@@ -392,6 +394,19 @@ def reading_request(clients: bool = True):
     return _READING__clients if clients else _READING__own
 
 
+def in_place_of(answer, ex):
+    """
+    Marks answer, a generic server error (5xx) a public route answers with in place of ex, whose text is not for anyone to read (a database
+    error can name a socket, a file under base/, a relation): the request is reported as though it had failed with ex, by the fault noted for
+    it when ex is no server error itself, as answered with answer. Returns answer
+    """
+    try:
+        setattr(answer, ATTR__in_place_of, ex)
+    except Exception as report_ex:
+        _failed(report_ex)
+    return answer
+
+
 def remote_procedure_crash(ex, application, name, returncode, stdout, stderr):
     """
     Files ex, the answer to a cloud procedure or webhook that crashed, under remote-procedure:<application>/<name>, with its exit code and the
@@ -422,7 +437,18 @@ def request_failed(ex, route: str, installed: bool, answered: str = None):
             return
         scope = slow_queries.current_scope()
         faults = list(scope.faults) if scope is not None else []
-        if is_server_error(ex):
+        replaced = getattr(ex, ATTR__in_place_of, None)
+        if isinstance(replaced, Exception):
+            # A generic answer in place of replaced: reported as replaced would be, by the fault noted for it when it is no server error
+            # itself, as answered with the generic answer, which is a server error whatever replaced's own status
+            _mark_seen(replaced)
+            if is_clients(replaced) or not is_server_error(ex):
+                return
+            if is_server_error(replaced) or not faults:
+                _report(scope, replaced, None, faults, answered or answered_of(ex))
+            else:
+                _report(scope, replaced, faults[-1], faults[:-1], answered or answered_of(ex))
+        elif is_server_error(ex):
             _report(scope, ex, None, faults, answered or answered_of(ex))
         elif faults:
             _report(scope, ex, faults[-1], faults[:-1], answered or answered_of(ex) + ANSWERED__as_client_error)

@@ -73,7 +73,10 @@ ERR__cant_send_attachments = "Cannot send attachments to other people"
 ERR__keep_alive_failed = "Keep alive failed"
 ERR__deep_health_faults = "Deep health: %s"
 ERR__deep_health_faults_unavailable = "Deep health: application check unavailable"
+ERR__deep_health_jaaql_failed = "Deep health: JAAQL check failed"
 LINE__deep_health_unavailable = "Deep health %s answered 503: deep_health.fault could not be read (%s); %d more since the last line"
+LINE__deep_health_jaaql_failed = "Deep health answered 503: JAAQL's own check failed (%s); %d more since the last line"
+LINE__is_alive_failed = "Is alive answered 503: JAAQL's own check failed (%s); %d more since the last line"
 DEEP_HEALTH__print_seconds = 60
 DEEP_HEALTH__reason_length = 500
 ERR__template_not_signup = "Sign up template does not have the correct type"
@@ -364,15 +367,16 @@ def answer_busy(response: JAAQLResponse, message: str):
     response.is_binary = False
 
 
-class DeepHealthUnavailable:
+class HealthCheckReason:
     """
-    Why an application's view deep_health.fault could not be read, for the server's log only, as deep-health's public body says no more
-    than that the check is unavailable. Printed at most once every DEEP_HEALTH__print_seconds in this process (gunicorn worker), with the
-    number held back since the line before: Pingdom polls every minute for as long as the cause lasts. A line of its own, never a SERVER
-    ERROR line, and never reported to Sentinel
+    Why a health check answered its generic 503, for the server's log only, as the route's public body says no more than that the check
+    failed or is unavailable: line, filled with the names note() is given, then the exception's class and the first line of its text, and
+    the number held back. Printed at most once every DEEP_HEALTH__print_seconds in this process (gunicorn worker), with the number held back
+    since the line before: Pingdom and the probes poll for as long as the cause lasts. A line of its own, never a SERVER ERROR line
     """
 
-    def __init__(self):
+    def __init__(self, line: str):
+        self._line = line
         self._lock = threading.Lock()
         self._printed_at = None
         self._held = 0
@@ -382,7 +386,7 @@ class DeepHealthUnavailable:
             self._printed_at = None
             self._held = 0
 
-    def note(self, application: str, ex: BaseException):
+    def note(self, ex: BaseException, *names: str):
         with self._lock:
             now = time.monotonic()
             if self._printed_at is not None and now - self._printed_at < DEEP_HEALTH__print_seconds:
@@ -392,10 +396,27 @@ class DeepHealthUnavailable:
             held, self._held = self._held, 0
         first_line = (str(ex).strip().splitlines() or [""])[0]
         reason = slow_queries._printable(type(ex).__name__ + (": " + first_line if first_line else ""))[:DEEP_HEALTH__reason_length]
-        print(LINE__deep_health_unavailable % (slow_queries._printable(application), reason, held))
+        print(self._line % (tuple(slow_queries._printable(name) for name in names) + (reason, held)))
 
 
-DEEP_HEALTH__unavailable = DeepHealthUnavailable()
+# An application's view deep_health.fault that could not be read, never reported to Sentinel (client_fault); JAAQL's own check failing in
+# deep-health and in is-alive, reported as the server error it is (server_errors.in_place_of)
+DEEP_HEALTH__unavailable = HealthCheckReason(LINE__deep_health_unavailable)
+DEEP_HEALTH__jaaql_failed = HealthCheckReason(LINE__deep_health_jaaql_failed)
+IS_ALIVE__failed = HealthCheckReason(LINE__is_alive_failed)
+
+
+def health_check_failed(ex: Exception, body: str, reason: HealthCheckReason, installed: bool) -> HttpStatusException:
+    """
+    The answer to JAAQL's own check of a health route failing with ex. The route needs no login (nginx passes /api/internal/... on as it is,
+    Pingdom and the probes poll it), so it answers the generic 503 body, never ex's text, which can name the database's internals (a socket
+    path, a relation, a file under base/). The request is still reported as the server error it is, by ex (server_errors.in_place_of), and
+    why is printed for the server's log at most once a minute (HealthCheckReason), unless JAAQL is not installed yet, when the check cannot
+    pass
+    """
+    if installed:
+        reason.note(ex)
+    return server_errors.in_place_of(HttpStatusException(body, HTTPStatus.SERVICE_UNAVAILABLE), ex)
 
 
 class JAAQLModel(BaseJAAQLModel):
@@ -1729,9 +1750,13 @@ WHERE
             raise NotYetInstalled()
 
     def is_alive(self):
-        version = execute_supplied_statement_singleton(self.jaaql_lookup_connection, "SELECT version() as version;", as_objects=True)[ATTR__version]
-        if "PostgreSQL " not in version:
-            raise HttpStatusException(ERR__keep_alive_failed)
+        try:
+            version = execute_supplied_statement_singleton(self.jaaql_lookup_connection, "SELECT version() as version;",
+                                                           as_objects=True)[ATTR__version]
+            if "PostgreSQL " not in version:
+                raise HttpStatusException(ERR__keep_alive_failed)
+        except Exception as ex:
+            raise health_check_failed(ex, ERR__keep_alive_failed, IS_ALIVE__failed, self.has_installed) from ex
 
     def deep_health(self):
         # Deep, unauthenticated health check. is_alive() only pings the DB and so
@@ -1739,9 +1764,13 @@ WHERE
         # This resolves a query THROUGH the query cache - the same lookup execute()
         # performs, including the cache-miss self-heal - and runs it, so an empty,
         # partial or stale cache fails the check. The health query is injected into
-        # every compiled queries.json by the BATON microcompiler.
-        sql = self._lookup_cached_query(QUERY_CACHE_REF__health, requested=False)
-        execute_supplied_statement_singleton(self.jaaql_lookup_connection, sql, as_objects=True)
+        # every compiled queries.json by the BATON microcompiler. A failure answers
+        # the generic 503 "Deep health: JAAQL check failed" (health_check_failed)
+        try:
+            sql = self._lookup_cached_query(QUERY_CACHE_REF__health, requested=False)
+            execute_supplied_statement_singleton(self.jaaql_lookup_connection, sql, as_objects=True)
+        except Exception as ex:
+            raise health_check_failed(ex, ERR__deep_health_jaaql_failed, DEEP_HEALTH__jaaql_failed, self.has_installed) from ex
 
         # Then, when JAAQL_DEEP_HEALTH_APPLICATION names one, that application's own verdict: each row of its view deep_health.fault
         # names a cause, and any row answers 503 naming them, a view that cannot be read 503 saying the check is unavailable. Never a
@@ -1757,7 +1786,7 @@ WHERE
                                server_authored_query=True)
             causes = [str(row["cause"]) for row in rows]
         except Exception as ex:
-            DEEP_HEALTH__unavailable.note(application, ex)
+            DEEP_HEALTH__unavailable.note(ex, application)
             raise client_fault(HttpStatusException(ERR__deep_health_faults_unavailable, HTTPStatus.SERVICE_UNAVAILABLE))
         if causes:
             raise client_fault(HttpStatusException(ERR__deep_health_faults % "; ".join(causes), HTTPStatus.SERVICE_UNAVAILABLE))

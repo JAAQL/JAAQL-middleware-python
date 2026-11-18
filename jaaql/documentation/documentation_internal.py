@@ -103,8 +103,18 @@ DOCUMENTATION__is_alive = SwaggerDocumentation(
     tags="Is Alive",
     methods=SwaggerMethod(
         name="Check is alive",
-        description="An endpoint that can be called by any service to see if the service is alive",
-        method=REST__GET
+        description="An endpoint that can be called by any service to see if the service is alive. When JAAQL's own "
+                    "check fails it answers the generic 503 Keep alive failed, the reason going to the server's log "
+                    "and to Sentinel only, as the route needs no login",
+        method=REST__GET,
+        response=[
+            SwaggerFlatResponse(),
+            SwaggerFlatResponse(
+                description="JAAQL's own check failed",
+                code=HTTPStatus.SERVICE_UNAVAILABLE,
+                body="Keep alive failed"
+            )
+        ]
     )
 )
 
@@ -114,19 +124,21 @@ DOCUMENTATION__deep_health = SwaggerDocumentation(
     methods=SwaggerMethod(
         name="Deep health check",
         description="Resolves a query through the compiled query cache and runs it, so a stale, partial or "
-                    "unloaded cache fails the check (unlike is-alive, which only pings the database). When the "
-                    "environment variable JAAQL_DEEP_HEALTH_APPLICATION names an application, it then reads that "
-                    "application's view deep_health.fault and answers 503 naming every cause it returns, or, when the "
-                    "view cannot be read, 503 saying the application check is unavailable, the reason going to the "
-                    "server's log only, as the route needs no login",
+                    "unloaded cache fails the check (unlike is-alive, which only pings the database), with the "
+                    "generic 503 saying the JAAQL check failed, the reason going to the server's log and to Sentinel "
+                    "only. When the environment variable JAAQL_DEEP_HEALTH_APPLICATION names an application, it then "
+                    "reads that application's view deep_health.fault and answers 503 naming every cause it returns, "
+                    "or, when the view cannot be read, 503 saying the application check is unavailable, the reason "
+                    "going to the server's log only, as the route needs no login",
         method=REST__GET,
         response=[
             SwaggerFlatResponse(),
             SwaggerFlatResponse(
-                description="The application named by JAAQL_DEEP_HEALTH_APPLICATION is not healthy, or its view "
-                            "deep_health.fault could not be read",
+                description="JAAQL's own check failed, the application named by JAAQL_DEEP_HEALTH_APPLICATION is not "
+                            "healthy, or its view deep_health.fault could not be read",
                 code=HTTPStatus.SERVICE_UNAVAILABLE,
-                body="Deep health, then each cause, separated by semicolons"
+                body="Deep health, then JAAQL check failed, application check unavailable or each cause, separated "
+                     "by semicolons"
             )
         ]
     )

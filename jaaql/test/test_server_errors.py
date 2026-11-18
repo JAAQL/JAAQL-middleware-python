@@ -410,7 +410,8 @@ class TestWhatIsReported(ServerErrorCase):
         # JAAQL's own query, which the microcompiler puts in every queries.json: missing, the box cannot serve, whatever the cache
         with mock.patch.object(self.model, "deep_health", lambda: JAAQLModel.deep_health(self.model), create=True):
             (status, _, data), reports = self.answers(lambda: self.client.get("/internal/deep-health"))
-        self.assertEqual((500, b"Compiled query '__health__' is not present in the query cache"), (status, data))
+        # Answered with the generic 503 (the route needs no login), reported by the error itself (jaaql.test.test_health_checks)
+        self.assertEqual((503, b"Deep health: JAAQL check failed"), (status, data))
         self.assertEqual(1, len(reports))
         self.assertEqual("HttpStatusException: Compiled query '__health__' is not present in the query cache", reports[0]["error_condensed"])
 
@@ -992,7 +993,7 @@ class TestWhatIsNeverReported(ServerErrorCase):
         self.model.jaaql_lookup_connection = None
         with mock.patch.object(self.model, "is_alive", lambda: JAAQLModel.is_alive(self.model), create=True):
             (status, _, _), reports = self.answers(lambda: self.client.get("/internal/is-alive"))
-        self.assertEqual((500, []), (status, reports))
+        self.assertEqual((503, []), (status, reports))
         (status, _, _), reports = self.answers(self.call_proc)
         self.assertEqual((503, []), (status, reports))
 

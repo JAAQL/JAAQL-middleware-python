@@ -4,7 +4,7 @@ application's view deep_health.fault as dba after JAAQL's own check, and answers
 the view cannot be read, 503 "Deep health: application check unavailable": the body is public, so why the view could not be read is printed
 for the server's log only, at most once a minute, and never as a SERVER ERROR line. None of those answers is reported to Sentinel: they are
 the application's verdict, polled every minute. Unset, deep-health is what it was: JAAQL's own cache query alone, and a missing cache query
-is still the server error it always was.
+is still the server error it always was, answered with the generic 503 "Deep health: JAAQL check failed" (jaaql.test.test_health_checks).
 
     python -m unittest jaaql.test.test_deep_health_application
 
@@ -152,7 +152,8 @@ class TestDeepHealthApplication(ServerErrorCase):
         del self.model.query_caches["queries"][QUERY_CACHE_KEY__health]
         interface = Causes(["gateway heartbeat: none received"])
         (status, _, data), reports, required_db = self.deep_health(interface)
-        self.assertEqual((500, b"Compiled query '__health__' is not present in the query cache"), (status, data))
+        # The generic 503, the route needing no login; still reported by the error itself (jaaql.test.test_health_checks)
+        self.assertEqual((503, b"Deep health: JAAQL check failed"), (status, data))
         self.assertEqual([], interface.statements)
         required_db.assert_not_called()
         self.assertEqual(1, len(reports))
