@@ -2094,7 +2094,7 @@ WHERE
             buffer.write(content)
             buffer.seek(0)
 
-            return send_file(buffer, as_attachment=as_attachment, download_name=res[KEY__filename])
+            return send_file(buffer, as_attachment=as_attachment, download_name=res[KG__document_request__file_name])
 
     def render_document(self, inputs: dict, auth_token: str, ip_address: str):
         inputs[KEY__oauth_token] = self.refresh_auth_token(auth_token, ip_address)
