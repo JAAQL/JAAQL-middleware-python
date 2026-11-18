@@ -109,25 +109,28 @@ class TestRenderedDocumentDownload(ServerErrorCase):
         self.assertNoReport()
 
     def test_a_document_still_rendering_or_not_there_is_answered_as_documented(self):
-        # 425 and 404, as GET /documents documents them. Up to 5.3.30 a download of a document still rendering was answered 500 and
-        # reported (Exception: Response with code '425' was not expected, as the route documented no 425), and an id not found 422 on
-        # both routes
+        # 425 and 404, as GET /documents documents them, unreported. Up to 5.3.30 a download of a document still rendering was answered 500
+        # and reported (Exception: Response with code '425' was not expected, as the route documented no 425), and an id not found 422 on
+        # both routes. /rendered_documents answers with JAAQL's error body; /documents as plain text (text/plain), as BATON's render
+        # polling (pollDocumentRender) reads it and polls again: on JAAQL's error body BATON would throw at a render's first poll, alert the
+        # user and report it
         documents_get = mock.patch.object(self.model, "fetch_document", create=True,
                                           side_effect=lambda inputs, response: JAAQLModel.fetch_document(self.model, inputs, response))
+
+        def answered(route):
+            res = self.client.get(route, query_string={"document_id": DOCUMENT_ID}, headers={HEADER__security_bypass: SUPER_KEY})
+            if route == "/documents":
+                return res.status_code, res.headers["Content-Type"], res.get_data().decode()
+            return res.status_code, res.headers["Content-Type"], json.loads(res.get_data())["error_code"], json.loads(res.get_data())["message"]
+
         with documents_get:
             self.documents.completed = None
-            for route in [RENDERED_DOCUMENTS, "/documents"]:
-                with self.subTest(route):
-                    res = self.client.get(route, query_string={"document_id": DOCUMENT_ID}, headers={HEADER__security_bypass: SUPER_KEY})
-                    self.assertEqual((425, 1033, "Document still rendering"), (res.status_code, json.loads(res.get_data())["error_code"],
-                                                                              json.loads(res.get_data())["message"]))
+            self.assertEqual((425, "application/json", 1033, "Document still rendering"), answered(RENDERED_DOCUMENTS))
+            self.assertEqual((425, "text/plain; charset=utf-8", "Document still rendering"), answered("/documents"))
             self.assertEqual({DOCUMENT_ID: CONTENT}, self.documents.rows)
             self.documents.rows.clear()
-            for route in [RENDERED_DOCUMENTS, "/documents"]:
-                with self.subTest(route):
-                    res = self.client.get(route, query_string={"document_id": DOCUMENT_ID}, headers={HEADER__security_bypass: SUPER_KEY})
-                    self.assertEqual((404, 1030, "Document id not found"), (res.status_code, json.loads(res.get_data())["error_code"],
-                                                                           json.loads(res.get_data())["message"]))
+            self.assertEqual((404, "application/json", 1030, "Document id not found"), answered(RENDERED_DOCUMENTS))
+            self.assertEqual((404, "text/plain; charset=utf-8", "Document id not found"), answered("/documents"))
         self.assertEqual([], self.lines())
         self.assertNoReport()
 

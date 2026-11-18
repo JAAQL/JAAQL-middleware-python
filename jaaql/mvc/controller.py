@@ -224,7 +224,10 @@ class JAAQLController(BaseJAAQLController):
         def fetch_jwks():
             return self.model.fetch_jwks()
 
-        @self.publish_route('/documents', DOCUMENTATION__document)
+        # Its client errors stay plain text: BATON's document functions (requestDocumentRender, pollDocumentRender in BATON.jaaql.ts) take
+        # such an answer quietly, but their INTERPRETABLE_ERROR returns nothing, so that on JAAQL's error body BATON throws, alerts and reports
+        # it, and a render's first poll is almost always answered 425
+        @self.publish_route('/documents', DOCUMENTATION__document, error_body=False)
         def documents(http_inputs: dict, auth_token: str, ip_address: str, response: JAAQLResponse):
             if self.is_get():
                 return self.model.fetch_document(http_inputs, response)

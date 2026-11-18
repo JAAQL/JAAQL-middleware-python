@@ -58,6 +58,8 @@ ARG_START__jaaql_connection = "jaaql_" + ARG_START__connection
 CONTENT__encoding = "charset=utf-8"
 CONTENT__json = "application/json"
 CONTENT__form = "application/x-www-form-urlencoded"
+CONTENT__text = "text/plain"
+HEADER__content_type_options = "X-Content-Type-Options"
 
 CORS__WILDCARD = "*"
 
@@ -536,9 +538,10 @@ class BaseJAAQLController:
         # answers_head False: a HEAD is not answered by the route's GET but 405 (by Flask's router, JAAQLRule), for a route whose GET acts
         # (a webhook's runs a process of the application's, which cannot tell a HEAD from a GET; /cron starts jobs; a login or a logout
         # sets and consumes its cookies), so that a link checker, a mail scanner or an uptime checker sending HEAD never does what it does.
-        # error_body False: the route's client errors are answered as plain text (or werkzeug's HTML), as they always were, for a route
-        # whose callers read them so (a webhook's, which payment providers and the like call; /email, whose failure BATON's sendEmail reads
-        # as text), instead of with JAAQL's error body
+        # error_body False: the route's client errors are answered as plain text (text/plain, or werkzeug's HTML), as they always were, for
+        # a route whose callers read them so (a webhook's, which payment providers and the like call; /email, whose failure BATON's
+        # sendEmail reads as text; /documents, whose 425 BATON's render polling reads as text and polls again), instead of with JAAQL's
+        # error body
         documentation_as_lists = swagger_documentation
         if not isinstance(documentation_as_lists, list):
             documentation_as_lists = [documentation_as_lists]
@@ -950,7 +953,10 @@ class BaseJAAQLController:
             if not isinstance(error.message, str):
                 res = jsonify(error.message)
             else:
-                res = Response(error.message)
+                # As text, never a page: a message can name what the request sent ("Unexpected argument '<key>'"), and nginx adds its
+                # nosniff and CSP to a 2xx or 3xx only
+                res = Response(error.message, mimetype=CONTENT__text)
+                res.headers[HEADER__content_type_options] = "nosniff"
             res.status = error.response_code
             return BaseJAAQLController._cors(res)
 

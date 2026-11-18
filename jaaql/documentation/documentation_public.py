@@ -303,7 +303,8 @@ DOCUMENTATION__document = SwaggerDocumentation(
         ),
         SwaggerMethod(
             name="Download document",
-            description="Downloads the document. Can also be used as a polling endpoint to see if the document is ready",
+            description="Downloads the document. Can also be used as a polling endpoint to see if the document is ready. Client errors of "
+                        "/documents (GET and POST) are plain text (text/plain), as BATON's document rendering reads them, not JAAQL's error body",
             method=REST__GET,
             arguments=[
                 ARG_RES__document_id,

@@ -325,9 +325,13 @@ class TestTheErrorBody(ServerErrorCase):
         self.assertEqual((1029, "Unexpected argument '%s'" % script), (json.loads(data)["error_code"], json.loads(data)["message"]))
 
     def test_the_routes_whose_callers_read_their_client_errors_otherwise(self):
-        # A webhook's caller is anyone's (a payment provider), and BATON's sendEmail hands only a plain-text failure to its onFailure
+        # A webhook's caller is anyone's (a payment provider), BATON's sendEmail hands only a plain-text failure to its onFailure, and BATON's
+        # document functions (requestDocumentRender, pollDocumentRender) take a plain-text one quietly but throw, alert and report on JAAQL's
+        # error body. Their own client errors are plain text, as ever, but sent as text/plain with nosniff where they were text/html;
+        # werkzeug's own are its HTML page, as ever
         too_large = b"{}" + b" " * (2 * 1024 * 1024)
         html = b"<!doctype html>"
+        plain = "text/plain; charset=utf-8"
         for route in ["/webhook/sentinel/hook", "/secure/sentinel/hook"]:
             with self.subTest(route), mock.patch.object(self.model, "handle_webhook", raiser(lambda: HttpStatusException(
                     "Procedure type is not type webhook")), create=True):
@@ -339,23 +343,49 @@ class TestTheErrorBody(ServerErrorCase):
                                   413, "text/html; charset=utf-8", html)
                 self.assertAsEver(self.answers(lambda: self.client.put(route)), 405, "text/html; charset=utf-8", html)
                 self.assertAsEver(self.answers(lambda: self.client.head(route)), 405, "text/html; charset=utf-8", b"")
-                self.assertAsEver(self.answers(lambda: self.client.post(route, json={}, headers=login)), 422, "text/html; charset=utf-8",
+                self.assertAsEver(self.answers(lambda: self.client.post(route, json={}, headers=login)), 422, plain,
                                   b"Procedure type is not type webhook")
         email = {HEADER__security_bypass: SUPER_KEY, "Content-Type": "application/json"}
         with mock.patch.object(self.model, "send_email", raiser(lambda: HttpStatusException("Cannot send this template anonymously"))):
-            self.assertAsEver(self.answers(lambda: self.client.post("/email", data=b"1", headers=email)), 400, "text/html; charset=utf-8",
+            self.assertAsEver(self.answers(lambda: self.client.post("/email", data=b"1", headers=email)), 400, plain,
                               b"Expected the request body to be a JSON object, not 1")
             self.assertAsEver(self.answers(lambda: self.client.post("/email", data=json.dumps({"template": "t", "application": "lesbij", "parameters": {}}),
-                                                                    headers=email)), 422, "text/html; charset=utf-8",
+                                                                    headers=email)), 422, plain,
                               b"Cannot send this template anonymously")
+        document = {"document_id": "b47dc954-d608-4e1b-8a8c-d8b754ee554b"}
+        with mock.patch.object(self.model, "fetch_document", raiser(lambda: HttpStatusException("Document still rendering", 425)), create=True),                 mock.patch.object(self.model, "render_document", raiser(lambda: HttpStatusException("Unknown template")), create=True):
+            self.assertAsEver(self.answers(lambda: self.client.get("/documents", query_string=document, headers={
+                HEADER__security_bypass: SUPER_KEY})), 425, plain, b"Document still rendering")
+            self.assertAsEver(self.answers(lambda: self.client.post("/documents", data=b"[1]", headers=email)), 400, plain,
+                              b"Expected the request body to be a JSON object, not an array")
+            self.assertAsEver(self.answers(lambda: self.client.post("/documents", json={"name": "n", "parameters": {}, "create_file": True,
+                                                                                        "application": "a"}, headers=email)), 422, plain,
+                              b"Unknown template")
+            self.assertAsEver(self.answers(lambda: self.client.post("/documents", data=b"{", headers=email)), 400, plain,
+                              b"Expected the request body to be JSON, which it is not (Expecting property name")
+            self.assertAsEver(self.answers(lambda: self.client.delete("/documents", headers=email)), 405, "text/html; charset=utf-8", html)
         self.assertEqual([], self.lines())
 
+    def test_a_plain_text_answer_shows_nothing_the_request_sent_as_a_page(self):
+        # GET /documents answers a query string key it does not take as plain text: sent as text/html, as up to 5.3.30, a link whose query
+        # string held HTML showed it, scripts included, as a page of the box's own origin (the JAAQL cookie is SameSite=Lax, so it goes with
+        # a top-level link, and nginx adds its nosniff and CSP to a 2xx or 3xx only)
+        script = "<img src=x onerror=alert(document.cookie)>"
+        (status, headers, data), reports = self.answers(lambda: self.client.get(
+            "/documents?document_id=b47dc954-d608-4e1b-8a8c-d8b754ee554b&" + urllib.parse.quote(script, safe="") + "=1",
+            headers={HEADER__security_bypass: SUPER_KEY}))
+        self.assertEqual((400, "text/plain; charset=utf-8", "nosniff", []), (status, dict(headers)["Content-Type"],
+                                                                             dict(headers)["X-Content-Type-Options"], reports))
+        self.assertEqual("Unexpected argument '%s'" % script, data.decode())
+
     def test_a_server_error_is_answered_as_ever(self):
+        # Its status and its text as ever, sent as text/plain with nosniff where it was text/html
         for status in [500, 502, 503]:
             with self.subTest(status=status), mock.patch.object(self.model, "submit", raiser(lambda: HttpStatusException("Down", status)),
                                                                 create=True):
                 (got, headers, data), _ = self.answers(self.submit)
-                self.assertEqual((status, "text/html; charset=utf-8", b"Down"), (got, dict(headers)["Content-Type"], data))
+                self.assertEqual((status, "text/plain; charset=utf-8", "nosniff", b"Down"), (got, dict(headers)["Content-Type"],
+                                                                                             dict(headers)["X-Content-Type-Options"], data))
 
     def test_the_error_code_of_each_status(self):
         for status, code in CODES__by_status.items():

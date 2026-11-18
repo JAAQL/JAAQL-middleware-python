@@ -971,7 +971,12 @@ class TestWhatIsNeverReported(ServerErrorCase):
                 self.model, inputs, account_id)), mock.patch("jaaql.mvc.controller.security_event__select") as select:
             for route, body, message in cases:
                 with self.subTest(route=route, body=body):
-                    (status, _, data), reports = self.answers(lambda: self.raw(route, body if isinstance(body, bytes) else json.dumps(body)))
+                    (status, headers, data), reports = self.answers(lambda: self.raw(route, body if isinstance(body, bytes) else json.dumps(body)))
+                    if route == "/documents":
+                        # Its client errors stay plain text, as BATON's document functions read them
+                        self.assertEqual((400, [], "text/plain; charset=utf-8"), (status, reports, dict(headers)["Content-Type"]), data)
+                        self.assertTrue(data.decode().startswith(message), data)
+                        continue
                     self.assertEqual((400, [], 1029), (status, reports, json.loads(data)["error_code"]), data)
                     self.assertTrue(json.loads(data)["message"].startswith(message), data)
             for name, stubbed in stubs.items():
