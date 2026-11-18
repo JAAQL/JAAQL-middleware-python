@@ -36,13 +36,14 @@ def when_ready(server):
 
 def post_worker_init(worker):
     import signal
+    import gevent
 
     worker.wsgi.model.set_jaaql_lookup_connection()
 
-    def my_signal_handler(signum, frame):
-        worker.wsgi.model.reload_cache()
-
-    signal.signal(signal.SIGUSR1, my_signal_handler)
+    # The cache flush (/flush-cache sends the master SIGUSR1, which sends it on to every worker) runs in a greenlet of its own that gevent's
+    # hub starts between greenlets, never inside what the worker is running. A handler installed by signal.signal runs between any two
+    # bytecodes, also between print()'s text and its newline, where the lines reload_cache prints were joined to that line not yet complete
+    gevent.signal_handler(signal.SIGUSR1, worker.wsgi.model.reload_cache)
 
 
 def child_exit(server, worker):

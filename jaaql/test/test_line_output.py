@@ -96,6 +96,67 @@ os.waitpid(pid, 0)
 print(", ended by the parent", file=writer)
 """
 
+# A gevent worker as gunicorn boots one: monkey patched, gunicorn's own SIGUSR1 handler installed (init_signals), then gunicorn_config.py's
+# post_worker_init, whose cache flush prints two lines. SIGUSR1 arrives first between a line's text and its newline, then from another
+# process, as from gunicorn's master, every 0.3 ms while the worker prints LINES lines, yielding to the hub every 100 as a worker serving
+# requests does. Prints the log of the first case, as repr(), and "<flushes> <lines printed whole> <lines not whole>"
+CACHE_FLUSH = r"""
+from gevent import monkey
+monkey.patch_all()
+import gc, importlib.util, os, re, signal, subprocess, sys, time, types
+import gevent
+from jaaql.utilities.line_output import LineWriter
+config_path, log, lines = sys.argv[1], sys.argv[2], int(sys.argv[3])
+spec = importlib.util.spec_from_file_location("jaaql_gunicorn_config", config_path)
+config = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(config)
+report = os.fdopen(os.dup(1), "w")
+fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+sys.stdout = LineWriter(fd, "utf-8", "strict")
+flushes = []
+
+
+class Model:
+    def set_jaaql_lookup_connection(self):
+        pass
+
+    def reload_cache(self):
+        flushes.append(1)
+        print("Received cache flush instruction")
+        print("Loaded query cache (3 files)")
+
+
+signal.signal(signal.SIGUSR1, lambda signum, frame: print("gunicorn's own handler"))
+config.post_worker_init(types.SimpleNamespace(wsgi=types.SimpleNamespace(model=Model())))
+gc.collect()
+sys.stdout.write("SERVER ERROR X at y answered 500")
+os.kill(os.getpid(), signal.SIGUSR1)
+sum(range(100000))
+sys.stdout.write("\n")
+gevent.sleep(0.2)
+with open(log, "rb") as file:
+    report.write(repr(file.read()) + "\n")
+report.flush()
+os.ftruncate(fd, 0)
+flushes.clear()
+sender = subprocess.Popen([sys.executable, "-c", "import os, signal, sys, time\nwhile True:\n    os.kill(int(sys.argv[1]), signal.SIGUSR1)\n"
+                           "    time.sleep(0.0003)", str(os.getpid())])
+time.sleep(0.2)
+for i in range(lines):
+    print("SERVER ERROR line %d answered 500" % i)
+    if i % 100 == 99:
+        gevent.sleep(0)
+sender.kill()
+sender.wait()
+gevent.sleep(0.2)
+whole = re.compile(rb"SERVER ERROR line \d+ answered 500|Received cache flush instruction|Loaded query cache \(3 files\)")
+with open(log, "rb") as file:
+    logged = file.read().split(b"\n")
+report.write("%d %d %d\n" % (len(flushes), len([line for line in logged if re.fullmatch(rb"SERVER ERROR line \d+ answered 500", line)]),
+                             len([line for line in logged if line and not whole.fullmatch(line)])))
+report.flush()
+"""
+
 
 def run_script(case: unittest.TestCase, script: str, *args: str, unbuffered: bool = False) -> str:
     # The script in a process of its own, which forks without the test runner's threads, with this jaaql first on its path
@@ -224,8 +285,8 @@ class TestLineWriter(unittest.TestCase):
 
     def interrupting(self, *handlers):
         """
-        os.write recording what it is given, its first writes each interrupted by the next of handlers, as a signal handler runs in the
-        thread it interrupts (post_worker_init's prints "Received cache flush instruction")
+        os.write recording what it is given, its first writes each interrupted by the next of handlers, as a handler installed by
+        signal.signal runs in the thread it interrupts
         """
         self.recording.stop()
         self.addCleanup(self.recording.start)
@@ -317,6 +378,18 @@ class TestInstall(unittest.TestCase):
             config.on_starting(None)
             self.assertIsInstance(sys.stdout, LineWriter)
             self.assertIsInstance(sys.stderr, LineWriter)
+
+    @unittest.skipUnless(os.path.isfile(GUNICORN_CONFIG), "needs docker/gunicorn_config.py")
+    def test_a_worker_s_cache_flush_runs_between_greenlets_and_never_joins_the_line_being_printed(self):
+        # Run by a handler of signal.signal's, the flush printed its lines into the line not yet complete wherever SIGUSR1 came: in the
+        # first case b"SERVER ERROR X at y answered 500Received cache flush instruction\nLoaded query cache (3 files)\n\n", and in a
+        # worker printing as signals came from another process, as gunicorn's master sends them, hundreds of lines joined
+        with tempfile.TemporaryDirectory(prefix="jaaql-lines-") as directory:
+            first, counts = run_script(self, CACHE_FLUSH, GUNICORN_CONFIG, os.path.join(directory, "gunicorn.log"), "60000").splitlines()
+        self.assertEqual(repr(b"SERVER ERROR X at y answered 500\nReceived cache flush instruction\nLoaded query cache (3 files)\n"), first)
+        flushes, whole, not_whole = [int(value) for value in counts.split()]
+        self.assertGreater(flushes, 0)
+        self.assertEqual((60000, 0), (whole, not_whole))
 
 
 @unittest.skipUnless(hasattr(os, "fork"), "needs fork")

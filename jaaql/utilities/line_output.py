@@ -10,8 +10,10 @@ at once write "A", "B", "\n", "\n" and their lines are joined into one, which a 
 install() replaces sys.stdout and sys.stderr with LineWriters on the same file descriptors: a LineWriter keeps what it is given until a
 line is complete and then writes every complete line it holds in one write(), which the kernel appends to a file opened for appending as a
 whole, never interleaved with another process's write. So every line lands whole and at once, and the lines of one process land in the
-order it printed them. What a signal handler prints while the thread it interrupted is writing (post_worker_init's cache flush handler) is
-kept apart from that thread's line and written once its write is done, in one write too. The limits: a line not yet complete is written by
+order it printed them. What a signal handler prints while the thread it interrupted is in a LineWriter's write is kept apart from that
+thread's line and written once its write is done, in one write too; a handler that prints at any other moment, between print()'s text and
+its newline for one, joins the line not yet complete, so gunicorn_config.py's post_worker_init has gevent's hub run the cache flush on
+SIGUSR1, between greenlets, instead of a handler of signal.signal's. The limits: a line not yet complete is written by
 flush() and when the process exits normally, until then it is held; one that grows past LINE__max_pending_bytes (1 MiB) is written as it
 is, in pieces; to a pipe (LOG_TO_OUTPUT) the kernel keeps a write whole only up to PIPE_BUF (4,096 bytes), so a longer line can still be
 cut there. A write the system refuses (a full disk) is dropped, never failing the code that printed. gunicorn_config.py's on_starting
