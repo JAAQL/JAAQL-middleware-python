@@ -66,6 +66,8 @@ ERR__duplicated_field = "Field duplicated in request"
 ERR__duplicated_route_method = "HTTP method '%s' is declared twice for the route '%s'"
 ERR__expected_argument = "Expected argument '%s'"
 ERR__expected_json = "Expected content-type " + CONTENT__json
+ERR__expected_json_object = "Expected the request body to be a JSON object, not %s"
+ERR__item_wrong_type = "Item %d of argument '%s' is of type '%s' but should be an object"
 ERR__expected_response_dict = "Expected response to be a dictionary type"
 ERR__expected_response_list = "Expected response to be a array type"
 ERR__expected_response_flat_type = "Expected response to be a flat type"
@@ -221,38 +223,42 @@ class BaseJAAQLController:
             if isinstance(arg.arg_type, SwaggerList) and arg.name in data:
                 if not isinstance(data[arg.name], list):
                     raise HttpStatusException(ERR__argument_wrong_type % (arg.name, type(data[arg.name]).__name__,
-                                                                          type(list).__name__), HTTPStatus.BAD_REQUEST)
-                for itm in data[arg.name]:
-                    BaseJAAQLController.validate_data_rec(arg.arg_type.responses, itm, fill_missing)
+                                                                          list.__name__), HTTPStatus.BAD_REQUEST)
+                for idx, itm in enumerate(data[arg.name]):
+                    if not isinstance(itm, dict):
+                        raise HttpStatusException(ERR__item_wrong_type % (idx, arg.name, type(itm).__name__), HTTPStatus.BAD_REQUEST)
+                    BaseJAAQLController.validate_data_rec(arg.arg_type.responses, itm, is_prod, fill_missing)
             elif arg.name in data and arg.arg_type == ARG_RESP__allow_all:
                 continue
-            elif arg.name in data and not isinstance(data[arg.name], arg.arg_type):
+            elif arg.name in data and (not isinstance(data[arg.name], arg.arg_type) or
+                                       # JSON's true and false, which Python takes for numbers
+                                       (isinstance(data[arg.name], bool) and arg.arg_type in (int, float))):
                 if data[arg.name] is None and not arg.required:
                     continue
                 was_err = True
-                if arg.arg_type == int:
-                    try:
-                        test = int(data[arg.name])
-                        if str(test) == data[arg.name]:
-                            was_err = False
-                            data[arg.name] = test
-                    except ValueError:
-                        pass
-                elif arg.arg_type == float:
-                    try:
-                        test = float(data[arg.name])
-                        if str(test) == data[arg.name]:
-                            was_err = False
-                            data[arg.name] = test
-                    except ValueError:
-                        pass
-                elif arg.arg_type == bool:
-                    try:
+                # Only a text (of the query or a form) is read as the number or the flag it spells; a value of any other type is of the
+                # wrong type, a list or an object as much as a null where a value is required
+                if isinstance(data[arg.name], str):
+                    if arg.arg_type == int:
+                        try:
+                            test = int(data[arg.name])
+                            if str(test) == data[arg.name]:
+                                was_err = False
+                                data[arg.name] = test
+                        except ValueError:
+                            pass
+                    elif arg.arg_type == float:
+                        try:
+                            test = float(data[arg.name])
+                            if str(test) == data[arg.name]:
+                                was_err = False
+                                data[arg.name] = test
+                        except ValueError:
+                            pass
+                    elif arg.arg_type == bool:
                         if data[arg.name] in BOOL__allowed:
                             was_err = False
                             data[arg.name] = BOOL__allowed[data[arg.name]]
-                    except ValueError:
-                        pass
 
                 if was_err:
                     raise HttpStatusException(ERR__argument_wrong_type % (arg.name, type(data[arg.name]).__name__,
@@ -429,21 +435,22 @@ class BaseJAAQLController:
         if len(method.body) != 0 or was_allow_all:
             BaseJAAQLController.enforce_content_type_json()
             data = request.json
+            if not isinstance(data, dict):
+                # A JSON array, string, number, true, false or null, which no route takes
+                raise HttpStatusException(ERR__expected_json_object % ("an array" if isinstance(data, list) else json.dumps(data)[:20]),
+                                          HTTPStatus.BAD_REQUEST)
         else:
             content_type = request.headers.get('Content-Type', '')
             if 'charset=' not in content_type and len(kwargs) == 0:
                 only_args = True
 
-        if isinstance(data, list):
-            combined_data = data
+        if only_args:
+            combined_data = {**request.args}
         else:
-            if only_args:
-                combined_data = {**request.args}
-            else:
-                combined_data = {**request.form, **request.args, **data, **kwargs}
+            combined_data = {**request.form, **request.args, **data, **kwargs}
 
-            if len(combined_data) != len(request.form) + len(request.args) + len(data) + len(kwargs):
-                raise HttpStatusException(ERR__duplicated_field, HTTPStatus.BAD_REQUEST)
+        if len(combined_data) != len(request.form) + len(request.args) + len(data) + len(kwargs):
+            raise HttpStatusException(ERR__duplicated_field, HTTPStatus.BAD_REQUEST)
 
         if not was_allow_all:
             BaseJAAQLController.validate_data(method, combined_data, is_prod, fill_missing)

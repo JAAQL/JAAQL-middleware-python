@@ -856,27 +856,126 @@ class TestWhatIsNeverReported(ServerErrorCase):
 
     def test_a_malformed_request_whoever_sends_it(self):
         # /submit, /execute and /call-proc take any body, and anyone can send one, logged in with a bypass key or with a token (the public
-        # anonymous login has a published password): what reading it raises is answered 500 as ever, and never reported
+        # anonymous login has a published password): a body of another shape is answered 400, saying what is wrong with it, and never
+        # reported. Up to 5.3.30 each of these was answered 500 (error_code 1099, or "Compiled query ... is not present in the query cache")
         bodies = {
-            "/call-proc": [{"query": 123, "parameters": {}}, {"query": "lesson.save"}, {"query": "lesson.save", "parameters": [1]},
-                           {"query": None, "parameters": {}}, {"parameters": {}}],
-            "/execute": [{"query": {"a": "slow"}}, {"query": {"a": "slow:x"}}, {"query": "SELECT 1"}, {"query": {"a": ["slow:0"]}},
-                         {"query": {"a": {"query": 1}}}, {"query": {"a": {}}}, {"query": {"a": "slow:0"}, "parameters": [1]}, {},
+            "/call-proc": [({"query": 123, "parameters": {}}, "Expected 'query' to be the name of the procedure to call, not 123"),
+                           ({"query": "lesson.save"}, "Expected 'parameters' to be an object of the procedure's arguments by name, not None"),
+                           ({"query": "lesson.save", "parameters": [1]}, "Expected 'parameters' to be an object"),
+                           ({"query": None, "parameters": {}}, "Expected 'query' to be the name of the procedure to call, not None"),
+                           ({"parameters": {}}, "Expected 'query' to be the name"), ({"query": ["lesson.save"], "parameters": {}}, "Expected 'query'"),
+                           ({"query": "lesson.save", "parameters": "x"}, "Expected 'parameters' to be an object")],
+            "/execute": [({"query": {"a": "slow"}}, "Expected a compiled query as '<file>:<index>', not 'slow'"),
+                         ({"query": {"a": "slow:x"}}, "Expected a compiled query as '<file>:<index>', not 'slow:x'"),
+                         ({"query": {"a": "slow:-1"}}, "Expected a compiled query as '<file>:<index>', not 'slow:-1'"),
+                         ({"query": {"a": "slow:0:1"}}, "Expected a compiled query as '<file>:<index>', not 'slow:0:1'"),
+                         ({"query": "SELECT 1"}, "Expected 'query' to be an object naming each compiled query to run as '<file>:<index>'"),
+                         ({"query": {"a": ["slow:0"]}}, "Expected a compiled query as '<file>:<index>', not ['slow:0']"),
+                         ({"query": {"a": {"query": 1}}}, "Expected a compiled query as '<file>:<index>', not 1"),
+                         ({"query": {"a": {}}}, "Expected a compiled query as '<file>:<index>', not None"),
+                         ({"query": {"a": None}}, "Expected a compiled query as '<file>:<index>', not None"),
+                         ({"query": {"a": "slow:0"}, "parameters": [1]}, "Malformed parameters! Please send as dictionary"),
+                         ({}, "Expected 'query' to be an object naming each compiled query"), ({"query": [1]}, "Expected 'query' to be an object"),
                          # A query the application does not have, with its cache as on disk
-                         {"query": {"a": "lesson__browse.frame:3"}}, {"query": {"a": "slow:99"}}],
-            "/submit": [{"query": "SELECT 1", "parameters": [1]}, {"query": {"a": 1}}, {"query": {"a": {}}}, {"query": {"a": ["x"]}},
-                        {"query": {"a": {"query": {"file": 1}}}}],
+                         ({"query": {"a": "lesson__browse.frame:3"}}, "The application has no compiled query 'lesson__browse.frame:3'"),
+                         ({"query": {"a": "slow:99"}}, "The application has no compiled query 'slow:99'")],
+            "/submit": [({"query": "SELECT 1", "parameters": [1]}, "Malformed parameters! Please send as dictionary"),
+                        ({"query": "SELECT 1", "parameters": "x"}, "Malformed parameters! Please send as dictionary"),
+                        ({"query": {"a": 1}}, "Malformed request: a value is not of the type or the shape expected (TypeError: "),
+                        ({"query": {"a": {}}}, "Malformed request: expected 'query'"),
+                        ({"query": {"a": ["x"]}}, "Malformed request: a value is not of the type or the shape expected (TypeError: "),
+                        # Canned queries, which a box serves only when asked to (none here)
+                        ({"query": {"a": {"query": {"file": 1}}}}, "Malformed request: expected 'position'"),
+                        ({"query": {"a": {"store": "rows", "x": {"file": "f"}}}}, "Malformed request: expected 'position'"),
+                        ({"file": "f", "position": 1}, "Canned queries (application, file and position) are not served here")],
         }
-        requests_ = {"%s %s" % (route, json.dumps(body)): (lambda route=route, body=body, bypass=True: self.post(route, body, bypass=bypass))
-                     for route, route_bodies in bodies.items() for body in route_bodies}
+        requests_ = {"%s %s" % (route, json.dumps(body)): (message, lambda route=route, body=body, bypass=True: self.post(route, body, bypass=bypass))
+                     for route, route_bodies in bodies.items() for body, message in route_bodies}
         for route in bodies:
-            for raw in [b"1", b'"x"', b"null", b"true"] + ([b"[1]"] if route != "/submit" else []):
-                requests_["%s body %s" % (route, raw.decode())] = (lambda route=route, raw=raw, bypass=True: self.raw(route, raw, bypass))
-        for name, request in requests_.items():
+            for raw, shown in [(b"1", "1"), (b'"x"', '"x"'), (b"null", "null"), (b"true", "true"), (b"[1]", "an array"), (b"[]", "an array")]:
+                requests_["%s body %s" % (route, raw.decode())] = ("Expected the request body to be a JSON object, not " + shown,
+                                                                   lambda route=route, raw=raw, bypass=True: self.raw(route, raw, bypass))
+        for name, (message, request) in requests_.items():
             for bypass in [True, False]:
                 with self.subTest(name, bypass=bypass), self.interface(RaisingInterface(role=ACCOUNT)):
                     (status, _, data), reports = self.answers(lambda: request(bypass=bypass))
-                    self.assertEqual((500, []), (status, reports), data)
+                    self.assertEqual((400, []), (status, reports), data)
+                    self.assertTrue(data.decode().startswith(message), data)
+        self.assertEqual([], self.lines())
+
+    def test_a_malformed_request_is_answered_400_by_the_code_that_reads_it(self):
+        # What reading the request's own operation raises (reading_request), whatever the code: 400 saying so, with the error as its
+        # cause, the client's. The same in code that reads what JAAQL built is its own server error, as ever
+        for ex, message in [(KeyError("position"), "Malformed request: expected 'position'"),
+                            (TypeError("'int' object is not subscriptable"),
+                             "Malformed request: a value is not of the type or the shape expected (TypeError: 'int' object is not subscriptable)"),
+                            (AttributeError("x" * 500), "Malformed request: a value is not of the type or the shape expected (AttributeError: xxx")]:
+            with self.subTest(type(ex).__name__):
+                with self.assertRaises(HttpStatusException) as raised:
+                    with server_errors.reading_request():
+                        raise ex
+                self.assertEqual(400, raised.exception.response_code)
+                self.assertTrue(raised.exception.message.startswith(message), raised.exception.message)
+                self.assertLessEqual(len(raised.exception.message), len("Malformed request: ") + server_errors.MALFORMED__max_length)
+                self.assertIs(ex, raised.exception.__cause__)
+                self.assertTrue(server_errors.is_clients(raised.exception))
+                with self.assertRaises(type(ex)) as own:
+                    with server_errors.reading_request(False):
+                        raise ex
+                self.assertIs(ex, own.exception)
+        with self.assertRaises(RuntimeError):
+            with server_errors.reading_request():
+                raise RuntimeError("not a malformed request")
+
+    def test_a_malformed_body_of_any_route(self):
+        # The routes whose body the documentation describes: no JSON object, an argument of another type, a list of another shape, all 400
+        # and unreported. Up to 5.3.30 each was answered 500 (error_code 1099)
+        stub = mock.patch.multiple(self.model, create=True, **{name: mock.DEFAULT for name in (
+            "get_auth_token", "create_account_with_potential_api_key", "shallow_federate_batch_potential_with_api_key", "render_document",
+            "set_last_successful_build_time", "set_procedures", "attach_dispatcher_credentials", "install")})
+        cases = [
+            ("/oauth/token", b"1", "Expected the request body to be a JSON object, not 1"),
+            ("/oauth/token", b'"x"', 'Expected the request body to be a JSON object, not "x"'),
+            ("/accounts", {"username": "u", "password": "p", "attach_as": "r", "registered": [1]},
+             "Argument 'registered' is of type 'list' but should be of type 'bool'"),
+            ("/accounts", {"username": "u", "password": "p", "attach_as": "r", "registered": {"a": 1}},
+             "Argument 'registered' is of type 'dict' but should be of type 'bool'"),
+            ("/accounts/batch", {"accounts": [1]}, "Item 0 of argument 'accounts' is of type 'int' but should be an object"),
+            ("/accounts/batch", {"accounts": "x"}, "Argument 'accounts' is of type 'str' but should be of type 'list'"),
+            ("/documents", {"name": "n", "parameters": {}, "create_file": [1], "application": "a"},
+             "Argument 'create_file' is of type 'list' but should be of type 'bool'"),
+            ("/build-time", {"last_successful_build_time": [1]}, "Argument 'last_successful_build_time' is of type 'list' but should be of type 'int'"),
+            ("/build-time", {"last_successful_build_time": None},
+             "Argument 'last_successful_build_time' is of type 'NoneType' but should be of type 'int'"),
+            ("/build-time", {"last_successful_build_time": True}, "Argument 'last_successful_build_time' is of type 'bool' but should be of type 'int'"),
+            ("/internal/dispatchers", {"application": "a", "name": "n", "url": "u", "port": True, "username": "u", "password": "p",
+              "from_address": "no-reply@example.com"},
+             "Argument 'port' is of type 'bool' but should be of type 'int'"),
+            ("/internal/dispatchers", {"application": "a", "name": "n", "url": "u", "port": [25], "username": "u", "password": "p",
+              "from_address": "no-reply@example.com"},
+             "Argument 'port' is of type 'list' but should be of type 'int'"),
+            ("/procedures", {"application": "a", "procs": [1]}, "Item 0 of argument 'procs' is of type 'int' but should be an object"),
+            ("/internal/install", {"install_key": "k", "jaaql_password": "p", "super_db_password": "p", "allow_uninstall": [1]},
+             "Argument 'allow_uninstall' is of type 'list' but should be of type 'bool'"),
+            ("/security-event", {"application": "a", "name": "n", "type": "t", "parameters": "x", "explicit_types": {}},
+             "Expected 'parameters' to be an object holding the account's 'email'"),
+            ("/security-event", {"application": "a", "name": "n", "type": "t", "parameters": {}, "explicit_types": {}},
+             "Expected 'parameters' to be an object holding the account's 'email'"),
+            ("/prepare", {}, "Expected 'database'"),
+            ("/prepare", {"database": "lesbij", "queries": [{"query": "SELECT 1"}]}, "Expected 'queries' to be a list of objects"),
+            ("/prepare", {"database": "lesbij", "queries": "x"}, "Expected 'queries' to be a list of objects"),
+            ("/prepare", {"database": "lesbij"}, "Expected 'queries' to be a list of objects"),
+        ]
+        with stub as stubs, mock.patch.object(self.model, "prepare_queries", lambda inputs, account_id: JAAQLModel.prepare_queries(
+                self.model, inputs, account_id)), mock.patch("jaaql.mvc.controller.security_event__select") as select:
+            for route, body, message in cases:
+                with self.subTest(route=route, body=body):
+                    (status, _, data), reports = self.answers(lambda: self.raw(route, body if isinstance(body, bytes) else json.dumps(body)))
+                    self.assertEqual((400, []), (status, reports), data)
+                    self.assertTrue(data.decode().startswith(message), data)
+            for name, stubbed in stubs.items():
+                stubbed.assert_not_called()
+            select.assert_not_called()
         self.assertEqual([], self.lines())
 
     def test_a_submit_naming_neither_a_query_nor_a_canned_one_is_400_whoever_sends_it(self):
@@ -900,20 +999,21 @@ class TestWhatIsNeverReported(ServerErrorCase):
             return real_lookup(connection, query, parameters, **kwargs)
 
         self.model.jaaql_lookup_connection = RaisingInterface(lambda: pg.UndefinedFunction("operator does not exist: character varying = smallint"))
+        # Each answered 400 saying so before any query (up to 5.3.30: 500 with error_code 1099, or 422 with the lookup's database error)
         cases = {
-            "an unknown schema": ({"schema": "nope"}, APPLICATION, 500),
-            "a schema of another type": ({"schema": [1]}, APPLICATION, 500),
-            "a role of another type": ({"role": 1}, APPLICATION, 500),
-            "a role of another type, again": ({"role": [1]}, APPLICATION, 500),
-            "an application of another type": ({}, 1, 422),
-            "an application of another type, again": ({}, True, 422),
+            "an unknown schema": ({"schema": "nope"}, APPLICATION, "The application has no schema 'nope'"),
+            "a schema of another type": ({"schema": [1]}, APPLICATION, "Expected 'schema' to be a name, not [1]"),
+            "a role of another type": ({"role": 1}, APPLICATION, "Expected 'role' to be a name, not 1"),
+            "a role of another type, again": ({"role": [1]}, APPLICATION, "Expected 'role' to be a name, not [1]"),
+            "an application of another type": ({}, 1, "Expected 'application' to be a name, not 1"),
+            "an application of another type, again": ({}, True, "Expected 'application' to be a name, not True"),
         }
         with mock.patch.object(db_utils_no_circ, "execute_supplied_statement", side_effect=lookup):
-            for name, (extra, application, expected) in cases.items():
+            for name, (extra, application, message) in cases.items():
                 for route, body in [("/submit", {"query": "SELECT 1"}), ("/call-proc", {"query": "lesson.save", "parameters": {}})]:
                     with self.subTest(name, route=route):
                         (status, _, data), reports = self.answers(lambda: self.post(route, dict(body, **extra), application=application))
-                        self.assertEqual((expected, []), (status, reports), data)
+                        self.assertEqual((400, [], message), (status, reports, data.decode()))
             # JAAQL's own lookup failing so for an application that is a name is the server's
             (status, _, _), reports = self.answers(lambda: self.post("/submit", {"query": "SELECT 1"}, application="LesBij"))
         self.assertEqual((422, 1), (status, len(reports)))
@@ -1656,8 +1756,8 @@ class TestServerErrorsAgainstPostgres(ServerErrorCase):
         self.model.jaaql_lookup_connection = self.lookup_connection()
         with mock.patch.object(db_utils_no_circ, "execute_supplied_statement", execute_supplied_statement):
             # (application, more inputs, the answer of /submit's SELECT, of /call-proc's procedure raising P0001)
-            for application, extra, expected in [(1, {}, (422, 422)), (True, {}, (422, 422)), (1.5, {}, (422, 422)), ([1], {}, (422, 422)),
-                                                 ("lesbij", {"role": 1}, (500, 500)), ("lesbij", {"schema": "nope"}, (500, 500)),
+            for application, extra, expected in [(1, {}, (400, 400)), (True, {}, (400, 400)), (1.5, {}, (400, 400)), ([1], {}, (400, 400)),
+                                                 ("lesbij", {"role": 1}, (400, 400)), ("lesbij", {"schema": "nope"}, (400, 400)),
                                                  ("lesbij", {"autocommit": "yes"}, (200, 422)), ("lesbij", {}, (200, 422))]:
                 for route, body, answer in [("/submit", {"query": "SELECT 1 AS one"}, expected[0]),
                                             ("/call-proc", {"query": "lesson.raise", "parameters": {}}, expected[1])]:

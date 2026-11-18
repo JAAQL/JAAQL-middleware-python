@@ -16,9 +16,10 @@ from jaaql.db.db_interface import DBInterface
 from jaaql.utilities.utils_no_project_imports import objectify
 from jaaql.mvc.generated_queries import application__select
 from jaaql.utilities.slow_queries import Label
-from jaaql.utilities import server_errors
 
 ERROR_VALUE__max_length = 80
+ERR__name_expected = "Expected '%s' to be a name, not %s"
+ERR__schema_unknown = "The application has no schema %s"
 
 
 def get_jaaql_connection_to_db(vault, config, database: str, jaaql_connection: DBInterface):
@@ -89,21 +90,25 @@ def pop_timeline_settings(inputs: dict):
 
 def get_required_db(vault, config, jaaql_connection: DBInterface, inputs: dict, account_id: str, conn=None, interface: DBInterface = None, db_cache=None,
                     clients: bool = False):
-    # clients: the inputs are the request's own, so a schema it names that the application lacks, or a value of a type no application or role
-    # name has, is the client's even where JAAQL's own code or query meets it (jaaql/utilities/server_errors.py)
+    # clients: the inputs are the request's own, so an application, a schema or a role it names that is no name, or a schema the application
+    # lacks, is the client's malformed request (400), never JAAQL's server error (jaaql/utilities/server_errors.py)
     if not isinstance(inputs, dict):
         raise HttpStatusException("Expected object or string input")
 
     if conn is None:
         # Validated first, so a bad request does no database work at all (not even the application lookup)
         session_settings = pop_timeline_settings(inputs)
+        if clients:
+            for key in (KEY__application, KEY__schema, KEY__role):
+                if inputs.get(key) is not None and not isinstance(inputs[key], str):
+                    raise HttpStatusException(ERR__name_expected % (key, _describe_rejected_value(inputs[key])), HTTPStatus.BAD_REQUEST)
 
         if KEY__application in inputs:
             schemas = db_cache
             if schemas is None:
                 schemas = execute_supplied_statement(jaaql_connection, QUERY__fetch_application_schemas, {
                     KG__application_schema__application: inputs[KEY__application]
-                }, as_objects=True, client_sql=clients and not isinstance(inputs[KEY__application], str))
+                }, as_objects=True)
                 if len(schemas) == 0:
                     application__select(jaaql_connection, inputs[KEY__application],
                                         singleton_message=f"Application '{inputs[KEY__application]}' does not exist. Are you sure you have installed it?")
@@ -114,9 +119,10 @@ def get_required_db(vault, config, jaaql_connection: DBInterface, inputs: dict, 
 
             found_db = None
             if KEY__schema in inputs and inputs[KEY__schema] is not None:
-                with server_errors.reading_request(clients):
-                    found_db = schemas[inputs[KEY__schema]][KEY__database]
-                inputs.pop(KEY__schema)
+                schema = inputs.pop(KEY__schema)
+                if clients and schema not in schemas:
+                    raise HttpStatusException(ERR__schema_unknown % _describe_rejected_value(schema), HTTPStatus.BAD_REQUEST)
+                found_db = schemas[schema][KEY__database]
             else:
                 if len(schemas) == 1:
                     found_db = schemas[list(schemas.keys())[0]][KEY__database]
@@ -137,9 +143,7 @@ def get_required_db(vault, config, jaaql_connection: DBInterface, inputs: dict, 
 
         sub_role = inputs.pop(KEY__role) if KEY__role in inputs else None
 
-        # A role of another type than a name is the client's, wherever making the interface trips over it
-        with server_errors.reading_request(clients and not isinstance(sub_role, (str, type(None)))):
-            required_db = create_interface_for_db(vault, config, account_id, inputs[KEY__database], sub_role, session_settings=session_settings)
+        required_db = create_interface_for_db(vault, config, account_id, inputs[KEY__database], sub_role, session_settings=session_settings)
     else:
         if interface is None:
             raise Exception("Must supply interface is connection is supplied!")

@@ -18,6 +18,9 @@ from jaaql.utilities import server_errors, sentinel_ingest
 from jaaql.utilities.server_errors import ANSWERED__oidc_exchange
 
 
+ERR__security_event_parameters = "Expected 'parameters' to be an object holding the account's 'email'"
+
+
 class JAAQLController(BaseJAAQLController):
 
     def __init__(self, model: JAAQLModel, is_prod: bool, base_url: str, do_profiling: bool = False):
@@ -122,6 +125,9 @@ class JAAQLController(BaseJAAQLController):
 
         @self.publish_route('/security-event', DOCUMENTATION__security_event)
         def security_event(http_inputs: dict, account_id: str):
+            # Its parameters (any JSON by the documentation) name the account's email address: without, the request is malformed
+            if not isinstance(http_inputs[KEY__parameters], dict) or "email" not in http_inputs[KEY__parameters]:
+                raise HttpStatusException(ERR__security_event_parameters, HTTPStatus.BAD_REQUEST)
             security_event = security_event__select(self.model.jaaql_lookup_connection, http_inputs[KEY__application],
                                                     name=http_inputs[KG__security_event__name],
                                                     type=http_inputs[KG__security_event__type])

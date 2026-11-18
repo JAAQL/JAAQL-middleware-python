@@ -37,7 +37,7 @@ from jaaql.constants import *
 from jaaql.utilities.cron import check_if_should_fire_cron
 from jaaql.utilities.utils import get_jaaql_root, get_base_url
 from jaaql.db.db_utils import create_interface, jaaql__encrypt, create_interface_for_db, jaaql__decrypt, requested_database
-from jaaql.db.db_utils_no_circ import submit, get_required_db, objectify
+from jaaql.db.db_utils_no_circ import submit, get_required_db, objectify, _describe_rejected_value
 from jaaql.utilities import crypt_utils, slow_queries, server_errors, verify_email_resends, process_slots
 from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_OIDC, COOKIE_OIDC_RETURN, \
     COOKIE_LOGIN_MARKER, get_sloppy_cookie_attrs, COOKIE_ATTR_MAX_AGE
@@ -98,6 +98,13 @@ ERR__web_config_refused = "nginx -t refused the merged web config, so %s was put
 ERR__web_config_not_reloaded = "nginx -t accepted the merged web config, now in %s, but nginx -s reload failed:\n%s"
 ERR__webhook_busy = "Too many webhooks are running. Try again later"
 ERR__public_procedure_busy = "Too many public procedures are running. Try again later"
+ERR__query_reference_malformed = "Expected a compiled query as '<file>:<index>', not %s"
+ERR__query_not_compiled = "The application has no compiled query %s"
+ERR__execute_query_malformed = "Expected 'query' to be an object naming each compiled query to run as '<file>:<index>', not %s"
+ERR__call_proc_query_malformed = "Expected 'query' to be the name of the procedure to call, not %s"
+ERR__call_proc_parameters_malformed = "Expected 'parameters' to be an object of the procedure's arguments by name, not %s"
+ERR__prepare_database_missing = "Expected 'database'"
+ERR__prepare_queries_malformed = "Expected 'queries' to be a list of objects, each with its query, file, line_number and name, not %s"
 
 PG__default_connection_string = "postgresql://postgres:%s@localhost:5432/jaaql"
 DIR__scripts = "scripts"
@@ -644,6 +651,14 @@ ORDER BY
         return execute_supplied_statement(db_connection, domains_query, as_objects=True)
 
     def prepare_queries(self, inputs: dict, account_id: str):
+        # The microcompiler's request: the database, and each query with where it is written. Of another shape, it is malformed (400)
+        if KEY__database not in inputs:
+            raise HttpStatusException(ERR__prepare_database_missing, HTTPStatus.BAD_REQUEST)
+        queries = inputs.get("queries")
+        if not isinstance(queries, list) or not all(isinstance(query, dict) and isinstance(query.get("query"), str) and
+                                                    isinstance(query.get("file"), str) and "line_number" in query and "name" in query
+                                                    for query in queries):
+            raise HttpStatusException(ERR__prepare_queries_malformed % _describe_rejected_value(queries), HTTPStatus.BAD_REQUEST)
         cost_only = inputs.get("cost_only", False)
         db_connection = create_interface_for_db(self.vault, self.config, account_id, requested_database(inputs[KEY__database]), None)
 
@@ -2958,11 +2973,12 @@ WHERE
         os.kill(int(open("app.pid", "r").read()), signal.SIGUSR1)
 
     def _lookup_cached_query(self, trimmed: str, requested: bool = True):
-        # requested: the request named the query, as "<file>:<index>", so a name without them or naming no query of the application is the
-        # client's (jaaql/utilities/server_errors.py); not for JAAQL's own (deep_health's)
-        with server_errors.reading_request(requested):
-            name = trimmed.split(":")[0]
-            index = int(trimmed.split(":")[1])
+        # requested: the request named the query, as "<file>:<index>", so a name of another form, or one naming no query of the application,
+        # is the client's malformed request, answered 400 (jaaql/utilities/server_errors.py); not for JAAQL's own (deep_health's)
+        if requested and (not isinstance(trimmed, str) or re.fullmatch(REGEX__compiled_query_reference, trimmed) is None):
+            raise HttpStatusException(ERR__query_reference_malformed % _describe_rejected_value(trimmed), HTTPStatus.BAD_REQUEST)
+        name = trimmed.split(":")[0]
+        index = int(trimmed.split(":")[1])
         try:
             return self.query_caches["queries"][name][index]
         except (KeyError, IndexError):
@@ -2979,12 +2995,12 @@ WHERE
                     return self.query_caches["queries"][name][index]
                 except (KeyError, IndexError):
                     pass
+            if requested and not stale:
+                # The cache is the application's queries.json as it is on disk: the request named a query the application does not have.
+                # Only a cache that needed reloading is the server's
+                raise HttpStatusException(ERR__query_not_compiled % _describe_rejected_value(trimmed), HTTPStatus.BAD_REQUEST)
             missing = HttpStatusException("Compiled query '%s' is not present in the query cache" % name,
                                           response_code=HTTPStatus.INTERNAL_SERVER_ERROR)
-            if requested and not stale:
-                # The cache is the application's queries.json as it is on disk: the request named a query the application does not have,
-                # answered 500 as ever but the client's. Only a cache that needed reloading is the server's
-                client_fault(missing)
             raise missing
 
     def execute(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
@@ -3009,7 +3025,10 @@ WHERE
 
         # The compiled query each key names ("<file>:<index>"), which is what a slow-query report calls it
         refs = {}
-        # What the request names is read as the client's: a key missing or a value of another type is its own (jaaql/utilities/server_errors.py)
+        # What the request names is read as the client's: a key missing or a value of another type is its malformed request, answered 400
+        # (jaaql/utilities/server_errors.py)
+        if not isinstance(inputs.get("query"), dict):
+            raise HttpStatusException(ERR__execute_query_malformed % _describe_rejected_value(inputs.get("query")), HTTPStatus.BAD_REQUEST)
         with server_errors.reading_request():
             queries = inputs["query"].items()
         for key, val in queries:
@@ -3017,10 +3036,15 @@ WHERE
                 # A store query runs its other keys as SQL text, which would be the caller's own SQL here
                 if KEY_store in val:
                     raise HttpStatusException("/execute does not run store queries; call a procedure instead")
+                if not isinstance(val.get("query"), str):
+                    raise HttpStatusException(ERR__query_reference_malformed % _describe_rejected_value(val.get("query")),
+                                              HTTPStatus.BAD_REQUEST)
                 with server_errors.reading_request():
                     refs[key] = val["query"].strip()
                 val["query"] = self._lookup_cached_query(refs[key])
             else:
+                if not isinstance(val, str):
+                    raise HttpStatusException(ERR__query_reference_malformed % _describe_rejected_value(val), HTTPStatus.BAD_REQUEST)
                 with server_errors.reading_request():
                     refs[key] = val.strip()
                 inputs["query"][key] = self._lookup_cached_query(refs[key])
@@ -3035,8 +3059,13 @@ WHERE
                       slow_query_label=slow_queries.Label("execute", refs=refs), client_sql=True)
 
     def call_proc(self, inputs: dict, account_id: str, verification_hook: Queue = None, as_objects: bool = False, singleton: bool = False):
-        # What the request sends is read as the client's: a key missing or a value of another type is its own
+        # What the request sends is read as the client's: a key missing or a value of another type is its malformed request, answered 400
         # (jaaql/utilities/server_errors.py)
+        if not isinstance(inputs.get("query"), str):
+            raise HttpStatusException(ERR__call_proc_query_malformed % _describe_rejected_value(inputs.get("query")), HTTPStatus.BAD_REQUEST)
+        if not isinstance(inputs.get("parameters"), dict):
+            raise HttpStatusException(ERR__call_proc_parameters_malformed % _describe_rejected_value(inputs.get("parameters")),
+                                      HTTPStatus.BAD_REQUEST)
         with server_errors.reading_request():
             parameters = inputs["parameters"]
             query_name = inputs["query"]

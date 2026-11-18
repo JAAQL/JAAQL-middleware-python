@@ -10,11 +10,12 @@ routed_function sees every failed request before Flask answers it (request_faile
   client's, a bug in the interpreter running JAAQL's own SQL, the verifier's verdict timing out, a connection pool that cannot be made.
 SQL the request supplied or named (client_sql: /submit, /execute, /call-proc, the security-event procedure, the email data view, /prepare)
 counts only when the database server fails under it (a connection gone, a resource exhausted, an I/O error, corruption, a shutdown, a
-connection lost after the SQL may have committed): nothing else it raises does. Neither does any 4xx, an exception marked as the client's
-(client_fault: the refusal of an arbitrary query, an error a cloud procedure relays, what reading a malformed request raises), a client gone, a
-request while JAAQL is not installed, or one on SERVER_ERROR__unreported_routes (Sentinel's ingest route, so a report never reports itself,
-and the deploy-time routes). The auth verifier reports its own failures (background_failed); the Flask error handlers report what no routed
-request saw (unrouted_failure); /exchange-auth-code, which answers every failure with its redirect, reports what of it is the server's.
+connection lost after the SQL may have committed): nothing else it raises does. Neither does any 4xx (a malformed request among them: what
+reading it raises, a key missing or a value of another type, is answered 400 by reading_request), an exception marked as the client's
+(client_fault: the refusal of an arbitrary query, an error a cloud procedure relays), a client gone, a request while JAAQL is not installed,
+or one on SERVER_ERROR__unreported_routes (Sentinel's ingest route, so a report never reports itself, and the deploy-time routes). The auth
+verifier reports its own failures (background_failed); the Flask error handlers report what no routed request saw (unrouted_failure);
+/exchange-auth-code, which answers every failure with its redirect, reports what of it is the server's.
 
 A failed request makes at most one report, with exactly the keys Sentinel's ingest route binds. It names the account by its id only; the
 inputs of a query route (SERVER_ERROR__routes_with_inputs) keep the values policy (values included, secrets <redacted>, encrypted literals
@@ -31,6 +32,7 @@ import sys
 import traceback
 import types
 from datetime import datetime, timezone
+from http import HTTPStatus
 
 import psycopg
 import requests
@@ -362,8 +364,33 @@ def commit_failed(raised, client_sql: bool, db_interface, query_key=None):
         _failed(report_ex)
 
 
+# The answer to a malformed request (malformed): what is wrong with it, cut to at most MALFORMED__max_length characters
+ERR__malformed_request = "Malformed request: %s"
+ERR__malformed_request_key = "expected %s"
+ERR__malformed_request_value = "a value is not of the type or the shape expected (%s: %s)"
+MALFORMED__max_length = 200
+
+
+def malformed(ex) -> HttpStatusException:
+    """
+    The answer to a request whose reading raised ex because a key is missing or a value is of another type than expected (SHAPE_ERRORS):
+    400, saying which, the client's
+    """
+    try:
+        if isinstance(ex, KeyError) and len(ex.args) == 1:
+            detail = ERR__malformed_request_key % repr(ex.args[0])
+        else:
+            detail = ERR__malformed_request_value % (type(ex).__name__, str(ex))
+        if len(detail) > MALFORMED__max_length:
+            detail = detail[:MALFORMED__max_length - 3] + "..."
+    except Exception as report_ex:
+        _failed(report_ex)
+        detail = type(ex).__name__
+    return client_fault(HttpStatusException(ERR__malformed_request % detail, HTTPStatus.BAD_REQUEST))
+
+
 class _ReadingRequest:
-    # reading_request's context: one that marks what it sees as the client's, one that marks nothing, each made once
+    # reading_request's context: one that answers what it sees as the client's malformed request, one that marks nothing, each made once
     __slots__ = ("clients",)
 
     def __init__(self, clients: bool):
@@ -374,10 +401,7 @@ class _ReadingRequest:
 
     def __exit__(self, exc_type, ex, tb):
         if self.clients and isinstance(ex, SHAPE_ERRORS):
-            try:
-                client_fault(ex)
-            except Exception as report_ex:
-                _failed(report_ex)
+            raise malformed(ex) from ex
         return False
 
 
@@ -387,9 +411,9 @@ _READING__own = _ReadingRequest(False)
 
 def reading_request(clients: bool = True):
     """
-    Around code that reads what the request sent: an exception it raises because a key is missing or a value is of another type than expected
-    (SHAPE_ERRORS, answered 500 as ever) is the client's, never a server error, and is raised on unchanged. With clients False (JAAQL built
-    what is read) it marks nothing
+    Around code that reads what the request sent, and nothing else: an exception it raises because a key is missing or a value is of another
+    type than expected (SHAPE_ERRORS) is the client's malformed request, answered 400 saying which (malformed), never a server error, with the
+    exception as its cause. With clients False (JAAQL built what is read) it is raised on unchanged, a server error as any other
     """
     return _READING__clients if clients else _READING__own
 

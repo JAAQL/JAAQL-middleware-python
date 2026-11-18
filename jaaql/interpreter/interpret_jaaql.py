@@ -29,6 +29,7 @@ ERR_malformed_parameters = "Malformed parameters! Please send as dictionary"
 ERR_malformed_decrypt = "Malformed decryption request! Please send as a list of columns"
 ERR_missing_parameter = "Missing parameter! Expected to find '%s'"
 ERR_missing_query = "Missing query key from input dictionary"
+ERR_canned_queries_off = "Canned queries (application, file and position) are not served here: send the query's SQL as 'query'"
 ERR_unused_parameter = "Unused parameter! Supplied with '%s' but was never used"
 ERR_polluted_input = "Input polluted. If passing query, only pass parameters as well"
 ERR_malformed_query = "Value of 'query' key malformed. Please use a string if you are passing a value to 'query'"
@@ -63,6 +64,17 @@ KEY_store = "store"
 KEY__state = "_state"
 KEY_state = "state"
 KEY__row_number = "_rowNumber"
+
+
+class _NoCannedQueries:
+    # The canned queries of a box that serves none (jaaql/services/cached_canned_query_service.py, off unless asked for), as the request's own
+    # operation reads them: naming one is its malformed request
+    @staticmethod
+    def get_canned_query(application, file, position):
+        raise HttpStatusException(ERR_canned_queries_off, HTTPStatus.BAD_REQUEST)
+
+
+_NO_CANNED_QUERIES = _NoCannedQueries()
 
 STATEMENT_as = "as"
 STATEMENT_argument_begin = "%"
@@ -204,8 +216,9 @@ class InterpretJAAQL:
         # execute as postgres prepared statements so parse/plan is skipped on hot connections
         canned_keys = set()
 
-        # Reading the operation: what a key missing or a value of another type raises here is the client's when the operation is (client_sql),
-        # and raised on unchanged (jaaql/utilities/server_errors.py)
+        # Reading the operation: what a key missing or a value of another type raises here is the client's malformed request when the
+        # operation is (client_sql), answered 400, and JAAQL's own server error otherwise (jaaql/utilities/server_errors.py)
+        canned_query_lookups = _NO_CANNED_QUERIES if client_sql and canned_query_service is None else canned_query_service
         with server_errors.reading_request(client_sql):
             if is_dict_operation:
                 restrictions = operation.get(KEY__restrictions, {})
@@ -228,7 +241,7 @@ class InterpretJAAQL:
                     if client_sql and not all(key in operation for key in (KEY__application, KEY__file, KEY__position)):
                         # Neither SQL nor a canned query named: the client's request, answered as one
                         raise HttpStatusException(ERR_missing_query, HTTPStatus.BAD_REQUEST)
-                    canned_query = canned_query_service.get_canned_query(operation[KEY__application],
+                    canned_query = canned_query_lookups.get_canned_query(operation[KEY__application],
                                                                          operation[KEY__file], operation[KEY__position])
                     query = {"query": {KEY_query: canned_query, KEY_assert: operation.get(KEY_assert), KEY_decrypt: operation.get(KEY_decrypt),
                                        KEY_parameters: {}}}
@@ -255,7 +268,7 @@ class InterpretJAAQL:
                                             all_replaced = False
                                             store_all_canned = False
                                         else:
-                                            canned_query = canned_query_service.get_canned_query(operation[KEY__application],
+                                            canned_query = canned_query_lookups.get_canned_query(operation[KEY__application],
                                                                                                  sub_val[KEY__file], sub_val[KEY__position])
                                             val[sub_key] = canned_query
                                     if store_all_canned:
@@ -270,7 +283,7 @@ class InterpretJAAQL:
                                         all_replaced = False
                                         fetched_query = val[KEY_query]
                                     else:
-                                        fetched_query = canned_query_service.get_canned_query(operation[KEY__application],
+                                        fetched_query = canned_query_lookups.get_canned_query(operation[KEY__application],
                                                                                               val[KEY_query][KEY__file], val[KEY_query][KEY__position])
                                         canned_keys.add(key)
                                     query[key] = {KEY_query: fetched_query, KEY_assert: val.get(KEY_assert), KEY_decrypt: val.get(KEY_decrypt),
@@ -278,6 +291,8 @@ class InterpretJAAQL:
                         check_required = not all_replaced
 
                 parameters = operation.get(KEY_parameters, {})
+                if client_sql and not isinstance(parameters, dict):
+                    raise HttpStatusException(ERR_malformed_parameters, HTTPStatus.BAD_REQUEST)
 
             unused_orig_parameters = set(parameters.keys())
 
