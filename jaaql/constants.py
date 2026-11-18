@@ -78,8 +78,9 @@ GUC__timeline_prefix = "timeline."
 TIMELINES__max_count = 16
 TIMELINE__max_moment_length = 64
 REGEX__timeline_name = r'^[a-z_][a-z0-9_]{0,62}$'
-# A compiled query of the application's query cache as /execute names it: its file (a key of queries.json) and its index in that file
-REGEX__compiled_query_reference = r'[^:\s]+:[0-9]+'
+# A compiled query of the application's query cache as /execute names it: its file (a key of queries.json, a frame's path, which may hold a
+# space) and its index in that file
+REGEX__compiled_query_reference = r'[^:]+:[0-9]+'
 REGEX__timeline_moment = r'^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])([T ]([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\.[0-9]{1,6})?)?(Z|[+-](0[0-9]|1[0-5]):[0-5][0-9])?)?$'
 
 SEPARATOR__comma_space = ", "

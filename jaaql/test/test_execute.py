@@ -56,6 +56,31 @@ class TestExecute(unittest.TestCase):
         self.assertEqual(HTTPStatus.UNPROCESSABLE_ENTITY, caught.exception.response_code)
         submitted.assert_not_called()
 
+    def test_a_compiled_query_is_found_whatever_its_file_holds(self):
+        # The file a compiled query names is a key of queries.json, the frame's path in the application's source (the microcompiler writes
+        # "<path>:<index>"), which may hold a space: it is found as any other, as it was before 5f6ac4e checked the reference's form
+        compiled = {"Application/My Frames/x.frame.ts": ["SELECT 1", "SELECT 2"], "FDS Exports/export_.frame.ts": ["SELECT 3"]}
+        stub = stub_model()
+        stub.query_caches["queries"] = compiled
+        stub.query_cache_is_stale = mock.Mock(return_value=False)
+        stub._lookup_cached_query = lambda trimmed: JAAQLModel._lookup_cached_query(stub, trimmed)
+        for reference, sql in [("Application/My Frames/x.frame.ts:1", "SELECT 2"), ("FDS Exports/export_.frame.ts:0", "SELECT 3")]:
+            with self.subTest(reference=reference):
+                self.assertEqual(sql, stub._lookup_cached_query(reference))
+        with mock.patch.object(model, "submit", return_value="submitted") as submitted:
+            JAAQLModel.execute(stub, {"query": {"a": " Application/My Frames/x.frame.ts:0 ", "b": {"query": "FDS Exports/export_.frame.ts:0 "}}},
+                               "account")
+        self.assertEqual({"a": "SELECT 1", "b": {"query": "SELECT 3"}}, submitted.call_args.args[4]["query"])
+        # A colon still ends the file, and a file the application lacks is still the client's 400
+        for reference, message in [("Application/My Frames/x.frame.ts", "Expected a compiled query as '<file>:<index>'"),
+                                   ("Application/My Frames/x.frame.ts:0:1", "Expected a compiled query as '<file>:<index>'"),
+                                   ("Application/My Frames/y.frame.ts:0", "The application has no compiled query")]:
+            with self.subTest(reference=reference):
+                with self.assertRaises(HttpStatusException) as caught:
+                    stub._lookup_cached_query(reference)
+                self.assertEqual(HTTPStatus.BAD_REQUEST, caught.exception.response_code)
+                self.assertTrue(caught.exception.message.startswith(message), caught.exception.message)
+
 
 if __name__ == "__main__":
     unittest.main()
