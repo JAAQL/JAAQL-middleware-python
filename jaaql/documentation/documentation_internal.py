@@ -433,8 +433,31 @@ DOCUMENTATION__resend_verify_email = SwaggerDocumentation(
     security=False,
     methods=SwaggerMethod(
         name="Resend verification email",
-        description="Triggers Keycloak to resend a verification email for a given email address",
+        description="Triggers Keycloak to resend a verification email for a given email address, sent as a JSON body (a form "
+                    "body was never read). Answers 200 when Keycloak sent it, and also, sending nothing, for an empty address, one "
+                    "that is no Keycloak user's and one Keycloak has already verified. When Keycloak answers the send with an error, "
+                    "the answer is a JAAQL error with error_code, message and descriptor null. It is 422 with error_code 1025 when "
+                    "the mail service refused the address and the Keycloak e-mail guard has asked the user for another address at "
+                    "their next sign-in, and 502 with error_code 1026 for any other error. Keycloak out of reach is 500 with "
+                    "error_code 1099. An account is sent at most one mail every RESEND_VERIFY_EMAIL_COOLDOWN_SECONDS (default 60) "
+                    "and at most RESEND_VERIFY_EMAIL_MAX_PER_HOUR (default 5) an hour, counted per gunicorn worker "
+                    "(GUNICORN_WORKERS), the send at its first sign-in included; a resend inside those limits sends nothing and "
+                    "answers as the account's last send did (200, 1025 or 1026). While sends succeed, an address with an "
+                    "unverified account answers 200 as an unknown or verified one does, but a failed send (1025, 1026) and the "
+                    "time a send takes (Keycloak's SMTP transaction) can show that the address has an unverified account, which is "
+                    "accepted so that the user is told when the mail did not go",
         method=REST__POST,
+        body=SwaggerArgumentResponse(
+            name=KEY__email,
+            description="The address the account signed up with (its Keycloak username)",
+            arg_type=str,
+            example=["jane@example.com"]
+        ),
+        exceptions=[
+            SwaggerResponseException(HTTPStatus.UNPROCESSABLE_ENTITY,
+                                     "error_code 1025, the mail service refused the address and the user's next sign-in asks for another"),
+            SwaggerResponseException(HTTPStatus.BAD_GATEWAY, "error_code 1026, Keycloak did not send the verification email"),
+        ]
     )
 )
 

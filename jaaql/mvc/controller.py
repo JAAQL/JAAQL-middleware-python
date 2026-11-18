@@ -204,7 +204,7 @@ class JAAQLController(BaseJAAQLController):
 
         @self.publish_route('/resend-verify-email', DOCUMENTATION__resend_verify_email)
         def resend_verify_email(http_inputs: dict):
-            self.model.resend_verification_email(http_inputs.get("email", ""))
+            self.model.resend_verification_email(http_inputs.get(KEY__email) or "")
 
         @self.publish_route('/.well-known/jwks', DOCUMENTATION__jwks)
         def fetch_jwks():

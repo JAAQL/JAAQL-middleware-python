@@ -207,7 +207,11 @@ class ErrorStubModel(StubModel):
     resend_verification_email = JAAQLModel.resend_verification_email
     _kc_get_token = JAAQLModel._kc_get_token
     _kc_find_user_id_by_username = JAAQLModel._kc_find_user_id_by_username
+    _kc_find_user_by_username = JAAQLModel._kc_find_user_by_username
     _kc_send_verify_email = JAAQLModel._kc_send_verify_email
+    _send_counted_verify_email = JAAQLModel._send_counted_verify_email
+    _kc_required_actions = JAAQLModel._kc_required_actions
+    _send_new_account_verification_email = JAAQLModel._send_new_account_verification_email
     handle_procedure = JAAQLModel.handle_procedure
     exchange_auth_code = JAAQLModel.exchange_auth_code
     _gate_run_singleton = JAAQLModel._gate_run_singleton

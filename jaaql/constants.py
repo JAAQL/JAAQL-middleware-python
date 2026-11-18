@@ -7,6 +7,7 @@ from jaaql.generated_constants import *
 
 KEY__username = "username"
 KEY__password = "password"
+KEY__email = "email"
 KEY__remember_me = "remember_me"
 KEY__attach_as = "attach_as"
 KEY__ip_address = "ip_address"
@@ -110,6 +111,10 @@ VAULT_KEY__jaaql_db_password = "Jaaql DB Password"
 VAULT_KEY__postgres_bootstrap_password = "postgres_bootstrap_password"
 VAULT_KEY__keycloak_realm_admin_secret = "keycloak_realm_admin_secret"
 
+# The required action the Keycloak e-mail guard (jaaql/keycloak:26.8.3 and later) puts on a user when the mail service
+# refused a verification mail to their address: their next Keycloak sign-in asks for another address
+KEYCLOAK__email_delivery_required_action = "baton-email-delivery"
+
 # Used for re-installation
 VAULT_KEY__db_connection_string = "db_connection_string"
 VAULT_KEY__jaaql_password = "jaaql_password"
@@ -124,6 +129,15 @@ ENVIRON__sentinel_url = "SENTINEL_URL"
 # less turns slow-query reports off. Read once per process, see jaaql/utilities/slow_queries.py
 ENVIRON__sentinel_slow_query_seconds = "SENTINEL_SLOW_QUERY_SECONDS"
 ENVIRON__canned_queries = "CANNED_QUERIES"
+# How often /resend-verify-email has Keycloak send one account its verification mail, per process: at most once in this many seconds
+# (default 60) and at most this many times an hour (default 5); 0 or less lifts that limit. Read at every resend, see
+# jaaql/utilities/verify_email_resends.py
+ENVIRON__resend_verify_email_cooldown_seconds = "RESEND_VERIFY_EMAIL_COOLDOWN_SECONDS"
+ENVIRON__resend_verify_email_max_per_hour = "RESEND_VERIFY_EMAIL_MAX_PER_HOUR"
+RESEND_VERIFY_EMAIL__default_cooldown_seconds = 60
+RESEND_VERIFY_EMAIL__default_max_per_hour = 5
+# The accounts a process keeps count of for the above; beyond it the one longest not sent to is forgotten
+RESEND_VERIFY_EMAIL__max_tracked_accounts = 10000
 
 SLOW_QUERY__default_seconds = 3
 # A slow query is reported at most once an hour per process; its slow runs in between are counted into its next report. A query that has

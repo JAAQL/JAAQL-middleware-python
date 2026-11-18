@@ -37,7 +37,7 @@ from jaaql.utilities.cron import check_if_should_fire_cron
 from jaaql.utilities.utils import get_jaaql_root, get_base_url
 from jaaql.db.db_utils import create_interface, jaaql__encrypt, create_interface_for_db, jaaql__decrypt, requested_database
 from jaaql.db.db_utils_no_circ import submit, get_required_db, objectify
-from jaaql.utilities import crypt_utils, slow_queries, server_errors
+from jaaql.utilities import crypt_utils, slow_queries, server_errors, verify_email_resends
 from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_OIDC, COOKIE_OIDC_RETURN, \
     COOKIE_LOGIN_MARKER, get_sloppy_cookie_attrs, COOKIE_ATTR_MAX_AGE
 from jaaql.mvc.response import *
@@ -316,6 +316,27 @@ def _merge_web_config(lines: list, new_data: str) -> list | None:
         return None
 
     return second_iteration_updated_lines
+
+
+def _keycloak_error_message(response) -> str:
+    # Keycloak's own errorMessage of an error answer, for a log line (Failed to send verify email, User email missing, User is
+    # disabled), unless it could name an address
+    try:
+        message = response.json().get("errorMessage")
+    except Exception:
+        return ""
+    if not isinstance(message, str) or "@" in message:
+        return ""
+    return " (" + message[:200] + ")"
+
+
+def _keycloak_failure_description(ex) -> str:
+    # A failed Keycloak call for a log line: the class, and for an error answer its status, never the text, as a requests error
+    # names the URL it failed on and a user lookup's query string is the address
+    if isinstance(ex, JaaqlInterpretableHandledError):
+        return type(ex).__name__
+    status = getattr(getattr(ex, "response", None), "status_code", None)
+    return type(ex).__name__ + ("" if status is None else " (Keycloak answered %s)" % status)
 
 
 class JAAQLModel(BaseJAAQLModel):
@@ -1217,16 +1238,7 @@ WHERE
             # This is independent of REQUIRE_EMAIL_VERIFICATION — always send if Keycloak says unverified
             oidc_email_verified = id_payload.get('email_verified', False)
             if not oidc_email_verified:
-                try:
-                    kc_token = self._kc_get_token()
-                    kc_user_id = self._kc_find_user_id_by_username(kc_token, email)
-                    if kc_user_id:
-                        self._kc_send_verify_email(kc_token, kc_user_id)
-                        print(f"Verification email sent to user {kc_user_id}")
-                    else:
-                        print(f"Warning: could not find Keycloak user for email {email}")
-                except Exception as e:
-                    print(f"Warning: could not trigger verification email: {e}")
+                self._send_new_account_verification_email(email)
 
         self._check_email_confirmation_grace_period(account, email=id_payload.get('email'))
 
@@ -2081,6 +2093,11 @@ WHERE
         return resp.json()["access_token"]
 
     def _kc_find_user_id_by_username(self, access_token: str, username: str) -> str | None:
+        user = self._kc_find_user_by_username(access_token, username)
+        return user.get("id") if user else None
+
+    def _kc_find_user_by_username(self, access_token: str, username: str) -> dict | None:
+        # The Keycloak user (its UserRepresentation) whose username is exactly this one
         kc_base = os.environ.get("KEYCLOAK_URL", "http://localhost:8080").rstrip("/")
         kc_realm = os.environ["KEYCLOAK_REALM"]
         r = requests.get(
@@ -2092,33 +2109,116 @@ WHERE
         r.raise_for_status()
         for u in r.json() or []:
             if u.get("username") == username:
-                return u.get("id")
+                return u
         return None
 
     def _kc_send_verify_email(self, access_token: str, user_id: str) -> None:
-        """Trigger Keycloak to send a verification email to the user."""
+        """
+        Has Keycloak send the user its verification mail (send-verify-email). Returns when Keycloak answers 2xx. Raises
+        VerificationEmailRefused when it answers with an error and the user now has the e-mail guard's required action
+        (the mail service refused the address), VerificationEmailNotSent when it answers with any other error, and what
+        requests raises when Keycloak cannot be reached
+        """
+        kc_base = os.environ.get("KEYCLOAK_URL", "http://localhost:8080").rstrip("/")
+        kc_realm = os.environ["KEYCLOAK_REALM"]
+        r = requests.put(
+            f"{kc_base}/admin/realms/{kc_realm}/users/{user_id}/send-verify-email",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=20,
+        )
+        if 200 <= r.status_code < 300:
+            return
+        refused = KEYCLOAK__email_delivery_required_action in self._kc_required_actions(access_token, user_id)
+        # The status and Keycloak's own errorMessage (Failed to send verify email, User email missing, User is disabled), never an
+        # address
+        print(f"Warning: Keycloak did not send the verification email to Keycloak user {user_id}: it answered {r.status_code}"
+              f"{_keycloak_error_message(r)}" + (", and the mail service refused the address (the user is asked for another at their "
+                                                "next sign-in)" if refused else ""))
+        raise VerificationEmailRefused() if refused else VerificationEmailNotSent()
+
+    def _kc_required_actions(self, access_token: str, user_id: str) -> list:
+        # The user's required actions, or none when Keycloak does not say
         kc_base = os.environ.get("KEYCLOAK_URL", "http://localhost:8080").rstrip("/")
         kc_realm = os.environ["KEYCLOAK_REALM"]
         try:
-            r = requests.put(
-                f"{kc_base}/admin/realms/{kc_realm}/users/{user_id}/send-verify-email",
+            r = requests.get(
+                f"{kc_base}/admin/realms/{kc_realm}/users/{user_id}",
                 headers={"Authorization": f"Bearer {access_token}"},
                 timeout=20,
             )
-            if r.status_code not in [200, 204]:
-                print(f"Warning: failed to send verification email to user {user_id}: {r.status_code} {r.text}")
+            r.raise_for_status()
+            actions = r.json().get("requiredActions")
+            return actions if isinstance(actions, list) else []
         except Exception as e:
-            print(f"Warning: could not send verification email: {e}")
+            print(f"Warning: could not read the required actions of Keycloak user {user_id}: {_keycloak_failure_description(e)}")
+            return []
+
+    def _send_new_account_verification_email(self, email: str):
+        """
+        Has Keycloak send a new account's verification mail when it first signs in. Never fatal: the sign-in goes on whatever
+        Keycloak answers, and the app's Resend button (/resend-verify-email) reports a failure to the user. The log names the
+        Keycloak user id at most, never the address: a requests error's text holds the URL it failed on, and the user lookup's
+        query string is the address
+        """
+        try:
+            kc_token = self._kc_get_token()
+            kc_user_id = self._kc_find_user_id_by_username(kc_token, email)
+            if kc_user_id:
+                # Counted towards the resend limits, so the Resend button pressed straight after it sends no second mail
+                verify_email_resends.record(kc_user_id)
+                self._send_counted_verify_email(kc_token, kc_user_id)
+                print(f"Verification email sent to Keycloak user {kc_user_id}")
+            else:
+                print("Warning: no Keycloak user has the new account's address as its username, no verification email sent")
+        except Exception as e:
+            print(f"Warning: the verification email of a new account was not sent: {_keycloak_failure_description(e)}")
+
+    def _send_counted_verify_email(self, access_token: str, user_id: str) -> None:
+        # _kc_send_verify_email for a send verify_email_resends has counted, which then learns what Keycloak answered
+        try:
+            self._kc_send_verify_email(access_token, user_id)
+        except VerificationEmailRefused:
+            verify_email_resends.settle(user_id, verify_email_resends.OUTCOME__refused)
+            raise
+        except BaseException:
+            verify_email_resends.settle(user_id, verify_email_resends.OUTCOME__not_sent)
+            raise
 
     def resend_verification_email(self, email: str):
-        """Resend a Keycloak verification email for the given email address."""
+        """
+        Resend a Keycloak verification email for the given email address. Returns when Keycloak sent it, and, sending nothing, for an
+        empty address, one that is no Keycloak user's and one Keycloak has already verified: the route, which needs no login, cannot be
+        used to mail an account that is verified. Raises VerificationEmailRefused (422, error_code 1025) or VerificationEmailNotSent
+        (502, error_code 1026) when Keycloak did not send it (_kc_send_verify_email).
+
+        An account is sent at most one mail every RESEND_VERIFY_EMAIL_COOLDOWN_SECONDS and RESEND_VERIFY_EMAIL_MAX_PER_HOUR an hour, per
+        gunicorn worker (jaaql/utilities/verify_email_resends.py). A resend inside those limits sends nothing and is answered as the
+        account's last send was, without a second Sentinel report for a send that was not sent.
+
+        What the answer shows: while sends succeed, an address with an unverified account answers 200 as an unknown or verified one does.
+        A failed send (422, 502) does show that the address has an unverified account, which is accepted so that the user is told; and a
+        send that goes takes as long as Keycloak's SMTP transaction, which the other answers do not, so the time of the answer can show it
+        too. The limits leave one such sample per account per cooldown
+        """
         if not email or not email.strip():
             return  # Silently ignore empty email to avoid information disclosure
         kc_token = self._kc_get_token()
-        kc_user_id = self._kc_find_user_id_by_username(kc_token, email)
-        if not kc_user_id:
+        kc_user = self._kc_find_user_by_username(kc_token, email)
+        if not kc_user or not kc_user.get("id"):
             return  # Silently ignore unknown emails to avoid user enumeration
-        self._kc_send_verify_email(kc_token, kc_user_id)
+        if kc_user.get("emailVerified") is True:
+            return  # Nothing to verify, answered as a sent mail
+        user_id = kc_user["id"]
+        last = verify_email_resends.claim(user_id)
+        if last is not None:
+            print(f"Verification email to Keycloak user {user_id} not sent again within the resend limits, answered as its last send: {last}")
+            if last == verify_email_resends.OUTCOME__refused:
+                raise VerificationEmailRefused()
+            if last == verify_email_resends.OUTCOME__not_sent:
+                # Reported to Sentinel with the send it repeats
+                raise client_fault(VerificationEmailNotSent())
+            return
+        self._send_counted_verify_email(kc_token, user_id)
 
     def _kc_delete_all_credentials(self, access_token: str, user_id: str) -> None:
         # Every credential, whatever its type: the password and every second factor (otp, recovery-authn-codes, webauthn,

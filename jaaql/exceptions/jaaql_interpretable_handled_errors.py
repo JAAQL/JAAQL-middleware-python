@@ -401,3 +401,36 @@ class CronExpressionError(JaaqlInterpretableHandledError):
             index=None,
             descriptor=descriptor
         )
+
+
+class VerificationEmailRefused(JaaqlInterpretableHandledError):
+    # Keycloak could not send the account's verification mail because the mail service refused the address, and the
+    # Keycloak e-mail guard (jaaql/keycloak:26.8.3 and later) has put its baton-email-delivery required action on the
+    # user, so the user's next Keycloak sign-in asks for another address
+    def __init__(self, descriptor=None):
+        super().__init__(
+            error_code=1025,
+            http_response_code=422,
+            table_name=None,
+            message="The mail service refused the verification email. Sign in again to enter a different address.",
+            column_name=None,
+            _set=None,
+            index=None,
+            descriptor=descriptor
+        )
+
+
+class VerificationEmailNotSent(JaaqlInterpretableHandledError):
+    # Keycloak answered the request to send the account's verification mail with an error for any other reason: the mail
+    # service down or refusing for another reason, the user disabled or without an address
+    def __init__(self, descriptor=None):
+        super().__init__(
+            error_code=1026,
+            http_response_code=502,
+            table_name=None,
+            message="The verification email could not be sent. Please try again in a moment.",
+            column_name=None,
+            _set=None,
+            index=None,
+            descriptor=descriptor
+        )
