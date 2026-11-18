@@ -332,5 +332,5 @@ ROLE__dba = "dba"
 
 PROTOCOL__postgres = "postgresql://"
 
-VERSION = "5.3.29"
+VERSION = "5.3.30"
 
