@@ -356,9 +356,21 @@ DOCUMENTATION__rendered_document = SwaggerDocumentation(
             required=False,
             condition="Defaults to false"
         )],
-        response=SwaggerFlatResponse(
-            description="The raw file data. Cannot be re-downloaded after this",
-            body=BODY__file
-        )
+        response=[
+            SwaggerFlatResponse(
+                description="The raw file data. Cannot be re-downloaded after this",
+                body=BODY__file
+            ),
+            SwaggerFlatResponse(
+                description="Document still rendering",
+                code=HTTPStatus.TOO_EARLY,
+                body=ERR__document_still_rendering
+            ),
+            SwaggerFlatResponse(
+                description="Document id not found. Either expired, downloaded already or did not exist",
+                body=ERR__document_id_not_found,
+                code=HTTPStatus.NOT_FOUND
+            )
+        ]
     )
 )

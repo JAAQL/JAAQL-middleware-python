@@ -2123,6 +2123,7 @@ WHERE
     def fetch_document(self, inputs: dict, response: JAAQLResponse):
         res = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_rendered_document,
                                                    {KEY__document_id: inputs[KEY__document_id]}, singleton_message=ERR__document_id_not_found,
+                                                   singleton_code=HTTPStatus.NOT_FOUND,
                                                    as_objects=True)
 
         if not res[KEY__completed]:
@@ -2139,6 +2140,7 @@ WHERE
     def fetch_document_stream(self, inputs: dict, purge: bool = True):
         res = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_rendered_document,
                                                    {KEY__document_id: inputs[KEY__document_id]}, singleton_message=ERR__document_id_not_found,
+                                                   singleton_code=HTTPStatus.NOT_FOUND,
                                                    as_objects=True)
 
         if not res[KEY__completed]:

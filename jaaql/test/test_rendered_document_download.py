@@ -14,8 +14,9 @@ from datetime import datetime, timezone
 from unittest import mock
 
 from jaaql.mvc.model import JAAQLModel
-from jaaql.test.test_server_errors import ServerErrorCase
+from jaaql.test.test_server_errors import ServerErrorCase, SUPER_KEY
 from jaaql.test.test_slow_queries import TimedInterface
+from monitor.main import HEADER__security_bypass
 
 RENDERED_DOCUMENTS = "/rendered_documents"
 DOCUMENT_ID = "b47dc954-d608-4e1b-8a8c-d8b754ee554b"
@@ -35,13 +36,14 @@ class Documents(TimedInterface):
         self.rows = dict(rows if rows is not None else {DOCUMENT_ID: CONTENT})
         self.file_name = file_name
         self.statements = []
+        self.completed = datetime(2026, 11, 18, 9, 0, tzinfo=timezone.utc)
 
     def execute_query(self, conn, query, parameters=None, wait_hook=None, prepare=False, capture_provenance=None, capture_timing=None):
         self.statements.append(" ".join(query.split()[:3]))
         content = self.rows.get(str((parameters or {}).get("document_id")))
         if query.startswith("SELECT app.base_url"):
             return FETCH_COLUMNS, [0] * len(FETCH_COLUMNS), [] if content is None else [[
-                "https://lesbij.example", DOCUMENT_ID, "pdf", self.file_name, False, datetime(2026, 11, 18, 9, 0, tzinfo=timezone.utc), None]]
+                "https://lesbij.example", DOCUMENT_ID, "pdf", self.file_name, False, self.completed, None]]
         if query.startswith("DELETE FROM document_request"):
             self.rows.pop(str(parameters["document_id"]), None)
         return ["content"], [0], [] if content is None else [[content]]
@@ -77,7 +79,7 @@ class TestRenderedDocumentDownload(ServerErrorCase):
         self.assertEqual({}, self.documents.rows)
         # Deleted by the download
         again = self.download()
-        self.assertEqual((422, 1033, "Document id not found"), (again.status_code, json.loads(again.get_data())["error_code"],
+        self.assertEqual((404, 1030, "Document id not found"), (again.status_code, json.loads(again.get_data())["error_code"],
                                                                 json.loads(again.get_data())["message"]))
         self.assertEqual([], self.lines())
         self.assertNoReport()
@@ -103,6 +105,29 @@ class TestRenderedDocumentDownload(ServerErrorCase):
         self.assertEqual((200, CONTENT), (got.status_code, got.get_data()))
         self.assertEqual(sorted(got.headers.items()), sorted(head.headers.items()))
         self.assertEqual({}, self.documents.rows)
+        self.assertEqual([], self.lines())
+        self.assertNoReport()
+
+    def test_a_document_still_rendering_or_not_there_is_answered_as_documented(self):
+        # 425 and 404, as GET /documents documents them. Up to 5.3.30 a download of a document still rendering was answered 500 and
+        # reported (Exception: Response with code '425' was not expected, as the route documented no 425), and an id not found 422 on
+        # both routes
+        documents_get = mock.patch.object(self.model, "fetch_document", create=True,
+                                          side_effect=lambda inputs, response: JAAQLModel.fetch_document(self.model, inputs, response))
+        with documents_get:
+            self.documents.completed = None
+            for route in [RENDERED_DOCUMENTS, "/documents"]:
+                with self.subTest(route):
+                    res = self.client.get(route, query_string={"document_id": DOCUMENT_ID}, headers={HEADER__security_bypass: SUPER_KEY})
+                    self.assertEqual((425, 1033, "Document still rendering"), (res.status_code, json.loads(res.get_data())["error_code"],
+                                                                              json.loads(res.get_data())["message"]))
+            self.assertEqual({DOCUMENT_ID: CONTENT}, self.documents.rows)
+            self.documents.rows.clear()
+            for route in [RENDERED_DOCUMENTS, "/documents"]:
+                with self.subTest(route):
+                    res = self.client.get(route, query_string={"document_id": DOCUMENT_ID}, headers={HEADER__security_bypass: SUPER_KEY})
+                    self.assertEqual((404, 1030, "Document id not found"), (res.status_code, json.loads(res.get_data())["error_code"],
+                                                                           json.loads(res.get_data())["message"]))
         self.assertEqual([], self.lines())
         self.assertNoReport()
 
