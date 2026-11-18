@@ -1,7 +1,7 @@
 """
 A rendered document that is no file (POST /documents with create_file false) is downloaded from GET /rendered_documents, once, under the
 name its render gave it (document_request.file_name), inline or, with as_attachment, as an attachment. The download deletes the document,
-so a second one finds none.
+so a second one finds none. A HEAD answers the download's status and headers without the document and leaves it to be downloaded.
 
     python -m unittest jaaql.test.test_rendered_document_download
 
@@ -25,7 +25,8 @@ FETCH_COLUMNS = ["base_url", "document_id", "render_as", "file_name", "create_fi
 class Documents(TimedInterface):
     """
     JAAQL's lookup connection holding document_request rows, rows giving each uuid its content, all rendered and none a file: answers
-    the statements a download runs (the document's row, then DELETE ... RETURNING content) and keeps the start of each
+    the statements a download runs (the document's row, then DELETE ... RETURNING content, or for a HEAD SELECT content) and keeps the
+    start of each
     """
 
     def __init__(self, rows=None, file_name="invoice-2026-11.pdf"):
@@ -89,6 +90,19 @@ class TestRenderedDocumentDownload(ServerErrorCase):
         res = self.download(as_attachment="true")
         self.assertEqual((200, CONTENT), (res.status_code, res.get_data()))
         self.assertEqual("attachment; filename=factuur-cafe.pdf; filename*=UTF-8''factuur-caf%C3%A9.pdf", res.headers["Content-Disposition"])
+
+    def test_a_head_answers_as_the_download_and_leaves_the_document(self):
+        head = self.download(method="HEAD")
+        self.assertEqual((200, b""), (head.status_code, head.get_data()))
+        self.assertEqual(["SELECT app.base_url, rd.uuid", "SELECT content FROM"], self.documents.statements)
+        self.assertEqual({DOCUMENT_ID: CONTENT}, self.documents.rows)
+        self.assertEqual(head.status_code, self.download(method="HEAD").status_code)
+        got = self.download()
+        self.assertEqual((200, CONTENT), (got.status_code, got.get_data()))
+        self.assertEqual(sorted(got.headers.items()), sorted(head.headers.items()))
+        self.assertEqual({}, self.documents.rows)
+        self.assertEqual([], self.lines())
+        self.assertNoReport()
 
 
 if __name__ == "__main__":

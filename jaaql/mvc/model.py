@@ -169,6 +169,7 @@ KEY__is_the_anonymous_user = "is_the_anonymous_user"
 
 QUERY__ins_rendered_document = "INSERT INTO document_request (encrypted_parameters, encrypted_access_token, template, create_file, application) VALUES (:parameters, :oauth_token, :name, :create_file, :application) RETURNING uuid as document_id"
 QUERY__purge_rendered_document = "DELETE FROM document_request WHERE completed is not null and uuid = :document_id RETURNING content"
+QUERY__read_rendered_document = "SELECT content FROM document_request WHERE completed is not null and uuid = :document_id"
 QUERY__fetch_rendered_document = "SELECT app.base_url, rd.uuid as document_id, 'pdf' as render_as, rd.file_name, rd.create_file, rd.completed, rd.encrypted_access_token as oauth_token FROM document_request rd INNER JOIN document_template able ON rd.template = able.name INNER JOIN application app ON app.name = rd.application WHERE rd.uuid = :document_id"
 QUERY__fetch_cron_jobs = "SELECT * FROM remote_procedure WHERE access = 'S'";
 
@@ -2073,7 +2074,7 @@ WHERE
         else:
             return res[KG__application__base_url] + "/api/rendered_documents/" + res[KEY__document_id]
 
-    def fetch_document_stream(self, inputs: dict):
+    def fetch_document_stream(self, inputs: dict, purge: bool = True):
         res = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__fetch_rendered_document,
                                                    {KEY__document_id: inputs[KEY__document_id]}, singleton_message=ERR__document_id_not_found,
                                                    as_objects=True)
@@ -2084,7 +2085,8 @@ WHERE
         if res[KEY__create_file]:
             raise HttpStatusException(ERR__document_created_file)
         else:
-            content = execute_supplied_statement_singleton(self.jaaql_lookup_connection, QUERY__purge_rendered_document,
+            content = execute_supplied_statement_singleton(self.jaaql_lookup_connection,
+                                                           QUERY__purge_rendered_document if purge else QUERY__read_rendered_document,
                                                            {KEY__document_id: inputs[KEY__document_id]}, as_objects=True)[KEY__content]
             as_attachment = False
             if inputs[KEY__as_attachment]:

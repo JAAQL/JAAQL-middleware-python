@@ -309,7 +309,8 @@ DOCUMENTATION__document = SwaggerDocumentation(
             ],
             response=[
                 SwaggerFlatResponse(
-                    description="A link to the raw file data. This URL is called with GET and no security parameters. Can only be called once",
+                    description="A link to the raw file data. This URL is called with GET and no security parameters. Can only be called once "
+                                "with GET (a HEAD leaves the document)",
                     body="https://www.jaaql.io/api/rendered_documents/" + EXAMPLE__document_id + ".pdf"
                 ),
                 SwaggerFlatResponse(
@@ -337,7 +338,8 @@ DOCUMENTATION__rendered_document = SwaggerDocumentation(
     security=False,
     methods=SwaggerMethod(
         name="Stream rendered document",
-        description="Streams a rendered document as a downlaod",
+        description="Streams a rendered document as a download, and deletes it. A HEAD answers the same headers without the file and "
+                    "leaves the document to be downloaded",
         method=REST__GET,
         arguments=[ARG_RES__document_id, SwaggerArgumentResponse(
             name=KEY__as_attachment,

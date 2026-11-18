@@ -108,6 +108,7 @@ RESPONSE__200_ok = "200 OK"
 
 REST__DELETE = "DELETE"
 REST__GET = "GET"
+REST__HEAD = "HEAD"
 REST__OPTIONS = "OPTIONS"
 REST__POST = "POST"
 REST__PUT = "PUT"
@@ -390,7 +391,7 @@ class SwaggerDocumentation:
             for method in methods:
                 if method.method in found_methods:
                     raise SwaggerException(ERR__duplicated_method % method.method)
-                found_methods.append(method)
+                found_methods.append(method.method)
 
 
 def _gen_yaml_indent(indent: int) -> str:

@@ -4,7 +4,7 @@ import uuid
 from functools import wraps
 
 import typing as t
-from werkzeug.exceptions import InternalServerError, HTTPException
+from werkzeug.exceptions import InternalServerError, HTTPException, MethodNotAllowed
 import inspect
 import json
 
@@ -31,7 +31,7 @@ from jaaql.db.db_utils import create_interface_for_db
 from monitor.main import HEADER__security, HEADER__security_bypass_jaaql, HEADER__security_bypass, HEADER__security_specify_user
 
 from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, TYPE__response, \
-    SwaggerFlatResponse, REST__DELETE, REST__GET, REST__OPTIONS, REST__POST, REST__PUT, SwaggerList, SwaggerResponse, \
+    SwaggerFlatResponse, REST__DELETE, REST__GET, REST__HEAD, REST__OPTIONS, REST__POST, REST__PUT, SwaggerList, SwaggerResponse, \
     MOCK__description, ARG_RESP__allow_all, RES__allow_all, SwaggerArgumentResponse, SwaggerSimpleList
 from jaaql.exceptions.http_status_exception import *
 
@@ -62,6 +62,7 @@ CORS__WILDCARD = "*"
 
 ERR__argument_wrong_type = "Argument '%s' is of type '%s' but should be of type '%s'"
 ERR__duplicated_field = "Field duplicated in request"
+ERR__duplicated_route_method = "HTTP method '%s' is declared twice for the route '%s'"
 ERR__expected_argument = "Expected argument '%s'"
 ERR__expected_json = "Expected content-type " + CONTENT__json
 ERR__expected_response_dict = "Expected response to be a dictionary type"
@@ -255,10 +256,24 @@ class BaseJAAQLController:
         BaseJAAQLController.validate_data_rec(method.arguments + method.body, data, is_prod, fill_missing)
 
     @staticmethod
-    def get_method(swagger_documentation: SwaggerDocumentation):
-        for method in swagger_documentation.methods:
-            if request.method == method.method:
-                return method
+    def resolve_method(documentations: [SwaggerDocumentation]):
+        """
+        The documentation of the route and its method that answer the request, or (None, None) when none of them declares the request's
+        method. A HEAD that no documentation declares is answered by the route's GET, as HTTP has it (RFC 9110, 9.3.2): with the GET's
+        status and headers, which werkzeug sends without the body. Flask routes HEAD to every view that takes GET
+        """
+        wanted = [request.method] + ([REST__GET] if request.method == REST__HEAD else [])
+        for method_name in wanted:
+            for documentation in documentations:
+                for method in documentation.methods:
+                    if method.method == method_name:
+                        return documentation, method
+        return None, None
+
+    @staticmethod
+    def get_method(swagger_documentation: Union[list, SwaggerDocumentation]):
+        documentations = swagger_documentation if isinstance(swagger_documentation, list) else [swagger_documentation]
+        return BaseJAAQLController.resolve_method(documentations)[1]
 
     @staticmethod
     def get_response(method: SwaggerMethod, status: Union[HTTPStatus, Namespace, int]) -> TYPE__response:
@@ -473,15 +488,20 @@ class BaseJAAQLController:
         methods = []
         for cur_documentation in documentation_as_lists:
             cur_documentation.path = route
-            for method in cur_documentation.methods:
-                methods.append(method.method)
+            for declared in cur_documentation.methods:
+                if declared.method in methods:
+                    raise Exception(ERR__duplicated_route_method % (declared.method, route))
+                methods.append(declared.method)
 
         if not self.model.is_container:
             use_cors = True
 
         if use_cors:
             methods.append(REST__OPTIONS)
-            swagger_documentation = documentation_as_lists[0]
+
+        # What the route's 405 names (a request with a method it does not declare): its methods, HEAD wherever it has GET, and OPTIONS,
+        # which it declares above or Flask answers itself
+        allowed = sorted(set(methods) | {REST__OPTIONS} | ({REST__HEAD} if REST__GET in methods else set()))
 
         def wrap_func(view_func):
             # getfullargspec is expensive and the result never changes for a given view function, so
@@ -502,6 +522,13 @@ class BaseJAAQLController:
                         raise
 
             def handle_route(view_func_local, **kwargs):
+                the_documentation, the_method = None, None
+                if not BaseJAAQLController.is_options():
+                    the_documentation, the_method = BaseJAAQLController.resolve_method(documentation_as_lists)
+                    if the_method is None:
+                        # Flask answers a method the route does not take with 405 before it gets here; one it takes that no documentation
+                        # of the route declares is answered the same way, as the client's and never as a server error
+                        raise MethodNotAllowed(valid_methods=allowed)
                 if not self.model.has_installed and not route.startswith('/internal'):
                     resp = Response("Still installing. Be patient", status=HTTPStatus.SERVICE_UNAVAILABLE)
                     self._cors(resp, use_cors)
@@ -516,7 +543,6 @@ class BaseJAAQLController:
                 remember_me = False
 
                 if not BaseJAAQLController.is_options():
-                    the_method = BaseJAAQLController.get_method(swagger_documentation)
                     self.perform_profile(request_id, "Fetch method")
 
                     account_id = None
@@ -524,7 +550,7 @@ class BaseJAAQLController:
                     username = None
                     is_public = None
                     verification_hook = None
-                    if method.parallel_verification:
+                    if the_method.parallel_verification:
                         verification_hook = Queue()
 
                     ip_addr = request.headers.get(HEADER__real_ip, request.remote_addr).split(",")[0]
@@ -547,7 +573,7 @@ class BaseJAAQLController:
                             easyauth_resolved = True
                             self.perform_profile(request_id, "EasyAuth")
 
-                    if swagger_documentation.security and not easyauth_resolved:
+                    if the_documentation.security and not easyauth_resolved:
                         bypass_super = request.headers.get(HEADER__security_bypass)
                         bypass_jaaql = request.headers.get(HEADER__security_bypass_jaaql)
                         bypass_user = request.headers.get(HEADER__security_specify_user)
@@ -593,17 +619,17 @@ class BaseJAAQLController:
                                 supply_dict[ARG__http_inputs] = validated
 
                         if ARG__account_id in view_func_args:
-                            if not swagger_documentation.security:
+                            if not the_documentation.security:
                                 raise Exception(ERR__method_required_account_id)
                             supply_dict[ARG__account_id] = account_id
 
-                        if method.parallel_verification:
+                        if the_method.parallel_verification:
                             supply_dict[ARG__verification_hook] = verification_hook
 
                         # Do not close created interfaces as they are re-used
                         for arg in view_func_args:
                             if arg.startswith(ARG_START__connection):
-                                if not swagger_documentation.security:
+                                if not the_documentation.security:
                                     raise Exception(ERR__method_required_user_connection)
                                 connect_db = arg.split(ARG_START__connection)[1]
                                 supply_dict[arg] = create_interface_for_db(self.model.vault, self.model.config, account_id, connect_db,
@@ -616,7 +642,7 @@ class BaseJAAQLController:
                                                                            sub_role=ROLE__jaaql)
 
                         if ARG__username in view_func_args:
-                            if not swagger_documentation.security:
+                            if not the_documentation.security:
                                 raise Exception(ERR__method_required_username)
                             supply_dict[ARG__username] = username
 
@@ -630,7 +656,7 @@ class BaseJAAQLController:
                             supply_dict[ARG__response] = jaaql_resp
 
                         if ARG__auth_token in view_func_args:
-                            if not swagger_documentation.security:
+                            if not the_documentation.security:
                                 raise Exception(ERR__method_required_token)
                             supply_dict[ARG__auth_token] = request.headers.get(HEADER__security)
                             if supply_dict[ARG__auth_token] is None:
@@ -642,12 +668,12 @@ class BaseJAAQLController:
                                 supply_dict[ARG__auth_token_for_refresh] = auth_cookie
 
                         if ARG__connection in view_func_args:
-                            if not swagger_documentation.security:
+                            if not the_documentation.security:
                                 raise Exception(ERR__method_required_connection)
                             supply_dict[ARG__connection] = create_interface_for_db(self.model.vault, self.model.config, account_id, DB__jaaql)
 
                         if ARG__is_the_anonymous_user in view_func_args:
-                            if not swagger_documentation.security:
+                            if not the_documentation.security:
                                 raise Exception(ERR__method_required_is_the_anonymous_user)
                             supply_dict[ARG__is_the_anonymous_user] = is_public
 
@@ -823,7 +849,12 @@ class BaseJAAQLController:
 
     @staticmethod
     def is_get():
-        return request.method == REST__GET
+        # Also for a HEAD, which is answered as the GET is (resolve_method)
+        return request.method in (REST__GET, REST__HEAD)
+
+    @staticmethod
+    def is_head():
+        return request.method == REST__HEAD
 
     @staticmethod
     def is_delete():

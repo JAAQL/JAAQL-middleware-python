@@ -220,7 +220,8 @@ class JAAQLController(BaseJAAQLController):
 
         @self.publish_route('/rendered_documents', DOCUMENTATION__rendered_document)
         def documents(http_inputs: dict):
-            return self.model.fetch_document_stream(http_inputs)
+            # A HEAD is answered as the GET is but leaves the document, which the GET downloads and deletes, to the GET
+            return self.model.fetch_document_stream(http_inputs, purge=not self.is_head())
 
         @self.publish_route('/oidc/logout', DOCUMENTATION__oidc_begin_logout)
         def begin_oidc_logout(http_inputs: dict, response: JAAQLResponse):
