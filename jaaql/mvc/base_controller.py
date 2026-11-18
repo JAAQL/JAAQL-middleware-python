@@ -4,7 +4,7 @@ import uuid
 from functools import wraps
 
 import typing as t
-from werkzeug.exceptions import InternalServerError, HTTPException, MethodNotAllowed
+from werkzeug.exceptions import InternalServerError, HTTPException, MethodNotAllowed, BadRequest, ClientDisconnected
 from werkzeug.routing import Rule
 import inspect
 import json
@@ -15,14 +15,14 @@ except ImportError:
     orjson = None
 from datetime import datetime, date, time
 from jaaql.exceptions.custom_http_status import CustomHTTPStatus
-from jaaql.exceptions.jaaql_interpretable_handled_errors import UnhandledJaaqlServerError, NotYetInstalled
+from jaaql.exceptions.jaaql_interpretable_handled_errors import UnhandledJaaqlServerError, NotYetInstalled, client_error
 import dataclasses
 import decimal
 from queue import Queue
 from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_LOGIN_MARKER, COOKIE_ATTR_PATH
 from jaaql.utilities.utils import time_delta_ms, Profiler
 from jaaql.utilities import sentinel, slow_queries, server_errors
-from flask import Response, Flask, request, jsonify, current_app
+from flask import Response, Flask, request, jsonify, current_app, has_request_context
 from flask.json.provider import DefaultJSONProvider
 from jaaql.constants import *
 from jaaql.mvc.model import JAAQLModel
@@ -67,6 +67,8 @@ ERR__duplicated_route_method = "HTTP method '%s' is declared twice for the route
 ERR__expected_argument = "Expected argument '%s'"
 ERR__expected_json = "Expected content-type " + CONTENT__json
 ERR__expected_json_object = "Expected the request body to be a JSON object, not %s"
+ERR__body_not_json = "Expected the request body to be JSON, which it is not (%s)"
+JSON_ERROR__max_length = 200
 ERR__item_wrong_type = "Item %d of argument '%s' is of type '%s' but should be an object"
 ERR__expected_response_dict = "Expected response to be a dictionary type"
 ERR__expected_response_list = "Expected response to be a array type"
@@ -160,18 +162,20 @@ class JAAQLRule(Rule):
     """
     The rule of a route. werkzeug gives every rule that takes GET HEAD too; the rule of a route published with answers_head False, whose GET
     acts, is left without it, so that Flask's router answers a HEAD to the route 405 before any of JAAQL's code runs, and Flask's own answer
-    to OPTIONS does not name HEAD among the methods the route takes. answers_head is a keyword only: werkzeug's own arguments, by position
-    (defaults, subdomain, methods, ...) or by keyword, are werkzeug's
+    to OPTIONS does not name HEAD among the methods the route takes. error_body False: the route's client errors are answered as they always
+    were (plain text, werkzeug's HTML) rather than with JAAQL's error body (BaseJAAQLController.answers_with_error_body). answers_head and
+    error_body are keywords only: werkzeug's own arguments, by position (defaults, subdomain, methods, ...) or by keyword, are werkzeug's
     """
 
-    def __init__(self, string: str, *args, answers_head: bool = True, **kwargs):
+    def __init__(self, string: str, *args, answers_head: bool = True, error_body: bool = True, **kwargs):
         super().__init__(string, *args, **kwargs)
         self.answers_head = answers_head
+        self.error_body = error_body
         if not answers_head and self.methods is not None:
             self.methods.discard(REST__HEAD)
 
     def get_empty_kwargs(self) -> t.Mapping[str, t.Any]:
-        return dict(super().get_empty_kwargs(), answers_head=self.answers_head)
+        return dict(super().get_empty_kwargs(), answers_head=self.answers_head, error_body=self.error_body)
 
 
 class BaseJAAQLController:
@@ -421,6 +425,25 @@ class BaseJAAQLController:
         return data
 
     @staticmethod
+    def json_body():
+        """
+        The request's JSON body. A body that is no JSON is the client's malformed request, answered 400 saying why it could not be read, where
+        Flask's own answer named nothing ("The browser (or proxy) sent a request that this server could not understand."). A client gone
+        while it was read (ClientDisconnected, a BadRequest too) and a body over the size limit (413) are raised as werkzeug raised them
+        """
+        try:
+            return request.json
+        except ClientDisconnected:
+            raise
+        except BadRequest as ex:
+            # werkzeug's error, raised while it handled the decoder's ValueError, is the cause of Flask's
+            reason, seen = ex, 0
+            while reason is not None and not isinstance(reason, ValueError) and seen < 5:
+                reason, seen = reason.__cause__ or reason.__context__, seen + 1
+            detail = str(reason)[:JSON_ERROR__max_length] if isinstance(reason, ValueError) else type(ex).__name__
+            raise HttpStatusException(ERR__body_not_json % detail, HTTPStatus.BAD_REQUEST) from ex
+
+    @staticmethod
     def get_input_as_dictionary(method: SwaggerMethod, is_prod: bool, fill_missing: bool = True, **kwargs):
         data = {}
 
@@ -435,7 +458,7 @@ class BaseJAAQLController:
         only_args = False
         if len(method.body) != 0 or was_allow_all:
             BaseJAAQLController.enforce_content_type_json()
-            data = request.json
+            data = BaseJAAQLController.json_body()
             if not isinstance(data, dict):
                 # A JSON array, string, number, true, false or null, which no route takes
                 raise HttpStatusException(ERR__expected_json_object % ("an array" if isinstance(data, list) else json.dumps(data)[:20]),
@@ -509,10 +532,13 @@ class BaseJAAQLController:
         return json.dumps(self.log_safe_dump_recursive(data))
 
     def publish_route(self, route: str, swagger_documentation: Union[list, SwaggerDocumentation], use_cors: bool = False,
-                      answers_head: bool = True):
+                      answers_head: bool = True, error_body: bool = True):
         # answers_head False: a HEAD is not answered by the route's GET but 405 (by Flask's router, JAAQLRule), for a route whose GET acts
         # (a webhook's runs a process of the application's, which cannot tell a HEAD from a GET; /cron starts jobs; a login or a logout
-        # sets and consumes its cookies), so that a link checker, a mail scanner or an uptime checker sending HEAD never does what it does
+        # sets and consumes its cookies), so that a link checker, a mail scanner or an uptime checker sending HEAD never does what it does.
+        # error_body False: the route's client errors are answered as plain text (or werkzeug's HTML), as they always were, for a route
+        # whose callers read them so (a webhook's, which payment providers and the like call; /email, whose failure BATON's sendEmail reads
+        # as text), instead of with JAAQL's error body
         documentation_as_lists = swagger_documentation
         if not isinstance(documentation_as_lists, list):
             documentation_as_lists = [documentation_as_lists]
@@ -820,17 +846,46 @@ class BaseJAAQLController:
                 return resp
 
             self.app.add_url_rule(route, view_func=lambda **kwargs: routed_function(view_func, **kwargs), methods=methods,
-                                  endpoint=route, answers_head=answers_head)
+                                  endpoint=route, answers_head=answers_head, error_body=error_body)
 
             return routed_function
 
         return wrap_func
 
     @staticmethod
+    def answers_with_error_body() -> bool:
+        """
+        Whether the request's client errors (4xx) are answered with JAAQL's error body: on every route but one published with error_body False
+        (JAAQLRule), and when no route takes the request's path (404). Flask's router answers a method the route does not take before the
+        request has its rule, so the route is then looked up by a method it does take
+        """
+        if not has_request_context():
+            return True
+        rule = request.url_rule
+        routing = request.routing_exception
+        if rule is None and isinstance(routing, MethodNotAllowed) and routing.valid_methods:
+            try:
+                rule = current_app.create_url_adapter(request).match(method=sorted(routing.valid_methods)[0], return_rule=True)[0]
+            except Exception:
+                rule = None
+        return getattr(rule, "error_body", True) is not False
+
+    @staticmethod
+    def is_client_error(status) -> bool:
+        try:
+            return 400 <= int(status) < 500
+        except (TypeError, ValueError):
+            return False
+
+    @staticmethod
     def _init_error_handlers(app):
         # Every handler first reports, by the rule of jaaql/utilities/server_errors.py, an exception no routed request has seen (a route added
         # to the app directly); routed_function has already seen every other one. Flask picks the Exception handler for every exception that
-        # is not an HTTPException, so the 500 handler answers only an explicit InternalServerError
+        # is not an HTTPException, so the 500 handler answers only an explicit InternalServerError. A client error (4xx) is answered with
+        # JAAQL's error body (error_code, message, table_name, index, column_name, set, descriptor), whoever raised it, the error code by its
+        # status (client_error), so that BATON hands it to the request's own error handler as it does every JAAQL error, where it took a plain
+        # text or an HTML page for an unexpected answer; except on a route published with error_body False (answers_with_error_body). A
+        # server error (5xx) is answered as it always was
 
         @app.errorhandler(HTTPStatus.INTERNAL_SERVER_ERROR)
         def handle_server_error(error: InternalServerError):
@@ -845,6 +900,14 @@ class BaseJAAQLController:
                 if isinstance(ex, MethodNotAllowed) and ex.valid_methods:
                     # Flask's router names the methods a route takes in no fixed order, which differs from one worker to the next
                     ex.valid_methods = sorted(ex.valid_methods)
+                if ex.response is None and BaseJAAQLController.is_client_error(ex.code) and BaseJAAQLController.answers_with_error_body():
+                    # werkzeug's own: no route for the path, a method the route does not take, a body over the size limit, a client gone.
+                    # Its headers but its Content-Type are kept (a 405's Allow)
+                    res = interpretable_response(client_error(ex.code, ex.description))
+                    for name, value in ex.get_headers():
+                        if name.lower() != "content-type":
+                            res.headers[name] = value
+                    return res
                 return ex
             traceback.print_tb(ex.__traceback__)
             return interpretable_response(UnhandledJaaqlServerError())
@@ -854,8 +917,8 @@ class BaseJAAQLController:
             server_errors.unrouted_failure(error)
             return interpretable_response(error)
 
-        def interpretable_response(error: JaaqlInterpretableHandledError):
-            res = jsonify({
+        def interpretable_body(error: JaaqlInterpretableHandledError) -> dict:
+            return {
                 "error_code": error.error_code,
                 "message": error.message,
                 "table_name": error.table_name,
@@ -863,7 +926,10 @@ class BaseJAAQLController:
                 "column_name": error.column_name,
                 "descriptor": error.descriptor,
                 "set": error.set
-            })
+            }
+
+        def interpretable_response(error: JaaqlInterpretableHandledError):
+            res = jsonify(interpretable_body(error))
             res.status = error.response_code
             return BaseJAAQLController._cors(res)
 
@@ -872,6 +938,15 @@ class BaseJAAQLController:
             server_errors.unrouted_failure(error)
             if not isinstance(error.response_code, int) or isinstance(error.response_code, CustomHTTPStatus):
                 error.response_code = error.response_code.value
+            if BaseJAAQLController.is_client_error(error.response_code) and BaseJAAQLController.answers_with_error_body():
+                if isinstance(error.message, str):
+                    return interpretable_response(client_error(error.response_code, error.message))
+                if isinstance(error.message, dict):
+                    # A query of a dict query refused: its error, set, query and parameters (and a store's row) as ever, in JAAQL's error body
+                    answer = client_error(error.response_code, error.message.get(KEY__error))
+                    res = jsonify({**interpretable_body(answer), **error.message})
+                    res.status = answer.response_code
+                    return BaseJAAQLController._cors(res)
             if not isinstance(error.message, str):
                 res = jsonify(error.message)
             else:

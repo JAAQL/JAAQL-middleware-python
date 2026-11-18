@@ -595,7 +595,8 @@ class TestServerFaultsAnsweredAsClientErrors(ServerErrorCase):
         self.model.verdict = None
         with mock.patch.object(db_pg_interface, "WAIT_HOOK__timeout", 0.2), self.interface(RaisingInterface()):
             (status, _, data), reports = self.answers(lambda: self.submit(bypass=False))
-            self.assertEqual((422, b"Authorization verification timed out"), (status, data))
+            self.assertEqual((422, 1033, "Authorization verification timed out"), (status, json.loads(data)["error_code"],
+                                                                                       json.loads(data)["message"]))
             self.assertEqual(1, len(reports))
             self.assertEqual("VerificationTimedOut: Authorization verification timed out", reports[0]["error_condensed"])
             self.assertIn("(the wait for the authorization verifier's verdict)", reports[0]["stacktrace"])
@@ -899,8 +900,8 @@ class TestWhatIsNeverReported(ServerErrorCase):
             for bypass in [True, False]:
                 with self.subTest(name, bypass=bypass), self.interface(RaisingInterface(role=ACCOUNT)):
                     (status, _, data), reports = self.answers(lambda: request(bypass=bypass))
-                    self.assertEqual((400, []), (status, reports), data)
-                    self.assertTrue(data.decode().startswith(message), data)
+                    self.assertEqual((400, [], 1029), (status, reports, json.loads(data)["error_code"]), data)
+                    self.assertTrue(json.loads(data)["message"].startswith(message), data)
         self.assertEqual([], self.lines())
 
     def test_a_malformed_request_is_answered_400_by_the_code_that_reads_it(self):
@@ -971,8 +972,8 @@ class TestWhatIsNeverReported(ServerErrorCase):
             for route, body, message in cases:
                 with self.subTest(route=route, body=body):
                     (status, _, data), reports = self.answers(lambda: self.raw(route, body if isinstance(body, bytes) else json.dumps(body)))
-                    self.assertEqual((400, []), (status, reports), data)
-                    self.assertTrue(data.decode().startswith(message), data)
+                    self.assertEqual((400, [], 1029), (status, reports, json.loads(data)["error_code"]), data)
+                    self.assertTrue(json.loads(data)["message"].startswith(message), data)
             for name, stubbed in stubs.items():
                 stubbed.assert_not_called()
             select.assert_not_called()
@@ -1013,7 +1014,7 @@ class TestWhatIsNeverReported(ServerErrorCase):
                 for route, body in [("/submit", {"query": "SELECT 1"}), ("/call-proc", {"query": "lesson.save", "parameters": {}})]:
                     with self.subTest(name, route=route):
                         (status, _, data), reports = self.answers(lambda: self.post(route, dict(body, **extra), application=application))
-                        self.assertEqual((400, [], message), (status, reports, data.decode()))
+                        self.assertEqual((400, [], 1029, message), (status, reports, json.loads(data)["error_code"], json.loads(data)["message"]))
             # JAAQL's own lookup failing so for an application that is a name is the server's
             (status, _, _), reports = self.answers(lambda: self.post("/submit", {"query": "SELECT 1"}, application="LesBij"))
         self.assertEqual((422, 1), (status, len(reports)))
@@ -1174,7 +1175,7 @@ class TestTheVerifier(ServerErrorCase):
             for _ in range(3):
                 (status, _, data), reports = self.answers(lambda: self.submit(bypass=False))
                 self.assertEqual((422, []), (status, reports))
-                self.assertEqual(verdicts[0][1].encode(), data)
+                self.assertEqual((1033, verdicts[0][1]), (json.loads(data)["error_code"], json.loads(data)["message"]))
 
     def test_each_verification_notes_faults_of_its_own(self):
         # The second verification fails with no fault of its own: its report is its failure, never the first one's fault again

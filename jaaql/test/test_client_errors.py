@@ -16,6 +16,7 @@ import json
 import os
 import re
 import unittest
+import urllib.parse
 from unittest import mock
 
 import psycopg
@@ -27,12 +28,14 @@ from jaaql.db.db_pg_interface import DBPGInterface
 from jaaql.db.db_utils import create_interface
 from jaaql.documentation.documentation_internal import DOCUMENTATION__procedures
 from jaaql.documentation.documentation_public import DOCUMENTATION__create_account, DOCUMENTATION__create_account_batch
-from jaaql.exceptions.jaaql_interpretable_handled_errors import AccountAlreadyExists, UnhandledQueryError
+from jaaql.exceptions.custom_http_status import CustomHTTPStatus
+from jaaql.exceptions.http_status_exception import HttpStatusException
+from jaaql.exceptions.jaaql_interpretable_handled_errors import AccountAlreadyExists, UnhandledQueryError, client_error
 from jaaql.generated_constants import RESPONSE_CODE_LOOKUP
 from jaaql.mvc import base_controller, model
 from jaaql.mvc.model import JAAQLModel
 from jaaql.openapi.swagger_documentation import SwaggerFlatResponse, RESPONSE__200_ok
-from jaaql.test.test_server_errors import ServerErrorCase, RaisingInterface, SUPER_KEY, CONFIG, ENVIRON__test_postgres_uri
+from jaaql.test.test_server_errors import ServerErrorCase, RaisingInterface, SUPER_KEY, CONFIG, ENVIRON__test_postgres_uri, raiser
 from jaaql.utilities import slow_queries
 from jaaql.utilities.utils import get_jaaql_root
 from monitor.main import HEADER__security_bypass, HEADER__security
@@ -225,6 +228,143 @@ class TestRefusals(ServerErrorCase):
 
     def test_the_status_of_a_refusal_relayed_by_a_cloud_procedure(self):
         self.assertEqual(403, RESPONSE_CODE_LOOKUP[1028])
+
+
+ERROR_BODY__keys = {"error_code", "message", "table_name", "index", "column_name", "descriptor", "set"}
+# The error code of a client error raised with a status and a message alone, by its status
+CODES__by_status = {400: 1029, 401: 1009, 403: 1028, 404: 1030, 405: 1031, 409: 1027, 413: 1032, 422: 1033, 425: 1033, 460: 1033}
+
+
+class TestTheErrorBody(ServerErrorCase):
+    """
+    Every client error (4xx) JAAQL answers, whoever raised it, has JAAQL's error body, which BATON's handleResponse (BATON.jaaql.ts) hands
+    to the request's own error handler as it does every JAAQL error: a JSON object, sent as application/json (parseResponse parses no other
+    body), with an error_code. Up to 5.3.30 one raised with a status and a message alone was plain text, sent as text/html, and werkzeug's own
+    an HTML page, which BATON took for an unexpected answer. The routes whose callers read them otherwise, and every server error, answer as
+    they always did
+    """
+
+    def assertErrorBody(self, answered, status, code, message, startswith=False):
+        (got, headers, data), reports = answered
+        self.assertEqual((status, []), (got, reports), data)
+        self.assertTrue(dict(headers)["Content-Type"].startswith("application/json"), headers)
+        body = json.loads(data)
+        self.assertEqual(ERROR_BODY__keys, set(body))
+        self.assertEqual(code, body["error_code"], body)
+        if startswith:
+            self.assertTrue(body["message"].startswith(message), body)
+        else:
+            self.assertEqual(message, body["message"])
+        self.assertEqual([None] * 5, [body[key] for key in ("table_name", "index", "column_name", "descriptor", "set")])
+        return dict(headers)
+
+    def assertAsEver(self, answered, status, content_type, body):
+        (got, headers, data), reports = answered
+        self.assertEqual((status, [], content_type), (got, reports, dict(headers).get("Content-Type")), data)
+        self.assertTrue(data.startswith(body), data)
+
+    def test_a_client_error_raised_with_a_status_and_a_message(self):
+        for status, code in CODES__by_status.items():
+            refusal = HttpStatusException("Refused with %d" % status, CustomHTTPStatus.DATABASE_NO_EXIST if status == 460 else status)
+            with self.subTest(status=status), mock.patch.object(self.model, "submit", raiser(lambda: refusal), create=True):
+                self.assertErrorBody(self.answers(self.submit), status, code, "Refused with %d" % status)
+        self.assertEqual([], self.lines())
+
+    def test_a_malformed_request(self):
+        # 5.3.30's 400s for malformed requests (5f6ac4e), each now with error_code 1029
+        cases = [("/submit", {"query": "SELECT 1", "parameters": [1]}, "Malformed parameters! Please send as dictionary"),
+                 ("/execute", {"query": {"a": "slow"}}, "Expected a compiled query as '<file>:<index>', not 'slow'"),
+                 ("/call-proc", {"query": 123, "parameters": {}}, "Expected 'query' to be the name of the procedure to call, not 123"),
+                 ("/submit", {"query": "SELECT 1", "parameters": {"unused": 1}}, "Unused parameter! Supplied with 'unused' but was never used")]
+        for route, body, message in cases:
+            with self.subTest(route=route, body=body), self.interface(RaisingInterface()):
+                self.assertErrorBody(self.answers(lambda: self.post(route, body)), 400, 1029, message, startswith=True)
+        self.assertEqual([], self.lines())
+
+    def test_a_refused_query_of_a_dict_query_keeps_what_it_said(self):
+        # Its set, query and parameters, as ever, in JAAQL's error body. Up to 5.3.30 the body had no error_code
+        with self.interface(RaisingInterface()):
+            (status, headers, data), reports = self.answers(lambda: self.post("/submit", {"query": {"a": {"query": "SELECT 1", "assert": 0}},
+                                                                                          "parameters": {}}))
+        self.assertEqual((400, []), (status, reports))
+        self.assertEqual({"error_code": 1029, "message": "Assert expecting 0 row(s) but received 1 row(s)!", "table_name": None, "index": None,
+                          "column_name": None, "descriptor": None, "set": "a", "error": "Assert expecting 0 row(s) but received 1 row(s)!",
+                          "query": "SELECT 1", "parameters": {}}, json.loads(data))
+
+    def test_werkzeugs_own_client_errors(self):
+        super_key = {HEADER__security_bypass: SUPER_KEY}
+        json_body = {"Content-Type": "application/json", HEADER__security_bypass: SUPER_KEY}
+        with self.interface(RaisingInterface()):
+            self.assertErrorBody(self.answers(lambda: self.client.post("/submit", data=b'{"query": ', headers=json_body)), 400, 1029,
+                                 "Expected the request body to be JSON, which it is not (Expecting value: line 1 column 11 (char 10))")
+            self.assertErrorBody(self.answers(lambda: self.client.post("/submit", data=b"", headers=json_body)), 400, 1029,
+                                 "Expected the request body to be JSON, which it is not (Expecting value: line 1 column 1 (char 0))")
+            self.assertErrorBody(self.answers(lambda: self.client.post("/submit", data=b"query=SELECT 1", headers=super_key)), 400, 1029,
+                                 "Expected content-type application/json")
+            self.assertErrorBody(self.answers(lambda: self.client.post("/submit", json={"query": "SELECT 1"}, headers={
+                HEADER__security_bypass: "wrong"})), 401, 1009, "Invalid bypass key")
+            self.assertErrorBody(self.answers(lambda: self.client.get("/nowhere")), 404, 1030, "The requested URL was not found", startswith=True)
+            allowed = self.assertErrorBody(self.answers(lambda: self.client.delete("/submit")), 405, 1031,
+                                           "The method is not allowed for the requested URL.")
+            self.assertEqual("OPTIONS, POST", allowed["Allow"])
+            self.assertErrorBody(self.answers(lambda: self.client.post("/submit", data=b"{}" + b" " * (2 * 1024 * 1024), headers=json_body)),
+                                 413, 1032, "The data value transmitted exceeds the capacity limit.")
+        # A HEAD sends no body, whatever it is
+        (status, headers, data), reports = self.answers(lambda: self.client.head("/cron"))
+        self.assertEqual((405, b"", "GET, OPTIONS", "application/json", []), (status, data, dict(headers)["Allow"], dict(headers)["Content-Type"],
+                                                                              reports))
+        self.assertEqual([], self.lines())
+
+    def test_no_answer_shows_what_the_request_sent_as_a_page(self):
+        # A key the route does not take, named in the answer: up to 5.3.30 the answer was sent as text/html, so that a link to GET
+        # /rendered_documents, which needs no login, showed whatever HTML its query string held as a page of the box's own origin
+        script = "<img src=x onerror=alert(document.cookie)>"
+        (status, headers, data), reports = self.answers(lambda: self.client.get(
+            "/rendered_documents?document_id=b47dc954-d608-4e1b-8a8c-d8b754ee554b&" + urllib.parse.quote(script, safe="") + "=1"))
+        self.assertEqual((400, "application/json", []), (status, dict(headers)["Content-Type"], reports))
+        self.assertEqual((1029, "Unexpected argument '%s'" % script), (json.loads(data)["error_code"], json.loads(data)["message"]))
+
+    def test_the_routes_whose_callers_read_their_client_errors_otherwise(self):
+        # A webhook's caller is anyone's (a payment provider), and BATON's sendEmail hands only a plain-text failure to its onFailure
+        too_large = b"{}" + b" " * (2 * 1024 * 1024)
+        html = b"<!doctype html>"
+        for route in ["/webhook/sentinel/hook", "/secure/sentinel/hook"]:
+            with self.subTest(route), mock.patch.object(self.model, "handle_webhook", raiser(lambda: HttpStatusException(
+                    "Procedure type is not type webhook")), create=True):
+                login = {HEADER__security_bypass: SUPER_KEY} if route.startswith("/secure") else {}
+                self.assertAsEver(self.answers(lambda: self.client.post(route, data=b"{", headers={"Content-Type": "application/json", **login})),
+                                  400, "text/html; charset=utf-8", html)
+                self.assertAsEver(self.answers(lambda: self.client.post(route, data=too_large, headers={"Content-Type": "application/json",
+                                                                                                         **login})),
+                                  413, "text/html; charset=utf-8", html)
+                self.assertAsEver(self.answers(lambda: self.client.put(route)), 405, "text/html; charset=utf-8", html)
+                self.assertAsEver(self.answers(lambda: self.client.head(route)), 405, "text/html; charset=utf-8", b"")
+                self.assertAsEver(self.answers(lambda: self.client.post(route, json={}, headers=login)), 422, "text/html; charset=utf-8",
+                                  b"Procedure type is not type webhook")
+        email = {HEADER__security_bypass: SUPER_KEY, "Content-Type": "application/json"}
+        with mock.patch.object(self.model, "send_email", raiser(lambda: HttpStatusException("Cannot send this template anonymously"))):
+            self.assertAsEver(self.answers(lambda: self.client.post("/email", data=b"1", headers=email)), 400, "text/html; charset=utf-8",
+                              b"Expected the request body to be a JSON object, not 1")
+            self.assertAsEver(self.answers(lambda: self.client.post("/email", data=json.dumps({"template": "t", "application": "lesbij", "parameters": {}}),
+                                                                    headers=email)), 422, "text/html; charset=utf-8",
+                              b"Cannot send this template anonymously")
+        self.assertEqual([], self.lines())
+
+    def test_a_server_error_is_answered_as_ever(self):
+        for status in [500, 502, 503]:
+            with self.subTest(status=status), mock.patch.object(self.model, "submit", raiser(lambda: HttpStatusException("Down", status)),
+                                                                create=True):
+                (got, headers, data), _ = self.answers(self.submit)
+                self.assertEqual((status, "text/html; charset=utf-8", b"Down"), (got, dict(headers)["Content-Type"], data))
+
+    def test_the_error_code_of_each_status(self):
+        for status, code in CODES__by_status.items():
+            with self.subTest(status=status):
+                error = client_error(status, "m")
+                self.assertEqual((code, status, "m"), (error.error_code, error.response_code, error.message))
+                if code != 1009:
+                    self.assertEqual(RESPONSE_CODE_LOOKUP[code], status if code != 1033 else 422)
+        self.assertEqual(401, RESPONSE_CODE_LOOKUP[1009])
 
 
 def statement_of(script: str, pattern: str) -> str:

@@ -199,12 +199,12 @@ class TooManySignUpConfirmationRequests(JaaqlInterpretableHandledError):
 
 
 class UserUnauthorized(JaaqlInterpretableHandledError):
-    def __init__(self, descriptor=None):
+    def __init__(self, descriptor=None, message="You are not permitted to access this resource"):
         super().__init__(
             error_code=1009,
             http_response_code=401,
             table_name=None,
-            message="You are not permitted to access this resource",
+            message=message,
             column_name=None,
             _set=None,
             index=None,
@@ -467,3 +467,102 @@ class VerificationEmailNotSent(JaaqlInterpretableHandledError):
             index=None,
             descriptor=descriptor
         )
+
+
+class MalformedRequest(JaaqlInterpretableHandledError):
+    # The request is not what its route takes: a body that is no JSON object, an argument missing or of another type, a query the application
+    # does not have. The client's (400)
+    def __init__(self, message, descriptor=None):
+        super().__init__(
+            error_code=1029,
+            http_response_code=400,
+            table_name=None,
+            message=message,
+            column_name=None,
+            _set=None,
+            index=None,
+            descriptor=descriptor
+        )
+
+
+class ResourceNotFound(JaaqlInterpretableHandledError):
+    # No route, or nothing the request names, is there. The client's (404)
+    def __init__(self, message, descriptor=None):
+        super().__init__(
+            error_code=1030,
+            http_response_code=404,
+            table_name=None,
+            message=message,
+            column_name=None,
+            _set=None,
+            index=None,
+            descriptor=descriptor
+        )
+
+
+class UnsupportedMethod(JaaqlInterpretableHandledError):
+    # The route does not take the request's method; the answer's Allow names those it takes. The client's (405)
+    def __init__(self, message, descriptor=None):
+        super().__init__(
+            error_code=1031,
+            http_response_code=405,
+            table_name=None,
+            message=message,
+            column_name=None,
+            _set=None,
+            index=None,
+            descriptor=descriptor
+        )
+
+
+class RequestTooLarge(JaaqlInterpretableHandledError):
+    # The request's body is over the request size limit (Flask's MAX_CONTENT_LENGTH). The client's (413)
+    def __init__(self, message, descriptor=None):
+        super().__init__(
+            error_code=1032,
+            http_response_code=413,
+            table_name=None,
+            message=message,
+            column_name=None,
+            _set=None,
+            index=None,
+            descriptor=descriptor
+        )
+
+
+class RequestRefused(JaaqlInterpretableHandledError):
+    # Any other client error (4xx) JAAQL answers with a status and a message alone: 422 unless the route answers another (a document still
+    # rendering 425, a database that does not exist 460)
+    def __init__(self, message, http_response_code=422, descriptor=None):
+        super().__init__(
+            error_code=1033,
+            http_response_code=http_response_code,
+            table_name=None,
+            message=message,
+            column_name=None,
+            _set=None,
+            index=None,
+            descriptor=descriptor
+        )
+
+
+# The error a client error (4xx) is answered with when it was raised with a status and a message alone (an HttpStatusException, or werkzeug's
+# own answer to a request it cannot route or read), by its status
+CLIENT_ERRORS__by_status = {
+    400: MalformedRequest,
+    401: lambda message: UserUnauthorized(message=message),
+    403: RequestForbidden,
+    404: ResourceNotFound,
+    405: UnsupportedMethod,
+    409: RequestConflict,
+    413: RequestTooLarge
+}
+
+
+def client_error(status: int, message: str) -> JaaqlInterpretableHandledError:
+    """
+    The JAAQL error, with its error code, that a client error (4xx) answers with, of the status and the message it was raised with, so that its
+    body is JAAQL's usual one (error_code, message, table_name, index, column_name, set, descriptor) whoever raised it
+    """
+    make = CLIENT_ERRORS__by_status.get(status)
+    return make(message) if make is not None else RequestRefused(message, status)

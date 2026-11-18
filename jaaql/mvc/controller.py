@@ -145,7 +145,9 @@ class JAAQLController(BaseJAAQLController):
         def dispatchers(connection: DBInterface, http_inputs: dict):
             self.model.attach_dispatcher_credentials(connection, http_inputs)
 
-        @self.publish_route('/email', DOCUMENTATION__emails)
+        # Its client errors stay plain text: BATON's sendEmail (BATON.library.ts) hands only such an answer to the caller's onFailure, and
+        # throws on JAAQL's error body, which a cloud procedure such as Sentinel's DrainOutbox would never hear back from
+        @self.publish_route('/email', DOCUMENTATION__emails, error_body=False)
         def send_email(is_the_anonymous_user: bool, account_id: str, http_inputs: dict, username: str, auth_token: str):
             return self.model.send_email(is_the_anonymous_user, account_id, http_inputs, username, auth_token)
 
@@ -168,11 +170,12 @@ class JAAQLController(BaseJAAQLController):
         def flush_cache(ip_address: str):
             self.model.flush_cache(ip_address)
 
-        @self.publish_route('/webhook/<application>/<name>', DOCUMENTATION__webhook, answers_head=False)
+        # A webhook's caller is anyone's (a payment provider): its client errors are answered as they always were, plain text or werkzeug's
+        @self.publish_route('/webhook/<application>/<name>', DOCUMENTATION__webhook, answers_head=False, error_body=False)
         def handle_webhook(application: str, name: str, body: bytes, headers: dict, args: dict, response: JAAQLResponse):
             self.model.handle_webhook(application, name, body, headers, args, response, None)
 
-        @self.publish_route('/secure/<application>/<name>', DOCUMENTATION__secure_webhook, answers_head=False)
+        @self.publish_route('/secure/<application>/<name>', DOCUMENTATION__secure_webhook, answers_head=False, error_body=False)
         def handle_secure_webhook(application: str, name: str, body: bytes, headers: dict, args: dict,
                                   response: JAAQLResponse, username: str):
             # Pass the username, not the account id: the proc runtime forwards this value as the bypass

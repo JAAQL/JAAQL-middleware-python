@@ -8,6 +8,7 @@ so a second one finds none. A HEAD answers the download's status and headers wit
 Needs only the package's requirements, as jaaql.test.test_server_errors: JAAQL's lookup connection is a stand-in database interface
 holding the document_request rows
 """
+import json
 import unittest
 from datetime import datetime, timezone
 from unittest import mock
@@ -76,7 +77,8 @@ class TestRenderedDocumentDownload(ServerErrorCase):
         self.assertEqual({}, self.documents.rows)
         # Deleted by the download
         again = self.download()
-        self.assertEqual((422, b"Document id not found"), (again.status_code, again.get_data()))
+        self.assertEqual((422, 1033, "Document id not found"), (again.status_code, json.loads(again.get_data())["error_code"],
+                                                                json.loads(again.get_data())["message"]))
         self.assertEqual([], self.lines())
         self.assertNoReport()
 

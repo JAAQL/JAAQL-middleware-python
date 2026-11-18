@@ -211,6 +211,11 @@ def ensure_200_documented():
             method.responses.append(SwaggerFlatResponse(RESPONSE__200_ok))
 
 
+def answer_of(res):
+    # The status of a refusal, and the error code and message of JAAQL's error body it carries
+    return res.status_code, json.loads(res.data)["error_code"], json.loads(res.data)["message"]
+
+
 class TestReadReport(unittest.TestCase):
 
     def read(self, body, content_type=CT, args=None):
@@ -544,11 +549,11 @@ class TestTheRoute(RouteCase):
         for raw in [b"", b"null", b"\"x\"", b"123", b"[]", encoded([BASE]), encoded(BASE)[:-5], b"[" * 100000 + b"]" * 100000]:
             with self.subTest(raw[:20]):
                 res = self.post(raw)
-                self.assertEqual((400, b"Expected a JSON object"), (res.status_code, res.data))
+                self.assertEqual((400, 1029, "Expected a JSON object"), answer_of(res))
         for raw in [b"{}", b"{\"test\": 1}"]:
             with self.subTest(raw):
                 res = self.post(raw)
-                self.assertEqual((400, b"Expected a report"), (res.status_code, res.data))
+                self.assertEqual((400, 1029, "Expected a report"), answer_of(res))
         self.assertEqual([], self.inserted)
 
     def test_a_body_over_the_former_size_limit_is_stored_cut_and_one_over_the_routes_is_413(self):
@@ -593,7 +598,7 @@ class TestTheRoute(RouteCase):
             raise HttpStatusException("the database is down")
         self.model.submit = failing
         res = self.post(BASE)
-        self.assertEqual((422, b"the database is down"), (res.status_code, res.data))
+        self.assertEqual((422, 1033, "the database is down"), answer_of(res))
 
     def test_the_preflight_is_unchanged(self):
         res = self.client.options(ENDPOINT__report_sentinel_error)
