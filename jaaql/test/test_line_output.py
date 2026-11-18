@@ -222,21 +222,47 @@ class TestLineWriter(unittest.TestCase):
         print("written once there is room", file=self.writer)
         self.assertEqual(b"written once there is room\n", self.logged())
 
-    def test_a_signal_handler_printing_while_a_line_is_written_is_written_too(self):
-        # A handler runs in the thread it interrupts; the line being written is not mixed with what it prints
+    def interrupting(self, *handlers):
+        """
+        os.write recording what it is given, its first writes each interrupted by the next of handlers, as a signal handler runs in the
+        thread it interrupts (post_worker_init's prints "Received cache flush instruction")
+        """
         self.recording.stop()
+        self.addCleanup(self.recording.start)
         real_write = os.write
-        interrupted = []
+        pending = list(handlers)
 
         def write(fd, data):
-            if not interrupted:
-                interrupted.append(True)
-                print("from the handler", file=self.writer)
+            self.writes.append(bytes(data))
+            if pending:
+                pending.pop(0)()
             return real_write(fd, data)
-        with mock.patch.object(line_output.os, "write", side_effect=write):
+        return mock.patch.object(line_output.os, "write", side_effect=write)
+
+    def test_a_signal_handler_printing_while_a_line_is_written_is_written_after_it_whole(self):
+        with self.interrupting(lambda: print("Received cache flush instruction", file=self.writer)):
+            print("SERVER ERROR X at y answered 500", file=self.writer)
+        # One write per line, print()'s two pieces of the handler's line included, so no other process's write can land between them
+        self.assertEqual([b"SERVER ERROR X at y answered 500\n", b"Received cache flush instruction\n"], self.writes)
+        self.assertEqual(b"SERVER ERROR X at y answered 500\nReceived cache flush instruction\n", self.logged())
+
+    def test_a_signal_handler_never_joins_the_line_not_yet_complete(self):
+        with self.interrupting(lambda: print("Received cache flush instruction", file=self.writer)):
+            self.writer.write("the line written\nthe line not yet complete")
+            self.writer.write(", now complete\n")
+        self.assertEqual([b"the line written\n", b"Received cache flush instruction\n", b"the line not yet complete, now complete\n"],
+                         self.writes)
+        self.assertEqual(b"the line written\nReceived cache flush instruction\nthe line not yet complete, now complete\n", self.logged())
+
+    def test_a_signal_handler_interrupting_the_handler_s_own_write_is_written_too(self):
+        first = lambda: print("from the first handler", "in pieces", file=self.writer)
+        second = lambda: print("from the second", file=self.writer)
+        with self.interrupting(first, second):
             print("the line being written", file=self.writer)
-        self.recording.start()
-        self.assertEqual(b"from the handler\nthe line being written\n", self.logged())
+            print("the next line", file=self.writer)
+        self.assertEqual([b"the line being written\n", b"from the first handler in pieces\n", b"from the second\n",
+                          b"the next line\n"], self.writes)
+        self.assertTrue(all(data.endswith(b"\n") for data in self.writes))
 
     @unittest.skipUnless(hasattr(os, "fork"), "needs fork")
     def test_a_forked_process_does_not_write_its_parent_s_line_not_complete(self):

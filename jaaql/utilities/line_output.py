@@ -10,10 +10,13 @@ at once write "A", "B", "\n", "\n" and their lines are joined into one, which a 
 install() replaces sys.stdout and sys.stderr with LineWriters on the same file descriptors: a LineWriter keeps what it is given until a
 line is complete and then writes every complete line it holds in one write(), which the kernel appends to a file opened for appending as a
 whole, never interleaved with another process's write. So every line lands whole and at once, and the lines of one process land in the
-order it printed them. A line not yet complete is written by flush() and when the process exits normally; one that grows past
-LINE__max_pending_bytes is written as it is. To a pipe (LOG_TO_OUTPUT) a write is whole up to PIPE_BUF (4,096 bytes). A write the system
-refuses (a full disk) is dropped, never failing the code that printed. gunicorn_config.py's on_starting installs it in the master once the
-app is loaded, and every worker forks with it; a process forked starts with a lock of its own and nothing of its parent's pending line
+order it printed them. What a signal handler prints while the thread it interrupted is writing (post_worker_init's cache flush handler) is
+kept apart from that thread's line and written once its write is done, in one write too. The limits: a line not yet complete is written by
+flush() and when the process exits normally, until then it is held; one that grows past LINE__max_pending_bytes (1 MiB) is written as it
+is, in pieces; to a pipe (LOG_TO_OUTPUT) the kernel keeps a write whole only up to PIPE_BUF (4,096 bytes), so a longer line can still be
+cut there. A write the system refuses (a full disk) is dropped, never failing the code that printed. gunicorn_config.py's on_starting
+installs it in the master once the app is loaded, and every worker forks with it; a process forked starts with a lock of its own and
+nothing of its parent's pending line
 """
 import io
 import os
@@ -88,6 +91,7 @@ class LineWriter(io.TextIOBase):
         self._name = name if name is not None else fd
         self._lock = threading.RLock()
         self._pending = bytearray()
+        self._interrupted = bytearray()
         self._writing = False
         self.buffer = _LineBuffer(self)
         _WRITERS.add(self)
@@ -95,6 +99,7 @@ class LineWriter(io.TextIOBase):
     def _forked(self):
         self._lock = threading.RLock()
         self._pending = bytearray()
+        self._interrupted = bytearray()
         self._writing = False
 
     @property
@@ -144,32 +149,42 @@ class LineWriter(io.TextIOBase):
     def _write_bytes(self, data: bytes):
         with self._lock:
             if self._writing:
-                # A signal handler printing while this thread is in here: written as it comes, never into the line being written
-                _write_all(self._fd, data)
+                # A signal handler printing while this thread is in here: kept apart from the line being written, and written after it
+                self._interrupted += data
                 return
             self._writing = True
             try:
                 self._pending += data
                 end = self._pending.rfind(b"\n") + 1
-                if end == 0:
-                    if len(self._pending) < LINE__max_pending_bytes:
-                        return
+                if end == 0 and len(self._pending) >= LINE__max_pending_bytes:
                     end = len(self._pending)
-                complete = bytes(self._pending[:end])
-                del self._pending[:end]
-                _write_all(self._fd, complete)
+                if end > 0:
+                    complete = bytes(self._pending[:end])
+                    del self._pending[:end]
+                    _write_all(self._fd, complete)
+                self._write_interrupted()
             finally:
                 self._writing = False
 
+    def _write_interrupted(self):
+        # What handlers printed while this thread was writing, all of it in one write (a handler has returned before the thread it
+        # interrupted goes on), again while one prints during that write
+        while self._interrupted:
+            interrupted = bytes(self._interrupted)
+            self._interrupted.clear()
+            _write_all(self._fd, interrupted)
+
     def flush(self):
         with self._lock:
-            if self._writing or not self._pending:
+            if self._writing or not (self._pending or self._interrupted):
                 return
             self._writing = True
             try:
                 pending = bytes(self._pending)
                 self._pending.clear()
-                _write_all(self._fd, pending)
+                if pending:
+                    _write_all(self._fd, pending)
+                self._write_interrupted()
             finally:
                 self._writing = False
 
