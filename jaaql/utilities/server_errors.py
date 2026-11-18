@@ -74,6 +74,7 @@ FAULT__commit_database_server = "the database server, failing at the COMMIT of t
 FAULT__outcome_unknown = "the connection, lost after %s may have committed"
 FAULT__verification_timeout = "the wait for the authorization verifier's verdict"
 FAULT__pool = "making the connection pool"
+FAULT__account_without_role = "JAAQL's own accounts, holding an account whose role is gone"
 QUERY__own = "JAAQL's own query"
 QUERY__requests = "the request's query"
 

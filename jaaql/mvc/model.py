@@ -139,8 +139,9 @@ TAG__audit_trail_script = "$jaaql_audit_trail_script$"
 def account_conflict(ex, username, attach_as):
     """
     The answer to a request for an account (/accounts, /accounts/batch) whose create_account raised ex, when ex says that what the request
-    asks for exists already: AccountAlreadyExists (409), the client's, never a server error. None for any other error, which is raised as ever:
-    only the database's own diagnostics of create_account's statements are read (its SQLSTATE and constraint), never its message
+    asks for exists already: AccountAlreadyExists (409), the client's, never a server error, but for an account whose role is gone, which is
+    reported. None for any other error, which is raised as ever: only the database's own diagnostics of create_account's statements are read
+    (its SQLSTATE and constraint), never its message
     """
     descriptor = getattr(ex, "descriptor", None)
     if not isinstance(ex, JaaqlInterpretableHandledError) or not isinstance(descriptor, dict):
@@ -151,7 +152,10 @@ def account_conflict(ex, username, attach_as):
     if attach_as is not None and sqlstate == SQLSTATE__duplicate_object:
         return client_fault(AccountAlreadyExists(ERR__account_role_exists % attach_as, KG__account__id))
     if attach_as is not None and sqlstate == SQLSTATE__unique_violation and constraint == CONSTRAINT__account_id:
-        return client_fault(AccountAlreadyExists(ERR__account_id_exists % attach_as, KG__account__id))
+        # create_account makes the role before the account, so an account as it can only exist already when its role is gone, dropped
+        # outside JAAQL, which drops none: still the answer the client gets, but JAAQL's own state at fault, and reported as such
+        server_errors.note_fault(ex, server_errors.FAULT__account_without_role)
+        return AccountAlreadyExists(ERR__account_id_exists % attach_as, KG__account__id)
     if sqlstate == SQLSTATE__unique_violation and constraint == CONSTRAINT__account_username:
         return client_fault(AccountAlreadyExists(ERR__account_username_exists % username, KG__account__username))
     if sqlstate == SQLSTATE__unique_violation and constraint == CONSTRAINT__account_sub:

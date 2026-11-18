@@ -115,12 +115,29 @@ class TestRequestConflicts(AccountCase):
     def test_an_account_whose_username_or_identity_exists_already(self):
         # Answered 422 with the database's error (error_code 1004) up to 5.3.30, never reported (class 23 is the client's)
         cases = [(USERNAME_TAKEN, "An account with the username 'u' already exists", "username"),
-                 (SUB_TAKEN, "An account for this user of the identity provider already exists", "sub"),
-                 (ACCOUNT_ID_TAKEN, "An account as the role 'my-role' already exists", "id")]
+                 (SUB_TAKEN, "An account for this user of the identity provider already exists", "sub")]
         for make, message, column in cases:
             with self.subTest(message), self.connecting(RaisingInterface(make)):
                 self.assertConflict(self.answers(lambda: self.account({"username": "u", "password": "p", "attach_as": ROLE})), message, column)
         self.assertEqual([], self.lines())
+
+    def test_an_account_whose_role_is_gone_is_409_but_reported(self):
+        # create_account makes the role first, so the account's primary key refuses an account as a role that is not there: JAAQL's own
+        # accounts hold an account whose role was dropped outside JAAQL. The client is answered that the account exists, but JAAQL's state is
+        # at fault, which is reported, where up to e083136 it was the client's and never reported
+        for route in ["/accounts", "/accounts/batch"]:
+            with self.subTest(route), self.connecting(RaisingInterface(ACCOUNT_ID_TAKEN)):
+                body = {"username": "u", "password": "p", "attach_as": ROLE}
+                (status, headers, data), reports = self.answers(lambda: self.account(body) if route == "/accounts" else self.batch([body]))
+                self.assertEqual((409, 1001, "An account as the role 'my-role' already exists", "id", 1),
+                                 (status, json.loads(data)["error_code"], json.loads(data)["message"], json.loads(data)["column_name"],
+                                  len(reports)), data)
+                self.assertIn("(JAAQL's own accounts, holding an account whose role is gone)", reports[0]["stacktrace"])
+                self.assertIn("Answered: 409 (error_code 1001), a server-side failure JAAQL answers as a client error", reports[0]["stacktrace"])
+        self.assertTrue(self.lines())
+        for line in self.lines():
+            self.assertIn("UnhandledQueryError at jaaql/mvc/exception_queries.py", line)
+            self.assertIn(" answered 409 (error_code 1001), a server-side failure JAAQL answers as a client error", line)
 
     def test_a_batch_with_an_account_that_exists_already(self):
         # A role that exists is an account to keep there (allow_already_exists); a username or a user of the identity provider taken is not
@@ -415,7 +432,8 @@ class TestRequestConflictsAgainstPostgres(AccountCase):
     """
     JAAQL's own account table (04.install_jaaql_data_structures.generated.sql, its domains as text) and create_account and
     mark_account_registered (02.install_super_user.exceptions.sql), as installed, in a scratch database: the errors PostgreSQL raises when what
-    /accounts and /accounts/batch ask for exists already are answered 409 and never reported, and nothing of the refused account is left
+    /accounts and /accounts/batch ask for exists already are answered 409 and never reported (but an account whose role is gone, JAAQL's own
+    state at fault), and nothing of the refused account is left
     """
 
     @classmethod
@@ -484,6 +502,20 @@ class TestRequestConflictsAgainstPostgres(AccountCase):
         res = self.batch([{"username": first + "@example.com", "password": "p", "attach_as": first}])
         self.assertEqual(200, res.status_code, res.data)
         self.assertEqual([], self.lines())
+
+    def test_an_account_whose_role_is_gone_is_409_and_reported(self):
+        # An account row whose role is not there, as a role dropped outside JAAQL leaves it: the role's CREATE succeeds, the account's
+        # primary key refuses the INSERT, and the role is rolled back with it
+        gone = TEST_ROLE_PREFIX + "dan"
+        self.admin("INSERT INTO account (id, username, sub, email_verified) VALUES (%s, %s, %s, true) RETURNING id",
+                   (gone, gone + "@example.com", gone))
+        self.addCleanup(self.admin, "DELETE FROM account WHERE id = %s RETURNING id", (gone,))
+        (status, _, data), reports = self.answers(lambda: self.account({"username": gone + "@example.org", "password": "p", "attach_as": gone}))
+        self.assertEqual((409, 1001, "An account as the role '%s' already exists" % gone, 1), (status, json.loads(data)["error_code"],
+                                                                                               json.loads(data)["message"], len(reports)), data)
+        self.assertIn("(JAAQL's own accounts, holding an account whose role is gone)", reports[0]["stacktrace"])
+        self.assertNotIn(gone, self.roles())
+        self.assertEqual([(gone, gone + "@example.com")], self.admin("SELECT id, username FROM account WHERE id = %s", (gone,)))
 
 
 if __name__ == "__main__":
