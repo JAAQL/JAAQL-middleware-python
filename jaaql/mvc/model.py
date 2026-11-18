@@ -9,6 +9,7 @@ import uuid
 import signal
 import secrets
 import shlex
+import pathlib
 from typing import Dict, Any
 
 from cryptography.hazmat.primitives import hashes
@@ -37,7 +38,7 @@ from jaaql.utilities.cron import check_if_should_fire_cron
 from jaaql.utilities.utils import get_jaaql_root, get_base_url
 from jaaql.db.db_utils import create_interface, jaaql__encrypt, create_interface_for_db, jaaql__decrypt, requested_database
 from jaaql.db.db_utils_no_circ import submit, get_required_db, objectify
-from jaaql.utilities import crypt_utils, slow_queries, server_errors, verify_email_resends
+from jaaql.utilities import crypt_utils, slow_queries, server_errors, verify_email_resends, process_slots
 from jaaql.utilities.utils_no_project_imports import get_cookie_attrs, COOKIE_JAAQL_AUTH, COOKIE_OIDC, COOKIE_OIDC_RETURN, \
     COOKIE_LOGIN_MARKER, get_sloppy_cookie_attrs, COOKIE_ATTR_MAX_AGE
 from jaaql.mvc.response import *
@@ -89,10 +90,16 @@ ERR__as_attachment_unexpected = "Input 'as_attachment' unexpected as document is
 ERR__document_created_file = "Document is a file, cannot be downloaded in this way"
 ERR__web_config_refused = "nginx -t refused the merged web config, so %s was put back as it was and nginx was not reloaded:\n%s"
 ERR__web_config_not_reloaded = "nginx -t accepted the merged web config, now in %s, but nginx -s reload failed:\n%s"
+ERR__webhook_busy = "Too many webhooks are running. Try again later"
 
 PG__default_connection_string = "postgresql://postgres:%s@localhost:5432/jaaql"
 DIR__scripts = "scripts"
 FILE__audit_trail = "audit_trail.sql"
+# The module node preloads into every webhook process, as the file URL --import takes on every platform
+WEBHOOK__body_preload_url = pathlib.Path(get_jaaql_root(), DIR__scripts, FILE__webhook_body_preload).resolve().as_uri()
+NODE__executables = ("node", "nodejs")
+HEADER__retry_after = "Retry-After"
+CONTENT__text = "text/plain"
 TAG__audit_trail_function = "$jaaql_audit_trail_function$"
 TAG__audit_trail_script = "$jaaql_audit_trail_script$"
 
@@ -2703,7 +2710,6 @@ WHERE
         if rpc[KG__remote_procedure__access] != RPC_ACCESS__webhook:
             raise HttpStatusException("Procedure type is not type webhook")
 
-        encoded_body = base64.b64encode(body).decode(ENCODING__utf)
         encoded_headers = base64.b64encode(json.dumps(headers).encode(ENCODING__utf)).decode(ENCODING__utf)
         encoded_args = base64.b64encode(json.dumps(args).encode(ENCODING__utf)).decode(ENCODING__utf)
 
@@ -2718,21 +2724,44 @@ WHERE
             base_cmd = m.group(2)
 
         argv = shlex.split(base_cmd)  # ["node","--import","./__imports__.js","RemoteProcedures/...entrypoint.js"]
-        argv += [encoded_headers, encoded_args, encoded_body]
+        # The body goes to the process's stdin, never onto its command line, where Linux allows one argument at most 128 KiB (MAX_ARG_STRLEN):
+        # base64-encoded there, a body over about 98,000 bytes failed to spawn (OSError, E2BIG) and was answered 500 as JAAQL's own server
+        # error. The marker stands in the body's place, and node, preloading jaaql/scripts/webhook_body.mjs before the webhook's own modules,
+        # puts the body back there as base64, so every BATON cloud runtime reads it as before. A body is bounded by the request size limit
+        # instead: Flask's MAX_CONTENT_LENGTH (2 MiB), over which the route answers 413, and before it nginx's client_max_body_size
+        if argv and os.path.basename(argv[0]) in NODE__executables:
+            argv[1:1] = ["--import", WEBHOOK__body_preload_url]
+        argv += [encoded_headers, encoded_args, WEBHOOK__body_on_stdin]
         if username is not None:
             argv += [username]  # consumed as webhook.dbms_user: the user the proc emulates via the bypass key
 
-        # No shell; pass argv list. Capture output as text.
+        # At most WEBHOOK_MAX_RUNNING webhook processes per worker, a few more waiting for a place in the order they came; a webhook that
+        # finds none is not started and the answer is 503 with Retry-After, the webhook route's own answer and never a server error
+        # (jaaql/utilities/process_slots.py)
+        if not process_slots.WEBHOOKS.claim(application, name):
+            response.response_code = HTTPStatus.SERVICE_UNAVAILABLE.value
+            response.raw_headers = {HEADER__retry_after: str(SLOT__retry_after_seconds)}
+            response.response_type = CONTENT__text
+            response.raw_response = ERR__webhook_busy
+            response.is_binary = False
+            return
+
+        # No shell; pass argv list. The output is read as UTF-8 text.
         # Webhooks are implicit system access on the BATON side, so they need the super bypass key
-        result = subprocess.run(
-            argv,
-            cwd=cwd,  # None if no "cd … &&" in the command
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=False,
-            env=self.env_with_super_bypass_key()
-        )
+        try:
+            result = subprocess.run(
+                argv,
+                cwd=cwd,  # None if no "cd … &&" in the command
+                input=body,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                env=self.env_with_super_bypass_key()
+            )
+        finally:
+            process_slots.WEBHOOKS.release()
+        result.stdout = result.stdout.decode(ENCODING__utf, errors="replace")
+        result.stderr = result.stderr.decode(ENCODING__utf, errors="replace")
 
         try:
             res = json.loads(result.stdout)

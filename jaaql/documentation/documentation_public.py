@@ -157,21 +157,44 @@ DOCUMENTATION__remote_procedures = SwaggerDocumentation(
     )
 )
 
+DESCRIPTION__webhook_process = (" in a node process of its own, which answers it. A worker runs at most WEBHOOK_MAX_RUNNING (default " +
+                                 str(WEBHOOK__default_max_running) + ") webhook processes at once, and at most WEBHOOK_MAX_WAITING "
+                                 "(default " + str(WEBHOOK__default_max_waiting) + ") more wait for a place, each at most " +
+                                 str(SLOT__wait_seconds) + " s. A webhook that finds no place is not started, and the answer is 503 "
+                                 "with Retry-After")
+DESCRIPTION__webhook_post = (". The JSON body reaches the webhook byte for byte on the process's stdin, whatever its size up to the request "
+                             "size limit (Flask's MAX_CONTENT_LENGTH, 2 MiB, and before it nginx's client_max_body_size, by default 1 MiB, "
+                             "each answering 413)")
+RES__webhook_answer = SwaggerFlatResponse(description="The webhook's own answer, with the status, headers and body it gives")
+RES__webhook_body_too_large = SwaggerFlatResponse(
+    description="The body is larger than the request size limit, so the webhook is not started",
+    code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+    body="Request Entity Too Large"
+)
+RES__webhook_busy = SwaggerFlatResponse(
+    description="The worker already runs WEBHOOK_MAX_RUNNING webhook processes and no place came free in time, so the webhook is not "
+                "started. Retry-After gives the seconds to wait",
+    code=HTTPStatus.SERVICE_UNAVAILABLE,
+    body="Too many webhooks are running. Try again later"
+)
+
 DOCUMENTATION__webhook = SwaggerDocumentation(
     tags="Webhook",
     security=False,  # Security is handled at the webhook implementation itself
     methods=[
         SwaggerMethod(
             name="Receive Webhook GET",
-            description="Receives a webhook as a GET",
+            description="Receives a webhook as a GET" + DESCRIPTION__webhook_process,
             method=REST__GET,
-            arguments=ARG_RES__proc + [ARG_RES__parameters]
+            arguments=ARG_RES__proc + [ARG_RES__parameters],
+            response=[RES__webhook_answer, RES__webhook_busy]
         ),
         SwaggerMethod(
             name="Receive Webhook POST",
-            description="Receives a webhook as a POST",
+            description="Receives a webhook as a POST" + DESCRIPTION__webhook_process + DESCRIPTION__webhook_post,
             method=REST__POST,
-            arguments=ARG_RESP__allow_all
+            arguments=ARG_RESP__allow_all,
+            response=[RES__webhook_answer, RES__webhook_body_too_large, RES__webhook_busy]
         )
     ]
 )
@@ -182,15 +205,17 @@ DOCUMENTATION__secure_webhook = SwaggerDocumentation(
     methods=[
         SwaggerMethod(
             name="Receive Webhook GET",
-            description="Receives a webhook as a GET",
+            description="Receives a webhook as a GET" + DESCRIPTION__webhook_process,
             method=REST__GET,
-            arguments=ARG_RES__proc + [ARG_RES__parameters]
+            arguments=ARG_RES__proc + [ARG_RES__parameters],
+            response=[RES__webhook_answer, RES__webhook_busy]
         ),
         SwaggerMethod(
             name="Receive Webhook POST",
-            description="Receives a webhook as a POST",
+            description="Receives a webhook as a POST" + DESCRIPTION__webhook_process + DESCRIPTION__webhook_post,
             method=REST__POST,
-            arguments=ARG_RESP__allow_all
+            arguments=ARG_RESP__allow_all,
+            response=[RES__webhook_answer, RES__webhook_body_too_large, RES__webhook_busy]
         )
     ]
 )

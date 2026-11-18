@@ -138,6 +138,20 @@ RESEND_VERIFY_EMAIL__default_cooldown_seconds = 60
 RESEND_VERIFY_EMAIL__default_max_per_hour = 5
 # The accounts a process keeps count of for the above; beyond it the one longest not sent to is forgotten
 RESEND_VERIFY_EMAIL__max_tracked_accounts = 10000
+# The webhook processes (node) one process (gunicorn worker) runs at once (default 4; 0 or less lifts the bound), and how many webhooks
+# beyond them may wait for a place at once (default 32; 0 or less, none), each at most SLOT__wait_seconds, served in the order they came. A
+# webhook that finds no place is answered 503 with Retry-After, SLOT__retry_after_seconds, without starting one. Read at every webhook, see
+# jaaql/utilities/process_slots.py
+ENVIRON__webhook_max_running = "WEBHOOK_MAX_RUNNING"
+ENVIRON__webhook_max_waiting = "WEBHOOK_MAX_WAITING"
+WEBHOOK__default_max_running = 4
+WEBHOOK__default_max_waiting = 32
+SLOT__wait_seconds = 5
+SLOT__retry_after_seconds = 5
+# What a webhook's command line holds in place of its body, which goes to the process's stdin; jaaql/scripts/webhook_body.mjs, which node
+# preloads, puts the body back there as base64
+WEBHOOK__body_on_stdin = "jaaql:body-on-stdin"
+FILE__webhook_body_preload = "webhook_body.mjs"
 
 SLOW_QUERY__default_seconds = 3
 # A slow query is reported at most once an hour per process; its slow runs in between are counted into its next report. A query that has
