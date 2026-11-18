@@ -111,6 +111,8 @@ Which will output something like the following
 
 Here you will see the installation key. You can access swagger via http(s)://your_address/swagger/jaaql_internal_api.html
 
+Every line the master and the workers print reaches the log whole and at once, in the order each process printed it (jaaql/utilities/line_output.py, installed by docker/gunicorn_config.py's on_starting): one write per line, so the lines of workers printing at the same moment are never joined or cut, and a grep -c of SERVER ERROR counts each. PYTHONUNBUFFERED is not needed for that
+
 ## Allowing db access outside the container
 If you wish to gain access to the database outside of your container then please add the argument
 

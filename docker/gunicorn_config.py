@@ -10,6 +10,18 @@ preload_app = True
 has_checked_for_install = False
 
 
+def on_starting(server):
+    # Every line the master and the workers print reaches the log whole: one write per line (jaaql/utilities/line_output.py). Here, once
+    # preload_app has loaded the app (and gevent's monkey patching) from the install path, and before any worker forks. Never in the way
+    # of the boot: without it the lines are written as Python's streams write them
+    try:
+        from jaaql.utilities import line_output
+        line_output.install()
+    except Exception:
+        import traceback
+        traceback.print_exc()
+
+
 def when_ready(server):
     # preload_app has already built the app in this master and no worker has forked yet, so installing
     # here starts every worker installed. The migrations manager's HTTP install still works as a fallback
