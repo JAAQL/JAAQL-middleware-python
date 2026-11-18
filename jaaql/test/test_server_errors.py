@@ -865,7 +865,7 @@ class TestWhatIsNeverReported(ServerErrorCase):
                          # A query the application does not have, with its cache as on disk
                          {"query": {"a": "lesson__browse.frame:3"}}, {"query": {"a": "slow:99"}}],
             "/submit": [{"query": "SELECT 1", "parameters": [1]}, {"query": {"a": 1}}, {"query": {"a": {}}}, {"query": {"a": ["x"]}},
-                        {"query": {"a": {"query": {"file": 1}}}}, {}],
+                        {"query": {"a": {"query": {"file": 1}}}}],
         }
         requests_ = {"%s %s" % (route, json.dumps(body)): (lambda route=route, body=body, bypass=True: self.post(route, body, bypass=bypass))
                      for route, route_bodies in bodies.items() for body in route_bodies}
@@ -877,6 +877,16 @@ class TestWhatIsNeverReported(ServerErrorCase):
                 with self.subTest(name, bypass=bypass), self.interface(RaisingInterface(role=ACCOUNT)):
                     (status, _, data), reports = self.answers(lambda: request(bypass=bypass))
                     self.assertEqual((500, []), (status, reports), data)
+        self.assertEqual([], self.lines())
+
+    def test_a_submit_naming_neither_a_query_nor_a_canned_one_is_400_whoever_sends_it(self):
+        # Before, the canned query's keys were read unchecked: KeyError 'application', answered 500 with error_code 1099
+        for body in [{}, {"parameters": {}}]:
+            for bypass in [True, False]:
+                with self.subTest(json.dumps(body), bypass=bypass), self.interface(RaisingInterface(role=ACCOUNT)):
+                    (status, _, data), reports = self.answers(lambda: self.post("/submit", body, bypass=bypass))
+                    self.assertEqual((400, []), (status, reports), data)
+                    self.assertIn(b"Missing query key from input dictionary", data)
         self.assertEqual([], self.lines())
 
     def test_a_malformed_schema_role_or_application_whoever_sends_it(self):

@@ -225,6 +225,9 @@ class InterpretJAAQL:
                 query = operation.get(KEY_query)
 
                 if query is None:
+                    if client_sql and not all(key in operation for key in (KEY__application, KEY__file, KEY__position)):
+                        # Neither SQL nor a canned query named: the client's request, answered as one
+                        raise HttpStatusException(ERR_missing_query, HTTPStatus.BAD_REQUEST)
                     canned_query = canned_query_service.get_canned_query(operation[KEY__application],
                                                                          operation[KEY__file], operation[KEY__position])
                     query = {"query": {KEY_query: canned_query, KEY_assert: operation.get(KEY_assert), KEY_decrypt: operation.get(KEY_decrypt),
