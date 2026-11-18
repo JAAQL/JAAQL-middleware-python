@@ -114,8 +114,20 @@ DOCUMENTATION__deep_health = SwaggerDocumentation(
     methods=SwaggerMethod(
         name="Deep health check",
         description="Resolves a query through the compiled query cache and runs it, so a stale, partial or "
-                    "unloaded cache fails the check (unlike is-alive, which only pings the database)",
-        method=REST__GET
+                    "unloaded cache fails the check (unlike is-alive, which only pings the database). When the "
+                    "environment variable JAAQL_DEEP_HEALTH_APPLICATION names an application, it then reads that "
+                    "application's view deep_health.fault and answers 503 naming every cause it returns, or naming "
+                    "why the view could not be read",
+        method=REST__GET,
+        response=[
+            SwaggerFlatResponse(),
+            SwaggerFlatResponse(
+                description="The application named by JAAQL_DEEP_HEALTH_APPLICATION is not healthy, or its view "
+                            "deep_health.fault could not be read",
+                code=HTTPStatus.SERVICE_UNAVAILABLE,
+                body="Deep health, then each cause, separated by semicolons"
+            )
+        ]
     )
 )
 

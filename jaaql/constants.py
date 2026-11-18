@@ -253,6 +253,10 @@ ENDPOINT__deep_health = "/internal/deep-health"
 # constant HEALTH_QUERY_CACHE_KEY (index is always 0).
 QUERY_CACHE_KEY__health = "__health__"
 QUERY_CACHE_REF__health = QUERY_CACHE_KEY__health + ":0"
+# Names one application whose own view deep_health.fault (cause text) deep-health also reads, as dba: every row is a reason it is not
+# healthy, and any row answers 503. Unset, deep-health checks JAAQL alone, as before. Sentinel's box sets it to sentinel
+ENVIRON__deep_health_application = "JAAQL_DEEP_HEALTH_APPLICATION"
+QUERY__deep_health_faults = "SELECT cause FROM deep_health.fault ORDER BY cause"
 ENDPOINT__report_sentinel_error = "/sentinel/reporting/error"
 ENDPOINT__install = "/internal/install"
 ENDPOINT__set_shared_var = "/set-shared-var"
