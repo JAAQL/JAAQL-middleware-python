@@ -56,6 +56,7 @@ ARG_START__jaaql_connection = "jaaql_" + ARG_START__connection
 
 CONTENT__encoding = "charset=utf-8"
 CONTENT__json = "application/json"
+CONTENT__form = "application/x-www-form-urlencoded"
 
 CORS__WILDCARD = "*"
 
@@ -365,10 +366,13 @@ class BaseJAAQLController:
         # A webhook's request (raw_request): the webhook gets the query, the headers and the body as they came (handle_webhook), so
         # neither the query nor the body is merged with the path's application and name, which are authoritative: a key "name" or
         # "application" in either is no duplicated field (400) and reaches the webhook, a JSON string, number or null is no mapping (500).
-        # The inputs are the path variables alone. A POST's body is JSON, which must parse (400 otherwise)
+        # The inputs are the path variables alone. A POST's body is JSON, which must parse (400 otherwise), or, where the method allows it
+        # (form_body), application/x-www-form-urlencoded, as payment providers send it, which is never parsed here: parsing request.form
+        # would consume the body the webhook reads (request.get_data())
         if len(method.body) != 0 or was_allow_all:
-            BaseJAAQLController.enforce_content_type_json()
-            request.get_json()
+            if not (method.form_body and request.mimetype == CONTENT__form):
+                BaseJAAQLController.enforce_content_type_json()
+                request.get_json()
         data = dict(kwargs)
         if not was_allow_all:
             BaseJAAQLController.validate_data(method, data, is_prod, fill_missing)

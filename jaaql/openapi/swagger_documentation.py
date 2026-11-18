@@ -26,6 +26,7 @@ ERR__nested_not_allowed = "Nested objects are not allowed in method arguments. P
 ERR__list_not_allowed = "Lists now allowed in method arguments. Please place in the body"
 ERR__delete_not_allowed_body = "HTTP method delete isn't allowed a body. Please use the arguments parameter instead"
 ERR__get_not_allowed_body = "HTTP method get isn't allowed a body. Please use the arguments parameter instead"
+ERR__form_body_needs_raw_request = "A form body is only allowed on a method whose request goes to the view as it came (raw_request)"
 
 TYPE__example = Union[List[Any], Any]
 
@@ -307,7 +308,8 @@ class SwaggerMethod:
 
     def __init__(self, name: str, description: str, method: str, arguments: TYPE__flat_argument_response = None,
                  body: TYPE__argument_response = None, response: TYPE__responses = None,
-                 exceptions: TYPE__exceptions = None, parallel_verification: bool = False, raw_request: bool = False):
+                 exceptions: TYPE__exceptions = None, parallel_verification: bool = False, raw_request: bool = False,
+                 form_body: bool = False):
         self._validate_exceptions(exceptions)
         self._validate_responses(response)
         validate_argument_responses(arguments)
@@ -318,8 +320,12 @@ class SwaggerMethod:
         self.method = method
         self.parallel_verification = parallel_verification
         # raw_request: the view reads the request's query and body as they came (a webhook's), so neither is merged with the path
-        # variables, which are authoritative, nor validated
+        # variables, which are authoritative, nor validated. form_body (with raw_request): the body may also be form-encoded, which is
+        # never parsed, besides JSON
         self.raw_request = raw_request
+        self.form_body = form_body
+        if form_body and not raw_request:
+            raise Exception(ERR__form_body_needs_raw_request)
 
         self.responses = response if isinstance_union(response, TYPE__swagger_list_like) else force_list(response)
         self.arguments = force_list(arguments)

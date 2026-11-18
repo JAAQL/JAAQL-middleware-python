@@ -178,7 +178,11 @@ DESCRIPTION__webhook_query = (". The query parameters reach the webhook as they 
 DESCRIPTION__webhook_post_size = (" reaches the webhook byte for byte on the process's stdin, whatever its size up to the request size limit "
                                   "(Flask's MAX_CONTENT_LENGTH, 2 MiB, and before it nginx's client_max_body_size, by default 1 MiB, each "
                                   "answering 413)")
-DESCRIPTION__webhook_post = (". The JSON body" + DESCRIPTION__webhook_post_size + DESCRIPTION__webhook_query)
+DESCRIPTION__webhook_post = (". The body, JSON or form-encoded (application/x-www-form-urlencoded, as payment providers such as Mollie send "
+                             "it, never parsed by JAAQL)" + DESCRIPTION__webhook_post_size + DESCRIPTION__webhook_query)
+DESCRIPTION__secure_webhook_post = (". The JSON body" + DESCRIPTION__webhook_post_size + ". A secure webhook, which the login cookie "
+                                    "authorises, takes JSON only, as a browser sends JSON to another site only after a CORS preflight" +
+                                    DESCRIPTION__webhook_query)
 RES__webhook_answer = SwaggerFlatResponse(description="The webhook's own answer, with the status, headers and body it gives")
 RES__webhook_body_too_large = SwaggerFlatResponse(
     description="The body is larger than the request size limit, so the webhook is not started",
@@ -210,7 +214,8 @@ DOCUMENTATION__webhook = SwaggerDocumentation(
             method=REST__POST,
             arguments=ARG_RESP__allow_all,
             response=[RES__webhook_answer, RES__webhook_body_too_large, RES__webhook_busy],
-            raw_request=True
+            raw_request=True,
+            form_body=True
         )
     ]
 )
@@ -229,7 +234,7 @@ DOCUMENTATION__secure_webhook = SwaggerDocumentation(
         ),
         SwaggerMethod(
             name="Receive Webhook POST",
-            description="Receives a webhook as a POST" + DESCRIPTION__webhook_process + DESCRIPTION__webhook_post,
+            description="Receives a webhook as a POST" + DESCRIPTION__webhook_process + DESCRIPTION__secure_webhook_post,
             method=REST__POST,
             arguments=ARG_RESP__allow_all,
             response=[RES__webhook_answer, RES__webhook_body_too_large, RES__webhook_busy],

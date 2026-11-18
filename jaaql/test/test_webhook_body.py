@@ -4,7 +4,8 @@ passes a marker in its place on the command line, where Linux allows one argumen
 jaaql/scripts/webhook_body.mjs, puts the body back in that place as base64 before the webhook's modules run, which is where BATON's cloud
 runtime has always read it. Before, the body went onto the command line, so a body over about 98,000 bytes failed to spawn (E2BIG) and was
 answered 500 as JAAQL's own server error. A body over the request size limit (Flask's MAX_CONTENT_LENGTH) is answered 413 and never starts the
-webhook. Neither a body's keys nor the query's are merged with the path's application and name, which say which webhook runs, and the query
+webhook. A /webhook POST may be form-encoded, as payment providers send it, and reaches the webhook unparsed, as webhook.rawRequestData; a
+/secure POST is JSON only. Neither a body's keys nor the query's are merged with the path's application and name, which say which webhook runs, and the query
 reaches the webhook unchanged, a key "name" or "application" in it too. A worker runs at most WEBHOOK_MAX_RUNNING webhook processes
 at once, at most WEBHOOK_MAX_WAITING more waiting for a place in the order they came, and a webhook that finds no place is answered 503
 with Retry-After without starting one. None of these is reported to Sentinel; a webhook that crashes still is, as before.
@@ -40,12 +41,15 @@ WEBHOOK = "hook"
 ROUTE = "/webhook/%s/%s" % (APPLICATION, WEBHOOK)
 SECURE_ROUTE = "/secure/%s/%s" % (APPLICATION, WEBHOOK)
 JSON = {"Content-Type": "application/json"}
+FORM = {"Content-Type": "application/x-www-form-urlencoded"}
 KB = 1000
 
 # A webhook as BATON compiles one: an entrypoint run as "node --import ./__imports__.js <entrypoint>", reading its arguments as
 # initializeWebhook (BATON.cloud.ts) does, process.argv.slice(2) being [headers, parameters, body, dbms user?], each but the user base64. It
 # answers with what it was given: the body's length and SHA-256 as bytes, whether it parses as the JSON sent, its arguments, and the length
-# of its own command line as the kernel holds it (/proc/self/cmdline), which the body must not be on
+# of its own command line as the kernel holds it (/proc/self/cmdline), which the body must not be on. For a body of at most 10,000 bytes also
+# rawRequestData and the request's data as initializeWebhook makes them (the body as text, and jsonTryParse of it: the JSON it parses as, or
+# the text), and the text as a form, as a webhook reads one with URLSearchParams
 ENTRYPOINT = r"""
 import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
@@ -56,6 +60,10 @@ const parameters = JSON.parse(Buffer.from(args[1], "base64").toString());
 const bytes = Buffer.from(args[2], "base64");
 let parsed = null;
 try { parsed = JSON.parse(bytes.toString()); } catch (_) {}
+const small = bytes.length <= 10000;
+const rawRequestData = bytes.toString();
+let data = rawRequestData;
+try { data = JSON.parse(rawRequestData); } catch (_) {}
 if (process.env.HOLD_UNTIL) {
 	const until = Date.now() + 20000;
 	while (!existsSync(process.env.HOLD_UNTIL) && Date.now() < until) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20); }
@@ -64,7 +72,8 @@ let cmdline = -1;
 try { cmdline = readFileSync("/proc/self/cmdline").length; } catch (_) {}
 console.log(JSON.stringify({ statusCode: 200, headers: { "X-Seen": "yes" }, body: JSON.stringify({
 	argc: args.length, length: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), parsed, user: args[3] ?? null,
-	content_type: headers["Content-Type"] ?? null, parameters, cmdline
+	content_type: headers["Content-Type"] ?? null, parameters, cmdline, rawRequestData: small ? rawRequestData : null, data: small ? data : null,
+	form: small ? Object.fromEntries(new URLSearchParams(rawRequestData)) : null
 }) }));
 """
 
@@ -193,11 +202,58 @@ class TestWebhookBody(WebhookCase):
             with self.subTest(body=body):
                 self.assertDelivered(body)
 
-    def test_a_body_that_is_not_json_is_still_refused_before_the_webhook(self):
-        for data, headers in [(b'not json', JSON), (b'', JSON), (b'id=tr_1', {"Content-Type": "application/x-www-form-urlencoded"})]:
-            with self.subTest(data=data):
-                (status, _, _), reports = self.answers(lambda: self.client.post(ROUTE, data=data, headers=headers))
+    def test_a_body_that_is_neither_json_nor_a_form_is_still_refused_before_the_webhook(self):
+        # And a secure webhook, which the login cookie authorises, still takes JSON only, as a page on another site can have a browser
+        # send a form anywhere
+        for route, data, headers in [(ROUTE, b'not json', JSON), (ROUTE, b'', JSON), (ROUTE, b'id=tr_1', {"Content-Type": "text/plain"}),
+                                     (ROUTE, b'id=tr_1', {}), (ROUTE, b'--x\r\n', {"Content-Type": "multipart/form-data; boundary=x"}),
+                                     (SECURE_ROUTE, b'id=tr_1', dict(FORM, **{HEADER__security_bypass: SUPER_KEY}))]:
+            with self.subTest(route=route, data=data, headers=headers):
+                (status, _, _), reports = self.answers(lambda: self.client.post(route, data=data, headers=headers))
                 self.assertEqual((400, []), (status, reports))
+        self.run_calls.assert_not_called()
+
+    def assertFormDelivered(self, body: bytes, route=ROUTE, headers=None) -> dict:
+        (status, _, data), reports = self.answers(lambda: self.client.post(route, data=body, headers=dict(FORM, **(headers or {}))))
+        self.assertEqual(200, status, data[:300])
+        seen = self.seen(data)
+        self.assertEqual((3, len(body), sha256(body)), (seen["argc"], seen["length"], seen["sha256"]))
+        self.assertEqual([], reports)
+        self.assertEqual([], self.lines())
+        return seen
+
+    def test_a_form_encoded_body_reaches_the_webhook_as_it_came_as_baton_reads_it(self):
+        # As Mollie calls a webhook: POST id=tr_... form-encoded. Before, it was answered 400 Expected content-type application/json
+        body = b"id=tr_WDqYK6vllg"
+        seen = self.assertFormDelivered(body, ROUTE + "?order=1234")
+        self.assertEqual(("application/x-www-form-urlencoded", {"order": "1234"}), (seen["content_type"], seen["parameters"]))
+        # webhook.rawRequestData is the body as text, the request's data the same text (it is no JSON), and the form what it says
+        self.assertEqual(("id=tr_WDqYK6vllg", "id=tr_WDqYK6vllg", {"id": "tr_WDqYK6vllg"}), (seen["rawRequestData"], seen["data"], seen["form"]))
+
+    def test_a_form_naming_the_application_or_a_name_with_a_charset_and_encoded_bytes_reaches_the_webhook_unparsed(self):
+        body = b"name=Jane+Doe&application=other&amount=10.00&note=Ren%C3%A9e+%26+co&raw=%FF%00"
+        seen = self.assertFormDelivered(body, headers={"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"})
+        self.assertEqual(body.decode("ascii"), seen["rawRequestData"])
+        self.assertEqual({"name": "Jane Doe", "application": "other", "amount": "10.00", "note": "Ren\u00e9e & co"},
+                         {key: value for key, value in seen["form"].items() if key != "raw"})
+        self.assertEqual({}, seen["parameters"])
+
+    def test_a_large_form_body_reaches_the_webhook_and_one_over_the_size_limit_is_413(self):
+        body = b"id=tr_1&blob=" + b"x" * (900 * KB)
+        self.assertFormDelivered(body)
+        limit = self.controller.app.config["MAX_CONTENT_LENGTH"]
+        self.run_calls.reset_mock()
+        (status, _, _), reports = self.answers(lambda: self.client.post(ROUTE, data=b"x=" + b"y" * (limit - 1), headers=FORM))
+        self.assertEqual((413, []), (status, reports))
+        self.run_calls.assert_not_called()
+
+    def test_a_form_encoded_body_is_bounded_like_any_webhook(self):
+        os.environ[ENVIRON__webhook_max_running] = "1"
+        os.environ[ENVIRON__webhook_max_waiting] = "0"
+        self.assertTrue(process_slots.WEBHOOKS.claim(APPLICATION, "elsewhere"))
+        (status, headers, _), reports = self.answers(lambda: self.client.post(ROUTE, data=b"id=tr_1", headers=FORM))
+        self.assertEqual((503, []), (status, reports))
+        self.assertIn(("Retry-After", str(SLOT__retry_after_seconds)), headers)
         self.run_calls.assert_not_called()
 
     def test_the_headers_and_parameters_reach_the_webhook_as_before(self):
