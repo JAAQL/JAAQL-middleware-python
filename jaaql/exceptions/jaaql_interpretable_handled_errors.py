@@ -38,6 +38,21 @@ class RequestConflict(JaaqlInterpretableHandledError):
         )
 
 
+class RequestForbidden(JaaqlInterpretableHandledError):
+    # A request JAAQL refuses to carry out, as it is not allowed (a query sent from where no query may be sent): the client's (403)
+    def __init__(self, message, descriptor=None):
+        super().__init__(
+            error_code=1028,
+            http_response_code=403,
+            table_name=None,
+            message=message,
+            column_name=None,
+            _set=None,
+            index=None,
+            descriptor=descriptor
+        )
+
+
 class DatabaseOperationalError(JaaqlInterpretableHandledError):
     def __init__(self, message, descriptor=None):
         super().__init__(

@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from jaaql.exceptions.http_status_exception import HttpStatusException
+from jaaql.exceptions.jaaql_interpretable_handled_errors import RequestForbidden
 from jaaql.mvc import handmade_queries, model
 from jaaql.mvc.model import JAAQLModel, _explicit_type
 
@@ -103,10 +104,10 @@ class TestCallProc(unittest.TestCase):
     def test_a_federation_procedure_is_refused(self):
         with mock.patch.object(model, "submit") as submitted, \
                 mock.patch.object(model, "is_federation_procedure", return_value=True) as looked_up:
-            with self.assertRaises(HttpStatusException) as caught:
+            with self.assertRaises(RequestForbidden) as caught:
                 JAAQLModel.call_proc(stub_model(), {"query": "_system.federate", "parameters": {
                     "account_id": "attacker", "email": "victim@example.com"}}, "attacker")
-        self.assertEqual(HTTPStatus.FORBIDDEN, caught.exception.response_code)
+        self.assertEqual((HTTPStatus.FORBIDDEN, 1028), (caught.exception.response_code, caught.exception.error_code))
         looked_up.assert_called_once_with(None, "_system.federate")
         submitted.assert_not_called()
 

@@ -110,6 +110,8 @@ ERR__account_id_exists = "An account as the role '%s' already exists"
 ERR__account_username_exists = "An account with the username '%s' already exists"
 ERR__account_sub_exists = "An account for this user of the identity provider already exists"
 ERR__procedure_repeated = "The procedure '%s' is named more than once"
+ERR__arbitrary_queries_refused = "Not allowed to send queries to server!"
+ERR__federation_procedure_refused = "A federation procedure cannot be called directly"
 
 # What create_account raises when what a request asks for exists already, as the database names it: the role the account attaches as
 # (CREATE ROLE, duplicate_object), and the account's unique keys (unique_violation): its role, its username, its identity provider's user
@@ -3152,7 +3154,7 @@ WHERE
         # A federation procedure links an account to the application's users from the claims JAAQL vouches for, so
         # only JAAQL may run it (as the jaaql role); a login calling it could link itself to someone else
         if is_federation_procedure(self.jaaql_lookup_connection, query_name):
-            raise HttpStatusException("A federation procedure cannot be called directly", HTTPStatus.FORBIDDEN)
+            raise RequestForbidden(ERR__federation_procedure_refused)
 
         inputs["query"] = {
             "_jaaql_procedure": query
@@ -3167,8 +3169,8 @@ WHERE
         # server_authored_query asserts the query text is a code literal, not client input. It exempts the caller from the
         # PREVENT_ARBITRARY_QUERIES guard, which exists to stop remote clients supplying their own query text
         if not server_authored_query and ip_address not in IPS__local and self.prevent_arbitrary_queries:
-            # Answered 500 as ever, but the client's: it sent a query from where none may be sent
-            raise client_fault(UnhandledJaaqlServerError("Not allowed to send queries to server!"))
+            # The client's: it sent a query from where none may be sent, which is refused (403), never JAAQL's server error
+            raise client_fault(RequestForbidden(ERR__arbitrary_queries_refused))
 
         return submit(self.vault, self.config, self.get_db_crypt_key(), self.jaaql_lookup_connection, inputs, account_id, verification_hook,
                       self.cached_canned_query_service, as_objects=as_objects, singleton=singleton, client_sql=not server_authored_query)

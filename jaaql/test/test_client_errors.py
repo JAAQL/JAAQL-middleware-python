@@ -1,7 +1,8 @@
 """
 Client errors: a request that conflicts with what exists (an account, or the role it would attach as, that exists already, a procedure named
-twice) is answered 409 with JAAQL's error body, saying what exists, and never reported to Sentinel as a server error, while JAAQL's own SQL
-failing for any other reason still is.
+twice) is answered 409 with JAAQL's error body, saying what exists, and a request JAAQL refuses (a query sent from where none may be sent, a
+federation procedure called directly) 403, and neither is ever reported to Sentinel as a server error, while JAAQL's own SQL failing for any
+other reason still is.
 
     python -m unittest jaaql.test.test_client_errors
 
@@ -34,7 +35,7 @@ from jaaql.openapi.swagger_documentation import SwaggerFlatResponse, RESPONSE__2
 from jaaql.test.test_server_errors import ServerErrorCase, RaisingInterface, SUPER_KEY, CONFIG, ENVIRON__test_postgres_uri
 from jaaql.utilities import slow_queries
 from jaaql.utilities.utils import get_jaaql_root
-from monitor.main import HEADER__security_bypass
+from monitor.main import HEADER__security_bypass, HEADER__security
 
 ROLE = "my-role"
 TEST_DATABASE = "jaaql_test_conflicts"
@@ -187,6 +188,43 @@ class TestRequestConflicts(AccountCase):
     def test_the_status_of_a_conflict_relayed_by_a_cloud_procedure(self):
         self.assertEqual((409, 409), (RESPONSE_CODE_LOOKUP[1001], RESPONSE_CODE_LOOKUP[1027]))
         self.assertEqual((409, 1001), (AccountAlreadyExists().response_code, AccountAlreadyExists().error_code))
+
+
+class TestRefusals(ServerErrorCase):
+
+    def refused(self, answered, message):
+        (status, headers, data), reports = answered
+        self.assertEqual((403, []), (status, reports), data)
+        self.assertIn(("Content-Type", "application/json"), headers)
+        self.assertEqual({"error_code": 1028, "message": message, "table_name": None, "column_name": None, "index": None, "set": None,
+                          "descriptor": None}, json.loads(data))
+
+    def test_a_query_sent_from_where_none_may_be_sent(self):
+        # PREVENT_ARBITRARY_QUERIES. Up to 5.3.30: 500 with error_code 1099 ("An unhandled exception has occurred with JAAQL.") and the
+        # refusal as its descriptor, which BATON takes for a server error
+        self.model.prevent_arbitrary_queries = True
+        for headers in [{HEADER__security: "a.token", "X-Real-IP": "203.0.113.9"}, {HEADER__security: "a.token", "X-Real-IP": "2001:db8::9"}]:
+            with self.subTest(headers=headers), self.interface(RaisingInterface()) as interface:
+                self.refused(self.answers(lambda: self.client.post("/submit", json={"query": "SELECT 1", "application": "lesbij"},
+                                                                   headers=headers)), "Not allowed to send queries to server!")
+                self.assertEqual([], interface.return_value.statements)
+        # From the box itself, and JAAQL's own queries from anywhere, as ever
+        with self.interface(RaisingInterface()):
+            res = self.client.post("/submit", json={"query": "SELECT 1", "application": "lesbij"}, headers={HEADER__security_bypass: SUPER_KEY})
+            self.assertEqual(200, res.status_code, res.data)
+            self.assertEqual([[0.0]], JAAQLModel.submit(
+                self.model, {"query": "SELECT 1", "application": "lesbij"}, "account-1", ip_address="203.0.113.9", server_authored_query=True)["rows"])
+        self.assertEqual([], self.lines())
+
+    def test_a_federation_procedure_called_directly(self):
+        # Up to 5.3.30: 403 with the refusal as plain text
+        with mock.patch.object(model, "is_federation_procedure", return_value=True), self.interface(RaisingInterface()) as interface:
+            self.refused(self.answers(self.call_proc), "A federation procedure cannot be called directly")
+            self.assertEqual([], interface.return_value.statements)
+        self.assertEqual([], self.lines())
+
+    def test_the_status_of_a_refusal_relayed_by_a_cloud_procedure(self):
+        self.assertEqual(403, RESPONSE_CODE_LOOKUP[1028])
 
 
 def statement_of(script: str, pattern: str) -> str:

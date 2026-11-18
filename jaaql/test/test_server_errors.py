@@ -1064,14 +1064,17 @@ class TestWhatIsNeverReported(ServerErrorCase):
             (status, _, _), reports = self.answers(lambda: self.submit(bypass=False))
         self.assertEqual((401, []), (status, reports))
 
-    def test_the_refusal_of_an_arbitrary_query_though_answered_500(self):
+    def test_the_refusal_of_an_arbitrary_query(self):
+        # Answered 403 with JAAQL's error body (error_code 1028). Up to 5.3.30 it was answered 500 with error_code 1099 and the refusal as
+        # its descriptor, though never reported
         self.model.prevent_arbitrary_queries = True
         with self.interface(RaisingInterface()):
             (status, _, data), reports = self.answers(lambda: self.client.post(
                 "/submit", json={"query": "SELECT 1", "application": APPLICATION},
                 headers={HEADER__security: "a.token", "X-Real-IP": "203.0.113.9"}))
-        self.assertEqual((500, []), (status, reports))
-        self.assertEqual("Not allowed to send queries to server!", json.loads(data)["descriptor"])
+        self.assertEqual((403, []), (status, reports))
+        self.assertEqual((1028, "Not allowed to send queries to server!", None),
+                         (json.loads(data)["error_code"], json.loads(data)["message"], json.loads(data)["descriptor"]))
 
     def test_an_error_a_cloud_procedure_relays_though_answered_500(self):
         for code, status in [(1023, 500), (1004, 422)]:

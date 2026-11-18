@@ -1,6 +1,8 @@
+from http import HTTPStatus
+
 from jaaql.mvc.generated_queries import KG__user_registry__provider, KG__user_registry__tenant
 from jaaql.openapi.swagger_documentation import SwaggerDocumentation, SwaggerMethod, SwaggerArgumentResponse,\
-    SwaggerFlatResponse, REST__POST, ARG_RESP__allow_all, RES__allow_all
+    SwaggerFlatResponse, SwaggerResponseException, REST__POST, ARG_RESP__allow_all, RES__allow_all
 from jaaql.constants import *
 from typing import Union
 
@@ -166,7 +168,9 @@ DOCUMENTATION__submit = SwaggerDocumentation(
         method=REST__POST,
         arguments=ARG_RESP__allow_all,
         response=RES__allow_all,
-        parallel_verification=True
+        parallel_verification=True,
+        exceptions=SwaggerResponseException(HTTPStatus.FORBIDDEN, "error_code 1028, a query sent from outside the box to a box that takes "
+                                                                  "none from there (PREVENT_ARBITRARY_QUERIES)")
     )
 )
 
